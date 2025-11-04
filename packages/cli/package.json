@@ -1,6 +1,6 @@
 {
   "name": "@oiml/cli",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "OpenIntent CLI for initializing and managing OpenIntent projects",
   "author": "OpenIntent",
   "license": "MPL-2.0",
