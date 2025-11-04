@@ -6,12 +6,124 @@ export const ProjectConfig = z
   .object({
     name: z.string().min(1).describe("Project name"),
     description: z.string().optional().describe("Project description (can be multiline)"),
-    version: OIMLVersion,
-    framework: z
-      .enum(["nextjs", "express", "fastify", "koa", "nestjs", "remix", "sveltekit", "astro"])
+    oiml_version: OIMLVersion.describe("OIML schema version"),
+    api: z
+      .object({
+        framework: z
+          .enum([
+            // Node.js/TypeScript frameworks
+            "nextjs",
+            "express",
+            "fastify",
+            "koa",
+            "nestjs",
+            "remix",
+            // Python frameworks
+            "django",
+            "flask",
+            "fastapi",
+            "tornado",
+            "bottle",
+            // Go frameworks
+            "gin",
+            "echo",
+            "fiber",
+            "chi",
+            "gorilla",
+            // Rust frameworks
+            "axum",
+            "actix-web",
+            "rocket",
+            "warp",
+            // Java frameworks
+            "spring-boot",
+            "quarkus",
+            "micronaut",
+            // Ruby frameworks
+            "rails",
+            "sinatra",
+            // PHP frameworks
+            "laravel",
+            "symfony",
+            // .NET frameworks
+            "aspnet",
+            // Other
+            "sveltekit",
+            "astro",
+            // None
+            "none"
+          ])
+          .optional()
+          .describe("API framework"),
+        language: z
+          .enum([
+            "typescript",
+            "javascript",
+            "python",
+            "go",
+            "rust",
+            "java",
+            "ruby",
+            "php",
+            "csharp",
+            "swift",
+            "kotlin",
+            "elixir",
+            "dart",
+            "scala"
+          ])
+          .optional()
+          .describe("API programming language")
+      })
       .optional()
-      .describe("Web framework used"),
-    language: z.enum(["typescript", "javascript"]).optional().describe("Primary programming language"),
+      .describe("API configuration"),
+
+    database: z
+      .object({
+        type: z
+          .enum(["postgres", "mysql", "sqlite", "mongodb", "cockroachdb", "mariadb", "mssql", "other", "none"])
+          .describe("Database type"),
+        framework: z
+          .enum(["prisma", "drizzle", "sqlalchemy", "ent", "gorm", "sqlx", "raw", "other"])
+          .optional()
+          .describe("Database framework"),
+        schema: z.string().optional().describe("Path to schema file (e.g., 'prisma/schema.prisma', 'schema.sql')"),
+        connection: z.string().optional().describe("Database connection string (can use env:VAR_NAME format)")
+      })
+      .optional()
+      .describe("Database configuration"),
+
+    ui: z
+      .object({
+        framework: z
+          .enum(["react", "vue", "sveltekit", "astro", "nextjs", "vite", "nuxt", "other", "none"])
+          .optional()
+          .describe("UI framework"),
+        components: z.enum(["shadcn/ui", "tailwindcss", "other"]).optional().describe("UI components library"),
+        language: z.enum(["typescript", "javascript"]).optional().describe("UI programming language"),
+        base_components: z
+          .array(z.record(z.string()))
+          .optional()
+          .describe("Map of base UI component names to import paths (e.g., [{ Input: '@/components/ui/input' }])"),
+        theme: z
+          .object({
+            primary_color: z
+              .string()
+              .regex(/^#[0-9A-Fa-f]{6}$/, "must be hex color")
+              .optional()
+              .describe("Primary theme color (hex format)"),
+            accent_color: z
+              .string()
+              .regex(/^#[0-9A-Fa-f]{6}$/, "must be hex color")
+              .optional()
+              .describe("Accent theme color (hex format)"),
+            border_radius: z.string().optional().describe("Border radius value (e.g., '0.75rem', '8px')")
+          })
+          .optional()
+          .describe("UI theme configuration")
+      })
+      .optional()
+      .describe("UI configuration"),
 
     provider: z
       .object({
@@ -22,17 +134,6 @@ export const ProjectConfig = z
       })
       .optional()
       .describe("Cloud provider configuration"),
-
-    database: z
-      .object({
-        type: z
-          .enum(["postgres", "mysql", "sqlite", "mongodb", "cockroachdb", "mariadb", "mssql"])
-          .describe("Database type"),
-        schema: z.string().describe("Path to schema file (e.g., 'prisma/schema.prisma', 'schema.sql')"),
-        connection: z.string().describe("Database connection string (can use env:VAR_NAME format)")
-      })
-      .optional()
-      .describe("Database configuration"),
 
     auth: z
       .object({
@@ -57,32 +158,6 @@ export const ProjectConfig = z
       .strict()
       .optional()
       .describe("Project directory paths"),
-
-    ui: z
-      .object({
-        base_components: z
-          .array(z.record(z.string()))
-          .optional()
-          .describe("Map of base UI component names to import paths (e.g., [{ Input: '@/components/ui/input' }])"),
-        theme: z
-          .object({
-            primary_color: z
-              .string()
-              .regex(/^#[0-9A-Fa-f]{6}$/, "must be hex color")
-              .optional()
-              .describe("Primary theme color (hex format)"),
-            accent_color: z
-              .string()
-              .regex(/^#[0-9A-Fa-f]{6}$/, "must be hex color")
-              .optional()
-              .describe("Accent theme color (hex format)"),
-            border_radius: z.string().optional().describe("Border radius value (e.g., '0.75rem', '8px')")
-          })
-          .optional()
-          .describe("UI theme configuration")
-      })
-      .optional()
-      .describe("UI configuration"),
 
     adapters: z
       .object({
@@ -154,12 +229,7 @@ export const ProjectConfig = z
 
     intents: z
       .object({
-        directory: z.string().default(".openintent/intents").describe("Directory containing intent files"),
-        schema_version: z.union([z.string(), z.number()]).optional().describe("OpenIntent schema version"),
-        default_review_policy: z
-          .enum(["auto", "manual", "require-review"])
-          .optional()
-          .describe("Default review policy for intents")
+        directory: z.string().default(".openintent/intents").describe("Directory containing intent files")
       })
       .optional()
       .describe("Intent configuration"),
