@@ -1,15 +1,15 @@
 {
   "name": "@oiml/schema",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "OIML schema definitions",
   "author": "OpenIntent",
   "license": "MPL-2.0",
   "packageManager": "pnpm@10.18.3",
   "type": "module",
-  "homepage": "https://github.com/oimladmin/oiml#readme",
+  "homepage": "https://github.com/openintent/oiml#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/oimladmin/oiml.git",
+    "url": "https://github.com/openintent/oiml.git",
     "directory": "packages/schema"
   },
   "main": "./dist/index.js",
