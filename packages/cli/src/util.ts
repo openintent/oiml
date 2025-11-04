@@ -40,4 +40,3 @@ export function getOimlVersion(): string {
   // Fallback to default if we can't read the package.json
   return "0.1.0";
 }
-

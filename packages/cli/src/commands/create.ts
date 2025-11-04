@@ -10,7 +10,8 @@ function generateIntentTemplate(name: string): string {
     version: getOimlVersion(),
     ai_context: {
       purpose: "Conform to project frameworks, style, and conventions.",
-      instructions: "- Read .openintent/AGENTS.md and apply the instructions to the intent.\n",
+      instructions:
+        "- Read .openintent/AGENTS.md and apply the instructions to the intent.\n",
       references: [
         {
           kind: "file",

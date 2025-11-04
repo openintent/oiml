@@ -370,9 +370,7 @@ export async function GET() {
     });
 
     const response: {Entity}Response = {
-      success: true,
       data: {entity_plural},
-      count: {entity_plural}.length
     };
 
     return NextResponse.json(response, { status: 200 });
@@ -616,13 +614,10 @@ export interface {Entity}Interface {
 
 // API response types
 export interface {Entity}Response {
-  success: boolean;
   data: {Entity}Interface[];
-  count: number;
 }
 
 export interface ErrorResponse {
-  success: false;
   error: string;
 }
 ```
