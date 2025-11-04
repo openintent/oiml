@@ -1,0 +1,17 @@
+version: 0.1.0
+provenance:
+  created_by: { type: human, name: "" }
+  created_at: 2025-11-03T12:34:56Z
+
+intents:
+  - kind: add_endpoint
+    scope: api
+    method: POST
+    description: Create a new user
+    path: /api/users
+    entity: User
+    fields:
+      - name: email
+        type: string
+        required: true
+        unique: true
