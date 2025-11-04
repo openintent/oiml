@@ -1,7 +1,7 @@
 import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import express from 'express';
-import { z } from 'zod';
+import { z, type ZodIssue } from 'zod';
 import fs from "node:fs";
 import path from "node:path";
 import YAML from "yaml";
@@ -88,7 +88,7 @@ server.registerTool(
                     }
                 };
             } else {
-                const errors = result.error.errors.map(err => 
+                const errors = result.error.errors.map((err: ZodIssue) => 
                     `${err.path.join('.')}: ${err.message}`
                 );
                 
@@ -197,7 +197,7 @@ server.registerTool(
                     }
                 };
             } else {
-                const errors = result.error.errors.map(err => 
+                const errors = result.error.errors.map((err: ZodIssue) => 
                     `${err.path.join('.')}: ${err.message}`
                 );
                 

@@ -1,8 +1,6 @@
 import { z } from "zod";
-import { ISODate } from "../util/index.js";
-import { FieldSpec } from "../data/field.js";
-import { FieldAttribute, ForeignKey, RelationKind, ReverseRelation } from "../data/field.js";
-import { OIMLVersion } from "../util/index.js";
+import { ISODate, OIMLVersion } from "../util";
+import { FieldSpec,FieldAttribute, ForeignKey, RelationKind, ReverseRelation } from "../data";
 
 /** Provenance block (optional but recommended) */
 export const Provenance = z
