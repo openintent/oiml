@@ -1,0 +1,35 @@
+{
+  "name": "@oiml/mcp",
+  "version": "0.1.0",
+  "description": "OpenIntent MCP server for validation and generation",
+  "author": "OpenIntent",
+  "license": "MPL-2.0",
+  "packageManager": "pnpm@10.18.3",
+  "type": "module",
+  "homepage": "https://github.com/openintent/oiml#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/openintent/oiml.git",
+    "directory": "mcp"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/mcp/src/server.js",
+    "dev": "tsx src/server.ts",
+    "postinstall": "mkdir -p node_modules/@oiml && ln -sf ../../../packages/schema node_modules/@oiml/schema || true"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.20.2",
+    "@oiml/schema": "workspace:*",
+    "express": "^5.1.0",
+    "prettier": "^3.3.3",
+    "yaml": "^2.5.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.5",
+    "@types/node": "^24.9.2",
+    "tsx": "^4.20.6",
+    "typescript": "^5.6.3"
+  }
+}
