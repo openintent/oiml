@@ -1,6 +1,6 @@
 {
   "name": "@oiml/schema",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "OIML schema definitions",
   "author": "OpenIntent",
   "license": "MPL-2.0",
@@ -27,6 +27,7 @@
   "scripts": {
     "build": "tsc",
     "prepublishOnly": "pnpm build",
+    "publish:npm": "pnpm build && pnpm publish --access public",
     "format": "prettier --write \"**/*.{ts,js,json,md}\"",
     "format:check": "prettier --check \"**/*.{ts,js,json,md}\""
   },
