@@ -169,7 +169,7 @@ export const Intent = z.union([
 /** Top-level document */
 export const IntentDoc = z
   .object({
-    version: OIMLVersion,
+    version: OIMLVersion.describe("OIML schema version"),
     provenance: Provenance.optional(),
     intents: z.array(Intent).min(1)
   })
