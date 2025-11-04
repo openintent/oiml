@@ -46,7 +46,7 @@ export default function Home() {
         const schemaResponse = await fetch("/api/schema");
         const schemaData = await schemaResponse.json();
 
-        if (schemaData.success) {
+        if (schemaData.models) {
           setModels(schemaData.models);
         } else {
           throw new Error(schemaData.error || "Failed to fetch schema");
@@ -56,7 +56,7 @@ export default function Home() {
         const routesResponse = await fetch("/api/routes");
         const routesData = await routesResponse.json();
 
-        if (routesData.success) {
+        if (routesData.endpoints) {
           // Filter out internal endpoints used for generating this page
           const filteredEndpoints = routesData.endpoints.filter(
             (endpoint: ApiEndpoint) =>
@@ -231,8 +231,8 @@ export default function Home() {
                                   endpoint.method === "GET"
                                     ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
                                     : endpoint.method === "POST"
-                                    ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
-                                    : "bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200"
+                                      ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                                      : "bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200"
                                 }`}
                               >
                                 {endpoint.method}
