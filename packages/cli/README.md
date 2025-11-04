@@ -29,11 +29,12 @@ npx @oiml/cli init
 ```
 
 This command will:
+
 - Detect your project type (Next.js, Express, etc.)
 - Create a `.openintent` directory
 - Generate a `project.yaml` configuration file
 - Create an `intents` directory
-- Copy the `OPENINTENT.md` master prompt template
+- Copy the `AGENTS.md` master prompt template
 
 ### Options
 
@@ -48,4 +49,3 @@ pnpm build
 # Development mode with watch
 pnpm dev
 ```
-

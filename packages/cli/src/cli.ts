@@ -1,31 +1,30 @@
 #!/usr/bin/env node
 
-import { Command } from 'commander';
-import { initCommand } from './commands/init.js';
-import { createCommand } from './commands/create.js';
+import { Command } from "commander";
+import { initCommand } from "./commands/init.js";
+import { createCommand } from "./commands/create.js";
 
 const program = new Command();
 
 program
-  .name('openintent')
-  .description('OpenIntent CLI for managing OpenIntent projects')
-  .version('0.1.0');
+  .name("openintent")
+  .description("OpenIntent CLI for managing OpenIntent projects")
+  .version("0.1.0");
 
 program
-  .command('init')
-  .description('Initialize a new OpenIntent project in the current directory')
-  .option('-y, --yes', 'Skip prompts and use defaults')
+  .command("init")
+  .description("Initialize a new OpenIntent project in the current directory")
+  .option("-y, --yes", "Skip prompts and use defaults")
   .action(async (options) => {
     await initCommand(options);
   });
 
 program
-  .command('create')
-  .description('Create a new intent file in .openintent/intents/')
-  .argument('[name]', 'Name of the intent file (without .oiml.yaml extension)')
+  .command("create")
+  .description("Create a new intent file in .openintent/intents/")
+  .argument("[name]", "Name of the intent file (without .oiml.yaml extension)")
   .action(async (name) => {
     await createCommand(name);
   });
 
 program.parse();
-
