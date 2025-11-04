@@ -1,6 +1,6 @@
 {
   "name": "@oiml/mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "OpenIntent MCP server for validation and generation",
   "author": "OpenIntent",
   "license": "MPL-2.0",
@@ -17,7 +17,7 @@
     "start": "node dist/mcp/src/server.js",
     "dev": "tsx src/server.ts",
     "prepublishOnly": "pnpm build",
-    "publish:npm": "pnpm build && pnpm publish --access public"
+    "publish:npm": "pnpm publish --access public"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.20.2",
