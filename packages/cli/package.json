@@ -26,7 +26,7 @@
     "postbuild": "chmod +x dist/cli.js 2>/dev/null || true",
     "dev": "tsc --watch",
     "prepublishOnly": "pnpm build || echo 'Build skipped - dist files already exist'",
-    "publish": "pnpm build && pnpm publish --access public"
+    "publish:npm": "pnpm build && pnpm publish --access public"
   },
   "dependencies": {
     "commander": "^12.1.0",
