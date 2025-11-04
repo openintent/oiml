@@ -1,20 +1,36 @@
+# Schema reference: https://github.com/openintent/oiml/blob/main/packages/schema/project/index.ts
 name: TodoApp
 description: >
   A simple todo application built on the OpenIntent framework. It manages tasks
   with a clean API and modern UI.
+oiml_version: 0.1.0
 
-version: 0.1.0
-framework: nextjs
-language: typescript
+api:
+  framework: nextjs
+  language: typescript
+
+database:
+  type: postgres
+  framework: prisma
+  schema: prisma/schema.prisma
+  connection: env:DATABASE_URL
+
+ui:
+  framework: nextjs
+  language: typescript
+  components: shadcn/ui
+  base_components:
+    - Input: "@/components/ui/input"
+    - Button: "@/components/ui/button"
+    - Card: "@/components/ui/card"
+  theme:
+    primary_color: "#3b82f6"
+    accent_color: "#10b981"
+    border_radius: "0.5rem"
 
 provider:
   name: aws
   region: us-east-1
-
-database:
-  type: postgres
-  schema: prisma/schema.prisma
-  connection: env:DATABASE_URL
 
 auth:
   provider: next-auth
@@ -27,16 +43,6 @@ paths:
   database: prisma/*
   utils: packages/utils
   types: packages/types
-
-ui:
-  base_components:
-    - Input: "@/components/ui/input"
-    - Button: "@/components/ui/button"
-    - Card: "@/components/ui/card"
-  theme:
-    primary_color: "#3b82f6"
-    accent_color: "#10b981"
-    border_radius: "0.5rem"
 
 adapters:
   auth:
