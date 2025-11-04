@@ -16,7 +16,8 @@
     "build": "tsc",
     "start": "node dist/mcp/src/server.js",
     "dev": "tsx src/server.ts",
-    "postinstall": "mkdir -p node_modules/@oiml && ln -sf ../../../packages/schema node_modules/@oiml/schema || true"
+    "prepublishOnly": "pnpm build",
+    "publish:npm": "pnpm build && pnpm publish --access public"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.20.2",
