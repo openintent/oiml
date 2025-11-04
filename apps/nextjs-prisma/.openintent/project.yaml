@@ -1,0 +1,91 @@
+# Schema reference: https://github.com/openintent/oiml/blob/main/packages/schema/project/index.ts
+name: Posty
+description: >
+  A simple application built on the OpenIntent framework. It manages posts
+  with a clean API and modern UI.
+oiml_version: 0.1.0
+
+api:
+  framework: nextjs
+  language: typescript
+
+database:
+  type: postgres
+  framework: prisma
+  schema: prisma/schema.prisma
+  connection: env:DATABASE_URL
+
+ui:
+  framework: nextjs
+  language: typescript
+  components: shadcn/ui
+  base_components:
+    - Input: "@/components/ui/input"
+    - Button: "@/components/ui/button"
+    - Card: "@/components/ui/card"
+  theme:
+    primary_color: "#3b82f6"
+    accent_color: "#10b981"
+    border_radius: "0.5rem"
+
+provider:
+  name: aws
+  region: us-east-1
+
+auth:
+  provider: next-auth
+  adapter: prisma
+  sessionStrategy: jwt
+
+paths:
+  api: app/api
+  components: app/components
+  database: prisma/*
+  utils: packages/utils
+  types: packages/types
+
+adapters:
+  auth:
+    provider: next-auth
+    options:
+      secret: env:NEXTAUTH_SECRET
+  storage:
+    provider: s3
+    bucket: posty-assets
+    region: us-east-1
+
+lint:
+  eslint: true
+  prettier: true
+
+build:
+  command: "pnpm build"
+  output: ".next"
+  framework: nextjs
+
+deploy:
+  provider: vercel
+  region: iad1
+  env: production
+
+policies:
+  max_files_changed: 25
+  max_loc_added: 500
+  forbidden_paths:
+    - "node_modules/"
+    - ".next/"
+    - "dist/"
+  reviewers_required: 1
+  tests_required: true
+
+intents:
+  directory: ".openintent/intents"
+  schema_version: 1.0
+  default_review_policy: auto
+
+metadata:
+  maintainers:
+    - name: "Posty Team"
+      email: "team@posty.dev"
+  repository: "https://github.com/openintent/todoapp"
+

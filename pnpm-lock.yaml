@@ -8,6 +8,61 @@ importers:
 
   .: {}
 
+  apps/nextjs-prisma:
+    dependencies:
+      '@prisma/client':
+        specifier: ^6.18.0
+        version: 6.18.0(prisma@6.18.0(typescript@5.9.3))(typescript@5.9.3)
+      dotenv:
+        specifier: ^17.2.3
+        version: 17.2.3
+      lucide-react:
+        specifier: ^0.469.0
+        version: 0.469.0(react@19.2.0)
+      next:
+        specifier: 16.0.1
+        version: 16.0.1(@babel/core@7.28.5)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
+      prisma:
+        specifier: ^6.18.0
+        version: 6.18.0(typescript@5.9.3)
+      react:
+        specifier: 19.2.0
+        version: 19.2.0
+      react-dom:
+        specifier: 19.2.0
+        version: 19.2.0(react@19.2.0)
+    devDependencies:
+      '@oiml/schema':
+        specifier: workspace:*
+        version: link:../../packages/schema
+      '@tailwindcss/postcss':
+        specifier: ^4
+        version: 4.1.16
+      '@types/node':
+        specifier: ^20
+        version: 20.19.24
+      '@types/react':
+        specifier: ^19
+        version: 19.2.2
+      '@types/react-dom':
+        specifier: ^19
+        version: 19.2.2(@types/react@19.2.2)
+      eslint:
+        specifier: ^9
+        version: 9.39.0(jiti@2.6.1)
+      eslint-config-next:
+        specifier: 16.0.1
+        version: 16.0.1(eslint@9.39.0(jiti@2.6.1))(typescript@5.9.3)
+      tailwindcss:
+        specifier: ^4
+        version: 4.1.16
+      tsx:
+        specifier: ^4.20.6
+        version: 4.20.6
+      typescript:
+        specifier: ^5
+        version: 5.9.3
+
   apps/todoapp:
     dependencies:
       '@prisma/client':
