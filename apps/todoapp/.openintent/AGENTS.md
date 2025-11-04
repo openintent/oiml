@@ -28,7 +28,7 @@ OIML (Open Intent Modeling Language) is a global standard for AI-driven developm
 
 ### Document Structure
 ```yaml
-version: "0.2.0"              # Semantic version (required)
+version: "0.1.0"              # Semantic version (required)
 provenance:                    # Optional metadata
   created_by:
     type: "human" | "agent" | "system"
