@@ -1,7 +1,6 @@
 // TypeScript types for TodoApp
 
 export interface ErrorResponse {
-  success: false;
   error: string;
 }
 
@@ -24,6 +23,7 @@ export interface Project {
   id: string;
   user_id: string;
   name: string | null;
+  description: string | null;
   created_at: Date;
 }
 
@@ -32,35 +32,28 @@ export interface CreateUserRequest {
 }
 
 export interface CreateUserResponse {
-  success: true;
   data: User;
 }
 
 export interface UsersResponse {
-  success: true;
   data: User[];
-  count: number;
 }
 
 export interface TodosResponse {
-  success: true;
   data: Todo[];
-  count: number;
 }
 
 export interface CreateProjectRequest {
   name: string;
+  description?: string;
   user_id: string;
 }
 
 export interface CreateProjectResponse {
-  success: true;
   data: Project;
 }
 
 export interface ProjectsResponse {
-  success: true;
   data: Project[];
-  count: number;
 }
 
