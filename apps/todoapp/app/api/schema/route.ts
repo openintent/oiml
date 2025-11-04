@@ -145,12 +145,11 @@ export async function GET() {
       }
     }
     
-    return NextResponse.json({ success: true, models }, { status: 200 });
+    return NextResponse.json({ models }, { status: 200 });
   } catch (error) {
     console.error('Error reading Prisma schema:', error);
     return NextResponse.json(
       {
-        success: false,
         error: error instanceof Error ? error.message : 'Failed to read schema',
       },
       { status: 500 }

@@ -87,12 +87,11 @@ export async function GET() {
       return a.method.localeCompare(b.method);
     });
     
-    return NextResponse.json({ success: true, endpoints }, { status: 200 });
+    return NextResponse.json({ endpoints }, { status: 200 });
   } catch (error) {
     console.error('Error scanning API routes:', error);
     return NextResponse.json(
       {
-        success: false,
         error: error instanceof Error ? error.message : 'Failed to scan routes',
       },
       { status: 500 }

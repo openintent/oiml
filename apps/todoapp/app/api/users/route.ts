@@ -10,7 +10,6 @@ export async function POST(request: Request) {
     // Validate email is provided
     if (!body.email || typeof body.email !== 'string') {
       const errorResponse: ErrorResponse = {
-        success: false,
         error: 'Email is required and must be a string'
       };
       return NextResponse.json(errorResponse, { status: 400 });
@@ -20,7 +19,6 @@ export async function POST(request: Request) {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(body.email)) {
       const errorResponse: ErrorResponse = {
-        success: false,
         error: 'Invalid email format'
       };
       return NextResponse.json(errorResponse, { status: 400 });
@@ -35,7 +33,6 @@ export async function POST(request: Request) {
     });
     
     const response: CreateUserResponse = {
-      success: true,
       data: user
     };
     
@@ -50,14 +47,12 @@ export async function POST(request: Request) {
       error.message.includes('email')
     )) {
       const errorResponse: ErrorResponse = {
-        success: false,
         error: 'A user with this email already exists'
       };
       return NextResponse.json(errorResponse, { status: 409 });
     }
     
     const errorResponse: ErrorResponse = {
-      success: false,
       error: error instanceof Error ? error.message : 'Failed to create user'
     };
     

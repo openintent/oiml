@@ -11,16 +11,13 @@ export async function GET() {
     });
 
     const response: TodosResponse = {
-      success: true,
-      data: todos,
-      count: todos.length
+      data: todos
     };
 
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
     console.error('Error fetching todos:', error);
     const errorResponse: ErrorResponse = {
-      success: false,
       error: error instanceof Error ? error.message : 'Failed to fetch todos'
     };
 

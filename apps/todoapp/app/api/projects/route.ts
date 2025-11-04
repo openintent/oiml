@@ -10,7 +10,6 @@ export async function POST(request: Request) {
     // Validate name is provided
     if (!body.name || typeof body.name !== 'string') {
       const errorResponse: ErrorResponse = {
-        success: false,
         error: 'Name is required and must be a string'
       };
       return NextResponse.json(errorResponse, { status: 400 });
@@ -19,7 +18,6 @@ export async function POST(request: Request) {
     // Validate user_id is provided
     if (!body.user_id || typeof body.user_id !== 'string') {
       const errorResponse: ErrorResponse = {
-        success: false,
         error: 'User ID is required and must be a string'
       };
       return NextResponse.json(errorResponse, { status: 400 });
@@ -32,7 +30,6 @@ export async function POST(request: Request) {
     
     if (!user) {
       const errorResponse: ErrorResponse = {
-        success: false,
         error: 'User not found'
       };
       return NextResponse.json(errorResponse, { status: 404 });
@@ -43,12 +40,12 @@ export async function POST(request: Request) {
       data: {
         id: randomUUID(),
         name: body.name,
+        description: body.description,
         user_id: body.user_id
       }
     });
     
     const response: CreateProjectResponse = {
-      success: true,
       data: project
     };
     
@@ -63,14 +60,12 @@ export async function POST(request: Request) {
       error.message.includes('user_id')
     )) {
       const errorResponse: ErrorResponse = {
-        success: false,
         error: 'Invalid user ID'
       };
       return NextResponse.json(errorResponse, { status: 400 });
     }
     
     const errorResponse: ErrorResponse = {
-      success: false,
       error: error instanceof Error ? error.message : 'Failed to create project'
     };
     

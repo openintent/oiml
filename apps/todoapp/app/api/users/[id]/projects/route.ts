@@ -15,7 +15,6 @@ export async function GET(
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(userId)) {
       const errorResponse: ErrorResponse = {
-        success: false,
         error: 'Invalid user ID format'
       };
       return NextResponse.json(errorResponse, { status: 400 });
@@ -28,7 +27,6 @@ export async function GET(
 
     if (!user) {
       const errorResponse: ErrorResponse = {
-        success: false,
         error: 'User not found'
       };
       return NextResponse.json(errorResponse, { status: 404 });
@@ -45,16 +43,13 @@ export async function GET(
     });
 
     const response: ProjectsResponse = {
-      success: true,
-      data: projects,
-      count: projects.length
+      data: projects
     };
 
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
     console.error('Error fetching user projects:', error);
     const errorResponse: ErrorResponse = {
-      success: false,
       error: error instanceof Error ? error.message : 'Failed to fetch projects'
     };
 
