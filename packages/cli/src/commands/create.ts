@@ -8,6 +8,16 @@ import { getOimlVersion } from "../util.js";
 function generateIntentTemplate(name: string): string {
   const yamlObj = {
     version: getOimlVersion(),
+    ai_context: {
+      purpose: "Conform to project frameworks, style, and conventions.",
+      instructions: "- Read .openintent/AGENTS.md and apply the instructions to the intent.\n",
+      references: [
+        {
+          kind: "file",
+          path: ".openintent/AGENTS.md",
+        },
+      ],
+    },
     provenance: {
       created_by: {
         type: "human",
