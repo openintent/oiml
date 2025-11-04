@@ -1,0 +1,8 @@
+#!/usr/bin/env node
+
+// Simple wrapper to run the CLI locally
+// Usage: ./openintent init (from packages/cli directory)
+// Or: node /path/to/packages/cli/openintent init
+
+import('./src/cli.js');
+

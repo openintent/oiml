@@ -1,0 +1,43 @@
+{
+  "name": "@oiml/cli",
+  "version": "0.1.5",
+  "description": "OpenIntent CLI for initializing and managing OpenIntent projects",
+  "author": "OpenIntent",
+  "license": "MPL-2.0",
+  "packageManager": "pnpm@10.18.3",
+  "type": "module",
+  "homepage": "https://github.com/openintent/oiml#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/openintent/oiml.git",
+    "directory": "packages/cli"
+  },
+  "bin": {
+    "openintent": "./dist/cli.js",
+    "oi": "./dist/cli.js"
+  },
+  "main": "./dist/cli.js",
+  "types": "./dist/cli.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "postbuild": "chmod +x dist/cli.js 2>/dev/null || true",
+    "dev": "tsc --watch",
+    "prepublishOnly": "pnpm build || echo 'Build skipped - dist files already exist'",
+    "publish": "pnpm build && pnpm publish --access public"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "yaml": "^2.5.0",
+    "chalk": "^5.3.0",
+    "inquirer": "^10.2.2"
+  },
+  "devDependencies": {
+    "@types/inquirer": "^9.0.7",
+    "@types/node": "^20",
+    "typescript": "^5"
+  }
+}
+
