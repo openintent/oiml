@@ -1,0 +1,9 @@
+# Schema reference: https://github.com/openintent/oiml/blob/main/packages/schema/project/index.ts
+name: vite
+description: ""
+oiml_version: 0.1.0
+ui:
+  framework: vite
+  language: typescript
+intents:
+  directory: .openintent/intents
