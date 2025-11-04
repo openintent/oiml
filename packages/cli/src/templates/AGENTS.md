@@ -118,6 +118,7 @@ Adds database models/entities to the database schema.
 
    **If using Prisma:**
    - Add the new model to the Prisma schema file following Prisma mapping rules
+   - **Always add `@@map("[entity-lowercased]+s")`** to map the model to the table name following the convention (e.g., `User` entity → `@@map("users")`, `Customer` entity → `@@map("customers")`)
    - For enum fields, add enum definition before the model if it doesn't exist
    - **MANDATORY: Create and apply database migration:**
      ```bash
