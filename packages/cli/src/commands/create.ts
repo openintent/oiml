@@ -3,10 +3,11 @@ import { join } from "path";
 import chalk from "chalk";
 import inquirer from "inquirer";
 import * as YAML from "yaml";
+import { getOimlVersion } from "../util.js";
 
 function generateIntentTemplate(name: string): string {
   const yamlObj = {
-    version: "0.1.0",
+    version: getOimlVersion(),
     provenance: {
       created_by: {
         type: "human",

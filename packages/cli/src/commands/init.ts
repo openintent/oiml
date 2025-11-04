@@ -5,30 +5,10 @@ import { dirname } from "path";
 import chalk from "chalk";
 import inquirer from "inquirer";
 import * as YAML from "yaml";
+import { getOimlVersion } from "../util.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-
-// Get OIML version from schema package.json
-function getOimlVersion(): string {
-  try {
-    // From dist/commands/init.js, go to packages/schema/package.json
-    const schemaPackagePath = resolve(
-      __dirname,
-      "../../../schema/package.json",
-    );
-    if (existsSync(schemaPackagePath)) {
-      const packageJson = JSON.parse(readFileSync(schemaPackagePath, "utf-8"));
-      return packageJson.version || "0.1.0";
-    }
-  } catch (error) {
-    // Fallback to default if we can't read the package.json
-    console.warn(
-      "Could not read OIML version from package.json, using default",
-    );
-  }
-  return "0.1.0";
-}
 
 // Map API languages to their frameworks
 const API_FRAMEWORKS_BY_LANGUAGE: Record<string, string[]> = {
