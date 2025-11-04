@@ -20,6 +20,23 @@ export const Provenance = z
   })
   .strict();
 
+/** AI Context block (optional, for AI agent instructions) */
+export const AIContext = z
+  .object({
+    purpose: z.string().optional().describe("Purpose or context for the AI agent"),
+    instructions: z.string().optional().describe("Instructions for the AI agent (multiline string)"),
+    references: z
+      .array(
+        z.object({
+          kind: z.enum(["file"]).describe("Type of reference"),
+          path: z.string().describe("Path to the referenced resource")
+        })
+      )
+      .optional()
+      .describe("References to external resources (e.g., documentation files)")
+  })
+  .strict();
+
 /** ---- Intent Kinds ---- */
 export const Intent_AddEntity = z
   .object({
@@ -170,6 +187,7 @@ export const Intent = z.union([
 export const IntentDoc = z
   .object({
     version: OIMLVersion.describe("OIML schema version"),
+    ai_context: AIContext.optional(),
     provenance: Provenance.optional(),
     intents: z.array(Intent).min(1)
   })
