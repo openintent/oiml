@@ -22,6 +22,20 @@ Next.js App Router uses a file-based routing system:
 | `/api/users/[id]` | `app/api/users/[id]/route.ts` | GET, PATCH, DELETE by ID |
 | `/api/posts` | `app/api/posts/route.ts` | GET, POST, PATCH, DELETE |
 
+**Important:** For routes with dynamic segments (e.g., `[id]`) in Next.js 15+:
+- The `request` parameter is required as the first parameter (prefix with `_` if unused to avoid lint warnings)
+- The `params` are passed in a context object as the second parameter
+- `params` is a Promise that must be awaited:
+```typescript
+export async function GET(
+  _request: Request,  // Prefix with _ when not used
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const resolvedParams = await params;
+  // ... use resolvedParams.id
+}
+```
+
 ## Implementing `add_endpoint` Intent
 
 ### Steps
@@ -55,6 +69,8 @@ Next.js App Router uses a file-based routing system:
 7. **Structure response** according to `api.response` configuration
 
 8. **Add error handling** with appropriate status codes
+
+9. **Resolve params** for dynamic routes (Next.js 15+ passes params as Promise in context object)
 
 ### Response Structure
 
@@ -131,12 +147,15 @@ import { prisma } from '@/lib/prisma';
 import type { {Entity}Response, ErrorResponse } from '@/packages/types';
 
 export async function GET(
-  request: Request,
-  { params }: { params: { id: string } }
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  // Resolve params (Next.js 15+ passes params as a Promise)
+  const resolvedParams = await params;
+  
   try {
     const {entity} = await prisma.{entity_lower}.findUnique({
-      where: { id: params.id }
+      where: { id: resolvedParams.id }
     });
 
     if (!{entity}) {
@@ -220,14 +239,17 @@ import type { {Entity}Interface, {Entity}Response, ErrorResponse } from '@/packa
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  // Resolve params (Next.js 15+ passes params as a Promise)
+  const resolvedParams = await params;
+  
   try {
     const body: Partial<{Entity}Interface> = await request.json();
 
     // Check if entity exists
     const existing = await prisma.{entity_lower}.findUnique({
-      where: { id: params.id }
+      where: { id: resolvedParams.id }
     });
 
     if (!existing) {
@@ -239,7 +261,7 @@ export async function PATCH(
     }
 
     const {entity} = await prisma.{entity_lower}.update({
-      where: { id: params.id },
+      where: { id: resolvedParams.id },
       data: body
     });
 
@@ -269,13 +291,16 @@ import { prisma } from '@/lib/prisma';
 import type { ErrorResponse } from '@/packages/types';
 
 export async function DELETE(
-  request: Request,
-  { params }: { params: { id: string } }
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  // Resolve params (Next.js 15+ passes params as a Promise)
+  const resolvedParams = await params;
+  
   try {
     // Check if entity exists
     const existing = await prisma.{entity_lower}.findUnique({
-      where: { id: params.id }
+      where: { id: resolvedParams.id }
     });
 
     if (!existing) {
@@ -287,7 +312,7 @@ export async function DELETE(
     }
 
     await prisma.{entity_lower}.delete({
-      where: { id: params.id }
+      where: { id: resolvedParams.id }
     });
 
     return NextResponse.json(
@@ -604,9 +629,10 @@ function successResponse(data: any, status: number = 200) {
 3. **Structure responses consistently** per `project.yaml` config
 4. **Handle errors gracefully** with proper status codes
 5. **Validate input** before processing
-6. **Use Next.js caching** where appropriate (`export const revalidate = 60`)
-7. **Keep route handlers focused** - one responsibility per file
-8. **Use middleware** for cross-cutting concerns (auth, logging)
-9. **Document API endpoints** with comments or OpenAPI spec
-10. **Test thoroughly** before deploying
+6. **Always resolve params** in dynamic routes: accept `request` (or `_request` if unused) as first parameter, `params` as Promise in context object, and await it: `const resolvedParams = await params` (Next.js 15+ required)
+7. **Use Next.js caching** where appropriate (`export const revalidate = 60`)
+8. **Keep route handlers focused** - one responsibility per file
+9. **Use middleware** for cross-cutting concerns (auth, logging)
+10. **Document API endpoints** with comments or OpenAPI spec
+11. **Test thoroughly** before deploying
 

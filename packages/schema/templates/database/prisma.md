@@ -397,14 +397,16 @@ metadata  Json
 
 After applying Prisma changes, update TypeScript types in `packages/types/index.ts`:
 
+**IMPORTANT:** Prisma returns `null` for nullable fields, not `undefined`. Always use `| null` for nullable fields, NOT optional `?` syntax.
+
 ```typescript
 // Map Prisma types to TypeScript types
 export interface CustomerInterface {
   id: string;              // String → string
   email: string;           // String → string
   name: string;            // String → string
-  phone?: string;          // String? → string | undefined
-  birthday?: Date;         // DateTime? → Date | undefined
+  phone: string | null;    // String? → string | null (NOT phone?: string)
+  birthday: Date | null;   // DateTime? → Date | null (NOT birthday?: Date)
   status: 'ACTIVE' | 'INACTIVE' | 'PENDING';  // Enum → union type
   created_at: Date;        // DateTime → Date
 }
@@ -413,6 +415,20 @@ export interface CustomerResponse {
   data: CustomerInterface[];
 }
 ```
+
+**Type Mapping for Nullable Fields:**
+| Prisma Type | TypeScript Type | ❌ WRONG |
+|-------------|-----------------|----------|
+| `String?` | `string \| null` | `string \| undefined` or `string?` |
+| `Int?` | `number \| null` | `number \| undefined` or `number?` |
+| `Boolean?` | `boolean \| null` | `boolean \| undefined` or `boolean?` |
+| `DateTime?` | `Date \| null` | `Date \| undefined` or `Date?` |
+| `Json?` | `any \| null` | `any \| undefined` or `any?` |
+
+**Why `| null` instead of `?`:**
+- Prisma client returns `null` for NULL database values
+- TypeScript optional (`?`) resolves to `type | undefined`
+- Mismatch causes type errors: `Type 'null' is not assignable to 'undefined'`
 
 ## Database Client Usage
 
