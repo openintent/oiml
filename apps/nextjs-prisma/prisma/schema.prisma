@@ -9,3 +9,35 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+model User {
+  id      Int       @id @default(autoincrement())
+  email   String    @unique @db.VarChar(255)
+  name    String?   @db.VarChar(255)
+  posts   Post[]
+  profile Profile?
+
+  @@map("users")
+}
+
+model Post {
+  id         Int      @id @default(autoincrement())
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  title      String   @db.VarChar(255)
+  content    String?  @db.Text
+  published  Boolean  @default(false)
+  author_id  Int
+  author     User     @relation(fields: [author_id], references: [id])
+
+  @@map("posts")
+}
+
+model Profile {
+  id      Int     @id @default(autoincrement())
+  bio     String? @db.Text
+  user_id Int     @unique
+  user    User    @relation(fields: [user_id], references: [id])
+
+  @@map("profiles")
+}
