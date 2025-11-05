@@ -696,4 +696,49 @@ intents:
 
 ---
 
+**After applying the intent:**
+
+1. **Create an output summary file** in `.openintent/output/` with the same filename as the intent that was applied:
+   - If the intent file is `intents/add-product.oiml.yaml`, create `output/add-product.oiml.yaml`
+   - If the intent file is `intents/RO-1.oiml.yaml`, create `output/RO-1.oiml.yaml`
+
+2. **Write a summary** of all code changes applied to this output file:
+
+   ```yaml
+   version: "0.1.0"
+   applied_at: "2025-11-05T10:30:00Z"  # ISO8601 UTC timestamp
+   status: "success" | "partial" | "failed"
+   intents_processed: 2  # Number of intents in the file
+
+   changes:
+     - file: "prisma/schema.prisma"
+       action: "modified"
+       description: "Added Product model with id, name, and price fields"
+
+     - file: "prisma/migrations/20251105_add_product_entity/migration.sql"
+       action: "created"
+       description: "Created database migration for Product entity"
+
+     - file: "packages/types/index.ts"
+       action: "modified"
+       description: "Added ProductInterface and ProductResponse types"
+
+     - file: "app/api/products/route.ts"
+       action: "created"
+       description: "Created GET endpoint for retrieving products"
+
+   errors: []  # Array of any errors encountered (empty if status is "success")
+   ```
+
+3. **Include details** for each intent processed:
+   - List all files created, modified, or deleted
+   - Describe what was added or changed in each file
+   - Note any migrations created and applied
+   - Record any errors or warnings encountered
+
+4. **Ensure the output directory exists** before writing the file:
+   ```bash
+   mkdir -p .openintent/output
+   ```
+
 **Remember**: This is a declarative specification system. When you receive an intent file, you MUST perform the actual code changes - not just log what you would do. The intent IS the instruction to generate code.
