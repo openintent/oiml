@@ -709,6 +709,7 @@ intents:
    applied_at: "2025-11-05T10:30:00Z"  # ISO8601 UTC timestamp
    status: "success" | "partial" | "failed"
    intents_processed: 2  # Number of intents in the file
+   model: claude-sonnet-4.5 # AI model used to generate code changes (lowercased, hyphenated)
 
    changes:
      - file: "prisma/schema.prisma"
