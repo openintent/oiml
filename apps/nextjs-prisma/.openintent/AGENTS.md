@@ -22,9 +22,9 @@ OIML (Open Intent Modeling Language) is a global standard for AI-driven developm
 .openintent/
 ├── project.yaml              # Project configuration and metadata
 └── intents/                  # Intent files (.oiml.yaml)
-    ├── add-customer.oiml.yaml
-    ├── add-product.oiml.yaml
-    └── add-order.oiml.yaml
+    ├── INT-1.oiml.yaml       # Recommended to map to JIRA/Linear ticket #
+    ├── INT-2.oiml.yaml
+    └── INT-3.oiml.yaml
 ```
 
 ## Intent File Schema
