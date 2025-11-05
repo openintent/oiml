@@ -18,10 +18,12 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    }
+    },
+    "./templates/*": "./templates/*"
   },
   "files": [
     "dist",
+    "templates",
     "README.md"
   ],
   "scripts": {
