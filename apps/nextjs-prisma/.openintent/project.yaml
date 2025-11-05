@@ -8,6 +8,15 @@ oiml_version: 0.1.0
 api:
   framework: nextjs
   language: typescript
+  response:
+    success:
+      kind: object
+      format: json
+      object: data
+    error:
+      kind: object
+      format: json
+      object: error
 
 database:
   type: postgres
