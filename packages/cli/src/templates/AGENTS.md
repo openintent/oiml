@@ -289,7 +289,7 @@ if (!validation.valid) {
 After successfully applying intents, create an output summary file:
 
 1. **Location**: `.openintent/output/{same-filename-as-intent}.oiml.yaml`
-   - Example: `intents/POS-1.oiml.yaml` → `output/POS-1.oiml.yaml`
+   - Example: `intents/INT-1.oiml.yaml` → `output/INT-1.oiml.yaml`
 
 2. **Structure**: Document all changes made (see `@oiml/schema` for output schema)
    - `version`: Schema version
