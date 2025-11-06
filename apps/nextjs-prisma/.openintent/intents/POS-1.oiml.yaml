@@ -20,7 +20,6 @@ provenance:
     name: ""
   created_at: 2025-11-05T00:00:00Z
 intents:
-  # Add User entity
   - kind: add_entity
     scope: data
     entity: User
@@ -39,7 +38,6 @@ intents:
         max_length: 255
         required: false
 
-  # Add Post entity
   - kind: add_entity
     scope: data
     entity: Post
@@ -71,7 +69,6 @@ intents:
         type: integer
         required: true
 
-  # Add relation: Post -> User (many-to-one)
   - kind: add_relation
     scope: schema
     relation:
@@ -86,7 +83,6 @@ intents:
         kind: one_to_many
         field_name: posts
 
-  # Add Profile entity
   - kind: add_entity
     scope: data
     entity: Profile
@@ -103,7 +99,6 @@ intents:
         required: true
         unique: true
 
-  # Add relation: Profile -> User (one-to-one)
   - kind: add_relation
     scope: schema
     relation:
