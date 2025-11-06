@@ -20,11 +20,172 @@ OIML (Open Intent Modeling Language) is a global standard for AI-driven developm
     └── INT-3.oiml.yaml
 ```
 
-## Demo
+## Example
 
 The following demo illustrates the power of OIML. Given a single intent file (YAML) with a total of 9 intents (3 database entities + 6 APIs), Claude Sonnet-4.5 (tested with both Cursor and Claude Code) was able to successfully create an entire functional backend from scratch, with the YAML file as its only context, in appx. 2 minutes using Prisma + Next.js. The summary file of generated code changes, which is a key component of the OIML audit trail, is included below.
 
 [![Video](assets/thumbnail.png)](https://www.youtube.com/watch?v=RRXTZsEWEiA)
+
+Input file:
+
+```yaml
+version: 0.1.3
+ai_context:
+  purpose: | 
+    - Add blog-related entities (User, Post, Profile) to the database schema
+    - Add endpoints for the API
+  instructions: |
+    - Read .openintent/AGENTS.md and apply the instructions to the intent.
+    - Follow Prisma implementation guide for field mappings and relations.
+    - Follow Next.js API implementation guide for endpoint creation.
+  references:
+    - kind: file
+      path: .openintent/AGENTS.md
+    - kind: file
+      path: "@oiml/schema/templates/database/prisma.md"
+    - kind: file
+      path: "@oiml/schema/templates/api/nextjs.md"
+provenance:
+  created_by:
+    type: human
+    name: ""
+  created_at: 2025-11-05T00:00:00Z
+intents:
+  - kind: add_entity
+    scope: data
+    entity: User
+    fields:
+      - name: id
+        type: integer
+        required: true
+        default: autoincrement
+      - name: email
+        type: string
+        max_length: 255
+        required: true
+        unique: true
+      - name: name
+        type: string
+        max_length: 255
+        required: false
+
+  - kind: add_entity
+    scope: data
+    entity: Post
+    fields:
+      - name: id
+        type: integer
+        required: true
+        default: autoincrement
+      - name: created_at
+        type: datetime
+        required: true
+        default: now
+      - name: updated_at
+        type: datetime
+        required: true
+        auto_update: true
+      - name: title
+        type: string
+        max_length: 255
+        required: true
+      - name: content
+        type: text
+        required: false
+      - name: published
+        type: boolean
+        required: true
+        default: false
+      - name: author_id
+        type: integer
+        required: true
+
+  - kind: add_relation
+    scope: schema
+    relation:
+      source_entity: Post
+      target_entity: User
+      kind: many_to_one
+      field_name: author
+      foreign_key:
+        local_field: author_id
+        target_field: id
+      reverse:
+        kind: one_to_many
+        field_name: posts
+
+  - kind: add_entity
+    scope: data
+    entity: Profile
+    fields:
+      - name: id
+        type: integer
+        required: true
+        default: autoincrement
+      - name: bio
+        type: text
+        required: false
+      - name: user_id
+        type: integer
+        required: true
+        unique: true
+
+  - kind: add_relation
+    scope: schema
+    relation:
+      source_entity: Profile
+      target_entity: User
+      kind: one_to_one
+      field_name: user
+      foreign_key:
+        local_field: user_id
+        target_field: id
+      reverse:
+        kind: one_to_one
+        field_name: profile
+
+  - kind: add_endpoint
+    scope: api
+    method: POST
+    description: Create a new user
+    path: /api/users
+    entity: User
+
+  - kind: add_endpoint
+    scope: api
+    method: GET
+    description: Get a profile by id
+    path: /api/profiles/{id}
+    entity: Profile
+
+  - kind: add_endpoint
+    scope: api
+    method: GET
+    description: Get all posts for a user
+    path: /api/users/{id}/posts
+    entity: Post
+
+  - kind: add_endpoint
+    scope: api
+    method: POST
+    description: Create a new post
+    path: /api/posts
+    entity: Post
+
+  - kind: add_endpoint
+    scope: api
+    method: GET
+    description: Get all users
+    path: /api/users
+    entity: User
+
+  - kind: add_endpoint
+    scope: api
+    method: GET
+    description: Get all profiles
+    path: /api/profiles
+    entity: Profile
+```
 
 Output file:
 
@@ -100,6 +261,10 @@ summary: |
   - All endpoints include proper error handling, validation, and response formatting per project.yaml configuration
   - No linting errors detected
 ```
+
+Visual summary of generated code:
+
+![Image](assets/example.png)
 
 OIML aims to be LLM and framework agnostic, so the schema will support a wide range of popular frameworks, and work across all major LLMs (e.g. Sonnet-4.5, GPT-5, Cursor Composer).
 
