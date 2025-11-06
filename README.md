@@ -24,6 +24,8 @@ OIML (Open Intent Modeling Language) is a global standard for AI-driven developm
 
 The following demo illustrates the power of OIML. Given a single intent file (YAML) with a total of 9 intents (3 database entities + 6 APIs), Claude Sonnet-4.5 (tested with both Cursor and Claude Code) was able to successfully create an entire functional backend from scratch, with the YAML file as its only context, in appx. 2 minutes using Prisma + Next.js. The summary file of generated code changes, which is a key component of the OIML audit trail, is included below.
 
+Click the below thumbnail to view the video on YouTube:
+
 [![Video](assets/thumbnail.png)](https://www.youtube.com/watch?v=RRXTZsEWEiA)
 
 Input file:
