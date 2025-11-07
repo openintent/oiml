@@ -4,7 +4,6 @@
   "description": "OpenIntent MCP server for validation and generation",
   "author": "OpenIntent",
   "license": "MPL-2.0",
-  "packageManager": "pnpm@10.18.3",
   "type": "module",
   "homepage": "https://github.com/openintent/oiml#readme",
   "repository": {
@@ -21,7 +20,6 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.20.2",
-    "@oiml/schema": "workspace:*",
     "express": "^5.1.0",
     "prettier": "^3.3.3",
     "yaml": "^2.5.0",
