@@ -1,35 +1,46 @@
 #!/bin/sh
 # Entrypoint script for OpenIntent MCP Server
-# Handles Docker daemon initialization for schema fetching
+# Uses pre-cached schemas bundled in the container image
 
 set -e
 
 echo "Starting OpenIntent MCP Server..."
+echo ""
 
-# Check if Docker socket is available (Docker socket mounting scenario)
-if [ -S /var/run/docker.sock ]; then
-    echo "✓ Docker socket detected at /var/run/docker.sock"
-    echo "  Using host Docker daemon for schema fetching"
-else
-    echo "⚠ No Docker socket found"
-    echo "  Note: Schema fetching from GHCR will require Docker access"
-    echo "  For Google Cloud Run, consider using Cloud Build or pre-cached schemas"
+# Verify schema cache directory exists
+CACHE_DIR="${SCHEMA_CACHE_DIR:-/root/.openintent/schema-cache}"
+if [ ! -d "$CACHE_DIR" ]; then
+    echo "⚠ Warning: Schema cache directory not found: $CACHE_DIR"
+    mkdir -p "$CACHE_DIR"
 fi
 
-# Create schema cache directory if it doesn't exist
-mkdir -p "${SCHEMA_CACHE_DIR:-/root/.openintent/schema-cache}"
-echo "✓ Schema cache directory: ${SCHEMA_CACHE_DIR:-/root/.openintent/schema-cache}"
+echo "📦 Schema cache directory: $CACHE_DIR"
 
-# Check if schemas are pre-cached
-if [ -d "${SCHEMA_CACHE_DIR:-/root/.openintent/schema-cache}" ] && [ "$(ls -A ${SCHEMA_CACHE_DIR:-/root/.openintent/schema-cache})" ]; then
-    echo "✓ Pre-cached schemas found"
-    ls -la "${SCHEMA_CACHE_DIR:-/root/.openintent/schema-cache}"
+# Check if schemas are pre-cached (they should be from the Docker build)
+if [ -d "$CACHE_DIR" ] && [ "$(ls -A $CACHE_DIR 2>/dev/null)" ]; then
+    echo "✓ Pre-cached schemas found:"
+    ls -la "$CACHE_DIR" | tail -n +4 | awk '{print "  - " $9 " (" $5 " bytes)"}'
+    echo ""
+    
+    # Verify required schema files exist
+    for schema_dir in "$CACHE_DIR"/*; do
+        if [ -d "$schema_dir" ]; then
+            schema_name=$(basename "$schema_dir")
+            if [ -f "$schema_dir/schema.json" ] && [ -f "$schema_dir/schema.zod.js" ]; then
+                echo "  ✓ $schema_name is valid"
+            else
+                echo "  ⚠ $schema_name is missing required files"
+            fi
+        fi
+    done
 else
-    echo "ℹ No pre-cached schemas found - will fetch on first validation"
+    echo "⚠ No pre-cached schemas found!"
+    echo "  This may cause validation to fail."
+    echo "  Ensure schemas are bundled during Docker build."
 fi
 
 echo ""
-echo "Starting MCP server..."
+echo "🚀 Starting MCP server on port ${PORT:-3000}..."
 echo "---"
 
 # Execute the main command

@@ -6,7 +6,6 @@ import fs from "node:fs";
 import path from "node:path";
 import YAML from "yaml";
 import crypto from "node:crypto";
-import { execSync } from "node:child_process";
 import os from "node:os";
 
 const server = new McpServer({
@@ -17,53 +16,61 @@ const server = new McpServer({
 // Schema cache directory (use env var or default)
 const SCHEMA_CACHE_DIR = process.env.SCHEMA_CACHE_DIR || path.join(os.homedir(), '.openintent', 'schema-cache');
 
-// Ensure cache directory exists
+console.log(`Schema cache directory: ${SCHEMA_CACHE_DIR}`);
+
+// Verify cache directory exists (it should be pre-populated in Docker builds)
 if (!fs.existsSync(SCHEMA_CACHE_DIR)) {
-    fs.mkdirSync(SCHEMA_CACHE_DIR, { recursive: true });
+    console.warn(`⚠ Warning: Schema cache directory not found: ${SCHEMA_CACHE_DIR}`);
+    console.warn(`  Schemas must be pre-cached at build time for validation to work.`);
+    console.warn(`  See Dockerfile for schema pre-caching configuration.`);
 }
 
 /**
- * Fetch schema from GitHub Container Registry
+ * Get schema from pre-cached directory
  */
-async function fetchSchemaFromRegistry(schemaName: string, version: string): Promise<string> {
+function getSchemaPath(schemaName: string, version: string): string {
     const cacheKey = `${schemaName}_${version}`;
     const cachePath = path.join(SCHEMA_CACHE_DIR, cacheKey);
     
-    // Check if already cached
-    if (fs.existsSync(cachePath)) {
-        console.log(`Using cached schema: ${schemaName}@${version}`);
-        return cachePath;
+    console.log(`Looking for pre-cached schema: ${schemaName}@${version}`);
+    console.log(`Expected path: ${cachePath}`);
+    
+    if (!fs.existsSync(cachePath)) {
+        console.error(`❌ Schema not found in cache: ${schemaName}@${version}`);
+        console.error(`Available schemas in cache:`);
+        
+        if (fs.existsSync(SCHEMA_CACHE_DIR)) {
+            const cachedSchemas = fs.readdirSync(SCHEMA_CACHE_DIR);
+            if (cachedSchemas.length === 0) {
+                console.error(`  (none - cache is empty)`);
+            } else {
+                cachedSchemas.forEach(schema => console.error(`  - ${schema}`));
+            }
+        } else {
+            console.error(`  (cache directory does not exist)`);
+        }
+        
+        throw new Error(
+            `Schema ${schemaName}@${version} not found in pre-cached schemas. ` +
+            `Schemas must be bundled at Docker build time. ` +
+            `See Dockerfile for adding schema versions.`
+        );
     }
     
-    console.log(`Fetching schema from registry: ${schemaName}@${version}`);
+    // Verify required files exist
+    const requiredFiles = ['schema.json', 'schema.zod.js', 'metadata.json'];
+    const missingFiles = requiredFiles.filter(file => !fs.existsSync(path.join(cachePath, file)));
     
-    const registryImage = `ghcr.io/openintent/schemas/${schemaName}:${version}`;
-    
-    try {
-        // Pull the image
-        execSync(`docker pull ${registryImage}`, { stdio: 'pipe' });
-        
-        // Create a temporary container
-        // Note: scratch images require a command, use 'true' as a dummy command
-        const containerName = `oiml-schema-${Date.now()}`;
-        execSync(`docker create --name ${containerName} ${registryImage} true`, { stdio: 'pipe' });
-        
-        // Create cache directory for this schema
-        fs.mkdirSync(cachePath, { recursive: true });
-        
-        // Copy files from container
-        execSync(`docker cp ${containerName}:/schema.json ${path.join(cachePath, 'schema.json')}`, { stdio: 'pipe' });
-        execSync(`docker cp ${containerName}:/schema.zod.js ${path.join(cachePath, 'schema.zod.js')}`, { stdio: 'pipe' });
-        execSync(`docker cp ${containerName}:/metadata.json ${path.join(cachePath, 'metadata.json')}`, { stdio: 'pipe' });
-        
-        // Remove the container
-        execSync(`docker rm ${containerName}`, { stdio: 'pipe' });
-        
-        console.log(`Schema cached at: ${cachePath}`);
-        return cachePath;
-    } catch (error) {
-        throw new Error(`Failed to fetch schema from registry: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    if (missingFiles.length > 0) {
+        throw new Error(
+            `Pre-cached schema ${schemaName}@${version} is incomplete. ` +
+            `Missing files: ${missingFiles.join(', ')}. ` +
+            `Rebuild the Docker image to fix this issue.`
+        );
     }
+    
+    console.log(`✓ Using pre-cached schema: ${schemaName}@${version}`);
+    return cachePath;
 }
 
 /**
@@ -142,9 +149,9 @@ server.registerTool(
                 };
             }
 
-            // Fetch schema from GHCR and load dynamically
+            // Get pre-cached schema and load dynamically
             const schemaName = 'oiml.intent';
-            const schemaPath = await fetchSchemaFromRegistry(schemaName, schemaVersion);
+            const schemaPath = getSchemaPath(schemaName, schemaVersion);
             const schema = await loadZodSchema(schemaPath);
 
             // Validate against the schema
@@ -459,9 +466,9 @@ server.registerTool(
                 };
             }
 
-            // Fetch schema from GHCR and load dynamically
+            // Get pre-cached schema and load dynamically
             const schemaName = 'oiml.project';
-            const schemaPath = await fetchSchemaFromRegistry(schemaName, schemaVersion);
+            const schemaPath = getSchemaPath(schemaName, schemaVersion);
             const schema = await loadZodSchema(schemaPath);
 
             // Validate against the schema
