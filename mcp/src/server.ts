@@ -93,51 +93,33 @@ server.registerTool(
     'validate_intent',
     {
         title: 'OpenIntent Validation Tool',
-        description: 'Validate an OpenIntent file against the schema from GitHub Container Registry. The schema version is read from the intent file\'s version field.',
+        description: 'Validate an OpenIntent file against the schema from GitHub Container Registry. The schema version is read from the intent file\'s version field. Pass the file content directly along with its format.',
         inputSchema: { 
-            filePath: z.string().describe('Path to the OpenIntent file (.yaml, .yml, or .json)')
+            content: z.string().describe('Raw content of the OpenIntent file'),
+            format: z.enum(['json', 'yaml']).describe('Format of the content (json or yaml)')
         }
     },
-    async ({ filePath }) => {
+    async ({ content, format }) => {
         try {
-            if (!fs.existsSync(filePath)) {
-                return {
-                    content: [{ 
-                        type: 'text', 
-                        text: JSON.stringify({ 
-                            valid: false, 
-                            errors: [`File not found: ${filePath}`] 
-                        }) 
-                    }],
-                    structuredContent: { 
-                        valid: false, 
-                        errors: [`File not found: ${filePath}`] 
-                    }
-                };
-            }
-
-            const rawContent = fs.readFileSync(filePath, 'utf8');
-            
-            // Parse based on file extension
+            // Parse based on format
             let parsedContent;
-            const ext = path.extname(filePath).toLowerCase();
             
-            if (ext === '.json') {
-                parsedContent = JSON.parse(rawContent);
-            } else if (ext === '.yaml' || ext === '.yml' || ext === '.oiml') {
-                parsedContent = YAML.parse(rawContent);
+            if (format === 'json') {
+                parsedContent = JSON.parse(content);
+            } else if (format === 'yaml') {
+                parsedContent = YAML.parse(content);
             } else {
                 return {
                     content: [{ 
                         type: 'text', 
                         text: JSON.stringify({ 
                             valid: false, 
-                            errors: [`Unsupported file format: ${ext}. Supported formats: .json, .yaml, .yml, .oiml`] 
+                            errors: [`Unsupported format: ${format}. Supported formats: json, yaml`] 
                         }) 
                     }],
                     structuredContent: { 
                         valid: false, 
-                        errors: [`Unsupported file format: ${ext}. Supported formats: .json, .yaml, .yml, .oiml`] 
+                        errors: [`Unsupported format: ${format}. Supported formats: json, yaml`] 
                     }
                 };
             }
@@ -412,35 +394,36 @@ server.registerTool(
     'validate_project',
     {
         title: 'OpenIntent Project Configuration Validation Tool',
-        description: 'Validate a project.yaml file against the OpenIntent project schema from GitHub Container Registry. The schema version is read from the project file\'s version field.',
+        description: 'Validate a project.yaml file against the OpenIntent project schema from GitHub Container Registry. The schema version is read from the project file\'s version field. Pass the file content directly along with its format.',
         inputSchema: { 
-            filePath: z.string().describe('Path to the project.yaml file')
+            content: z.string().describe('Raw content of the project.yaml file'),
+            format: z.enum(['json', 'yaml']).describe('Format of the content (json or yaml)')
         }
     },
-    async ({ filePath }) => {
+    async ({ content, format }) => {
         try {
-            if (!fs.existsSync(filePath)) {
-                return {
-                    content: [{ 
-                        type: 'text', 
-                        text: JSON.stringify({ 
-                            valid: false, 
-                            errors: [`File not found: ${filePath}`] 
-                        }) 
-                    }],
-                    structuredContent: { 
-                        valid: false, 
-                        errors: [`File not found: ${filePath}`] 
-                    }
-                };
-            }
-
-            const rawContent = fs.readFileSync(filePath, 'utf8');
-            
-            // Parse YAML
+            // Parse based on format
             let parsedContent;
             try {
-                parsedContent = YAML.parse(rawContent);
+                if (format === 'json') {
+                    parsedContent = JSON.parse(content);
+                } else if (format === 'yaml') {
+                    parsedContent = YAML.parse(content);
+                } else {
+                    return {
+                        content: [{ 
+                            type: 'text', 
+                            text: JSON.stringify({ 
+                                valid: false, 
+                                errors: [`Unsupported format: ${format}. Supported formats: json, yaml`] 
+                            }) 
+                        }],
+                        structuredContent: { 
+                            valid: false, 
+                            errors: [`Unsupported format: ${format}. Supported formats: json, yaml`] 
+                        }
+                    };
+                }
             } catch (parseError) {
                 const errorMessage = parseError instanceof Error ? parseError.message : 'Unknown parse error';
                 return {
@@ -448,12 +431,12 @@ server.registerTool(
                         type: 'text', 
                         text: JSON.stringify({ 
                             valid: false, 
-                            errors: [`YAML parse error: ${errorMessage}`] 
+                            errors: [`Parse error: ${errorMessage}`] 
                         }) 
                     }],
                     structuredContent: { 
                         valid: false, 
-                        errors: [`YAML parse error: ${errorMessage}`] 
+                        errors: [`Parse error: ${errorMessage}`] 
                     }
                 };
             }
