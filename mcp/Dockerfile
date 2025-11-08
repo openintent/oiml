@@ -21,11 +21,11 @@ COPY src ./src
 # Build the TypeScript code
 RUN pnpm build
 
-# Stage 2: Fetch schemas from GHCR (pre-cache for Cloud Run)
-FROM ghcr.io/openintent/schemas/oiml.intent:0.1.0 AS schema-intent-0.1.0
-FROM ghcr.io/openintent/schemas/oiml.project:0.1.0 AS schema-project-0.1.0
+# Stage 2: Pull schemas from GHCR (these must be multi-arch images)
+FROM --platform=linux/amd64 ghcr.io/openintent/schemas/oiml.intent:0.1.0 AS schema-intent
+FROM --platform=linux/amd64 ghcr.io/openintent/schemas/oiml.project:0.1.0 AS schema-project
 
-# Stage 3: Runtime (no Docker needed - schemas are pre-cached)
+# Stage 3: Runtime
 FROM node:20-alpine
 
 # Install basic utilities (no Docker needed since schemas are pre-cached)
@@ -48,14 +48,14 @@ RUN npm install -g pnpm && \
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist
 
-# Create schema cache directory
+# Create schema cache directory structure
 RUN mkdir -p /root/.openintent/schema-cache/oiml.intent_0.1.0 && \
     mkdir -p /root/.openintent/schema-cache/oiml.project_0.1.0 && \
     chmod -R 755 /root/.openintent
 
-# Copy pre-cached schemas from GHCR images
-COPY --from=schema-intent-0.1.0 / /root/.openintent/schema-cache/oiml.intent_0.1.0/
-COPY --from=schema-project-0.1.0 / /root/.openintent/schema-cache/oiml.project_0.1.0/
+# Copy schemas from GHCR images
+COPY --from=schema-intent / /root/.openintent/schema-cache/oiml.intent_0.1.0/
+COPY --from=schema-project / /root/.openintent/schema-cache/oiml.project_0.1.0/
 
 # Set environment variables
 ENV NODE_ENV=production
