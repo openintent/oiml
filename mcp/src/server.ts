@@ -132,13 +132,21 @@ server.registerTool(
     },
     async ({ content, format }) => {
         try {
+            // Debug logging to see what we receive
+            console.log('=== VALIDATE_INTENT DEBUG ===');
+            console.log('Content type:', typeof content);
+            console.log('Content length:', typeof content === 'string' ? content.length : 'N/A');
+            console.log('Format:', format);
+            console.log('First 100 chars of content:', typeof content === 'string' ? content.substring(0, 100) : JSON.stringify(content).substring(0, 100));
+            console.log('=============================');
+            
             // Parse based on format
             let parsedContent;
             
             if (format === 'json') {
-                parsedContent = JSON.parse(content);
+                parsedContent = JSON.parse(content as string);
             } else if (format === 'yaml') {
-                parsedContent = YAML.parse(content);
+                parsedContent = YAML.parse(content as string);
             } else {
                 return {
                     content: [{ 
