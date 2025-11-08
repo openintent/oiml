@@ -1,7 +1,9 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import express from 'express';
-import { z, type ZodIssue } from 'zod';
+import { z } from 'zod';
+import Ajv from 'ajv';
+import addFormats from 'ajv-formats';
 import fs from "node:fs";
 import path from "node:path";
 import YAML from "yaml";
@@ -23,6 +25,51 @@ if (!fs.existsSync(SCHEMA_CACHE_DIR)) {
     console.warn(`⚠ Warning: Schema cache directory not found: ${SCHEMA_CACHE_DIR}`);
     console.warn(`  Schemas must be pre-cached at build time for validation to work.`);
     console.warn(`  See Dockerfile for schema pre-caching configuration.`);
+}
+
+// AJV validator cache
+type Compiled = { validate: (data: any) => { ok: boolean; errors: any[] } };
+const ajvCache = new Map<string, Compiled>();
+
+/**
+ * Compile AJV validator for a schema
+ */
+function compileAjvValidator(schemaPath: string, cacheKey: string): Compiled {
+    const cached = ajvCache.get(cacheKey);
+    if (cached) {
+        console.log(`Using cached validator: ${cacheKey}`);
+        return cached;
+    }
+
+    console.log(`Compiling validator for: ${cacheKey}`);
+    
+    const schemaFile = path.join(schemaPath, 'schema.json');
+    if (!fs.existsSync(schemaFile)) {
+        throw new Error(`Schema file not found: ${schemaFile}`);
+    }
+    
+    const schema = JSON.parse(fs.readFileSync(schemaFile, 'utf8'));
+    
+    const ajv = new Ajv({
+        allErrors: true,
+        strict: true,
+        strictSchema: false,
+        allowUnionTypes: true,
+        discriminator: true
+    });
+    addFormats(ajv);
+
+    const validateFn = ajv.compile(schema);
+    const compiled = {
+        validate: (data: unknown) => {
+            const ok = !!validateFn(data);
+            return { ok, errors: ok ? [] : (validateFn.errors ?? []) };
+        }
+    };
+    
+    ajvCache.set(cacheKey, compiled);
+    console.log(`✓ Validator compiled and cached: ${cacheKey}`);
+    return compiled;
 }
 
 /**
@@ -58,7 +105,7 @@ function getSchemaPath(schemaName: string, version: string): string {
     }
     
     // Verify required files exist
-    const requiredFiles = ['schema.json', 'schema.zod.js', 'metadata.json'];
+    const requiredFiles = ['schema.json'];
     const missingFiles = requiredFiles.filter(file => !fs.existsSync(path.join(cachePath, file)));
     
     if (missingFiles.length > 0) {
@@ -71,29 +118,6 @@ function getSchemaPath(schemaName: string, version: string): string {
     
     console.log(`✓ Using pre-cached schema: ${schemaName}@${version}`);
     return cachePath;
-}
-
-/**
- * Load Zod schema dynamically from cache
- */
-async function loadZodSchema(schemaPath: string): Promise<any> {
-    const zodSchemaPath = path.join(schemaPath, 'schema.zod.js');
-    
-    if (!fs.existsSync(zodSchemaPath)) {
-        throw new Error(`Zod schema not found at: ${zodSchemaPath}`);
-    }
-    
-    // Dynamic import of the Zod schema
-    const schemaModule = await import(`file://${zodSchemaPath}`);
-    
-    // Try to detect the main schema export (Intent or Project)
-    if (schemaModule.Intent) {
-        return schemaModule.Intent;
-    } else if (schemaModule.Project) {
-        return schemaModule.Project;
-    } else {
-        throw new Error('No valid schema export found (expected Intent or Project)');
-    }
 }
 
 server.registerTool(
@@ -149,15 +173,16 @@ server.registerTool(
                 };
             }
 
-            // Get pre-cached schema and load dynamically
+            // Get pre-cached schema and validate with AJV
             const schemaName = 'oiml.intent';
             const schemaPath = getSchemaPath(schemaName, schemaVersion);
-            const schema = await loadZodSchema(schemaPath);
+            const cacheKey = `${schemaName}_${schemaVersion}`;
+            const validator = compileAjvValidator(schemaPath, cacheKey);
 
             // Validate against the schema
-            const result = schema.safeParse(parsedContent);
+            const result = validator.validate(parsedContent);
             
-            if (result.success) {
+            if (result.ok) {
                 return {
                     content: [{ 
                         type: 'text', 
@@ -173,9 +198,10 @@ server.registerTool(
                     }
                 };
             } else {
-                const errors = result.error.errors.map((err: ZodIssue) => 
-                    `${err.path.join('.')}: ${err.message}`
-                );
+                const errors = result.errors.map((err: any) => {
+                    const path = err.instancePath || '/';
+                    return `${path}: ${err.message}`;
+                });
                 
                 return {
                     content: [{ 
@@ -466,15 +492,16 @@ server.registerTool(
                 };
             }
 
-            // Get pre-cached schema and load dynamically
+            // Get pre-cached schema and validate with AJV
             const schemaName = 'oiml.project';
             const schemaPath = getSchemaPath(schemaName, schemaVersion);
-            const schema = await loadZodSchema(schemaPath);
+            const cacheKey = `${schemaName}_${schemaVersion}`;
+            const validator = compileAjvValidator(schemaPath, cacheKey);
 
             // Validate against the schema
-            const result = schema.safeParse(parsedContent);
+            const result = validator.validate(parsedContent);
             
-            if (result.success) {
+            if (result.ok) {
                 return {
                     content: [{ 
                         type: 'text', 
@@ -490,9 +517,10 @@ server.registerTool(
                     }
                 };
             } else {
-                const errors = result.error.errors.map((err: ZodIssue) => 
-                    `${err.path.join('.')}: ${err.message}`
-                );
+                const errors = result.errors.map((err: any) => {
+                    const path = err.instancePath || '/';
+                    return `${path}: ${err.message}`;
+                });
                 
                 return {
                     content: [{ 
