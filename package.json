@@ -3,5 +3,6 @@
   "description": "OpenIntent is a global standard for AI-driven development that enables declarative development, standardized schema, project metadata, deterministic generation, and agent integration.",
   "author": "OpenIntent",
   "license": "MPL-2.0",
-  "homepage": "https://github.com/openintent/oiml#readme"
+  "homepage": "https://github.com/openintent/oiml#readme",
+  "packageManager": "pnpm@10.20.0"
 }
