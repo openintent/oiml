@@ -48,10 +48,6 @@ RUN npm install -g pnpm && \
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist
 
-# Create compatibility directory and copy matrix
-RUN mkdir -p /app/compatibility
-COPY ../packages/schema/compatibility/matrix.json /app/compatibility/matrix.json
-
 # Create schema cache directory structure
 RUN mkdir -p /root/.openintent/schema-cache/oiml.intent_0.1.0 && \
     mkdir -p /root/.openintent/schema-cache/oiml.project_0.1.0 && \
