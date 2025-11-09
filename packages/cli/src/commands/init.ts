@@ -5,7 +5,6 @@ import { dirname } from "path";
 import chalk from "chalk";
 import inquirer from "inquirer";
 import * as YAML from "yaml";
-import { getOimlVersion } from "../util.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -299,7 +298,7 @@ async function promptForProjectDetails(
   const packageJsonPath = resolve(process.cwd(), "package.json");
   let defaultName = "MyProject";
   let defaultDescription = "";
-  const oimlVersion = getOimlVersion();
+  const oimlVersion = '0.1.0';
 
   if (existsSync(packageJsonPath)) {
     try {

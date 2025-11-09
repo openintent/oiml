@@ -22,7 +22,7 @@ program
 program
   .command("create")
   .description("Create a new intent file in .openintent/intents/")
-  .argument("[name]", "Name of the intent file (without .oiml.yaml extension)")
+  .argument("[name]", "Name of the intent (e.g. 'INT-1')")
   .action(async (name) => {
     await createCommand(name);
   });
