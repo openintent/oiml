@@ -659,6 +659,201 @@ server.registerTool(
     }
 );
 
+// Compatibility matrix for template resolution
+interface CompatibilityEntry {
+    framework: string;
+    category: string;
+    versions: Array<{
+        template_version: string;
+        pack_name: string;
+        compat: Record<string, string>;
+        breaking_changes: string[];
+    }>;
+}
+
+/**
+ * Load compatibility matrix from packages/schema/compatibility/matrix.json
+ */
+function loadCompatibilityMatrix(): CompatibilityEntry[] {
+    // Try multiple possible locations for the matrix
+    const possiblePaths = [
+        path.join('/app', 'compatibility', 'matrix.json'), // Docker container location
+        path.join(__dirname, '../../packages/schema/compatibility/matrix.json'),
+        path.join(__dirname, '../../../packages/schema/compatibility/matrix.json'),
+        path.join(process.cwd(), 'packages/schema/compatibility/matrix.json'),
+        path.join(process.cwd(), '../packages/schema/compatibility/matrix.json'),
+    ];
+
+    for (const matrixPath of possiblePaths) {
+        if (fs.existsSync(matrixPath)) {
+            console.log(`Loading compatibility matrix from: ${matrixPath}`);
+            const content = fs.readFileSync(matrixPath, 'utf8');
+            return JSON.parse(content);
+        }
+    }
+
+    console.warn('⚠ Warning: Compatibility matrix not found at any expected location');
+    return [];
+}
+
+/**
+ * Check if a version satisfies a semver range
+ * Simple implementation - supports: >=x.y.z <a.b.c patterns
+ */
+function satisfiesRange(version: string, range: string): boolean {
+    const [gtePart, ltPart] = range.split(' ');
+    
+    const parseVersion = (v: string) => v.split('.').map(Number);
+    const versionParts = parseVersion(version);
+    
+    // Check >= constraint
+    if (gtePart?.startsWith('>=')) {
+        const minVersion = parseVersion(gtePart.slice(2));
+        for (let i = 0; i < 3; i++) {
+            if (versionParts[i] < minVersion[i]) return false;
+            if (versionParts[i] > minVersion[i]) break;
+        }
+    }
+    
+    // Check < constraint
+    if (ltPart?.startsWith('<')) {
+        const maxVersion = parseVersion(ltPart.slice(1));
+        for (let i = 0; i < 3; i++) {
+            if (versionParts[i] >= maxVersion[i]) return false;
+            if (versionParts[i] < maxVersion[i]) break;
+        }
+    }
+    
+    return true;
+}
+
+server.registerTool(
+    'resolve_template',
+    {
+        title: 'Resolve Template Pack for Framework',
+        description: 'Resolve the appropriate template pack for a framework based on intent schema version and framework versions. Returns the template pack URI, digest, and compatibility information.',
+        inputSchema: {
+            intent_schema_version: z.string().describe('OIML intent schema version (e.g., "0.1.0")'),
+            framework: z.string().describe('Framework name (e.g., "prisma", "next", "express")'),
+            framework_version: z.string().describe('Installed framework version (e.g., "6.19.0", "15.0.0")'),
+            category: z.enum(['database', 'api', 'ui']).optional().describe('Framework category (optional, can be inferred)')
+        }
+    },
+    async ({ intent_schema_version, framework, framework_version, category }) => {
+        try {
+            console.log(`Resolving template for: ${framework}@${framework_version}, OIML ${intent_schema_version}`);
+            
+            const matrix = loadCompatibilityMatrix();
+            
+            // Find the framework entry
+            const frameworkEntry = matrix.find(entry => 
+                entry.framework === framework && 
+                (!category || entry.category === category)
+            );
+            
+            if (!frameworkEntry) {
+                return {
+                    content: [{
+                        type: 'text',
+                        text: JSON.stringify({
+                            compatible: false,
+                            error: `Framework "${framework}" not found in compatibility matrix`,
+                            available_frameworks: matrix.map(e => e.framework)
+                        }, null, 2)
+                    }],
+                    structuredContent: {
+                        compatible: false,
+                        error: `Framework "${framework}" not found in compatibility matrix`,
+                        available_frameworks: matrix.map(e => e.framework)
+                    }
+                };
+            }
+            
+            // Find compatible template version (prefer latest compatible)
+            const compatibleVersions = frameworkEntry.versions.filter(v => {
+                const oimlCompatible = satisfiesRange(intent_schema_version, v.compat.oiml);
+                const frameworkCompatible = satisfiesRange(framework_version, v.compat[framework] || '>=0.0.0');
+                return oimlCompatible && frameworkCompatible;
+            });
+            
+            if (compatibleVersions.length === 0) {
+                return {
+                    content: [{
+                        type: 'text',
+                        text: JSON.stringify({
+                            compatible: false,
+                            error: `No compatible template found for ${framework}@${framework_version} with OIML ${intent_schema_version}`,
+                            framework: framework,
+                            framework_version: framework_version,
+                            intent_schema_version: intent_schema_version,
+                            available_template_versions: frameworkEntry.versions.map(v => ({
+                                version: v.template_version,
+                                compat: v.compat
+                            }))
+                        }, null, 2)
+                    }],
+                    structuredContent: {
+                        compatible: false,
+                        error: `No compatible template found`,
+                        available_template_versions: frameworkEntry.versions.map(v => ({
+                            version: v.template_version,
+                            compat: v.compat
+                        }))
+                    }
+                };
+            }
+            
+            // Use the latest compatible version
+            const template = compatibleVersions[compatibleVersions.length - 1];
+            
+            // Generate pack URI and digest
+            const packUri = `oiml://compat/${template.pack_name}/${template.template_version}`;
+            const digest = crypto
+                .createHash('sha256')
+                .update(JSON.stringify(template))
+                .digest('hex');
+            
+            const result = {
+                compatible: true,
+                framework: frameworkEntry.framework,
+                category: frameworkEntry.category,
+                template_pack: packUri,
+                template_version: template.template_version,
+                digest: `sha256-${digest}`,
+                compat: template.compat,
+                breaking_changes: template.breaking_changes,
+                message: `Compatible template found: ${template.pack_name}@${template.template_version}`
+            };
+            
+            console.log(`✓ Resolved template: ${packUri}`);
+            
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify(result, null, 2)
+                }],
+                structuredContent: result
+            };
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+            console.error(`Error resolving template: ${errorMessage}`);
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({
+                        compatible: false,
+                        error: errorMessage
+                    }, null, 2)
+                }],
+                structuredContent: {
+                    compatible: false,
+                    error: errorMessage
+                }
+            };
+        }
+    }
+);
+
 // Set up Express and HTTP transport
 const app = express();
 app.use(express.json());

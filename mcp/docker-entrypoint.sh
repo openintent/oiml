@@ -26,10 +26,10 @@ if [ -d "$CACHE_DIR" ] && [ "$(ls -A $CACHE_DIR 2>/dev/null)" ]; then
     for schema_dir in "$CACHE_DIR"/*; do
         if [ -d "$schema_dir" ]; then
             schema_name=$(basename "$schema_dir")
-            if [ -f "$schema_dir/schema.json" ] && [ -f "$schema_dir/schema.zod.js" ]; then
+            if [ -f "$schema_dir/schema.json" ]; then
                 echo "  ✓ $schema_name is valid"
             else
-                echo "  ⚠ $schema_name is missing required files"
+                echo "  ⚠ $schema_name is missing schema.json"
             fi
         fi
     done
