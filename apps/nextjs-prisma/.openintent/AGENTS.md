@@ -2,7 +2,7 @@
 
 > **Note**: The full OIML (Open Intent Modeling Language) specification is available in the [`@oiml/schema`](https://www.npmjs.com/package/@oiml/schema) package. This document provides implementation guidance for applying intents in practice.
 
-This document serves as the complete reference for implementing OpenIntent-based code generation. When given an intent file (`.oiml.yaml`), use this guide to perform actual code changes.
+This document serves as the complete reference for implementing OpenIntent-based code generation. When given an intent file (`intent.yaml`), use this guide to perform actual code changes.
 
 ## OpenIntent Concepts
 
@@ -21,11 +21,35 @@ OIML (Open Intent Modeling Language) is a global standard for AI-driven developm
 ```
 .openintent/
 ├── project.yaml              # Project configuration and metadata
-└── intents/                  # Intent files (.oiml.yaml)
-    ├── INT-1.oiml.yaml       # Recommended to map to JIRA/Linear ticket #
-    ├── INT-2.oiml.yaml
-    └── INT-3.oiml.yaml
+├── AGENTS.md                 # Implementation guide for AI agents
+│
+└── intents/                  # All intents organized by ticket/issue ID
+    ├── POS-1/                # One folder per intent (maps to JIRA/Linear ticket)
+    │   ├── intent.yaml       # The declarative specification
+    │   ├── plan.yaml         # Execution plan (optional)
+    │   └── summary.yaml      # Output summary after execution
+    │
+    ├── POS-2/
+    │   ├── intent.yaml
+    │   ├── plan.yaml
+    │   └── summary.yaml
+    │
+    └── FEAT-123/
+        ├── intent.yaml
+        ├── plan.yaml
+        └── summary.yaml
 ```
+
+**File Naming Standards:**
+- `intent.yaml` - The intent specification (validated against OIML schema)
+- `plan.yaml` - Optional execution plan breaking down steps
+- `summary.yaml` - Output summary documenting what was changed
+
+**Additional Optional Files:**
+- `rollback.yaml` - Rollback instructions for reverting changes
+- `review.md` - Code review comments and feedback
+- `test-results.json` - Test execution results
+- `migrations.log` - Database migration logs
 
 ## Intent File Schema
 
@@ -165,7 +189,7 @@ ui:
 When processing an intent file, follow these steps:
 
 ### 1. Validate Intent File
-- Use OpenIntent MCP server: `mcp_openintent_validate_intent(filePath)` if available
+- Use OpenIntent MCP server: `mcp_oiml_validate_intent(filePath)` if available
 - Verify file exists and is valid YAML
 - Validate against schema from `@oiml/schema`
 - **Stop immediately if validation fails** - do not apply any code changes
@@ -244,7 +268,7 @@ If available, use the OpenIntent MCP server for validation:
 
 ```javascript
 // Validate intent file
-const validation = await mcp_openintent_validate_intent(filePath);
+const validation = await mcp_oiml_validate_intent(filePath);
 if (!validation.valid) {
   throw new Error(`Invalid intent: ${validation.message}`);
 }
@@ -288,21 +312,69 @@ if (!validation.valid) {
 
 After successfully applying intents, create an output summary file:
 
-1. **Location**: `.openintent/output/{same-filename-as-intent}.oiml.yaml`
-   - Example: `intents/INT-1.oiml.yaml` → `output/INT-1.oiml.yaml`
+1. **Location**: `.openintent/intents/{INTENT-ID}/summary.yaml`
+   - Example: `intents/POS-1/intent.yaml` → `intents/POS-1/summary.yaml`
+   - Co-located with the intent file for easy traceability
 
 2. **Structure**: Document all changes made (see `@oiml/schema` for output schema)
-   - `version`: Schema version
-   - `applied_at`: ISO8601 UTC timestamp
-   - `status`: "success" | "partial" | "failed"
-   - `intents_processed`: Count of intents processed
-   - `model`: AI model used (e.g., "claude-sonnet-4.5")
-   - `changes[]`: Array of file changes with:
-     - `file`: File path
-     - `action`: "created" | "modified" | "deleted"
-     - `description`: What changed
-   - `errors[]`: Array of any errors encountered
+   ```yaml
+   version: 0.1.0
+   applied_at: 2025-11-08T12:34:56Z
+   status: success  # "success" | "partial" | "failed"
+   intents_processed: 6
+   model: claude-sonnet-4.5
+   template_used:
+     framework: prisma
+     category: database
+     pack: oiml://compat/oiml-prisma/1.0.0
+     version: 1.0.0
+     digest: sha256-444a55ffe875c6269eee613cdee0aeb5015853aeb4e9466c24f08e0388683661
+     compat:
+       oiml: '>=0.1.0 <0.2.0'
+       prisma: '>=6.0.0 <7.0.0'
+   changes:
+     - file: prisma/schema.prisma
+       action: modified
+       description: Added User, Post, Profile models with relations
+     - file: app/api/users/route.ts
+       action: created
+       description: Created POST endpoint for user creation
+     - file: app/api/profiles/route.ts
+       action: created
+       description: Created GET endpoint for profiles
+     - file: prisma/migrations/20251105223004_add_blog_entities/migration.sql
+       action: created
+       description: Generated Prisma migration for new entities
+   errors: []  # Array of any errors encountered
+   ```
 
-3. **Ensure output directory exists**: `mkdir -p .openintent/output`
+3. **Key Fields**:
+   - `version`: OIML schema version
+   - `applied_at`: ISO8601 UTC timestamp of execution
+   - `status`: Execution status ("success", "partial", "failed")
+   - `intents_processed`: Number of intents successfully processed
+   - `model`: AI model used (e.g., "claude-sonnet-4.5")
+   - `template_used`: Template pack information (resolved via MCP `resolve_template` tool)
+     - `framework`: Framework name (e.g., "prisma", "nextjs")
+     - `category`: Framework category ("database", "api", "ui")
+     - `pack`: Template pack URI (e.g., "oiml://compat/oiml-prisma/1.0.0")
+     - `version`: Template version
+     - `digest`: Content digest for verification
+     - `compat`: Compatibility constraints
+   - `changes[]`: Detailed list of all file changes with actions and descriptions
+   - `errors[]`: Any errors encountered during execution
+
+4. **Template Resolution**: Use the MCP `resolve_template` tool to determine which template pack to use:
+   ```typescript
+   // Example: Resolve template for Prisma
+   const template = await mcp.resolve_template({
+     intent_schema_version: "0.1.0",  // From intent file
+     framework: "prisma",              // From project.yaml
+     framework_version: "6.19.0"       // From package.json
+   });
+   
+   // Use template.template_pack for implementation guidance
+   // Include template info in summary.yaml
+   ```
 
 **Remember**: This is a declarative specification system. When you receive an intent file, you MUST perform the actual code changes - not just log what you would do. The intent IS the instruction to generate code.

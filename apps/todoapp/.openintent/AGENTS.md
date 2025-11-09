@@ -2,7 +2,7 @@
 
 > **Note**: The full OIML (Open Intent Modeling Language) specification is available in the [`@oiml/schema`](https://www.npmjs.com/package/@oiml/schema) package. This document provides implementation guidance for applying intents in practice.
 
-This document serves as the complete reference for implementing OpenIntent-based code generation. When given an intent file (`.oiml.yaml`), use this guide to perform actual code changes.
+This document serves as the complete reference for implementing OpenIntent-based code generation. When given an intent file (`intent.yaml`), use this guide to perform actual code changes.
 
 ## OpenIntent Concepts
 
@@ -18,10 +18,10 @@ OIML (Open Intent Modeling Language) is a global standard for AI-driven developm
 ```
 .openintent/
 ├── project.yaml              # Project configuration and metadata
-└── intents/                  # Intent files (.oiml.yaml)
-    ├── add-customer.oiml.yaml
-    ├── add-product.oiml.yaml
-    └── add-order.oiml.yaml
+└── intents/                  # Intent files (intent.yaml)
+    ├── add-customer/intent.yaml
+    ├── add-product/intent.yaml
+    └── add-order/intent.yaml
 ```
 
 ## Intent File Schema
