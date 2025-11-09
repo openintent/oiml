@@ -1,0 +1,515 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://oiml.dev/schemas/oiml.project/0.1.0/schema.json",
+  "title": "Open Intent Modeling Language (OIML) Project Schema",
+  "description": "Schema for OIML project definitions",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Project name"
+    },
+    "description": {
+      "type": "string",
+      "description": "Project description (can be multiline)"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+      "description": "OIML schema version"
+    },
+    "api": {
+      "type": "object",
+      "properties": {
+        "framework": {
+          "type": "string",
+          "enum": [
+            "nextjs",
+            "express",
+            "fastify",
+            "koa",
+            "nestjs",
+            "remix",
+            "django",
+            "flask",
+            "fastapi",
+            "tornado",
+            "bottle",
+            "gin",
+            "echo",
+            "fiber",
+            "chi",
+            "gorilla",
+            "axum",
+            "actix-web",
+            "rocket",
+            "warp",
+            "spring-boot",
+            "quarkus",
+            "micronaut",
+            "rails",
+            "sinatra",
+            "laravel",
+            "symfony",
+            "aspnet",
+            "sveltekit",
+            "astro",
+            "none"
+          ],
+          "description": "API framework"
+        },
+        "language": {
+          "type": "string",
+          "enum": [
+            "typescript",
+            "javascript",
+            "python",
+            "go",
+            "rust",
+            "java",
+            "ruby",
+            "php",
+            "csharp",
+            "swift",
+            "kotlin",
+            "elixir",
+            "dart",
+            "scala"
+          ],
+          "description": "API programming language"
+        }
+      },
+      "additionalProperties": false,
+      "description": "API configuration"
+    },
+    "database": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "postgres",
+            "mysql",
+            "sqlite",
+            "mongodb",
+            "cockroachdb",
+            "mariadb",
+            "mssql",
+            "other",
+            "none"
+          ],
+          "description": "Database type"
+        },
+        "framework": {
+          "type": "string",
+          "enum": [
+            "prisma",
+            "drizzle",
+            "sqlalchemy",
+            "ent",
+            "gorm",
+            "sqlx",
+            "raw",
+            "other"
+          ],
+          "description": "Database framework"
+        },
+        "schema": {
+          "type": "string",
+          "description": "Path to schema file (e.g., 'prisma/schema.prisma', 'schema.sql')"
+        },
+        "connection": {
+          "type": "string",
+          "description": "Database connection string (can use env:VAR_NAME format)"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false,
+      "description": "Database configuration"
+    },
+    "ui": {
+      "type": "object",
+      "properties": {
+        "framework": {
+          "type": "string",
+          "enum": [
+            "react",
+            "vue",
+            "sveltekit",
+            "astro",
+            "nextjs",
+            "vite",
+            "nuxt",
+            "other",
+            "none"
+          ],
+          "description": "UI framework"
+        },
+        "components": {
+          "type": "string",
+          "enum": [
+            "shadcn/ui",
+            "tailwindcss",
+            "other"
+          ],
+          "description": "UI components library"
+        },
+        "language": {
+          "type": "string",
+          "enum": [
+            "typescript",
+            "javascript"
+          ],
+          "description": "UI programming language"
+        },
+        "base_components": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "description": "Map of base UI component names to import paths (e.g., [{ Input: '@/components/ui/input' }])"
+        },
+        "theme": {
+          "type": "object",
+          "properties": {
+            "primary_color": {
+              "type": "string",
+              "pattern": "^#[0-9A-Fa-f]{6}$",
+              "description": "Primary theme color (hex format)"
+            },
+            "accent_color": {
+              "type": "string",
+              "pattern": "^#[0-9A-Fa-f]{6}$",
+              "description": "Accent theme color (hex format)"
+            },
+            "border_radius": {
+              "type": "string",
+              "description": "Border radius value (e.g., '0.75rem', '8px')"
+            }
+          },
+          "additionalProperties": false,
+          "description": "UI theme configuration"
+        }
+      },
+      "additionalProperties": false,
+      "description": "UI configuration"
+    },
+    "provider": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "enum": [
+            "aws",
+            "gcp",
+            "azure",
+            "vercel",
+            "netlify",
+            "railway",
+            "render",
+            "fly",
+            "digitalocean"
+          ],
+          "description": "Cloud provider name"
+        },
+        "region": {
+          "type": "string",
+          "description": "Deployment region (e.g., 'us-east-1', 'eu-west-1')"
+        }
+      },
+      "required": [
+        "name",
+        "region"
+      ],
+      "additionalProperties": false,
+      "description": "Cloud provider configuration"
+    },
+    "auth": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": [
+            "next-auth",
+            "auth0",
+            "clerk",
+            "supabase",
+            "firebase",
+            "custom"
+          ],
+          "description": "Authentication provider"
+        },
+        "adapter": {
+          "type": "string",
+          "description": "Adapter name (e.g., 'prisma', 'mongodb')"
+        },
+        "sessionStrategy": {
+          "type": "string",
+          "enum": [
+            "jwt",
+            "database",
+            "hybrid"
+          ],
+          "description": "Session strategy"
+        }
+      },
+      "required": [
+        "provider"
+      ],
+      "additionalProperties": false,
+      "description": "Authentication configuration"
+    },
+    "paths": {
+      "type": "object",
+      "properties": {
+        "api": {
+          "type": "string",
+          "description": "API routes directory"
+        },
+        "components": {
+          "type": "string",
+          "description": "Components directory"
+        },
+        "database": {
+          "type": "string",
+          "description": "DB/schema directory"
+        },
+        "utils": {
+          "type": "string",
+          "description": "Utilities directory"
+        },
+        "types": {
+          "type": "string",
+          "description": "TypeScript types directory"
+        },
+        "tests": {
+          "type": "string",
+          "description": "Tests directory"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Project directory paths"
+    },
+    "adapters": {
+      "type": "object",
+      "properties": {
+        "auth": {
+          "type": "object",
+          "properties": {
+            "provider": {
+              "type": "string",
+              "description": "Auth adapter provider"
+            },
+            "options": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "description": "Adapter options (can use env:VAR_NAME format)"
+            }
+          },
+          "required": [
+            "provider"
+          ],
+          "additionalProperties": false
+        },
+        "storage": {
+          "type": "object",
+          "properties": {
+            "provider": {
+              "type": "string",
+              "enum": [
+                "s3",
+                "gcs",
+                "azure-blob",
+                "cloudflare-r2",
+                "local"
+              ],
+              "description": "Storage provider"
+            },
+            "bucket": {
+              "type": "string",
+              "description": "Storage bucket/container name"
+            },
+            "region": {
+              "type": "string",
+              "description": "Storage region"
+            }
+          },
+          "required": [
+            "provider"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false,
+      "description": "Adapter configurations"
+    },
+    "lint": {
+      "type": "object",
+      "properties": {
+        "eslint": {
+          "type": "boolean",
+          "description": "Enable ESLint"
+        },
+        "prettier": {
+          "type": "boolean",
+          "description": "Enable Prettier"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Linting configuration"
+    },
+    "build": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "description": "Build command (e.g., 'pnpm build', 'npm run build')"
+        },
+        "output": {
+          "type": "string",
+          "description": "Build output directory (e.g., '.next', 'dist')"
+        },
+        "framework": {
+          "type": "string",
+          "description": "Build framework"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Build configuration"
+    },
+    "deploy": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": [
+            "vercel",
+            "netlify",
+            "aws",
+            "gcp",
+            "azure",
+            "railway",
+            "render",
+            "fly"
+          ],
+          "description": "Deployment provider"
+        },
+        "region": {
+          "type": "string",
+          "description": "Deployment region"
+        },
+        "env": {
+          "type": "string",
+          "enum": [
+            "production",
+            "staging",
+            "development"
+          ],
+          "description": "Deployment environment"
+        }
+      },
+      "required": [
+        "provider"
+      ],
+      "additionalProperties": false,
+      "description": "Deployment configuration"
+    },
+    "policies": {
+      "type": "object",
+      "properties": {
+        "max_files_changed": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "description": "Maximum number of files that can be changed in a single intent"
+        },
+        "max_loc_added": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "description": "Maximum lines of code that can be added in a single intent"
+        },
+        "forbidden_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Paths that cannot be modified by intents"
+        },
+        "reviewers_required": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of required reviewers"
+        },
+        "tests_required": {
+          "type": "boolean",
+          "description": "Whether tests are required before applying intents"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Project policies and constraints"
+    },
+    "intents": {
+      "type": "object",
+      "properties": {
+        "directory": {
+          "type": "string",
+          "default": ".openintent/intents",
+          "description": "Directory containing intent files"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Intent configuration"
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "maintainers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Maintainer name"
+              },
+              "email": {
+                "type": "string",
+                "format": "email",
+                "description": "Maintainer email"
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "description": "Project maintainers"
+        },
+        "license": {
+          "type": "string",
+          "description": "License type (e.g., 'MIT', 'Apache-2.0')"
+        },
+        "repository": {
+          "type": "string",
+          "format": "uri",
+          "description": "Repository URL"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Project metadata"
+    }
+  },
+  "required": [
+    "name",
+    "version"
+  ],
+  "additionalProperties": false,
+  "definitions": {}
+}

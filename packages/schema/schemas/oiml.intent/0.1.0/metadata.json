@@ -1,0 +1,17 @@
+{
+  "name": "oiml.intent",
+  "version": "0.1.0",
+  "digest": "sha256-<filled by build>",
+  "engines_min": {
+    "ajv": "8.0.0",
+    "zod": "3.24.0"
+  },
+  "deprecated": false,
+  "replaces": null,
+  "artifacts": {
+    "json_schema": "schema.json",
+    "zod_schema": "schema.zod.js"
+  },
+  "signatures": []
+}
+
