@@ -8,7 +8,7 @@ importers:
 
   .: {}
 
-  apps/nextjs-prisma:
+  apps/next-prisma:
     dependencies:
       '@prisma/client':
         specifier: ^6.19.0

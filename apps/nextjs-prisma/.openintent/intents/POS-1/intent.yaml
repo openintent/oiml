@@ -13,10 +13,6 @@ ai_context:
   references:
     - kind: file
       path: .openintent/AGENTS.md
-    - kind: file
-      path: "@oiml/schema/templates/database/prisma.md"
-    - kind: file
-      path: "@oiml/schema/templates/api/nextjs.md"
 provenance:
   created_by:
     type: human

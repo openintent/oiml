@@ -1,0 +1,36 @@
+{
+  "name": "oiml-prisma",
+  "version": "1.0.0",
+  "framework": "prisma",
+  "category": "database",
+  "created_at": "2025-11-01T00:00:00Z",
+  "last_updated": "2025-11-06T00:00:00Z",
+  "compatible_oiml_versions": ["0.1.x"],
+  "compatible_package_versions": {
+    "prisma": ["6.x.x"],
+    "@prisma/client": ["6.x.x"]
+  },
+  "minimum_versions": {
+    "prisma": "6.0.0",
+    "@prisma/client": "6.0.0"
+  },
+  "maximum_versions": {
+    "prisma": "6.99.99",
+    "@prisma/client": "6.99.99"
+  },
+  "breaking_changes": [],
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2025-11-01",
+      "changes": [
+        "Initial template version",
+        "Support for Prisma 6.x",
+        "Complete field type mappings",
+        "Migration patterns and examples"
+      ]
+    }
+  ],
+  "authors": ["OpenIntent Team"],
+  "license": "MPL-2.0"
+}

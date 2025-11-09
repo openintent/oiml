@@ -117,7 +117,7 @@ For each intent type:
 
    **For API Intents** (`add_endpoint`):
    - Check `api.framework` in `project.yaml`
-   - **Next.js** → See [Next.js API Implementation Guide](@oiml/schema/templates/api/nextjs.md)
+   - **Next.js** → See [Next.js API Implementation Guide](@oiml/schema/templates/api/next.md)
    - **Other frameworks** → See respective API guide in `@oiml/schema/templates/api/`
 
    **For UI Intents** (`add_component`):
@@ -135,7 +135,7 @@ For each intent type:
 
 ```yaml
 api:
-  framework: nextjs # API framework: nextjs, express, fastapi, etc.
+  framework: next # API framework: next, express, fastapi, etc.
   language: typescript # Language: typescript, javascript, python, etc.
   response: # Response format configuration
     success:
@@ -238,7 +238,7 @@ All framework-specific code generation patterns, examples, and best practices ar
 
 ### API Patterns
 
-- **Next.js**: See [@oiml/schema/templates/api/nextjs.md](https://github.com/openintent/oiml/blob/main/packages/schema/templates/api/nextjs.md) for:
+- **Next.js**: See [@oiml/schema/templates/api/next.md](https://github.com/openintent/oiml/blob/main/packages/schema/templates/api/next.md) for:
   - Route handler templates
   - HTTP method implementations
   - Response structure patterns
@@ -355,7 +355,7 @@ After successfully applying intents, create an output summary file:
    - `intents_processed`: Number of intents successfully processed
    - `model`: AI model used (e.g., "claude-sonnet-4.5")
    - `template_used`: Template pack information (resolved via MCP `resolve_template` tool)
-     - `framework`: Framework name (e.g., "prisma", "nextjs")
+     - `framework`: Framework name (e.g., "prisma", "next")
      - `category`: Framework category ("database", "api", "ui")
      - `pack`: Template pack URI (e.g., "oiml://compat/oiml-prisma/1.0.0")
      - `version`: Template version

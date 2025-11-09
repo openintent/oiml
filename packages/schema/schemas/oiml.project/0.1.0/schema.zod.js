@@ -13,7 +13,7 @@ export const Project = z
         framework: z
           .enum([
             // Node.js/TypeScript frameworks
-            "nextjs",
+            "next",
             "express",
             "fastify",
             "koa",
@@ -97,7 +97,7 @@ export const Project = z
     ui: z
       .object({
         framework: z
-          .enum(["react", "vue", "sveltekit", "astro", "nextjs", "vite", "nuxt", "other", "none"])
+          .enum(["react", "vue", "sveltekit", "astro", "next", "vite", "nuxt", "other", "none"])
           .optional()
           .describe("UI framework"),
         components: z.enum(["shadcn/ui", "tailwindcss", "other"]).optional().describe("UI components library"),

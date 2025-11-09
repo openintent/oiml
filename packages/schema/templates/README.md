@@ -11,7 +11,7 @@ templates/
 │   └── [future: mongoose.md, sqlalchemy.md, etc.]
 │
 ├── api/              # API framework implementation guides
-│   ├── nextjs.md    # Next.js App Router implementation guide
+│   ├── next.md    # Next.js App Router implementation guide
 │   └── [future: express.md, fastapi.md, etc.]
 │
 └── ui/               # UI framework implementation guides
@@ -22,12 +22,12 @@ templates/
 
 ### For AI Agents
 
-When processing OpenIntent files (`.oiml.yaml`):
+When processing OpenIntent files (`intent.yaml`):
 
 1. Read the project's `.openintent/project.yaml` configuration
 2. Identify the relevant frameworks:
    - `database.framework` (e.g., "prisma")
-   - `api.framework` (e.g., "nextjs")
+   - `api.framework` (e.g., "next")
    - `ui.framework` (e.g., "react")
 3. Consult the corresponding implementation guide for detailed instructions
 4. Follow the guide's patterns and examples for code generation
@@ -52,7 +52,7 @@ These guides can be used to:
 
 ### API Frameworks
 
-- **[Next.js](./api/nextjs.md)** - Complete Next.js App Router implementation guide
+- **[Next.js](./api/next.md)** - Complete Next.js App Router implementation guide
   - File structure and routing conventions
   - HTTP method templates (GET, POST, PATCH, DELETE)
   - Response structure patterns
@@ -160,5 +160,3 @@ For questions or issues with implementation guides:
 ## License
 
 These templates are part of the OpenIntent project and are licensed under the [Mozilla Public License 2.0](../../../LICENSE).
-
-

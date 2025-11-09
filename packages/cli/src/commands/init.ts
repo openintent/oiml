@@ -12,7 +12,7 @@ const __dirname = dirname(__filename);
 // Map API languages to their frameworks
 const API_FRAMEWORKS_BY_LANGUAGE: Record<string, string[]> = {
   typescript: [
-    "nextjs",
+    "next",
     "express",
     "fastify",
     "koa",
@@ -22,7 +22,7 @@ const API_FRAMEWORKS_BY_LANGUAGE: Record<string, string[]> = {
     "astro",
   ],
   javascript: [
-    "nextjs",
+    "next",
     "express",
     "fastify",
     "koa",
@@ -47,8 +47,8 @@ const API_FRAMEWORKS_BY_LANGUAGE: Record<string, string[]> = {
 
 // Map UI languages to their frameworks (most work with both TS/JS)
 const UI_FRAMEWORKS_BY_LANGUAGE: Record<string, string[]> = {
-  typescript: ["react", "vue", "sveltekit", "astro", "nextjs", "vite", "nuxt"],
-  javascript: ["react", "vue", "sveltekit", "astro", "nextjs", "vite", "nuxt"],
+  typescript: ["react", "vue", "sveltekit", "astro", "next", "vite", "nuxt"],
+  javascript: ["react", "vue", "sveltekit", "astro", "next", "vite", "nuxt"],
 };
 
 // Get framework choices for a given language
@@ -56,7 +56,7 @@ function getApiFrameworkChoices(language: string | undefined): string[] {
   if (!language) {
     // Return all frameworks if no language selected
     return [
-      "nextjs",
+      "next",
       "express",
       "fastify",
       "koa",
@@ -102,7 +102,7 @@ function getUiFrameworkChoices(language: string | undefined): string[] {
       "vue",
       "sveltekit",
       "astro",
-      "nextjs",
+      "next",
       "vite",
       "nuxt",
       "other",
@@ -179,8 +179,8 @@ async function detectProjectType(): Promise<Partial<ProjectConfig>> {
 
       // Detect UI framework
       if (packageJson.dependencies?.next || packageJson.devDependencies?.next) {
-        uiFramework = "nextjs";
-        apiFramework = "nextjs";
+        uiFramework = "next";
+        apiFramework = "next";
       } else if (
         packageJson.dependencies?.["@sveltejs/kit"] ||
         packageJson.devDependencies?.["@sveltejs/kit"] ||
@@ -347,7 +347,7 @@ async function promptForProjectDetails(
         "vue",
         "sveltekit",
         "astro",
-        "nextjs",
+        "next",
         "vite",
         "nuxt",
         "other",

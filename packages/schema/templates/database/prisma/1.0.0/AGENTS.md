@@ -1,10 +1,3 @@
-# Prisma Database Implementation Guide
-
-> **Template Version:** 1.0.0  
-> **Compatible OIML Versions:** 0.1.x  
-> **Compatible Prisma Versions:** 6.x.x  
-> **Last Updated:** 2025-11-06
-
 This guide provides complete implementation instructions for applying OpenIntent data intents when using Prisma as the database framework.
 
 ## When to Use This Guide

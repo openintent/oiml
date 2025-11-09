@@ -25,7 +25,7 @@
         "framework": {
           "type": "string",
           "enum": [
-            "nextjs",
+            "next",
             "express",
             "fastify",
             "koa",
@@ -140,7 +140,7 @@
             "vue",
             "sveltekit",
             "astro",
-            "nextjs",
+            "next",
             "vite",
             "nuxt",
             "other",

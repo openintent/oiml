@@ -1,10 +1,15 @@
 # Next.js API Implementation Guide
 
+> **Template Version:** 1.0.0  
+> **Compatible OIML Versions:** 0.1.x  
+> **Compatible Next.js Versions:** 14.x.x, 15.x.x, 16.x.x  
+> **Last Updated:** 2025-11-06
+
 This guide provides complete implementation instructions for applying OpenIntent API intents when using Next.js as the API framework.
 
 ## When to Use This Guide
 
-Use this guide when `api.framework` in `project.yaml` is set to `"nextjs"`.
+Use this guide when `api.framework` in `project.yaml` is set to `"next"`.
 
 ## Prerequisites
 
