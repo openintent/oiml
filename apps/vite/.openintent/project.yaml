@@ -2,8 +2,17 @@
 name: vite
 description: ""
 oiml_version: 0.1.0
+api:
+  language: go
+  framework: gin
+database:
+  type: postgres
+  framework: ent
 ui:
   framework: vite
   language: typescript
 intents:
   directory: .openintent/intents
+paths:
+  api: api/*
+  database: api/db/*

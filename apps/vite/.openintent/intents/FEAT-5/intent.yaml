@@ -1,0 +1,53 @@
+version: 0.1.0
+ai_context:
+  purpose: Conform to project frameworks, style, and conventions.
+  instructions: |
+    - Read .openintent/AGENTS.md and apply the instructions to the intent.
+  references:
+    - kind: file
+      path: .openintent/AGENTS.md
+provenance:
+  created_by:
+    type: human
+    name: ""
+  created_at: 2025-11-10T19:23:23Z
+intents:
+  - kind: add_entity
+      scope: data
+      entity: Album
+      fields:
+        - name: id
+          type: uuid
+          required: true
+          default: uuid.New
+        - name: title
+          type: string
+          max_length: 255
+          required: true
+        - name: artist_id
+          type: integer
+          required: true
+          relation:
+            source_entity: Album
+            target_entity: Artist
+            kind: many_to_one
+            field_name: artist_id
+            foreign_key:
+              local_field: artist_id
+              target_field: id
+        - name: created_at
+          type: datetime
+          required: true
+          default: time.Now
+  - kind: add_endpoint
+    scope: api
+    method: GET
+    path: /api/v1/albums/{id}
+    entity: Album
+    description: Get an album by id
+  - kind: add_endpoint
+    scope: api
+    method: GET
+    path: /api/v1/artists/{id}/albums
+    entity: Album
+    description: Get all albums for an artist

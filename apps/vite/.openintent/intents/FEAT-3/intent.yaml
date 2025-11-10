@@ -1,0 +1,30 @@
+version: 0.1.0
+ai_context:
+  purpose: Conform to project frameworks, style, and conventions.
+  instructions: |
+    - Read .openintent/AGENTS.md and apply the instructions to the intent.
+  references:
+    - kind: file
+      path: .openintent/AGENTS.md
+provenance:
+  created_by:
+    type: human
+    name: ""
+  created_at: 2025-11-10T19:17:22Z
+intents: 
+  - kind: add_entity
+    scope: data
+    entity: Artist
+    fields:
+      - name: id
+        type: uuid
+        required: true
+        default: uuid.New
+      - name: name
+        type: string
+        max_length: 255
+        required: true
+      - name: created_at
+        type: datetime
+        required: true
+        default: time.Now

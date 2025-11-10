@@ -1,0 +1,77 @@
+version: 0.1.0
+applied_at: 2025-01-27T00:00:00Z
+status: success
+intents_processed: 3
+model: composer
+template_used:
+  framework: ent
+  category: database
+  pack: oiml://compat/oiml-ent/1.0.0
+  version: 1.0.0
+  compat:
+    oiml: '>=0.1.0 <0.2.0'
+    entgo.io/ent: '>=0.12.0 <0.99.99'
+changes:
+  - file: api/ent/schema/album.go
+    action: created
+    description: Created Album entity schema with id (UUID), title (string, max_length 255), artist_id (UUID), created_at (datetime) fields and many_to_one relation to Artist
+  - file: api/ent/schema/artist.go
+    action: modified
+    description: Added one_to_many reverse edge relation to Album entity
+  - file: api/main.go
+    action: modified
+    description: Added GET /api/v1/albums/:id endpoint to get album by id with artist relation
+  - file: api/main.go
+    action: modified
+    description: Added GET /api/v1/artists/:id/albums endpoint to get all albums for an artist
+errors: []
+notes: |
+  After applying this intent, you need to regenerate Ent code:
+  
+  ```bash
+  cd api
+  go generate ./ent
+  ```
+  
+  This will regenerate all Ent client code including the new Album entity and relations.
+  After regeneration, run migrations to update the database schema.
+  
+  The Album entity includes:
+  - id: UUID field with Default(uuid.New) and Unique() constraint
+  - title: String field with MaxLen(255), required (no Optional())
+  - artist_id: UUID field for foreign key to Artist entity
+  - created_at: Time field with Default(time.Now)
+  - Edge relation: many_to_one relation to Artist entity
+  
+  The Artist entity was updated with:
+  - Reverse edge: one_to_many relation from Artist to Album (albums edge)
+  
+  Endpoints added:
+  
+  1. GET /api/v1/albums/:id
+     - Returns an album by ID
+     - Includes artist relation in response (WithArtist())
+     - Returns HTTP 200 (OK) on success
+     - Returns HTTP 400 (Bad Request) for invalid ID
+     - Returns HTTP 404 (Not Found) if album doesn't exist
+     - Returns HTTP 500 (Internal Server Error) for database errors
+  
+  2. GET /api/v1/artists/:id/albums
+     - Returns all albums for a specific artist
+     - Verifies artist exists before querying albums
+     - Returns HTTP 200 (OK) on success with array of albums
+     - Returns HTTP 400 (Bad Request) for invalid artist ID
+     - Returns HTTP 404 (Not Found) if artist doesn't exist
+     - Returns HTTP 500 (Internal Server Error) for database errors
+     
+  Example requests:
+  ```bash
+  # Get album by ID
+  curl http://localhost:8080/api/v1/albums/{album-uuid}
+  
+  # Get all albums for an artist
+  curl http://localhost:8080/api/v1/artists/{artist-uuid}/albums
+  ```
+  
+  Note: The artist_id field was changed from integer to UUID to match the Artist entity's UUID id type.
+

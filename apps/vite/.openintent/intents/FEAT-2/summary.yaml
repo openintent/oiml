@@ -1,0 +1,28 @@
+version: 0.1.0
+applied_at: 2025-01-27T00:00:00Z
+status: success
+intents_processed: 1
+model: composer
+template_used:
+  framework: gin
+  category: api
+  pack: oiml://compat/oiml-gin/1.0.0
+  version: 1.0.0
+  compat:
+    oiml: '>=0.1.0 <0.2.0'
+    github.com/gin-gonic/gin: '>=1.9.0 <1.99.99'
+changes:
+  - file: api/main.go
+    action: modified
+    description: Added POST endpoint at /api/users that accepts JSON body with email field and creates a new user
+errors: []
+notes: |
+  The endpoint:
+  - Accepts POST requests at /api/users
+  - Requires email field in JSON body (binding:"required")
+  - Creates a new user with the provided email
+  - Returns HTTP 201 (Created) on success
+  - Returns HTTP 400 (Bad Request) for invalid input
+  - Returns HTTP 409 (Conflict) if email already exists (unique constraint violation)
+  - Returns HTTP 500 (Internal Server Error) for other errors
+

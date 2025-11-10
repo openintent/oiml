@@ -1,0 +1,29 @@
+version: 0.1.0
+applied_at: 2025-01-27T00:00:00Z
+status: success
+intents_processed: 1
+model: composer
+template_used:
+  framework: ent
+  category: database
+  pack: oiml://compat/oiml-ent/1.0.0
+  version: 1.0.0
+  compat:
+    oiml: '>=0.1.0 <0.2.0'
+    entgo.io/ent: '>=0.12.0 <0.99.99'
+changes:
+  - file: api/ent/schema/user.go
+    action: modified
+    description: Added email field to User entity (string, max_length 255, required, unique)
+errors: []
+notes: |
+  After applying this intent, you need to regenerate Ent code:
+  
+  ```bash
+  cd api
+  go generate ./ent
+  ```
+  
+  This will regenerate all Ent client code including the new email field.
+  After regeneration, run migrations to update the database schema.
+

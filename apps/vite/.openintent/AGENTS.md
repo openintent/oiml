@@ -21,430 +21,190 @@ OIML (Open Intent Modeling Language) is a global standard for AI-driven developm
 ```
 .openintent/
 ├── project.yaml              # Project configuration and metadata
-└── intents/                  # Intent files (intent.yaml)
-    ├── add-customer/intent.yaml
-    ├── add-product/intent.yaml
-    └── add-order/intent.yaml
+├── AGENTS.md                 # Implementation guide for AI agents
+│
+└── intents/                  # All intents organized by ticket/issue ID
+    ├── POS-1/                # One folder per intent (maps to JIRA/Linear ticket)
+    │   ├── intent.yaml       # The declarative specification
+    │   ├── plan.yaml         # Execution plan (optional)
+    │   └── summary.yaml      # Output summary after execution
+    │
+    ├── POS-2/
+    │   ├── intent.yaml
+    │   ├── plan.yaml
+    │   └── summary.yaml
+    │
+    └── FEAT-123/
+        ├── intent.yaml
+        ├── plan.yaml
+        └── summary.yaml
 ```
+
+**File Naming Standards:**
+- `intent.yaml` - The intent specification (validated against OIML schema)
+- `plan.yaml` - Optional execution plan breaking down steps
+- `summary.yaml` - Output summary documenting what was changed
+
+**Additional Optional Files:**
+- `rollback.yaml` - Rollback instructions for reverting changes
+- `review.md` - Code review comments and feedback
+- `test-results.json` - Test execution results
+- `migrations.log` - Database migration logs
 
 ## Intent File Schema
 
-### Document Structure
-
-```yaml
-version: "0.1.0"              # Semantic version (required)
-provenance:                    # Optional metadata
-  created_by:
-    type: "human" | "agent" | "system"
-    name: "Creator Name"
-    id: "optional-id"
-  created_at: "2025-10-28T12:34:56Z"  # ISO8601 UTC format
-  source: "builder-ui"         # Optional source identifier
-  model: "gpt-4"               # Optional model name if generated
-
-intents:                       # Array of intent specifications
-  - kind: add_entity | add_field | add_endpoint | add_component | x-*
-    scope: data | api | ui
-    # ... intent-specific fields
-```
-
-### Intent Types
-
-#### Field Type Mapping (Shared for all data intents)
-
-**IMPORTANT:** Before generating database schema code for any data intent (`add_entity`, `add_field`), you MUST:
-
-1. Read `project.yaml` to determine the database configuration
-2. Check the `database.schema` field:
-   - If `database.schema` contains `"prisma"` → Use **Prisma** mapping guide: `@oiml/schema/db/prisma.md`
-   - If using raw SQL (no ORM) → Use **PostgreSQL** mapping guide: `@oiml/schema/db/postgres.md`
-3. Consult the appropriate mapping file for complete field type mappings, examples, and generation rules
-
-The mapping files contain comprehensive information on:
-
-- All supported OpenIntent field types (`string`, `text`, `integer`, `bigint`, `float`, `decimal`, `boolean`, `datetime`, `date`, `time`, `uuid`, `json`, `enum`, `array`, `bytes`)
-- How to map each type to the target database format
-- Handling field attributes (`required`, `unique`, `default`, `max_length`, `array_type`, `enum_values`)
-- Special cases and edge cases
-- Complete examples with before/after code
-
-**Field Specification:**
-
-```yaml
-fields:
-  - name: field_name # Field name
-    type: string # Field type (see mapping files above)
-    required: true # Optional: boolean
-    unique: true # Optional: boolean
-    default: "value" # Optional: default value
-    max_length: 255 # Optional: max length for string/text
-    array_type: string # Required if type is "array"
-    enum_values: [...] # Required if type is "enum"
-    api: # Optional: API endpoint configuration (for add_field intent)
-      include: true # Whether to include this field in API endpoints
-      endpoints: # Optional: specific endpoints (if omitted, applies to all)
-        - "GET /api/customers" # Method + path
-        - "/api/customers" # Just path (all methods)
-        - "POST" # Just method (all paths)
-        - "*" # All endpoints
-```
-
-#### 1. `add_entity` (scope: data)
-
-Adds database models/entities to the database schema.
-
-```yaml
-- kind: add_entity
-  scope: data
-  entity: Customer # Entity name (PascalCase)
-  fields: # Array of field specifications (see Field Type Mapping above)
-    - name: id
-      type: uuid
-      required: true
-    - name: email
-      type: string
-      max_length: 255
-      required: true
-      unique: true
-```
-
-**Implementation Steps:**
-
-1. Read `project.yaml` to get database type and schema path
-2. Determine if using Prisma or raw SQL based on `database.schema`
-3. **Consult the appropriate mapping file** (see Field Type Mapping above) for complete type mappings and generation rules
-4. Parse the entity and fields from the intent
-5. Generate schema code based on the database type:
-
-   **If using Prisma:**
-   - Add the new model to the Prisma schema file following Prisma mapping rules
-   - For enum fields, add enum definition before the model if it doesn't exist
-   - **MANDATORY: Create and apply database migration:**
-     ```bash
-     npx prisma migrate dev --name add_{entity_lower}_entity
-     ```
-     This step **MUST** be executed after modifying the schema. The migration name should follow the pattern `add_{entity_name_lowercase}_entity`.
-   - Regenerate Prisma client: `npx prisma generate`
-
-   **If using Raw PostgreSQL:**
-   - Generate `CREATE TABLE` statements with proper types and constraints
-   - Create enum types first if needed (using `CREATE TYPE`)
-   - **MANDATORY: Create and apply migration:**
-     - Write SQL migration file: `migrations/{timestamp}_add_{entity_lower}_entity.sql`
-     - Apply migration to the database
-
-6. Create/update TypeScript interface in `packages/types/index.ts`:
-   - Create new interface matching the entity name (e.g., `{Entity}Interface`)
-   - Map all database types to TypeScript types
-   - Include response types if needed (e.g., `{Entity}Response`)
-
-**Example Output:**
-
-See complete examples in the appropriate mapping file:
-
-- Prisma: `@oiml/schema/db/prisma.md` → "Complete Example" section
-- PostgreSQL: `@oiml/schema/db/postgres.md` → "Complete Example" section
-
-#### 2. `add_field` (scope: data)
-
-Adds fields to an existing database model/entity.
-
-```yaml
-- kind: add_field
-  scope: data
-  entity: Customer # Existing entity name (PascalCase)
-  fields: # Array of field specifications to add (see Field Type Mapping above)
-    - name: email
-      type: string
-      max_length: 255
-      required: true
-      unique: true
-      api: # Optional: configure which endpoints include this field
-        include: true # Include in API endpoints (default behavior if omitted)
-        endpoints: # Optional: specify which endpoints (if omitted, all endpoints for entity)
-          - "GET /api/customers"
-          - "POST /api/customers"
-    - name: internal_notes # Example: field that should NOT be in API
-      type: text
-      api:
-        include: false # Exclude from all API endpoints
-```
-
-**Implementation Steps:**
-
-1. Read `project.yaml` to get database type and schema path
-2. Determine if using Prisma or raw SQL based on `database.schema`
-3. **Verify the entity exists** in the schema before adding fields
-4. **Consult the appropriate mapping file** (see Field Type Mapping above) for complete type mappings and generation rules
-5. Parse the entity and fields from the intent
-6. Generate schema modifications based on the database type:
-
-   **If using Prisma:**
-   - Locate the existing model in the Prisma schema file
-   - Add new fields to the model following Prisma mapping rules
-   - For enum fields, add enum definition before the model if it doesn't exist
-   - **MANDATORY: Create and apply database migration:**
-     ```bash
-     npx prisma migrate dev --name add_{entity_lower}_{field_names}
-     ```
-     This step **MUST** be executed after modifying the schema. The migration name should follow the pattern `add_{entity_name}_{field_names}` (e.g., `add_customer_birthday` or `add_customer_birthday_anniversary` for multiple fields).
-   - Regenerate Prisma client: `npx prisma generate`
-
-   **If using Raw PostgreSQL:**
-   - Generate `ALTER TABLE` statements to add columns
-   - Create enum types first if needed (using `CREATE TYPE`)
-   - Add columns with proper types, constraints, and defaults
-   - **MANDATORY: Create and apply migration:**
-     - Write SQL migration file: `migrations/{timestamp}_add_{entity_lower}_{field_names}.sql`
-     - Apply migration to the database
-
-7. Update TypeScript types in `packages/types/index.ts`:
-   - Update the existing interface to include new fields
-   - Map database types to TypeScript types
-
-8. **Update existing API endpoints** (if `api.include` is true or not specified):
-   - For each field with `api.include: true` (or omitted), update relevant endpoints
-   - Check `api.endpoints` to determine which endpoints to update:
-     - If `endpoints` is specified, only update matching endpoints
-     - If `endpoints` is omitted, update all endpoints for the entity
-   - For **GET** endpoints: Include field in response types and return data
-   - For **POST** endpoints: Add field to request body types and creation logic
-   - For **PATCH** endpoints: Add field to request body types and update logic
-   - For **DELETE** endpoints: Typically no changes needed (uses id only)
-   - If `api.include: false`, ensure field is excluded from API request/response types
-
-**Example Output:**
-
-**For Prisma Schema:**
-
-```prisma
-// Adding fields to existing model
-model Customer {
-  id         String   @id @default(cuid())
-  email      String   @unique @db.VarChar(255)  // New field
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
-
-  @@map("customers")
-}
-```
-
-**For Raw PostgreSQL:**
-
-```sql
--- Add column to existing table
-ALTER TABLE customers
-ADD COLUMN email VARCHAR(255) NOT NULL UNIQUE;
-```
-
-See complete field mapping details in the Field Type Mapping section above.
-
-#### 3. `add_relation` (scope: data/schema)
-
-Adds relationships between existing database models/entities.
-
-```yaml
-- kind: add_relation
-  scope: schema # Note: scope is "schema" for relations
-  relation:
-    source_entity: Todo # Entity where the relation field will be added
-    target_entity: User # Entity being referenced
-    kind: many_to_one # Relation type: one_to_one, one_to_many, many_to_one, many_to_many
-    field_name: user_id # Foreign key field name on source entity
-    foreign_key:
-      local_field: user_id # Field name on source entity
-      target_field: id # Field name on target entity (usually "id")
-    reverse: # Optional: reverse relation on target entity
-      kind: one_to_many # Must be inverse of relation.kind
-      field_name: todos # Field name on target entity
-    emit_migration: true # Whether to create migration
-```
-
-**Implementation Steps:**
-
-1. Read `project.yaml` to get database type and schema path
-2. Determine if using Prisma or raw SQL based on `database.schema`
-3. **Verify both entities exist** in the schema before adding the relation
-4. Generate relation code based on the database type:
-
-   **If using Prisma:**
-   - Add foreign key field to the source model (e.g., `user_id String @db.Uuid`)
-   - Add relation field to the source model (e.g., `user User @relation(fields: [user_id], references: [id])`)
-   - If `reverse` is specified, add reverse relation to target model (e.g., `todos Todo[]`)
-   - **MANDATORY: Create and apply database migration:**
-     ```bash
-     npx prisma migrate dev --name add_{source_entity_lower}_{target_entity_lower}_relation
-     ```
-     This step **MUST** be executed after modifying the schema. The migration name should follow the pattern `add_{source_entity}_{target_entity}_relation`.
-   - Regenerate Prisma client: `npx prisma generate`
-
-   **If using Raw PostgreSQL:**
-   - Generate `ALTER TABLE` statements to add foreign key column to source table
-   - Add `FOREIGN KEY` constraint referencing target table
-   - Create index on foreign key column for performance
-   - **MANDATORY: Create and apply migration:**
-     - Write SQL migration file: `migrations/{timestamp}_add_{source_entity}_{target_entity}_relation.sql`
-     - Apply migration to the database
-
-5. Update TypeScript types in `packages/types/index.ts`:
-   - Update source entity interface to include foreign key field (e.g., `user_id: string`)
-   - Optionally update target entity interface if reverse relation fields are needed in API responses
-
-**Example Output:**
-
-**For Prisma Schema:**
-
-```prisma
-// Source entity (Todo)
-model Todo {
-  id          String   @id @default(uuid()) @db.Uuid
-  description String   @db.Text
-  user_id     String   @db.Uuid                    // Foreign key field
-  user        User     @relation(fields: [user_id], references: [id])  // Relation field
-  @@map("todos")
-}
-
-// Target entity (User)
-model User {
-  id    String @id @default(uuid()) @db.Uuid
-  email String @unique
-  todos Todo[]  // Reverse relation
-  @@map("users")
-}
-```
-
-**For Raw PostgreSQL:**
-
-```sql
--- Add foreign key column and constraint
-ALTER TABLE todos
-ADD COLUMN user_id UUID NOT NULL,
-ADD CONSTRAINT fk_todos_user
-  FOREIGN KEY (user_id) REFERENCES users(id);
-
--- Create index for performance
-CREATE INDEX idx_todos_user_id ON todos(user_id);
-```
-
-#### 4. `add_endpoint` (scope: api)
-
-Adds REST API endpoints using Next.js App Router.
-
-```yaml
-- kind: add_endpoint
-  scope: api
-  method: GET | POST | PATCH | DELETE
-  path: /api/customers # Must start with '/'
-  entity: Customer # Optional: hint for scaffolding
-  auth: # Optional: authentication
-    required: false
-    roles: ["admin"] # Optional: role-based access
-```
-
-**Implementation Steps:**
-
-1. Read `project.yaml` to get API path (default: `app/api`)
-2. Convert path to directory structure: `/api/customers` → `app/api/customers/route.ts`
-3. Create directory structure if it doesn't exist
-4. Generate route handler based on HTTP method:
-   - **GET**: Fetch all entities with pagination, sorting, filtering
-   - **POST**: Create new entity
-   - **PATCH**: Update entity (requires id in path or body)
-   - **DELETE**: Delete entity (requires id in path)
-5. Use Prisma client from `@/lib/prisma`
-6. Import TypeScript types from `@/packages/types`
-7. Include proper error handling with typed responses
-8. Return NextResponse with appropriate status codes
-
-**GET Endpoint Template:**
-
-```typescript
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import type { {Entity}Response, ErrorResponse } from '@/packages/types';
-
-export async function GET() {
-  try {
-    const {entity_plural} = await prisma.{entity_lower}.findMany({
-      orderBy: { created_at: 'desc' }
-    });
-
-    const response: {Entity}Response = {
-      success: true,
-      data: {entity_plural},
-      count: {entity_plural}.length
-    };
-
-    return NextResponse.json(response, { status: 200 });
-  } catch (error) {
-    console.error('Error fetching {entity_plural}:', error);
-    const errorResponse: ErrorResponse = {
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to fetch {entity_plural}'
-    };
-    return NextResponse.json(errorResponse, { status: 500 });
-  }
-}
-```
-
-#### 4. `add_component` (scope: ui)
-
-Adds React components for UI.
-
-```yaml
-- kind: add_component
-  scope: ui
-  component: CustomerList # Component name (PascalCase, no extension)
-  template: List | Form | Custom # Template type
-  entity: Customer # Optional: entity to bind
-  display_fields: ["name", "email"] # Optional: fields to display
-  route: /customers # Optional: page route
-```
-
-**Implementation Steps:**
-
-1. Read `project.yaml` to get components path (default: `app/components`)
-2. Determine component template:
-   - **List**: Display list of entities with cards/grid
-   - **Form**: Create/edit form for entity
-   - **Custom**: Basic component skeleton
-3. Generate React component:
-   - Use TypeScript with proper typing
-   - Import entity interface from `@/packages/types`
-   - Use base components from `project.yaml` ui.base_components if specified
-   - Follow theme settings (colors, border radius) from `project.yaml`
-4. Create component file: `app/components/{ComponentName}.tsx`
-5. If `route` is specified, create page: `app/{route}/page.tsx`
-
-**Component Template (List):**
-
-```typescript
-import React from 'react';
-import { {Entity}Interface } from '@/packages/types';
-
-interface {Component}Props {
-  {entity_plural}: {Entity}Interface[];
-}
-
-export default function {Component}({ {entity_plural} }: {Component}Props) {
-  return (
-    <div className="space-y-4">
-      <h2 className="text-2xl font-bold">{Entities}</h2>
-      <div className="grid gap-4">
-        {entity_plural}.map(({entity}) => (
-          <div key={entity}.id className="p-4 border rounded-lg">
-            {/* Render entity fields */}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-```
+All intent file schemas are defined in the [`@oiml/schema`](https://www.npmjs.com/package/@oiml/schema) package. Refer to the schema package for:
+- Complete intent structure definitions
+- Field validation rules
+- Required vs optional fields
+- Supported values and enums
+
+**Basic Structure:**
+- `version`: Semantic version (required)
+- `provenance`: Optional metadata about intent creation
+- `intents`: Array of intent specifications
+
+**For complete schema definitions, consult `@oiml/schema` package.**
+
+### Intent Types Overview
+
+#### Database Framework Implementation Guides
+
+**IMPORTANT:** Before generating database schema code for any data intent (`add_entity`, `add_field`, `add_relation`, `remove_field`), you MUST:
+
+1. **Read `project.yaml`** to determine the database configuration
+2. **Check the `database.framework` field** to identify the framework (e.g., `"prisma"`, `"sqlalchemy"`, etc.)
+   - This framework name will be used in the compatibility check (see "Implementation Workflow" section below) to resolve the compatible versioned guide
+   - Do NOT use hardcoded guide URLs - the specific guide version will be determined through compatibility checking
+3. **Check framework and OIML version compatibility** (see "Implementation Workflow" → step 3) to resolve the compatible versioned guide
+4. **Consult the compatible framework guide** (resolved through compatibility checking) for:
+   - Complete field type mappings
+   - Implementation steps for each intent type
+   - Code examples and templates
+   - Migration handling
+   - Best practices
+
+The framework-specific guides contain all the details needed for implementation. This document provides high-level intent structure only.
+
+### Supported Intent Types
+
+OpenIntent supports the following intent types. For complete schema definitions, see [`@oiml/schema`](https://www.npmjs.com/package/@oiml/schema).
+
+#### Data Intents (scope: data)
+- **`add_entity`**: Create new database models/entities
+- **`add_field`**: Add fields to existing entities
+- **`add_relation`** (scope: schema): Add relationships between entities
+- **`remove_field`**: Remove fields from entities
+
+#### API Intents (scope: api)
+- **`add_endpoint`**: Create REST API endpoints
+
+#### UI Intents (scope: ui)
+- **`add_component`**: Create UI components (future support)
+
+### Implementation Workflow
+
+For each intent type:
+
+1. **Validate the intent** using the schema from `@oiml/schema`
+2. **Read `project.yaml`** to determine frameworks
+3. **Check framework and OIML version compatibility**:
+   
+   Before executing any code changes, verify that a compatible template guide exists:
+
+   a. **Extract versions**:
+      - Read `intent.yaml` to get OIML version (e.g., `version: "0.1.0"`)
+      - Read `package.json` to get framework version(s):
+        - For database intents: Check `prisma` or relevant database package version
+        - For API intents: Check `next`, `express`, or relevant API framework version
+        - For UI intents: Check `react`, `vue`, or relevant UI framework version
+
+   b. **Locate template manifest**:
+      - Templates are organized as: `@oiml/schema/templates/{category}/{framework}/{version}/manifest.json`
+      - Categories: `database`, `api`, `ui`
+      - Example: `@oiml/schema/templates/database/prisma/1.0.0/manifest.json`
+
+   c. **Validate compatibility**:
+      - Read the template's `manifest.json` file
+      - Check `compatible_oiml_versions` array (e.g., `["0.1.x"]`)
+      - Check `compatible_package_versions` object (e.g., `{ "prisma": ["6.x.x"] }`)
+      - Verify installed versions fall within compatible ranges
+      - Consider `minimum_versions` and `maximum_versions` constraints
+
+   d. **Use MCP resolve_template tool** (if available):
+      ```typescript
+      const template = await mcp_oiml_resolve_template({
+        intent_schema_version: "0.1.0",     // From intent.yaml
+        framework: "prisma",                 // From project.yaml
+        framework_version: "6.19.0"          // From package.json
+      });
+      
+      // If compatible, template.template_pack contains the guide URI
+      // If incompatible, tool returns error or empty result
+      ```
+
+   e. **Halt if incompatible**:
+      - **If no compatible template is found, STOP immediately**
+      - Do NOT execute any code changes
+      - Report error to user with details:
+        - Framework name and installed version
+        - OIML version from intent file
+        - Available template versions
+        - Compatibility requirements
+      - Example error message:
+        ```
+        Error: No compatible template found for Prisma 6.19.0 with OIML 0.1.0
+        
+        Installed versions:
+        - Prisma: 6.19.0
+        - OIML: 0.1.0
+        
+        Available templates:
+        - @oiml/schema/templates/database/prisma/1.0.0
+          Compatible with: OIML 0.1.x, Prisma 6.x.x
+        
+        Please ensure your framework version is compatible with available templates.
+        ```
+
+4. **Consult the compatible framework guide**:
+
+   Use the specific versioned guide that was validated in step 3.
+
+   **For Data Intents** (`add_entity`, `add_field`, `add_relation`, `remove_field`):
+   - Use the validated template guide: `@oiml/schema/templates/database/{framework}/{version}/AGENTS.md`
+   - Example: `@oiml/schema/templates/database/prisma/1.0.0/AGENTS.md`
+
+   **For API Intents** (`add_endpoint`):
+   - Use the validated template guide: `@oiml/schema/templates/api/{framework}/{version}/AGENTS.md`
+   - Example: `@oiml/schema/templates/api/next/1.0.0/AGENTS.md`
+
+   **For UI Intents** (`add_component`):
+   - Use the validated template guide: `@oiml/schema/templates/ui/{framework}/{version}/AGENTS.md`
+   - Example: `@oiml/schema/templates/ui/react/1.0.0/AGENTS.md`
+
+5. **Follow the framework guide's detailed instructions**
+6. **Verify generated code** matches project patterns
 
 ## Project Configuration (project.yaml)
 
 ### Key Sections
+
+**API Configuration:**
+
+```yaml
+api:
+  framework: next # API framework: next, express, fastapi, etc.
+  language: typescript # Language: typescript, javascript, python, etc.
+  response: # Response format configuration
+    success:
+      kind: object # Response kind: object, array, etc.
+      format: json # Format: json, xml, etc.
+      object: data # Success response wrapper field name
+    error:
+      kind: object
+      format: json
+      object: error # Error response wrapper field name
+```
 
 **Paths Configuration:**
 
@@ -463,7 +223,8 @@ paths:
 ```yaml
 database:
   type: postgres # Database type
-  schema: prisma/schema.prisma # Prisma schema path
+  framework: prisma # Database framework: prisma, mongoose, sqlalchemy, etc.
+  schema: prisma/schema.prisma # Schema file path
   connection: env:DATABASE_URL # Connection string (env variable)
 ```
 
@@ -483,165 +244,110 @@ ui:
 
 ## Implementation Workflow
 
-### Step 1: Validate Intent File
+When processing an intent file, follow these steps:
 
-1. Use OpenIntent MCP server validation if available: `mcp_openintent_validate_intent(filePath)`
-2. Verify intent file exists and is valid YAML
-3. Check that all required fields are present
-4. If intent file does not exist OR is not valid YAML, quit out of all operations and do not apply any code changes. Show an appropriate error message to the user.
+### 1. Validate Intent File
+- Use OpenIntent MCP server: `mcp_oiml_validate_intent(filePath)` if available
+- Verify file exists and is valid YAML
+- Validate against schema from `@oiml/schema`
+- **Stop immediately if validation fails** - do not apply any code changes
 
-### Step 2: Parse Intent File
+### 2. Read Project Configuration
+- Read `.openintent/project.yaml`
+- Extract framework configurations:
+  - `database.framework` - for data intents
+  - `api.framework` - for API intents
+  - `ui.framework` - for UI intents
+- Note configured paths (`paths.api`, `paths.types`, etc.)
 
-1. Read the intent file
-2. Extract `version` and `provenance` (for logging/auditing)
-3. Process each intent in the `intents` array
-4. For each intent, extract:
-   - `kind`: Intent type
-   - `scope`: Domain (data/api/ui)
-   - Intent-specific fields
+### 3. Check Framework and OIML Version Compatibility
+Before processing any intents, verify compatibility:
 
-### Step 3: Read Project Configuration
+1. **Extract versions**:
+   - Read intent file `version` field (OIML schema version)
+   - Read `package.json` to get installed framework versions
 
-1. Read `.openintent/project.yaml`
-2. Extract paths, database, UI, and other configuration
-3. Use these values to determine file locations and code structure
-
-### Step 4: Apply Each Intent
-
-#### For `add_entity`:
-
-1. Parse entity name and fields
-2. Map OpenIntent field types to Prisma types
-3. Generate Prisma model and append to schema
-4. **MANDATORY: Create and apply database migration:**
-   ```bash
-   npx prisma migrate dev --name add_{entity_lower}_entity
+2. **Resolve template** using MCP tool (if available):
+   ```typescript
+   const template = await mcp_oiml_resolve_template({
+     intent_schema_version: intentVersion,
+     framework: frameworkName,
+     framework_version: installedVersion
+   });
    ```
-5. Regenerate Prisma client: `npx prisma generate`
-6. Create/update TypeScript interface in `packages/types/index.ts`
 
-#### For `add_field`:
+3. **Validate compatibility**:
+   - Locate template manifest at `@oiml/schema/templates/{category}/{framework}/{version}/manifest.json`
+   - Verify versions against `compatible_oiml_versions` and `compatible_package_versions`
+   - Check `minimum_versions` and `maximum_versions` constraints
 
-1. Parse entity name and fields to add
-2. Verify entity exists in schema
-3. Map OpenIntent field types to Prisma types
-4. Add fields to existing Prisma model
-5. **MANDATORY: Create and apply database migration:**
-   ```bash
-   npx prisma migrate dev --name add_{entity_lower}_{field_names}
-   ```
-   **Note:** If database drift is detected, use `--create-only` to create the migration file without applying:
-   ```bash
-   npx prisma migrate dev --create-only --name add_{entity_lower}_{field_names}
-   ```
-6. Regenerate Prisma client: `npx prisma generate`
-7. Update TypeScript interface in `packages/types/index.ts`
-8. Update existing API endpoints based on `api.include` configuration
+4. **Halt if incompatible**:
+   - **STOP immediately if no compatible template is found**
+   - Report detailed error to user with version information
+   - Do NOT proceed with any code generation
 
-#### For `remove_field`:
+### 4. Process Each Intent
+For each intent in the `intents` array:
 
-1. Parse entity name and fields to remove
-2. Verify entity exists in schema
-3. Verify fields exist in the model
-4. Remove fields from existing Prisma model
-5. **MANDATORY: Create and apply database migration:**
-   ```bash
-   npx prisma migrate dev --name remove_{entity_lower}_{field_names}
-   ```
-   **Note:** If database drift is detected or migration creation fails, manually create the migration:
-   - Create directory: `prisma/migrations/{timestamp}_remove_{entity_lower}_{field_names}/`
-   - Create `migration.sql` with `ALTER TABLE` statements to drop columns
-   - **Important:** Check for existing migrations with the same name to avoid duplicates
-6. Regenerate Prisma client: `npx prisma generate`
-7. Remove fields from TypeScript interface in `packages/types/index.ts`
-8. Update existing API endpoints to remove references to the field(s)
+1. **Identify the intent type** (`kind`)
+2. **Use the compatible framework guide** determined in step 3:
+   - Data intents → Use `@oiml/schema/templates/database/{framework}/{version}/AGENTS.md`
+   - API intents → Use `@oiml/schema/templates/api/{framework}/{version}/AGENTS.md`
+   - UI intents → Use `@oiml/schema/templates/ui/{framework}/{version}/AGENTS.md`
+   
+   The specific version was validated for compatibility in step 3.
 
-#### For `add_relation`:
+3. **Follow the framework guide** for detailed implementation steps
+4. **Generate code** according to the guide's instructions
 
-1. Parse source and target entities
-2. Verify both entities exist in schema
-3. Add foreign key field and relation to source model
-4. Add reverse relation to target model if specified
-5. **MANDATORY: Create and apply database migration:**
-   ```bash
-   npx prisma migrate dev --name add_{source_entity}_{target_entity}_relation
-   ```
-6. Regenerate Prisma client: `npx prisma generate`
-7. Update TypeScript interfaces if needed
+### 5. Verify and Complete
+- Check for linting errors
+- Verify file paths match `project.yaml` configuration
+- Ensure all imports are correct
+- Test generated code follows project patterns
 
-#### For `add_endpoint`:
-
-1. Parse method, path, and entity
-2. Create directory structure from path
-3. Generate route handler based on HTTP method
-4. Import Prisma client and types
-5. Add error handling and typed responses
-6. Create response types if needed
-
-#### For `add_component`:
-
-1. Parse component name, template, and entity
-2. Determine component structure based on template
-3. Generate React component with TypeScript
-4. Import entity types and base components
-5. Apply theme settings from project.yaml
-6. Create page route if specified
-
-### Step 5: Verify and Complete
-
-1. Check for linting errors
-2. Verify file paths match project.yaml configuration
-3. Ensure imports are correct
-4. Test that generated code follows project patterns
+**Important**: All detailed implementation steps, code examples, and type mappings are in the framework-specific guides. This document only provides high-level orchestration.
 
 ## Code Generation Patterns
 
-### Prisma Client Usage
+All framework-specific code generation patterns, examples, and best practices are documented in the respective implementation guides in `@oiml/schema/templates/`:
 
-```typescript
-import { prisma } from "@/lib/prisma";
-// Prisma client is already configured with singleton pattern
-```
+### Database Patterns
 
-### TypeScript Type Generation
+- **Prisma**: Use the compatible versioned guide resolved through the compatibility check process (see "Implementation Workflow" → step 3). The guide will be located at `@oiml/schema/templates/database/prisma/{version}/AGENTS.md` and contains:
+  - Field type mappings
+  - Database client usage
+  - Migration patterns
+  - TypeScript type generation
+  - Common patterns and best practices
 
-```typescript
-// Entity interface
-export interface {Entity}Interface {
-  id: string;
-  // ... fields mapped from Prisma types
-  created_at: Date;
-  updated_at: Date;
-}
+- **Other database frameworks**: Use the compatible versioned guide resolved through compatibility checking. Available frameworks are in `@oiml/schema/templates/database/`
 
-// API response types
-export interface {Entity}Response {
-  success: boolean;
-  data: {Entity}Interface[];
-  count: number;
-}
+### API Patterns
 
-export interface ErrorResponse {
-  success: false;
-  error: string;
-}
-```
+- **Next.js**: Use the compatible versioned guide resolved through the compatibility check process (see "Implementation Workflow" → step 3). The guide will be located at `@oiml/schema/templates/api/next/{version}/AGENTS.md` and contains:
+  - Route handler templates
+  - HTTP method implementations
+  - Response structure patterns
+  - Error handling patterns
+  - Authentication patterns
+  - Database client integration
 
-### Error Handling Pattern
+- **Other API frameworks**: See `@oiml/schema/templates/api/` for available guides
 
-```typescript
-try {
-  // Operation
-  return NextResponse.json({ success: true, data: result }, { status: 200 });
-} catch (error) {
-  console.error("Error:", error);
-  const errorResponse: ErrorResponse = {
-    success: false,
-    error: error instanceof Error ? error.message : "Unknown error",
-  };
-  return NextResponse.json(errorResponse, { status: 500 });
-}
-```
+### Key Principles
+
+1. **Response Structure**: Always follow `api.response` configuration from `project.yaml`
+   - Success responses use `api.response.success.object` field (e.g., `data`)
+   - Error responses use `api.response.error.object` field (e.g., `error`)
+
+2. **Type Safety**: Generate proper types for all entities and responses
+
+3. **Error Handling**: Include comprehensive error handling with appropriate HTTP status codes
+
+4. **Database Integration**: Use the database client specified in `database.framework`
+
+**For complete code examples and templates, refer to the framework-specific implementation guides.**
 
 ## MCP Server Integration
 
@@ -649,7 +355,7 @@ If available, use the OpenIntent MCP server for validation:
 
 ```javascript
 // Validate intent file
-const validation = await mcp_openintent_validate_intent(filePath);
+const validation = await mcp_oiml_validate_intent(filePath);
 if (!validation.valid) {
   throw new Error(`Invalid intent: ${validation.message}`);
 }
@@ -666,38 +372,96 @@ if (!validation.valid) {
 7. **Documentation**: Add comments for complex logic
 8. **Testing**: Generate test-friendly code structures
 
-## Example: Complete Intent Processing
+## Example: Processing an Intent File
 
-Given this intent file:
+**Given**: An intent file with `add_entity` and `add_endpoint` intents (see `@oiml/schema` for structure)
 
-```yaml
-version: "0.1.0"
-intents:
-  - kind: add_entity
-    scope: data
-    entity: Product
-    fields:
-      - { name: id, type: string, required: true }
-      - { name: name, type: string, required: true }
-      - { name: price, type: float, required: true }
+**Workflow**:
 
-  - kind: add_endpoint
-    scope: api
-    method: GET
-    path: /api/products
-    entity: Product
-```
-
-**Actions to perform:**
-
-1. ✅ Validate intent file
-2. ✅ Add `Product` model to `prisma/schema.prisma`
-3. ✅ Create migration: `add-product-entity`
-4. ✅ Add `ProductInterface` to `packages/types/index.ts`
-5. ✅ Create `app/api/products/route.ts` with GET handler
-6. ✅ Add `ProductsResponse` type
-7. ✅ Verify all files are created correctly
+1. ✅ **Validate** intent file against schema
+2. ✅ **Read** `.openintent/project.yaml`
+3. ✅ **Process** `add_entity` intent:
+   - Consult database framework guide (e.g., Prisma guide)
+   - Add model to schema
+   - Create migration
+   - Update TypeScript types
+4. ✅ **Process** `add_endpoint` intent:
+   - Consult API framework guide (e.g., Next.js guide)
+   - Create route handler file
+   - Implement HTTP method
+   - Add response types
+5. ✅ **Verify** all generated code
+6. ✅ **Create** output summary file
 
 ---
+
+## Output Summary
+
+After successfully applying intents, create an output summary file:
+
+1. **Location**: `.openintent/intents/{INTENT-ID}/summary.yaml`
+   - Example: `intents/POS-1/intent.yaml` → `intents/POS-1/summary.yaml`
+   - Co-located with the intent file for easy traceability
+
+2. **Structure**: Document all changes made (see `@oiml/schema` for output schema)
+   ```yaml
+   version: 0.1.0
+   applied_at: 2025-11-08T12:34:56Z
+   status: success  # "success" | "partial" | "failed"
+   intents_processed: 6
+   model: claude-sonnet-4.5
+   template_used:
+     framework: prisma
+     category: database
+     pack: oiml://compat/oiml-prisma/1.0.0
+     version: 1.0.0
+     digest: sha256-444a55ffe875c6269eee613cdee0aeb5015853aeb4e9466c24f08e0388683661
+     compat:
+       oiml: '>=0.1.0 <0.2.0'
+       prisma: '>=6.0.0 <7.0.0'
+   changes:
+     - file: prisma/schema.prisma
+       action: modified
+       description: Added User, Post, Profile models with relations
+     - file: app/api/users/route.ts
+       action: created
+       description: Created POST endpoint for user creation
+     - file: app/api/profiles/route.ts
+       action: created
+       description: Created GET endpoint for profiles
+     - file: prisma/migrations/20251105223004_add_blog_entities/migration.sql
+       action: created
+       description: Generated Prisma migration for new entities
+   errors: []  # Array of any errors encountered
+   ```
+
+3. **Key Fields**:
+   - `version`: OIML schema version
+   - `applied_at`: ISO8601 UTC timestamp of execution
+   - `status`: Execution status ("success", "partial", "failed")
+   - `intents_processed`: Number of intents successfully processed
+   - `model`: AI model used (e.g., "claude-sonnet-4.5")
+   - `template_used`: Template pack information (resolved via MCP `resolve_template` tool)
+     - `framework`: Framework name (e.g., "prisma", "next")
+     - `category`: Framework category ("database", "api", "ui")
+     - `pack`: Template pack URI (e.g., "oiml://compat/oiml-prisma/1.0.0")
+     - `version`: Template version
+     - `digest`: Content digest for verification
+     - `compat`: Compatibility constraints
+   - `changes[]`: Detailed list of all file changes with actions and descriptions
+   - `errors[]`: Any errors encountered during execution
+
+4. **Template Resolution**: Use the MCP `resolve_template` tool to determine which template pack to use:
+   ```typescript
+   // Example: Resolve template for Prisma
+   const template = await mcp.resolve_template({
+     intent_schema_version: "0.1.0",  // From intent file
+     framework: "prisma",              // From project.yaml
+     framework_version: "6.19.0"       // From package.json
+   });
+   
+   // Use template.template_pack for implementation guidance
+   // Include template info in summary.yaml
+   ```
 
 **Remember**: This is a declarative specification system. When you receive an intent file, you MUST perform the actual code changes - not just log what you would do. The intent IS the instruction to generate code.
