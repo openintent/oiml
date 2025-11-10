@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@oiml/schema": "workspace:*",
     "@prisma/client": "^6.19.0",
     "dotenv": "^17.2.3",
     "lucide-react": "^0.469.0",

@@ -8,15 +8,6 @@ version: 0.1.0
 api:
   framework: next
   language: typescript
-  response:
-    success:
-      kind: object
-      format: json
-      object: data
-    error:
-      kind: object
-      format: json
-      object: error
 
 database:
   type: postgres
@@ -53,48 +44,5 @@ paths:
   utils: packages/utils
   types: packages/types
 
-adapters:
-  auth:
-    provider: next-auth
-    options:
-      secret: env:NEXTAUTH_SECRET
-  storage:
-    provider: s3
-    bucket: posty-assets
-    region: us-east-1
-
-lint:
-  eslint: true
-  prettier: true
-
-build:
-  command: "pnpm build"
-  output: ".next"
-  framework: next
-
-deploy:
-  provider: vercel
-  region: iad1
-  env: production
-
-policies:
-  max_files_changed: 25
-  max_loc_added: 500
-  forbidden_paths:
-    - "node_modules/"
-    - ".next/"
-    - "dist/"
-  reviewers_required: 1
-  tests_required: true
-
 intents:
   directory: ".openintent/intents"
-  schema_version: 1.0
-  default_review_policy: auto
-
-metadata:
-  maintainers:
-    - name: "Posty Team"
-      email: "team@posty.dev"
-  repository: "https://github.com/openintent/todoapp"
-
