@@ -34,6 +34,20 @@ func (_c *TrackCreate) SetAlbumID(v uuid.UUID) *TrackCreate {
 	return _c
 }
 
+// SetURL sets the "url" field.
+func (_c *TrackCreate) SetURL(v string) *TrackCreate {
+	_c.mutation.SetURL(v)
+	return _c
+}
+
+// SetNillableURL sets the "url" field if the given value is not nil.
+func (_c *TrackCreate) SetNillableURL(v *string) *TrackCreate {
+	if v != nil {
+		_c.SetURL(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *TrackCreate) SetCreatedAt(v time.Time) *TrackCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -169,6 +183,10 @@ func (_c *TrackCreate) createSpec() (*Track, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Title(); ok {
 		_spec.SetField(track.FieldTitle, field.TypeString, value)
 		_node.Title = value
+	}
+	if value, ok := _c.mutation.URL(); ok {
+		_spec.SetField(track.FieldURL, field.TypeString, value)
+		_node.URL = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(track.FieldCreatedAt, field.TypeTime, value)

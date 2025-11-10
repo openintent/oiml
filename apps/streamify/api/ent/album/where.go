@@ -66,6 +66,11 @@ func ArtistID(v uuid.UUID) predicate.Album {
 	return predicate.Album(sql.FieldEQ(FieldArtistID, v))
 }
 
+// ImageURL applies equality check predicate on the "image_url" field. It's identical to ImageURLEQ.
+func ImageURL(v string) predicate.Album {
+	return predicate.Album(sql.FieldEQ(FieldImageURL, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.Album {
 	return predicate.Album(sql.FieldEQ(FieldCreatedAt, v))
@@ -154,6 +159,81 @@ func ArtistIDIn(vs ...uuid.UUID) predicate.Album {
 // ArtistIDNotIn applies the NotIn predicate on the "artist_id" field.
 func ArtistIDNotIn(vs ...uuid.UUID) predicate.Album {
 	return predicate.Album(sql.FieldNotIn(FieldArtistID, vs...))
+}
+
+// ImageURLEQ applies the EQ predicate on the "image_url" field.
+func ImageURLEQ(v string) predicate.Album {
+	return predicate.Album(sql.FieldEQ(FieldImageURL, v))
+}
+
+// ImageURLNEQ applies the NEQ predicate on the "image_url" field.
+func ImageURLNEQ(v string) predicate.Album {
+	return predicate.Album(sql.FieldNEQ(FieldImageURL, v))
+}
+
+// ImageURLIn applies the In predicate on the "image_url" field.
+func ImageURLIn(vs ...string) predicate.Album {
+	return predicate.Album(sql.FieldIn(FieldImageURL, vs...))
+}
+
+// ImageURLNotIn applies the NotIn predicate on the "image_url" field.
+func ImageURLNotIn(vs ...string) predicate.Album {
+	return predicate.Album(sql.FieldNotIn(FieldImageURL, vs...))
+}
+
+// ImageURLGT applies the GT predicate on the "image_url" field.
+func ImageURLGT(v string) predicate.Album {
+	return predicate.Album(sql.FieldGT(FieldImageURL, v))
+}
+
+// ImageURLGTE applies the GTE predicate on the "image_url" field.
+func ImageURLGTE(v string) predicate.Album {
+	return predicate.Album(sql.FieldGTE(FieldImageURL, v))
+}
+
+// ImageURLLT applies the LT predicate on the "image_url" field.
+func ImageURLLT(v string) predicate.Album {
+	return predicate.Album(sql.FieldLT(FieldImageURL, v))
+}
+
+// ImageURLLTE applies the LTE predicate on the "image_url" field.
+func ImageURLLTE(v string) predicate.Album {
+	return predicate.Album(sql.FieldLTE(FieldImageURL, v))
+}
+
+// ImageURLContains applies the Contains predicate on the "image_url" field.
+func ImageURLContains(v string) predicate.Album {
+	return predicate.Album(sql.FieldContains(FieldImageURL, v))
+}
+
+// ImageURLHasPrefix applies the HasPrefix predicate on the "image_url" field.
+func ImageURLHasPrefix(v string) predicate.Album {
+	return predicate.Album(sql.FieldHasPrefix(FieldImageURL, v))
+}
+
+// ImageURLHasSuffix applies the HasSuffix predicate on the "image_url" field.
+func ImageURLHasSuffix(v string) predicate.Album {
+	return predicate.Album(sql.FieldHasSuffix(FieldImageURL, v))
+}
+
+// ImageURLIsNil applies the IsNil predicate on the "image_url" field.
+func ImageURLIsNil() predicate.Album {
+	return predicate.Album(sql.FieldIsNull(FieldImageURL))
+}
+
+// ImageURLNotNil applies the NotNil predicate on the "image_url" field.
+func ImageURLNotNil() predicate.Album {
+	return predicate.Album(sql.FieldNotNull(FieldImageURL))
+}
+
+// ImageURLEqualFold applies the EqualFold predicate on the "image_url" field.
+func ImageURLEqualFold(v string) predicate.Album {
+	return predicate.Album(sql.FieldEqualFold(FieldImageURL, v))
+}
+
+// ImageURLContainsFold applies the ContainsFold predicate on the "image_url" field.
+func ImageURLContainsFold(v string) predicate.Album {
+	return predicate.Album(sql.FieldContainsFold(FieldImageURL, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

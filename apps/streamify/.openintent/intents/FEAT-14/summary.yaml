@@ -1,0 +1,110 @@
+version: 0.1.0
+applied_at: 2025-01-27T00:00:00Z
+status: success
+intents_processed: 3
+model: composer
+template_used:
+  framework: ent
+  category: database
+  pack: oiml://compat/oiml-ent/1.0.0
+  version: 1.0.0
+  compat:
+    oiml: '>=0.1.0 <0.2.0'
+    entgo.io/ent: '>=0.12.0 <0.99.99'
+changes:
+  - file: api/ent/schema/track.go
+    action: modified
+    description: Added url field (optional string) to Track entity
+  - file: api/ent/schema/album.go
+    action: modified
+    description: Added image_url field (optional string) to Album entity
+  - file: api/ent/schema/artist.go
+    action: modified
+    description: Added image_url field (optional string) to Artist entity
+  - file: api/main.go
+    action: modified
+    description: Updated createTrack endpoint to accept optional url field
+  - file: api/main.go
+    action: modified
+    description: Updated createAlbum endpoint to accept optional image_url field
+  - file: api/main.go
+    action: modified
+    description: Updated createArtist endpoint to accept optional image_url field
+errors: []
+notes: |
+  Successfully added optional string fields to Track, Album, and Artist entities.
+  
+  **Fields Added:**
+  
+  1. **Track Entity:**
+     - `url`: Optional string field for track URL
+  
+  2. **Album Entity:**
+     - `image_url`: Optional string field for album image URL
+  
+  3. **Artist Entity:**
+     - `image_url`: Optional string field for artist image URL
+  
+  **Schema Changes:**
+  - All fields are optional (using `.Optional()`)
+  - Fields are added as `field.String()` without max_length constraint
+  - Database columns will be created as nullable VARCHAR/TEXT fields
+  
+  **API Endpoints Updated:**
+  
+  1. **POST /api/v1/tracks:**
+     - Now accepts optional `url` field in request body
+     - Field is set conditionally only if provided
+  
+  2. **POST /api/v1/albums:**
+     - Now accepts optional `image_url` field in request body
+     - Field is set conditionally only if provided
+  
+  3. **POST /api/v1/artists:**
+     - Now accepts optional `image_url` field in request body
+     - Field is set conditionally only if provided
+  
+  **Request Body Examples:**
+  
+  **Create Track with URL:**
+  ```json
+  {
+    "title": "Track Title",
+    "album_id": "album-uuid",
+    "url": "https://example.com/track.mp3"
+  }
+  ```
+  
+  **Create Album with Image URL:**
+  ```json
+  {
+    "title": "Album Title",
+    "artist_id": "artist-uuid",
+    "image_url": "https://example.com/album-cover.jpg"
+  }
+  ```
+  
+  **Create Artist with Image URL:**
+  ```json
+  {
+    "name": "Artist Name",
+    "image_url": "https://example.com/artist-photo.jpg"
+  }
+  ```
+  
+  **Next Steps:**
+  1. Regenerate Ent code:
+     ```bash
+     cd api
+     go generate ./ent
+     ```
+  2. Run migrations to add the new columns to the database:
+     - The migrations will run automatically when you restart the application
+     - Or manually run: client.Schema.Create(context.Background())
+  
+  **Database Schema:**
+  The following columns will be added:
+  - `tracks.url`: VARCHAR (nullable)
+  - `albums.image_url`: VARCHAR (nullable)
+  - `artists.image_url`: VARCHAR (nullable)
+

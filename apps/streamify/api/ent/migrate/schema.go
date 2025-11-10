@@ -12,6 +12,7 @@ var (
 	AlbumsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID, Unique: true},
 		{Name: "title", Type: field.TypeString, Size: 255, SchemaType: map[string]string{"mysql": "varchar(255)", "postgres": "varchar(255)", "sqlite3": "varchar(255)"}},
+		{Name: "image_url", Type: field.TypeString, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "artist_id", Type: field.TypeUUID},
 	}
@@ -23,7 +24,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "albums_artists_artist",
-				Columns:    []*schema.Column{AlbumsColumns[3]},
+				Columns:    []*schema.Column{AlbumsColumns[4]},
 				RefColumns: []*schema.Column{ArtistsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -33,6 +34,7 @@ var (
 	ArtistsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID, Unique: true},
 		{Name: "name", Type: field.TypeString, Size: 255, SchemaType: map[string]string{"mysql": "varchar(255)", "postgres": "varchar(255)", "sqlite3": "varchar(255)"}},
+		{Name: "image_url", Type: field.TypeString, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 	}
 	// ArtistsTable holds the schema information for the "artists" table.
@@ -45,6 +47,7 @@ var (
 	TracksColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID, Unique: true},
 		{Name: "title", Type: field.TypeString, Size: 255, SchemaType: map[string]string{"mysql": "varchar(255)", "postgres": "varchar(255)", "sqlite3": "varchar(255)"}},
+		{Name: "url", Type: field.TypeString, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "album_id", Type: field.TypeUUID},
 	}
@@ -56,7 +59,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "tracks_albums_album",
-				Columns:    []*schema.Column{TracksColumns[3]},
+				Columns:    []*schema.Column{TracksColumns[4]},
 				RefColumns: []*schema.Column{AlbumsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},

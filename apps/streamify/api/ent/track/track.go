@@ -19,6 +19,8 @@ const (
 	FieldTitle = "title"
 	// FieldAlbumID holds the string denoting the album_id field in the database.
 	FieldAlbumID = "album_id"
+	// FieldURL holds the string denoting the url field in the database.
+	FieldURL = "url"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// EdgeAlbum holds the string denoting the album edge name in mutations.
@@ -39,6 +41,7 @@ var Columns = []string{
 	FieldID,
 	FieldTitle,
 	FieldAlbumID,
+	FieldURL,
 	FieldCreatedAt,
 }
 
@@ -77,6 +80,11 @@ func ByTitle(opts ...sql.OrderTermOption) OrderOption {
 // ByAlbumID orders the results by the album_id field.
 func ByAlbumID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAlbumID, opts...).ToFunc()
+}
+
+// ByURL orders the results by the url field.
+func ByURL(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldURL, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

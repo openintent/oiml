@@ -41,6 +41,7 @@ type AlbumMutation struct {
 	typ           string
 	id            *uuid.UUID
 	title         *string
+	image_url     *string
 	created_at    *time.Time
 	clearedFields map[string]struct{}
 	artist        *uuid.UUID
@@ -229,6 +230,55 @@ func (m *AlbumMutation) ResetArtistID() {
 	m.artist = nil
 }
 
+// SetImageURL sets the "image_url" field.
+func (m *AlbumMutation) SetImageURL(s string) {
+	m.image_url = &s
+}
+
+// ImageURL returns the value of the "image_url" field in the mutation.
+func (m *AlbumMutation) ImageURL() (r string, exists bool) {
+	v := m.image_url
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldImageURL returns the old "image_url" field's value of the Album entity.
+// If the Album object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AlbumMutation) OldImageURL(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldImageURL is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldImageURL requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldImageURL: %w", err)
+	}
+	return oldValue.ImageURL, nil
+}
+
+// ClearImageURL clears the value of the "image_url" field.
+func (m *AlbumMutation) ClearImageURL() {
+	m.image_url = nil
+	m.clearedFields[album.FieldImageURL] = struct{}{}
+}
+
+// ImageURLCleared returns if the "image_url" field was cleared in this mutation.
+func (m *AlbumMutation) ImageURLCleared() bool {
+	_, ok := m.clearedFields[album.FieldImageURL]
+	return ok
+}
+
+// ResetImageURL resets all changes to the "image_url" field.
+func (m *AlbumMutation) ResetImageURL() {
+	m.image_url = nil
+	delete(m.clearedFields, album.FieldImageURL)
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *AlbumMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -380,12 +430,15 @@ func (m *AlbumMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AlbumMutation) Fields() []string {
-	fields := make([]string, 0, 3)
+	fields := make([]string, 0, 4)
 	if m.title != nil {
 		fields = append(fields, album.FieldTitle)
 	}
 	if m.artist != nil {
 		fields = append(fields, album.FieldArtistID)
+	}
+	if m.image_url != nil {
+		fields = append(fields, album.FieldImageURL)
 	}
 	if m.created_at != nil {
 		fields = append(fields, album.FieldCreatedAt)
@@ -402,6 +455,8 @@ func (m *AlbumMutation) Field(name string) (ent.Value, bool) {
 		return m.Title()
 	case album.FieldArtistID:
 		return m.ArtistID()
+	case album.FieldImageURL:
+		return m.ImageURL()
 	case album.FieldCreatedAt:
 		return m.CreatedAt()
 	}
@@ -417,6 +472,8 @@ func (m *AlbumMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldTitle(ctx)
 	case album.FieldArtistID:
 		return m.OldArtistID(ctx)
+	case album.FieldImageURL:
+		return m.OldImageURL(ctx)
 	case album.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	}
@@ -441,6 +498,13 @@ func (m *AlbumMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetArtistID(v)
+		return nil
+	case album.FieldImageURL:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetImageURL(v)
 		return nil
 	case album.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -478,7 +542,11 @@ func (m *AlbumMutation) AddField(name string, value ent.Value) error {
 // ClearedFields returns all nullable fields that were cleared during this
 // mutation.
 func (m *AlbumMutation) ClearedFields() []string {
-	return nil
+	var fields []string
+	if m.FieldCleared(album.FieldImageURL) {
+		fields = append(fields, album.FieldImageURL)
+	}
+	return fields
 }
 
 // FieldCleared returns a boolean indicating if a field with the given name was
@@ -491,6 +559,11 @@ func (m *AlbumMutation) FieldCleared(name string) bool {
 // ClearField clears the value of the field with the given name. It returns an
 // error if the field is not defined in the schema.
 func (m *AlbumMutation) ClearField(name string) error {
+	switch name {
+	case album.FieldImageURL:
+		m.ClearImageURL()
+		return nil
+	}
 	return fmt.Errorf("unknown Album nullable field %s", name)
 }
 
@@ -503,6 +576,9 @@ func (m *AlbumMutation) ResetField(name string) error {
 		return nil
 	case album.FieldArtistID:
 		m.ResetArtistID()
+		return nil
+	case album.FieldImageURL:
+		m.ResetImageURL()
 		return nil
 	case album.FieldCreatedAt:
 		m.ResetCreatedAt()
@@ -620,6 +696,7 @@ type ArtistMutation struct {
 	typ           string
 	id            *uuid.UUID
 	name          *string
+	image_url     *string
 	created_at    *time.Time
 	clearedFields map[string]struct{}
 	albums        map[uuid.UUID]struct{}
@@ -770,6 +847,55 @@ func (m *ArtistMutation) ResetName() {
 	m.name = nil
 }
 
+// SetImageURL sets the "image_url" field.
+func (m *ArtistMutation) SetImageURL(s string) {
+	m.image_url = &s
+}
+
+// ImageURL returns the value of the "image_url" field in the mutation.
+func (m *ArtistMutation) ImageURL() (r string, exists bool) {
+	v := m.image_url
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldImageURL returns the old "image_url" field's value of the Artist entity.
+// If the Artist object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ArtistMutation) OldImageURL(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldImageURL is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldImageURL requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldImageURL: %w", err)
+	}
+	return oldValue.ImageURL, nil
+}
+
+// ClearImageURL clears the value of the "image_url" field.
+func (m *ArtistMutation) ClearImageURL() {
+	m.image_url = nil
+	m.clearedFields[artist.FieldImageURL] = struct{}{}
+}
+
+// ImageURLCleared returns if the "image_url" field was cleared in this mutation.
+func (m *ArtistMutation) ImageURLCleared() bool {
+	_, ok := m.clearedFields[artist.FieldImageURL]
+	return ok
+}
+
+// ResetImageURL resets all changes to the "image_url" field.
+func (m *ArtistMutation) ResetImageURL() {
+	m.image_url = nil
+	delete(m.clearedFields, artist.FieldImageURL)
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *ArtistMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -894,9 +1020,12 @@ func (m *ArtistMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ArtistMutation) Fields() []string {
-	fields := make([]string, 0, 2)
+	fields := make([]string, 0, 3)
 	if m.name != nil {
 		fields = append(fields, artist.FieldName)
+	}
+	if m.image_url != nil {
+		fields = append(fields, artist.FieldImageURL)
 	}
 	if m.created_at != nil {
 		fields = append(fields, artist.FieldCreatedAt)
@@ -911,6 +1040,8 @@ func (m *ArtistMutation) Field(name string) (ent.Value, bool) {
 	switch name {
 	case artist.FieldName:
 		return m.Name()
+	case artist.FieldImageURL:
+		return m.ImageURL()
 	case artist.FieldCreatedAt:
 		return m.CreatedAt()
 	}
@@ -924,6 +1055,8 @@ func (m *ArtistMutation) OldField(ctx context.Context, name string) (ent.Value, 
 	switch name {
 	case artist.FieldName:
 		return m.OldName(ctx)
+	case artist.FieldImageURL:
+		return m.OldImageURL(ctx)
 	case artist.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	}
@@ -941,6 +1074,13 @@ func (m *ArtistMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetName(v)
+		return nil
+	case artist.FieldImageURL:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetImageURL(v)
 		return nil
 	case artist.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -978,7 +1118,11 @@ func (m *ArtistMutation) AddField(name string, value ent.Value) error {
 // ClearedFields returns all nullable fields that were cleared during this
 // mutation.
 func (m *ArtistMutation) ClearedFields() []string {
-	return nil
+	var fields []string
+	if m.FieldCleared(artist.FieldImageURL) {
+		fields = append(fields, artist.FieldImageURL)
+	}
+	return fields
 }
 
 // FieldCleared returns a boolean indicating if a field with the given name was
@@ -991,6 +1135,11 @@ func (m *ArtistMutation) FieldCleared(name string) bool {
 // ClearField clears the value of the field with the given name. It returns an
 // error if the field is not defined in the schema.
 func (m *ArtistMutation) ClearField(name string) error {
+	switch name {
+	case artist.FieldImageURL:
+		m.ClearImageURL()
+		return nil
+	}
 	return fmt.Errorf("unknown Artist nullable field %s", name)
 }
 
@@ -1000,6 +1149,9 @@ func (m *ArtistMutation) ResetField(name string) error {
 	switch name {
 	case artist.FieldName:
 		m.ResetName()
+		return nil
+	case artist.FieldImageURL:
+		m.ResetImageURL()
 		return nil
 	case artist.FieldCreatedAt:
 		m.ResetCreatedAt()
@@ -1099,6 +1251,7 @@ type TrackMutation struct {
 	typ           string
 	id            *uuid.UUID
 	title         *string
+	url           *string
 	created_at    *time.Time
 	clearedFields map[string]struct{}
 	album         *uuid.UUID
@@ -1284,6 +1437,55 @@ func (m *TrackMutation) ResetAlbumID() {
 	m.album = nil
 }
 
+// SetURL sets the "url" field.
+func (m *TrackMutation) SetURL(s string) {
+	m.url = &s
+}
+
+// URL returns the value of the "url" field in the mutation.
+func (m *TrackMutation) URL() (r string, exists bool) {
+	v := m.url
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldURL returns the old "url" field's value of the Track entity.
+// If the Track object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TrackMutation) OldURL(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldURL is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldURL requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldURL: %w", err)
+	}
+	return oldValue.URL, nil
+}
+
+// ClearURL clears the value of the "url" field.
+func (m *TrackMutation) ClearURL() {
+	m.url = nil
+	m.clearedFields[track.FieldURL] = struct{}{}
+}
+
+// URLCleared returns if the "url" field was cleared in this mutation.
+func (m *TrackMutation) URLCleared() bool {
+	_, ok := m.clearedFields[track.FieldURL]
+	return ok
+}
+
+// ResetURL resets all changes to the "url" field.
+func (m *TrackMutation) ResetURL() {
+	m.url = nil
+	delete(m.clearedFields, track.FieldURL)
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *TrackMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -1381,12 +1583,15 @@ func (m *TrackMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *TrackMutation) Fields() []string {
-	fields := make([]string, 0, 3)
+	fields := make([]string, 0, 4)
 	if m.title != nil {
 		fields = append(fields, track.FieldTitle)
 	}
 	if m.album != nil {
 		fields = append(fields, track.FieldAlbumID)
+	}
+	if m.url != nil {
+		fields = append(fields, track.FieldURL)
 	}
 	if m.created_at != nil {
 		fields = append(fields, track.FieldCreatedAt)
@@ -1403,6 +1608,8 @@ func (m *TrackMutation) Field(name string) (ent.Value, bool) {
 		return m.Title()
 	case track.FieldAlbumID:
 		return m.AlbumID()
+	case track.FieldURL:
+		return m.URL()
 	case track.FieldCreatedAt:
 		return m.CreatedAt()
 	}
@@ -1418,6 +1625,8 @@ func (m *TrackMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldTitle(ctx)
 	case track.FieldAlbumID:
 		return m.OldAlbumID(ctx)
+	case track.FieldURL:
+		return m.OldURL(ctx)
 	case track.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	}
@@ -1442,6 +1651,13 @@ func (m *TrackMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetAlbumID(v)
+		return nil
+	case track.FieldURL:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetURL(v)
 		return nil
 	case track.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -1479,7 +1695,11 @@ func (m *TrackMutation) AddField(name string, value ent.Value) error {
 // ClearedFields returns all nullable fields that were cleared during this
 // mutation.
 func (m *TrackMutation) ClearedFields() []string {
-	return nil
+	var fields []string
+	if m.FieldCleared(track.FieldURL) {
+		fields = append(fields, track.FieldURL)
+	}
+	return fields
 }
 
 // FieldCleared returns a boolean indicating if a field with the given name was
@@ -1492,6 +1712,11 @@ func (m *TrackMutation) FieldCleared(name string) bool {
 // ClearField clears the value of the field with the given name. It returns an
 // error if the field is not defined in the schema.
 func (m *TrackMutation) ClearField(name string) error {
+	switch name {
+	case track.FieldURL:
+		m.ClearURL()
+		return nil
+	}
 	return fmt.Errorf("unknown Track nullable field %s", name)
 }
 
@@ -1504,6 +1729,9 @@ func (m *TrackMutation) ResetField(name string) error {
 		return nil
 	case track.FieldAlbumID:
 		m.ResetAlbumID()
+		return nil
+	case track.FieldURL:
+		m.ResetURL()
 		return nil
 	case track.FieldCreatedAt:
 		m.ResetCreatedAt()

@@ -28,6 +28,8 @@ func (Track) Fields() []ent.Field {
 				"sqlite3":  "varchar(255)",
 			}),
 		field.UUID("album_id", uuid.UUID{}),
+		field.String("url").
+			Optional(),
 		field.Time("created_at").
 			Default(time.Now),
 	}

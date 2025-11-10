@@ -27,6 +27,8 @@ func (Artist) Fields() []ent.Field {
 				"mysql":    "varchar(255)",
 				"sqlite3":  "varchar(255)",
 			}),
+		field.String("image_url").
+			Optional(),
 		field.Time("created_at").
 			Default(time.Now),
 	}

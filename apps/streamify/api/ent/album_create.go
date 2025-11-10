@@ -35,6 +35,20 @@ func (_c *AlbumCreate) SetArtistID(v uuid.UUID) *AlbumCreate {
 	return _c
 }
 
+// SetImageURL sets the "image_url" field.
+func (_c *AlbumCreate) SetImageURL(v string) *AlbumCreate {
+	_c.mutation.SetImageURL(v)
+	return _c
+}
+
+// SetNillableImageURL sets the "image_url" field if the given value is not nil.
+func (_c *AlbumCreate) SetNillableImageURL(v *string) *AlbumCreate {
+	if v != nil {
+		_c.SetImageURL(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *AlbumCreate) SetCreatedAt(v time.Time) *AlbumCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -185,6 +199,10 @@ func (_c *AlbumCreate) createSpec() (*Album, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Title(); ok {
 		_spec.SetField(album.FieldTitle, field.TypeString, value)
 		_node.Title = value
+	}
+	if value, ok := _c.mutation.ImageURL(); ok {
+		_spec.SetField(album.FieldImageURL, field.TypeString, value)
+		_node.ImageURL = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(album.FieldCreatedAt, field.TypeTime, value)

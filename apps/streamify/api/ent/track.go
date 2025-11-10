@@ -23,6 +23,8 @@ type Track struct {
 	Title string `json:"title,omitempty"`
 	// AlbumID holds the value of the "album_id" field.
 	AlbumID uuid.UUID `json:"album_id,omitempty"`
+	// URL holds the value of the "url" field.
+	URL string `json:"url,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
@@ -56,7 +58,7 @@ func (*Track) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case track.FieldTitle:
+		case track.FieldTitle, track.FieldURL:
 			values[i] = new(sql.NullString)
 		case track.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
@@ -94,6 +96,12 @@ func (_m *Track) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field album_id", values[i])
 			} else if value != nil {
 				_m.AlbumID = *value
+			}
+		case track.FieldURL:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field url", values[i])
+			} else if value.Valid {
+				_m.URL = value.String
 			}
 		case track.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -147,6 +155,9 @@ func (_m *Track) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("album_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.AlbumID))
+	builder.WriteString(", ")
+	builder.WriteString("url=")
+	builder.WriteString(_m.URL)
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

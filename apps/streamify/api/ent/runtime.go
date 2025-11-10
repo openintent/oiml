@@ -24,7 +24,7 @@ func init() {
 	// album.TitleValidator is a validator for the "title" field. It is called by the builders before save.
 	album.TitleValidator = albumDescTitle.Validators[0].(func(string) error)
 	// albumDescCreatedAt is the schema descriptor for created_at field.
-	albumDescCreatedAt := albumFields[3].Descriptor()
+	albumDescCreatedAt := albumFields[4].Descriptor()
 	// album.DefaultCreatedAt holds the default value on creation for the created_at field.
 	album.DefaultCreatedAt = albumDescCreatedAt.Default.(func() time.Time)
 	// albumDescID is the schema descriptor for id field.
@@ -38,7 +38,7 @@ func init() {
 	// artist.NameValidator is a validator for the "name" field. It is called by the builders before save.
 	artist.NameValidator = artistDescName.Validators[0].(func(string) error)
 	// artistDescCreatedAt is the schema descriptor for created_at field.
-	artistDescCreatedAt := artistFields[2].Descriptor()
+	artistDescCreatedAt := artistFields[3].Descriptor()
 	// artist.DefaultCreatedAt holds the default value on creation for the created_at field.
 	artist.DefaultCreatedAt = artistDescCreatedAt.Default.(func() time.Time)
 	// artistDescID is the schema descriptor for id field.
@@ -52,7 +52,7 @@ func init() {
 	// track.TitleValidator is a validator for the "title" field. It is called by the builders before save.
 	track.TitleValidator = trackDescTitle.Validators[0].(func(string) error)
 	// trackDescCreatedAt is the schema descriptor for created_at field.
-	trackDescCreatedAt := trackFields[3].Descriptor()
+	trackDescCreatedAt := trackFields[4].Descriptor()
 	// track.DefaultCreatedAt holds the default value on creation for the created_at field.
 	track.DefaultCreatedAt = trackDescCreatedAt.Default.(func() time.Time)
 	// trackDescID is the schema descriptor for id field.

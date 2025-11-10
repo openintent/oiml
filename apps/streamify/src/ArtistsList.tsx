@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/button";
 
 interface Artist {
   id: string;
@@ -31,7 +32,9 @@ function ArtistsList() {
         setArtists(data);
         setError(null);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to fetch artists");
+        setError(
+          err instanceof Error ? err.message : "Failed to fetch artists"
+        );
       } finally {
         setLoading(false);
       }
@@ -65,7 +68,10 @@ function ArtistsList() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="container mx-auto px-6 py-8">
-        <h1 className="text-3xl font-bold mb-8">Artists</h1>
+        <div className="flex items-center justify-between mb-8">
+          <h1 className="text-3xl font-bold">Artists</h1>
+          <Button onClick={() => navigate("/docs")}>API Docs</Button>
+        </div>
 
         {artists.length === 0 ? (
           <div className="text-center py-16">
@@ -100,7 +106,9 @@ function ArtistsList() {
                 {/* Album Count */}
                 <p className="text-xs text-muted-foreground line-clamp-1 text-center">
                   {artist.edges?.albums?.length || 0}{" "}
-                  {(artist.edges?.albums?.length || 0) === 1 ? "album" : "albums"}
+                  {(artist.edges?.albums?.length || 0) === 1
+                    ? "album"
+                    : "albums"}
                 </p>
               </div>
             ))}
@@ -112,4 +120,3 @@ function ArtistsList() {
 }
 
 export default ArtistsList;
-

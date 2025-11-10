@@ -66,6 +66,11 @@ func AlbumID(v uuid.UUID) predicate.Track {
 	return predicate.Track(sql.FieldEQ(FieldAlbumID, v))
 }
 
+// URL applies equality check predicate on the "url" field. It's identical to URLEQ.
+func URL(v string) predicate.Track {
+	return predicate.Track(sql.FieldEQ(FieldURL, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.Track {
 	return predicate.Track(sql.FieldEQ(FieldCreatedAt, v))
@@ -154,6 +159,81 @@ func AlbumIDIn(vs ...uuid.UUID) predicate.Track {
 // AlbumIDNotIn applies the NotIn predicate on the "album_id" field.
 func AlbumIDNotIn(vs ...uuid.UUID) predicate.Track {
 	return predicate.Track(sql.FieldNotIn(FieldAlbumID, vs...))
+}
+
+// URLEQ applies the EQ predicate on the "url" field.
+func URLEQ(v string) predicate.Track {
+	return predicate.Track(sql.FieldEQ(FieldURL, v))
+}
+
+// URLNEQ applies the NEQ predicate on the "url" field.
+func URLNEQ(v string) predicate.Track {
+	return predicate.Track(sql.FieldNEQ(FieldURL, v))
+}
+
+// URLIn applies the In predicate on the "url" field.
+func URLIn(vs ...string) predicate.Track {
+	return predicate.Track(sql.FieldIn(FieldURL, vs...))
+}
+
+// URLNotIn applies the NotIn predicate on the "url" field.
+func URLNotIn(vs ...string) predicate.Track {
+	return predicate.Track(sql.FieldNotIn(FieldURL, vs...))
+}
+
+// URLGT applies the GT predicate on the "url" field.
+func URLGT(v string) predicate.Track {
+	return predicate.Track(sql.FieldGT(FieldURL, v))
+}
+
+// URLGTE applies the GTE predicate on the "url" field.
+func URLGTE(v string) predicate.Track {
+	return predicate.Track(sql.FieldGTE(FieldURL, v))
+}
+
+// URLLT applies the LT predicate on the "url" field.
+func URLLT(v string) predicate.Track {
+	return predicate.Track(sql.FieldLT(FieldURL, v))
+}
+
+// URLLTE applies the LTE predicate on the "url" field.
+func URLLTE(v string) predicate.Track {
+	return predicate.Track(sql.FieldLTE(FieldURL, v))
+}
+
+// URLContains applies the Contains predicate on the "url" field.
+func URLContains(v string) predicate.Track {
+	return predicate.Track(sql.FieldContains(FieldURL, v))
+}
+
+// URLHasPrefix applies the HasPrefix predicate on the "url" field.
+func URLHasPrefix(v string) predicate.Track {
+	return predicate.Track(sql.FieldHasPrefix(FieldURL, v))
+}
+
+// URLHasSuffix applies the HasSuffix predicate on the "url" field.
+func URLHasSuffix(v string) predicate.Track {
+	return predicate.Track(sql.FieldHasSuffix(FieldURL, v))
+}
+
+// URLIsNil applies the IsNil predicate on the "url" field.
+func URLIsNil() predicate.Track {
+	return predicate.Track(sql.FieldIsNull(FieldURL))
+}
+
+// URLNotNil applies the NotNil predicate on the "url" field.
+func URLNotNil() predicate.Track {
+	return predicate.Track(sql.FieldNotNull(FieldURL))
+}
+
+// URLEqualFold applies the EqualFold predicate on the "url" field.
+func URLEqualFold(v string) predicate.Track {
+	return predicate.Track(sql.FieldEqualFold(FieldURL, v))
+}
+
+// URLContainsFold applies the ContainsFold predicate on the "url" field.
+func URLContainsFold(v string) predicate.Track {
+	return predicate.Track(sql.FieldContainsFold(FieldURL, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

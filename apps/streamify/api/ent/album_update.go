@@ -59,6 +59,26 @@ func (_u *AlbumUpdate) SetNillableArtistID(v *uuid.UUID) *AlbumUpdate {
 	return _u
 }
 
+// SetImageURL sets the "image_url" field.
+func (_u *AlbumUpdate) SetImageURL(v string) *AlbumUpdate {
+	_u.mutation.SetImageURL(v)
+	return _u
+}
+
+// SetNillableImageURL sets the "image_url" field if the given value is not nil.
+func (_u *AlbumUpdate) SetNillableImageURL(v *string) *AlbumUpdate {
+	if v != nil {
+		_u.SetImageURL(*v)
+	}
+	return _u
+}
+
+// ClearImageURL clears the value of the "image_url" field.
+func (_u *AlbumUpdate) ClearImageURL() *AlbumUpdate {
+	_u.mutation.ClearImageURL()
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *AlbumUpdate) SetCreatedAt(v time.Time) *AlbumUpdate {
 	_u.mutation.SetCreatedAt(v)
@@ -179,6 +199,12 @@ func (_u *AlbumUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.Title(); ok {
 		_spec.SetField(album.FieldTitle, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ImageURL(); ok {
+		_spec.SetField(album.FieldImageURL, field.TypeString, value)
+	}
+	if _u.mutation.ImageURLCleared() {
+		_spec.ClearField(album.FieldImageURL, field.TypeString)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(album.FieldCreatedAt, field.TypeTime, value)
@@ -302,6 +328,26 @@ func (_u *AlbumUpdateOne) SetNillableArtistID(v *uuid.UUID) *AlbumUpdateOne {
 	if v != nil {
 		_u.SetArtistID(*v)
 	}
+	return _u
+}
+
+// SetImageURL sets the "image_url" field.
+func (_u *AlbumUpdateOne) SetImageURL(v string) *AlbumUpdateOne {
+	_u.mutation.SetImageURL(v)
+	return _u
+}
+
+// SetNillableImageURL sets the "image_url" field if the given value is not nil.
+func (_u *AlbumUpdateOne) SetNillableImageURL(v *string) *AlbumUpdateOne {
+	if v != nil {
+		_u.SetImageURL(*v)
+	}
+	return _u
+}
+
+// ClearImageURL clears the value of the "image_url" field.
+func (_u *AlbumUpdateOne) ClearImageURL() *AlbumUpdateOne {
+	_u.mutation.ClearImageURL()
 	return _u
 }
 
@@ -455,6 +501,12 @@ func (_u *AlbumUpdateOne) sqlSave(ctx context.Context) (_node *Album, err error)
 	}
 	if value, ok := _u.mutation.Title(); ok {
 		_spec.SetField(album.FieldTitle, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ImageURL(); ok {
+		_spec.SetField(album.FieldImageURL, field.TypeString, value)
+	}
+	if _u.mutation.ImageURLCleared() {
+		_spec.ClearField(album.FieldImageURL, field.TypeString)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(album.FieldCreatedAt, field.TypeTime, value)

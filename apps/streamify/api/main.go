@@ -62,6 +62,8 @@ func main() {
 	apiNonVersioned := r.Group("/api")
 	{
 		apiNonVersioned.POST("/users", createUserWithBody(client))
+		apiNonVersioned.GET("/schema", getSchema(client))
+		apiNonVersioned.GET("/routes", getRoutes(r))
 	}
 
 	// Start server
@@ -241,11 +243,12 @@ func getArtistByID(client *ent.Client) gin.HandlerFunc {
 	}
 }
 
-// createArtist creates a new artist with name from request body
+// createArtist creates a new artist with name and optional image_url from request body
 func createArtist(client *ent.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var body struct {
-			Name string `json:"name" binding:"required"`
+			Name     string  `json:"name" binding:"required"`
+			ImageURL *string `json:"image_url"`
 		}
 
 		if err := c.ShouldBindJSON(&body); err != nil {
@@ -253,9 +256,12 @@ func createArtist(client *ent.Client) gin.HandlerFunc {
 			return
 		}
 
-		a, err := client.Artist.Create().
-			SetName(body.Name).
-			Save(context.Background())
+		create := client.Artist.Create().SetName(body.Name)
+		if body.ImageURL != nil {
+			create = create.SetImageURL(*body.ImageURL)
+		}
+
+		a, err := create.Save(context.Background())
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -352,12 +358,13 @@ func getAlbumTracks(client *ent.Client) gin.HandlerFunc {
 	}
 }
 
-// createAlbum creates a new album with title and artist_id from request body
+// createAlbum creates a new album with title, artist_id, and optional image_url from request body
 func createAlbum(client *ent.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var body struct {
-			Title    string `json:"title" binding:"required"`
-			ArtistID string `json:"artist_id" binding:"required"`
+			Title    string  `json:"title" binding:"required"`
+			ArtistID string  `json:"artist_id" binding:"required"`
+			ImageURL *string `json:"image_url"`
 		}
 
 		if err := c.ShouldBindJSON(&body); err != nil {
@@ -384,10 +391,14 @@ func createAlbum(client *ent.Client) gin.HandlerFunc {
 			return
 		}
 
-		a, err := client.Album.Create().
+		create := client.Album.Create().
 			SetTitle(body.Title).
-			SetArtistID(artistID).
-			Save(context.Background())
+			SetArtistID(artistID)
+		if body.ImageURL != nil {
+			create = create.SetImageURL(*body.ImageURL)
+		}
+
+		a, err := create.Save(context.Background())
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -397,12 +408,13 @@ func createAlbum(client *ent.Client) gin.HandlerFunc {
 	}
 }
 
-// createTrack creates a new track with title and album_id from request body
+// createTrack creates a new track with title, album_id, and optional url from request body
 func createTrack(client *ent.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var body struct {
-			Title   string `json:"title" binding:"required"`
-			AlbumID string `json:"album_id" binding:"required"`
+			Title   string  `json:"title" binding:"required"`
+			AlbumID string  `json:"album_id" binding:"required"`
+			URL     *string `json:"url"`
 		}
 
 		if err := c.ShouldBindJSON(&body); err != nil {
@@ -429,10 +441,14 @@ func createTrack(client *ent.Client) gin.HandlerFunc {
 			return
 		}
 
-		t, err := client.Track.Create().
+		create := client.Track.Create().
 			SetTitle(body.Title).
-			SetAlbumID(albumID).
-			Save(context.Background())
+			SetAlbumID(albumID)
+		if body.URL != nil {
+			create = create.SetURL(*body.URL)
+		}
+
+		t, err := create.Save(context.Background())
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return

@@ -19,6 +19,8 @@ const (
 	FieldTitle = "title"
 	// FieldArtistID holds the string denoting the artist_id field in the database.
 	FieldArtistID = "artist_id"
+	// FieldImageURL holds the string denoting the image_url field in the database.
+	FieldImageURL = "image_url"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// EdgeArtist holds the string denoting the artist edge name in mutations.
@@ -48,6 +50,7 @@ var Columns = []string{
 	FieldID,
 	FieldTitle,
 	FieldArtistID,
+	FieldImageURL,
 	FieldCreatedAt,
 }
 
@@ -86,6 +89,11 @@ func ByTitle(opts ...sql.OrderTermOption) OrderOption {
 // ByArtistID orders the results by the artist_id field.
 func ByArtistID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldArtistID, opts...).ToFunc()
+}
+
+// ByImageURL orders the results by the image_url field.
+func ByImageURL(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldImageURL, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

@@ -58,6 +58,26 @@ func (_u *TrackUpdate) SetNillableAlbumID(v *uuid.UUID) *TrackUpdate {
 	return _u
 }
 
+// SetURL sets the "url" field.
+func (_u *TrackUpdate) SetURL(v string) *TrackUpdate {
+	_u.mutation.SetURL(v)
+	return _u
+}
+
+// SetNillableURL sets the "url" field if the given value is not nil.
+func (_u *TrackUpdate) SetNillableURL(v *string) *TrackUpdate {
+	if v != nil {
+		_u.SetURL(*v)
+	}
+	return _u
+}
+
+// ClearURL clears the value of the "url" field.
+func (_u *TrackUpdate) ClearURL() *TrackUpdate {
+	_u.mutation.ClearURL()
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *TrackUpdate) SetCreatedAt(v time.Time) *TrackUpdate {
 	_u.mutation.SetCreatedAt(v)
@@ -143,6 +163,12 @@ func (_u *TrackUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.Title(); ok {
 		_spec.SetField(track.FieldTitle, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.URL(); ok {
+		_spec.SetField(track.FieldURL, field.TypeString, value)
+	}
+	if _u.mutation.URLCleared() {
+		_spec.ClearField(track.FieldURL, field.TypeString)
+	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(track.FieldCreatedAt, field.TypeTime, value)
 	}
@@ -220,6 +246,26 @@ func (_u *TrackUpdateOne) SetNillableAlbumID(v *uuid.UUID) *TrackUpdateOne {
 	if v != nil {
 		_u.SetAlbumID(*v)
 	}
+	return _u
+}
+
+// SetURL sets the "url" field.
+func (_u *TrackUpdateOne) SetURL(v string) *TrackUpdateOne {
+	_u.mutation.SetURL(v)
+	return _u
+}
+
+// SetNillableURL sets the "url" field if the given value is not nil.
+func (_u *TrackUpdateOne) SetNillableURL(v *string) *TrackUpdateOne {
+	if v != nil {
+		_u.SetURL(*v)
+	}
+	return _u
+}
+
+// ClearURL clears the value of the "url" field.
+func (_u *TrackUpdateOne) ClearURL() *TrackUpdateOne {
+	_u.mutation.ClearURL()
 	return _u
 }
 
@@ -337,6 +383,12 @@ func (_u *TrackUpdateOne) sqlSave(ctx context.Context) (_node *Track, err error)
 	}
 	if value, ok := _u.mutation.Title(); ok {
 		_spec.SetField(track.FieldTitle, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.URL(); ok {
+		_spec.SetField(track.FieldURL, field.TypeString, value)
+	}
+	if _u.mutation.URLCleared() {
+		_spec.ClearField(track.FieldURL, field.TypeString)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(track.FieldCreatedAt, field.TypeTime, value)
