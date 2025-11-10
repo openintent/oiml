@@ -4,7 +4,9 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
 
+	"streamify/auth"
 	"streamify/ent"
 	"streamify/ent/album"
 	"streamify/ent/artist"
@@ -27,6 +29,16 @@ func main() {
 		log.Fatalf("failed creating schema resources: %v", err)
 	}
 
+	// Initialize auth
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		log.Fatal("JWT_SECRET environment variable is required")
+	}
+	auth.InitJWT(jwtSecret)
+
+	// Initialize auth config (24 hours access token, 168 hours refresh token)
+	auth.InitAuthConfig(24, 168)
+
 	// Setup Gin router
 	r := gin.Default()
 
@@ -35,9 +47,21 @@ func main() {
 		c.Status(http.StatusOK)
 	})
 
-	// User endpoints (v1)
-	api := r.Group("/api/v1")
+	// Auth routes (public)
+	authGroup := r.Group("/api/auth")
 	{
+		authGroup.POST("/login", auth.Login(client))
+		authGroup.POST("/register", auth.Register(client))
+		authGroup.POST("/refresh", auth.Refresh(client))
+	}
+
+	// Protected routes - apply auth middleware to entire /api/v1/* group
+	api := r.Group("/api/v1")
+	api.Use(auth.AuthMiddleware()) // Apply auth middleware to all v1 routes
+	{
+		api.GET("/me", auth.Me(client))
+
+		// User endpoints
 		api.GET("/users", getUsers(client))
 		api.GET("/users/:id", getUserByID(client))
 		api.POST("/users", createUser(client))

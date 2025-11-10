@@ -71,6 +71,7 @@ var (
 		{Name: "email", Type: field.TypeString, Unique: true, Size: 255, SchemaType: map[string]string{"mysql": "varchar(255)", "postgres": "varchar(255)", "sqlite3": "varchar(255)"}},
 		{Name: "first_name", Type: field.TypeString, Nullable: true, Size: 255, SchemaType: map[string]string{"mysql": "varchar(255)", "postgres": "varchar(255)", "sqlite3": "varchar(255)"}},
 		{Name: "last_name", Type: field.TypeString, Nullable: true, Size: 255, SchemaType: map[string]string{"mysql": "varchar(255)", "postgres": "varchar(255)", "sqlite3": "varchar(255)"}},
+		{Name: "password", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"mysql": "varchar(255)", "postgres": "varchar(255)", "sqlite3": "varchar(255)"}},
 	}
 	// UsersTable holds the schema information for the "users" table.
 	UsersTable = &schema.Table{

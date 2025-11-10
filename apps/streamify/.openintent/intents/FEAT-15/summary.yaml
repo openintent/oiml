@@ -1,0 +1,122 @@
+version: 0.1.0
+applied_at: 2025-01-27T00:00:00Z
+status: success
+intents_processed: 1
+model: composer
+template_used:
+  framework: gin
+  category: adapter
+  adapter_type: auth
+  pack: oiml://compat/oiml-gin-auth/1.0.0
+  version: 1.0.0
+  compat:
+    oiml: '>=0.1.0 <0.2.0'
+    github.com/gin-gonic/gin: '>=1.9.0 <1.12.0'
+changes:
+  - file: api/ent/schema/user.go
+    action: modified
+    description: Added password field (required, sensitive) to User entity
+  - file: api/auth/middleware.go
+    action: created
+    description: Created JWT authentication middleware with AuthMiddleware and OptionalAuthMiddleware functions
+  - file: api/auth/handlers.go
+    action: created
+    description: Created authentication handlers (Login, Register, Refresh, Me) with JWT token generation and password hashing
+  - file: api/main.go
+    action: modified
+    description: Initialized auth system, registered auth routes (/api/auth/login, /api/auth/register, /api/auth/refresh), and applied auth middleware to /api/v1/* route group
+  - file: api/go.mod
+    action: modified
+    description: Added dependencies for github.com/golang-jwt/jwt/v5 and golang.org/x/crypto
+errors: []
+notes: |
+  Successfully implemented JWT-based authentication adapter for Gin framework.
+  
+  **Features Implemented:**
+  
+  1. **User Entity Updates:**
+     - Added `password` field (required, sensitive) to User schema
+     - Password will be stored as bcrypt hash
+  
+  2. **Auth Package Created:**
+     - `auth/middleware.go`: JWT middleware for protecting routes
+     - `auth/handlers.go`: Authentication handlers (login, register, refresh, me)
+  
+  3. **Auth Endpoints:**
+     - `POST /api/auth/login`: User login
+     - `POST /api/auth/register`: User registration
+     - `POST /api/auth/refresh`: Refresh access token
+     - `GET /api/v1/me`: Get current authenticated user
+  
+  4. **Route Protection:**
+     - All routes under `/api/v1/*` are now protected by auth middleware
+     - Auth routes (`/api/auth/*`) remain public
+  
+  5. **Configuration:**
+     - JWT secret from `JWT_SECRET` environment variable
+     - Access token expiration: 24 hours
+     - Refresh token expiration: 168 hours (7 days)
+  
+  **Next Steps:**
+  
+  1. **Set JWT_SECRET environment variable:**
+     ```bash
+     export JWT_SECRET=$(openssl rand -base64 32)
+     ```
+  
+  2. **Regenerate Ent code:**
+     ```bash
+     cd api
+     go generate ./ent
+     ```
+  
+  3. **Install dependencies:**
+     ```bash
+     go mod tidy
+     ```
+  
+  4. **Run migrations:**
+     - The password column will be added automatically when you restart the application
+     - Or manually run: `client.Schema.Create(context.Background())`
+  
+  5. **Update existing users:**
+     - Existing users will need to have passwords set
+     - You may need to create a migration script or update existing users
+  
+  **Testing:**
+  
+  **Register a user:**
+  ```bash
+  curl -X POST http://localhost:8080/api/auth/register \
+    -H "Content-Type: application/json" \
+    -d '{
+      "email": "user@example.com",
+      "password": "password123"
+    }'
+  ```
+  
+  **Login:**
+  ```bash
+  curl -X POST http://localhost:8080/api/auth/login \
+    -H "Content-Type: application/json" \
+    -d '{
+      "email": "user@example.com",
+      "password": "password123"
+    }'
+  ```
+  
+  **Access protected endpoint:**
+  ```bash
+  curl -X GET http://localhost:8080/api/v1/me \
+    -H "Authorization: Bearer <access_token>"
+  ```
+  
+  **Refresh token:**
+  ```bash
+  curl -X POST http://localhost:8080/api/auth/refresh \
+    -H "Content-Type: application/json" \
+    -d '{
+      "refresh_token": "<refresh_token>"
+    }'
+  ```
+

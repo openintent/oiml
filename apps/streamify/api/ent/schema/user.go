@@ -41,6 +41,14 @@ func (User) Fields() []ent.Field {
 				"sqlite3":  "varchar(255)",
 			}).
 			Optional(),
+		field.String("password").
+			Sensitive().
+			Optional().
+			SchemaType(map[string]string{
+				"postgres": "varchar(255)",
+				"mysql":    "varchar(255)",
+				"sqlite3":  "varchar(255)",
+			}),
 	}
 }
 
