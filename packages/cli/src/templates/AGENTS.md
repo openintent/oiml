@@ -73,11 +73,11 @@ All intent file schemas are defined in the [`@oiml/schema`](https://www.npmjs.co
 **IMPORTANT:** Before generating database schema code for any data intent (`add_entity`, `add_field`, `add_relation`, `remove_field`), you MUST:
 
 1. **Read `project.yaml`** to determine the database configuration
-2. **Check the `database.framework` field** to determine which guide to use:
-   - If `database.framework: "prisma"` → Use **[@oiml/schema/templates/database/prisma.md](https://github.com/openintent/oiml/blob/main/packages/schema/templates/database/prisma.md)**
-   - If `database.framework: "sqlalchemy"` → Use SQLAlchemy guide in `@oiml/schema/templates/database/`
-   - If using raw SQL → Use PostgreSQL/MySQL guide in `@oiml/schema/templates/database/`
-3. **Consult the framework-specific guide** for:
+2. **Check the `database.framework` field** to identify the framework (e.g., `"prisma"`, `"sqlalchemy"`, etc.)
+   - This framework name will be used in the compatibility check (see "Implementation Workflow" section below) to resolve the compatible versioned guide
+   - Do NOT use hardcoded guide URLs - the specific guide version will be determined through compatibility checking
+3. **Check framework and OIML version compatibility** (see "Implementation Workflow" → step 3) to resolve the compatible versioned guide
+4. **Consult the compatible framework guide** (resolved through compatibility checking) for:
    - Complete field type mappings
    - Implementation steps for each intent type
    - Code examples and templates
@@ -98,6 +98,7 @@ OpenIntent supports the following intent types. For complete schema definitions,
 
 #### API Intents (scope: api)
 - **`add_endpoint`**: Create REST API endpoints
+- **`update_endpoint`**: Modify existing API endpoints to include additional fields in responses
 
 #### UI Intents (scope: ui)
 - **`add_component`**: Create UI components (future support)
@@ -108,24 +109,82 @@ For each intent type:
 
 1. **Validate the intent** using the schema from `@oiml/schema`
 2. **Read `project.yaml`** to determine frameworks
-3. **Consult the appropriate framework guide**:
+3. **Check framework and OIML version compatibility**:
+   
+   Before executing any code changes, verify that a compatible template guide exists:
+
+   a. **Extract versions**:
+      - Read `intent.yaml` to get OIML version (e.g., `version: "0.1.0"`)
+      - Read `package.json` to get framework version(s):
+        - For database intents: Check `prisma` or relevant database package version
+        - For API intents: Check `next`, `express`, or relevant API framework version
+        - For UI intents: Check `react`, `vue`, or relevant UI framework version
+
+   b. **Locate template manifest**:
+      - Templates are organized as: `@oiml/schema/templates/{category}/{framework}/{version}/manifest.json`
+      - Categories: `database`, `api`, `ui`
+      - Example: `@oiml/schema/templates/database/prisma/1.0.0/manifest.json`
+
+   c. **Validate compatibility**:
+      - Read the template's `manifest.json` file
+      - Check `compatible_oiml_versions` array (e.g., `["0.1.x"]`)
+      - Check `compatible_package_versions` object (e.g., `{ "prisma": ["6.x.x"] }`)
+      - Verify installed versions fall within compatible ranges
+      - Consider `minimum_versions` and `maximum_versions` constraints
+
+   d. **Use MCP resolve_template tool** (if available):
+      ```typescript
+      const template = await mcp_oiml_resolve_template({
+        intent_schema_version: "0.1.0",     // From intent.yaml
+        framework: "prisma",                 // From project.yaml
+        framework_version: "6.19.0"          // From package.json
+      });
+      
+      // If compatible, template.template_pack contains the guide URI
+      // If incompatible, tool returns error or empty result
+      ```
+
+   e. **Halt if incompatible**:
+      - **If no compatible template is found, STOP immediately**
+      - Do NOT execute any code changes
+      - Report error to user with details:
+        - Framework name and installed version
+        - OIML version from intent file
+        - Available template versions
+        - Compatibility requirements
+      - Example error message:
+        ```
+        Error: No compatible template found for Prisma 6.19.0 with OIML 0.1.0
+        
+        Installed versions:
+        - Prisma: 6.19.0
+        - OIML: 0.1.0
+        
+        Available templates:
+        - @oiml/schema/templates/database/prisma/1.0.0
+          Compatible with: OIML 0.1.x, Prisma 6.x.x
+        
+        Please ensure your framework version is compatible with available templates.
+        ```
+
+4. **Consult the compatible framework guide**:
+
+   Use the specific versioned guide that was validated in step 3.
 
    **For Data Intents** (`add_entity`, `add_field`, `add_relation`, `remove_field`):
-   - Check `database.framework` in `project.yaml`
-   - **Prisma** → See [Prisma Implementation Guide](@oiml/schema/templates/database/prisma.md)
-   - **Other frameworks** → See respective database guide in `@oiml/schema/templates/database/`
+   - Use the validated template guide: `@oiml/schema/templates/database/{framework}/{version}/AGENTS.md`
+   - Example: `@oiml/schema/templates/database/prisma/1.0.0/AGENTS.md`
 
-   **For API Intents** (`add_endpoint`):
-   - Check `api.framework` in `project.yaml`
-   - **Next.js** → See [Next.js API Implementation Guide](@oiml/schema/templates/api/next.md)
-   - **Other frameworks** → See respective API guide in `@oiml/schema/templates/api/`
+   **For API Intents** (`add_endpoint`, `update_endpoint`):
+   - Use the validated template guide: `@oiml/schema/templates/api/{framework}/{version}/AGENTS.md`
+   - Example: `@oiml/schema/templates/api/next/1.0.0/AGENTS.md`
 
    **For UI Intents** (`add_component`):
-   - Check `ui.framework` in `project.yaml`
-   - Follow framework-specific component generation patterns
+   - Use the validated template guide: `@oiml/schema/templates/ui/{framework}/{version}/AGENTS.md`
+   - Example: `@oiml/schema/templates/ui/react/1.0.0/AGENTS.md`
 
-4. **Follow the framework guide's detailed instructions**
-5. **Verify generated code** matches project patterns
+5. **Follow the framework guide's detailed instructions**
+6. **Verify generated code** matches project patterns
 
 ## Project Configuration (project.yaml)
 
@@ -202,18 +261,47 @@ When processing an intent file, follow these steps:
   - `ui.framework` - for UI intents
 - Note configured paths (`paths.api`, `paths.types`, etc.)
 
-### 3. Process Each Intent
+### 3. Check Framework and OIML Version Compatibility
+Before processing any intents, verify compatibility:
+
+1. **Extract versions**:
+   - Read intent file `version` field (OIML schema version)
+   - Read `package.json` to get installed framework versions
+
+2. **Resolve template** using MCP tool (if available):
+   ```typescript
+   const template = await mcp_oiml_resolve_template({
+     intent_schema_version: intentVersion,
+     framework: frameworkName,
+     framework_version: installedVersion
+   });
+   ```
+
+3. **Validate compatibility**:
+   - Locate template manifest at `@oiml/schema/templates/{category}/{framework}/{version}/manifest.json`
+   - Verify versions against `compatible_oiml_versions` and `compatible_package_versions`
+   - Check `minimum_versions` and `maximum_versions` constraints
+
+4. **Halt if incompatible**:
+   - **STOP immediately if no compatible template is found**
+   - Report detailed error to user with version information
+   - Do NOT proceed with any code generation
+
+### 4. Process Each Intent
 For each intent in the `intents` array:
 
 1. **Identify the intent type** (`kind`)
-2. **Determine the framework guide** based on `project.yaml`:
-   - Data intents → Check `database.framework` → Use guide from `@oiml/schema/templates/database/`
-   - API intents → Check `api.framework` → Use guide from `@oiml/schema/templates/api/`
-   - UI intents → Check `ui.framework` → Use guide from `@oiml/schema/templates/ui/`
+2. **Use the compatible framework guide** determined in step 3:
+   - Data intents → Use `@oiml/schema/templates/database/{framework}/{version}/AGENTS.md`
+   - API intents (`add_endpoint`, `update_endpoint`) → Use `@oiml/schema/templates/api/{framework}/{version}/AGENTS.md`
+   - UI intents → Use `@oiml/schema/templates/ui/{framework}/{version}/AGENTS.md`
+   
+   The specific version was validated for compatibility in step 3.
+
 3. **Follow the framework guide** for detailed implementation steps
 4. **Generate code** according to the guide's instructions
 
-### 4. Verify and Complete
+### 5. Verify and Complete
 - Check for linting errors
 - Verify file paths match `project.yaml` configuration
 - Ensure all imports are correct
@@ -227,18 +315,18 @@ All framework-specific code generation patterns, examples, and best practices ar
 
 ### Database Patterns
 
-- **Prisma**: See [@oiml/schema/templates/database/prisma.md](https://github.com/openintent/oiml/blob/main/packages/schema/templates/database/prisma.md) for:
+- **Prisma**: Use the compatible versioned guide resolved through the compatibility check process (see "Implementation Workflow" → step 3). The guide will be located at `@oiml/schema/templates/database/prisma/{version}/AGENTS.md` and contains:
   - Field type mappings
   - Database client usage
   - Migration patterns
   - TypeScript type generation
   - Common patterns and best practices
 
-- **Other database frameworks**: See `@oiml/schema/templates/database/` for available guides
+- **Other database frameworks**: Use the compatible versioned guide resolved through compatibility checking. Available frameworks are in `@oiml/schema/templates/database/`
 
 ### API Patterns
 
-- **Next.js**: See [@oiml/schema/templates/api/next.md](https://github.com/openintent/oiml/blob/main/packages/schema/templates/api/next.md) for:
+- **Next.js**: Use the compatible versioned guide resolved through the compatibility check process (see "Implementation Workflow" → step 3). The guide will be located at `@oiml/schema/templates/api/next/{version}/AGENTS.md` and contains:
   - Route handler templates
   - HTTP method implementations
   - Response structure patterns
