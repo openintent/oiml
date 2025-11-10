@@ -6,6 +6,7 @@ import (
 	"streamify/ent/album"
 	"streamify/ent/artist"
 	"streamify/ent/schema"
+	"streamify/ent/track"
 	"streamify/ent/user"
 	"time"
 
@@ -44,12 +45,34 @@ func init() {
 	artistDescID := artistFields[0].Descriptor()
 	// artist.DefaultID holds the default value on creation for the id field.
 	artist.DefaultID = artistDescID.Default.(func() uuid.UUID)
+	trackFields := schema.Track{}.Fields()
+	_ = trackFields
+	// trackDescTitle is the schema descriptor for title field.
+	trackDescTitle := trackFields[1].Descriptor()
+	// track.TitleValidator is a validator for the "title" field. It is called by the builders before save.
+	track.TitleValidator = trackDescTitle.Validators[0].(func(string) error)
+	// trackDescCreatedAt is the schema descriptor for created_at field.
+	trackDescCreatedAt := trackFields[3].Descriptor()
+	// track.DefaultCreatedAt holds the default value on creation for the created_at field.
+	track.DefaultCreatedAt = trackDescCreatedAt.Default.(func() time.Time)
+	// trackDescID is the schema descriptor for id field.
+	trackDescID := trackFields[0].Descriptor()
+	// track.DefaultID holds the default value on creation for the id field.
+	track.DefaultID = trackDescID.Default.(func() uuid.UUID)
 	userFields := schema.User{}.Fields()
 	_ = userFields
 	// userDescEmail is the schema descriptor for email field.
 	userDescEmail := userFields[1].Descriptor()
 	// user.EmailValidator is a validator for the "email" field. It is called by the builders before save.
 	user.EmailValidator = userDescEmail.Validators[0].(func(string) error)
+	// userDescFirstName is the schema descriptor for first_name field.
+	userDescFirstName := userFields[2].Descriptor()
+	// user.FirstNameValidator is a validator for the "first_name" field. It is called by the builders before save.
+	user.FirstNameValidator = userDescFirstName.Validators[0].(func(string) error)
+	// userDescLastName is the schema descriptor for last_name field.
+	userDescLastName := userFields[3].Descriptor()
+	// user.LastNameValidator is a validator for the "last_name" field. It is called by the builders before save.
+	user.LastNameValidator = userDescLastName.Validators[0].(func(string) error)
 	// userDescID is the schema descriptor for id field.
 	userDescID := userFields[0].Descriptor()
 	// user.DefaultID holds the default value on creation for the id field.

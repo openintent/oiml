@@ -1,0 +1,11 @@
+version: 0.1.0
+applied_at: 2025-11-10T21:30:00Z
+status: success
+intents_processed: 1
+model: claude-sonnet-4.5
+changes:
+  - file: api/main.go
+    action: modified
+    description: Updated getAlbumByID function to include tracks relation in response by adding WithTracks() eager loading
+errors: []
+

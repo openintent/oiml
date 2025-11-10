@@ -1,0 +1,47 @@
+version: 0.1.0
+ai_context:
+  purpose: Conform to project frameworks, style, and conventions.
+  instructions: |
+    - Read .openintent/AGENTS.md and apply the instructions to the intent.
+  references:
+    - kind: file
+      path: .openintent/AGENTS.md
+provenance:
+  created_by:
+    type: human
+    name: ""
+  created_at: 2025-11-10T21:08:34Z
+intents: 
+  - kind: add_entity
+    scope: data
+    entity: Track
+    fields:
+      - name: id
+        type: uuid
+        required: true
+        default: uuid.New
+      - name: title
+        type: string
+        max_length: 255
+        required: true
+      - name: album_id
+        type: uuid
+        required: true
+          relation:
+            source_entity: Track
+            target_entity: Album
+            kind: many_to_one
+            field_name: album_id
+            foreign_key:
+              local_field: album_id
+              target_field: id
+      - name: created_at
+          type: datetime
+          required: true
+          default: time.Now
+  - kind: add_endpoint
+    scope: api
+    method: GET
+    path: /api/v1/albums/{id}/tracks
+    entity: Track
+    description: Get all tracks for an album

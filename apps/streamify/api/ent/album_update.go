@@ -9,6 +9,7 @@ import (
 	"streamify/ent/album"
 	"streamify/ent/artist"
 	"streamify/ent/predicate"
+	"streamify/ent/track"
 	"time"
 
 	"entgo.io/ent/dialect/sql"
@@ -77,6 +78,21 @@ func (_u *AlbumUpdate) SetArtist(v *Artist) *AlbumUpdate {
 	return _u.SetArtistID(v.ID)
 }
 
+// AddTrackIDs adds the "tracks" edge to the Track entity by IDs.
+func (_u *AlbumUpdate) AddTrackIDs(ids ...uuid.UUID) *AlbumUpdate {
+	_u.mutation.AddTrackIDs(ids...)
+	return _u
+}
+
+// AddTracks adds the "tracks" edges to the Track entity.
+func (_u *AlbumUpdate) AddTracks(v ...*Track) *AlbumUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddTrackIDs(ids...)
+}
+
 // Mutation returns the AlbumMutation object of the builder.
 func (_u *AlbumUpdate) Mutation() *AlbumMutation {
 	return _u.mutation
@@ -86,6 +102,27 @@ func (_u *AlbumUpdate) Mutation() *AlbumMutation {
 func (_u *AlbumUpdate) ClearArtist() *AlbumUpdate {
 	_u.mutation.ClearArtist()
 	return _u
+}
+
+// ClearTracks clears all "tracks" edges to the Track entity.
+func (_u *AlbumUpdate) ClearTracks() *AlbumUpdate {
+	_u.mutation.ClearTracks()
+	return _u
+}
+
+// RemoveTrackIDs removes the "tracks" edge to Track entities by IDs.
+func (_u *AlbumUpdate) RemoveTrackIDs(ids ...uuid.UUID) *AlbumUpdate {
+	_u.mutation.RemoveTrackIDs(ids...)
+	return _u
+}
+
+// RemoveTracks removes "tracks" edges to Track entities.
+func (_u *AlbumUpdate) RemoveTracks(v ...*Track) *AlbumUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveTrackIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -175,6 +212,51 @@ func (_u *AlbumUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.TracksCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   album.TracksTable,
+			Columns: []string{album.TracksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(track.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedTracksIDs(); len(nodes) > 0 && !_u.mutation.TracksCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   album.TracksTable,
+			Columns: []string{album.TracksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(track.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.TracksIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   album.TracksTable,
+			Columns: []string{album.TracksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(track.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{album.Label}
@@ -242,6 +324,21 @@ func (_u *AlbumUpdateOne) SetArtist(v *Artist) *AlbumUpdateOne {
 	return _u.SetArtistID(v.ID)
 }
 
+// AddTrackIDs adds the "tracks" edge to the Track entity by IDs.
+func (_u *AlbumUpdateOne) AddTrackIDs(ids ...uuid.UUID) *AlbumUpdateOne {
+	_u.mutation.AddTrackIDs(ids...)
+	return _u
+}
+
+// AddTracks adds the "tracks" edges to the Track entity.
+func (_u *AlbumUpdateOne) AddTracks(v ...*Track) *AlbumUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddTrackIDs(ids...)
+}
+
 // Mutation returns the AlbumMutation object of the builder.
 func (_u *AlbumUpdateOne) Mutation() *AlbumMutation {
 	return _u.mutation
@@ -251,6 +348,27 @@ func (_u *AlbumUpdateOne) Mutation() *AlbumMutation {
 func (_u *AlbumUpdateOne) ClearArtist() *AlbumUpdateOne {
 	_u.mutation.ClearArtist()
 	return _u
+}
+
+// ClearTracks clears all "tracks" edges to the Track entity.
+func (_u *AlbumUpdateOne) ClearTracks() *AlbumUpdateOne {
+	_u.mutation.ClearTracks()
+	return _u
+}
+
+// RemoveTrackIDs removes the "tracks" edge to Track entities by IDs.
+func (_u *AlbumUpdateOne) RemoveTrackIDs(ids ...uuid.UUID) *AlbumUpdateOne {
+	_u.mutation.RemoveTrackIDs(ids...)
+	return _u
+}
+
+// RemoveTracks removes "tracks" edges to Track entities.
+func (_u *AlbumUpdateOne) RemoveTracks(v ...*Track) *AlbumUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveTrackIDs(ids...)
 }
 
 // Where appends a list predicates to the AlbumUpdate builder.
@@ -363,6 +481,51 @@ func (_u *AlbumUpdateOne) sqlSave(ctx context.Context) (_node *Album, err error)
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(artist.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.TracksCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   album.TracksTable,
+			Columns: []string{album.TracksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(track.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedTracksIDs(); len(nodes) > 0 && !_u.mutation.TracksCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   album.TracksTable,
+			Columns: []string{album.TracksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(track.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.TracksIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   album.TracksTable,
+			Columns: []string{album.TracksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(track.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

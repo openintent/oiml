@@ -16,6 +16,8 @@ type Tx struct {
 	Album *AlbumClient
 	// Artist is the client for interacting with the Artist builders.
 	Artist *ArtistClient
+	// Track is the client for interacting with the Track builders.
+	Track *TrackClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
 
@@ -151,6 +153,7 @@ func (tx *Tx) Client() *Client {
 func (tx *Tx) init() {
 	tx.Album = NewAlbumClient(tx.config)
 	tx.Artist = NewArtistClient(tx.config)
+	tx.Track = NewTrackClient(tx.config)
 	tx.User = NewUserClient(tx.config)
 }
 

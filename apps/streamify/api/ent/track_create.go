@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"streamify/ent/album"
-	"streamify/ent/artist"
 	"streamify/ent/track"
 	"time"
 
@@ -16,33 +15,33 @@ import (
 	"github.com/google/uuid"
 )
 
-// AlbumCreate is the builder for creating a Album entity.
-type AlbumCreate struct {
+// TrackCreate is the builder for creating a Track entity.
+type TrackCreate struct {
 	config
-	mutation *AlbumMutation
+	mutation *TrackMutation
 	hooks    []Hook
 }
 
 // SetTitle sets the "title" field.
-func (_c *AlbumCreate) SetTitle(v string) *AlbumCreate {
+func (_c *TrackCreate) SetTitle(v string) *TrackCreate {
 	_c.mutation.SetTitle(v)
 	return _c
 }
 
-// SetArtistID sets the "artist_id" field.
-func (_c *AlbumCreate) SetArtistID(v uuid.UUID) *AlbumCreate {
-	_c.mutation.SetArtistID(v)
+// SetAlbumID sets the "album_id" field.
+func (_c *TrackCreate) SetAlbumID(v uuid.UUID) *TrackCreate {
+	_c.mutation.SetAlbumID(v)
 	return _c
 }
 
 // SetCreatedAt sets the "created_at" field.
-func (_c *AlbumCreate) SetCreatedAt(v time.Time) *AlbumCreate {
+func (_c *TrackCreate) SetCreatedAt(v time.Time) *TrackCreate {
 	_c.mutation.SetCreatedAt(v)
 	return _c
 }
 
 // SetNillableCreatedAt sets the "created_at" field if the given value is not nil.
-func (_c *AlbumCreate) SetNillableCreatedAt(v *time.Time) *AlbumCreate {
+func (_c *TrackCreate) SetNillableCreatedAt(v *time.Time) *TrackCreate {
 	if v != nil {
 		_c.SetCreatedAt(*v)
 	}
@@ -50,52 +49,37 @@ func (_c *AlbumCreate) SetNillableCreatedAt(v *time.Time) *AlbumCreate {
 }
 
 // SetID sets the "id" field.
-func (_c *AlbumCreate) SetID(v uuid.UUID) *AlbumCreate {
+func (_c *TrackCreate) SetID(v uuid.UUID) *TrackCreate {
 	_c.mutation.SetID(v)
 	return _c
 }
 
 // SetNillableID sets the "id" field if the given value is not nil.
-func (_c *AlbumCreate) SetNillableID(v *uuid.UUID) *AlbumCreate {
+func (_c *TrackCreate) SetNillableID(v *uuid.UUID) *TrackCreate {
 	if v != nil {
 		_c.SetID(*v)
 	}
 	return _c
 }
 
-// SetArtist sets the "artist" edge to the Artist entity.
-func (_c *AlbumCreate) SetArtist(v *Artist) *AlbumCreate {
-	return _c.SetArtistID(v.ID)
+// SetAlbum sets the "album" edge to the Album entity.
+func (_c *TrackCreate) SetAlbum(v *Album) *TrackCreate {
+	return _c.SetAlbumID(v.ID)
 }
 
-// AddTrackIDs adds the "tracks" edge to the Track entity by IDs.
-func (_c *AlbumCreate) AddTrackIDs(ids ...uuid.UUID) *AlbumCreate {
-	_c.mutation.AddTrackIDs(ids...)
-	return _c
-}
-
-// AddTracks adds the "tracks" edges to the Track entity.
-func (_c *AlbumCreate) AddTracks(v ...*Track) *AlbumCreate {
-	ids := make([]uuid.UUID, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _c.AddTrackIDs(ids...)
-}
-
-// Mutation returns the AlbumMutation object of the builder.
-func (_c *AlbumCreate) Mutation() *AlbumMutation {
+// Mutation returns the TrackMutation object of the builder.
+func (_c *TrackCreate) Mutation() *TrackMutation {
 	return _c.mutation
 }
 
-// Save creates the Album in the database.
-func (_c *AlbumCreate) Save(ctx context.Context) (*Album, error) {
+// Save creates the Track in the database.
+func (_c *TrackCreate) Save(ctx context.Context) (*Track, error) {
 	_c.defaults()
 	return withHooks(ctx, _c.sqlSave, _c.mutation, _c.hooks)
 }
 
 // SaveX calls Save and panics if Save returns an error.
-func (_c *AlbumCreate) SaveX(ctx context.Context) *Album {
+func (_c *TrackCreate) SaveX(ctx context.Context) *Track {
 	v, err := _c.Save(ctx)
 	if err != nil {
 		panic(err)
@@ -104,53 +88,53 @@ func (_c *AlbumCreate) SaveX(ctx context.Context) *Album {
 }
 
 // Exec executes the query.
-func (_c *AlbumCreate) Exec(ctx context.Context) error {
+func (_c *TrackCreate) Exec(ctx context.Context) error {
 	_, err := _c.Save(ctx)
 	return err
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (_c *AlbumCreate) ExecX(ctx context.Context) {
+func (_c *TrackCreate) ExecX(ctx context.Context) {
 	if err := _c.Exec(ctx); err != nil {
 		panic(err)
 	}
 }
 
 // defaults sets the default values of the builder before save.
-func (_c *AlbumCreate) defaults() {
+func (_c *TrackCreate) defaults() {
 	if _, ok := _c.mutation.CreatedAt(); !ok {
-		v := album.DefaultCreatedAt()
+		v := track.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
 	}
 	if _, ok := _c.mutation.ID(); !ok {
-		v := album.DefaultID()
+		v := track.DefaultID()
 		_c.mutation.SetID(v)
 	}
 }
 
 // check runs all checks and user-defined validators on the builder.
-func (_c *AlbumCreate) check() error {
+func (_c *TrackCreate) check() error {
 	if _, ok := _c.mutation.Title(); !ok {
-		return &ValidationError{Name: "title", err: errors.New(`ent: missing required field "Album.title"`)}
+		return &ValidationError{Name: "title", err: errors.New(`ent: missing required field "Track.title"`)}
 	}
 	if v, ok := _c.mutation.Title(); ok {
-		if err := album.TitleValidator(v); err != nil {
-			return &ValidationError{Name: "title", err: fmt.Errorf(`ent: validator failed for field "Album.title": %w`, err)}
+		if err := track.TitleValidator(v); err != nil {
+			return &ValidationError{Name: "title", err: fmt.Errorf(`ent: validator failed for field "Track.title": %w`, err)}
 		}
 	}
-	if _, ok := _c.mutation.ArtistID(); !ok {
-		return &ValidationError{Name: "artist_id", err: errors.New(`ent: missing required field "Album.artist_id"`)}
+	if _, ok := _c.mutation.AlbumID(); !ok {
+		return &ValidationError{Name: "album_id", err: errors.New(`ent: missing required field "Track.album_id"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
-		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "Album.created_at"`)}
+		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "Track.created_at"`)}
 	}
-	if len(_c.mutation.ArtistIDs()) == 0 {
-		return &ValidationError{Name: "artist", err: errors.New(`ent: missing required edge "Album.artist"`)}
+	if len(_c.mutation.AlbumIDs()) == 0 {
+		return &ValidationError{Name: "album", err: errors.New(`ent: missing required edge "Track.album"`)}
 	}
 	return nil
 }
 
-func (_c *AlbumCreate) sqlSave(ctx context.Context) (*Album, error) {
+func (_c *TrackCreate) sqlSave(ctx context.Context) (*Track, error) {
 	if err := _c.check(); err != nil {
 		return nil, err
 	}
@@ -173,80 +157,64 @@ func (_c *AlbumCreate) sqlSave(ctx context.Context) (*Album, error) {
 	return _node, nil
 }
 
-func (_c *AlbumCreate) createSpec() (*Album, *sqlgraph.CreateSpec) {
+func (_c *TrackCreate) createSpec() (*Track, *sqlgraph.CreateSpec) {
 	var (
-		_node = &Album{config: _c.config}
-		_spec = sqlgraph.NewCreateSpec(album.Table, sqlgraph.NewFieldSpec(album.FieldID, field.TypeUUID))
+		_node = &Track{config: _c.config}
+		_spec = sqlgraph.NewCreateSpec(track.Table, sqlgraph.NewFieldSpec(track.FieldID, field.TypeUUID))
 	)
 	if id, ok := _c.mutation.ID(); ok {
 		_node.ID = id
 		_spec.ID.Value = &id
 	}
 	if value, ok := _c.mutation.Title(); ok {
-		_spec.SetField(album.FieldTitle, field.TypeString, value)
+		_spec.SetField(track.FieldTitle, field.TypeString, value)
 		_node.Title = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
-		_spec.SetField(album.FieldCreatedAt, field.TypeTime, value)
+		_spec.SetField(track.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
 	}
-	if nodes := _c.mutation.ArtistIDs(); len(nodes) > 0 {
+	if nodes := _c.mutation.AlbumIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.M2O,
 			Inverse: false,
-			Table:   album.ArtistTable,
-			Columns: []string{album.ArtistColumn},
+			Table:   track.AlbumTable,
+			Columns: []string{track.AlbumColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(artist.FieldID, field.TypeUUID),
+				IDSpec: sqlgraph.NewFieldSpec(album.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
-		_node.ArtistID = nodes[0]
-		_spec.Edges = append(_spec.Edges, edge)
-	}
-	if nodes := _c.mutation.TracksIDs(); len(nodes) > 0 {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: true,
-			Table:   album.TracksTable,
-			Columns: []string{album.TracksColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(track.FieldID, field.TypeUUID),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
+		_node.AlbumID = nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec
 }
 
-// AlbumCreateBulk is the builder for creating many Album entities in bulk.
-type AlbumCreateBulk struct {
+// TrackCreateBulk is the builder for creating many Track entities in bulk.
+type TrackCreateBulk struct {
 	config
 	err      error
-	builders []*AlbumCreate
+	builders []*TrackCreate
 }
 
-// Save creates the Album entities in the database.
-func (_c *AlbumCreateBulk) Save(ctx context.Context) ([]*Album, error) {
+// Save creates the Track entities in the database.
+func (_c *TrackCreateBulk) Save(ctx context.Context) ([]*Track, error) {
 	if _c.err != nil {
 		return nil, _c.err
 	}
 	specs := make([]*sqlgraph.CreateSpec, len(_c.builders))
-	nodes := make([]*Album, len(_c.builders))
+	nodes := make([]*Track, len(_c.builders))
 	mutators := make([]Mutator, len(_c.builders))
 	for i := range _c.builders {
 		func(i int, root context.Context) {
 			builder := _c.builders[i]
 			builder.defaults()
 			var mut Mutator = MutateFunc(func(ctx context.Context, m Mutation) (Value, error) {
-				mutation, ok := m.(*AlbumMutation)
+				mutation, ok := m.(*TrackMutation)
 				if !ok {
 					return nil, fmt.Errorf("unexpected mutation type %T", m)
 				}
@@ -289,7 +257,7 @@ func (_c *AlbumCreateBulk) Save(ctx context.Context) ([]*Album, error) {
 }
 
 // SaveX is like Save, but panics if an error occurs.
-func (_c *AlbumCreateBulk) SaveX(ctx context.Context) []*Album {
+func (_c *TrackCreateBulk) SaveX(ctx context.Context) []*Track {
 	v, err := _c.Save(ctx)
 	if err != nil {
 		panic(err)
@@ -298,13 +266,13 @@ func (_c *AlbumCreateBulk) SaveX(ctx context.Context) []*Album {
 }
 
 // Exec executes the query.
-func (_c *AlbumCreateBulk) Exec(ctx context.Context) error {
+func (_c *TrackCreateBulk) Exec(ctx context.Context) error {
 	_, err := _c.Save(ctx)
 	return err
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (_c *AlbumCreateBulk) ExecX(ctx context.Context) {
+func (_c *TrackCreateBulk) ExecX(ctx context.Context) {
 	if err := _c.Exec(ctx); err != nil {
 		panic(err)
 	}

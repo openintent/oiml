@@ -3,10 +3,10 @@ package schema
 import (
 	"time"
 
-	"github.com/google/uuid"
 	"entgo.io/ent"
 	"entgo.io/ent/schema/edge"
 	"entgo.io/ent/schema/field"
+	"github.com/google/uuid"
 )
 
 // Artist holds the schema definition for the Artist entity.
@@ -21,7 +21,12 @@ func (Artist) Fields() []ent.Field {
 			Default(uuid.New).
 			Unique(),
 		field.String("name").
-			MaxLen(255),
+			MaxLen(255).
+			SchemaType(map[string]string{
+				"postgres": "varchar(255)",
+				"mysql":    "varchar(255)",
+				"sqlite3":  "varchar(255)",
+			}),
 		field.Time("created_at").
 			Default(time.Now),
 	}
@@ -34,4 +39,3 @@ func (Artist) Edges() []ent.Edge {
 			Ref("artist"),
 	}
 }
-

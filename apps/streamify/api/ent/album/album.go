@@ -23,6 +23,8 @@ const (
 	FieldCreatedAt = "created_at"
 	// EdgeArtist holds the string denoting the artist edge name in mutations.
 	EdgeArtist = "artist"
+	// EdgeTracks holds the string denoting the tracks edge name in mutations.
+	EdgeTracks = "tracks"
 	// Table holds the table name of the album in the database.
 	Table = "albums"
 	// ArtistTable is the table that holds the artist relation/edge.
@@ -32,6 +34,13 @@ const (
 	ArtistInverseTable = "artists"
 	// ArtistColumn is the table column denoting the artist relation/edge.
 	ArtistColumn = "artist_id"
+	// TracksTable is the table that holds the tracks relation/edge.
+	TracksTable = "tracks"
+	// TracksInverseTable is the table name for the Track entity.
+	// It exists in this package in order to avoid circular dependency with the "track" package.
+	TracksInverseTable = "tracks"
+	// TracksColumn is the table column denoting the tracks relation/edge.
+	TracksColumn = "album_id"
 )
 
 // Columns holds all SQL columns for album fields.
@@ -90,10 +99,31 @@ func ByArtistField(field string, opts ...sql.OrderTermOption) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newArtistStep(), sql.OrderByField(field, opts...))
 	}
 }
+
+// ByTracksCount orders the results by tracks count.
+func ByTracksCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newTracksStep(), opts...)
+	}
+}
+
+// ByTracks orders the results by tracks terms.
+func ByTracks(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newTracksStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 func newArtistStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(ArtistInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2O, false, ArtistTable, ArtistColumn),
+	)
+}
+func newTracksStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(TracksInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, true, TracksTable, TracksColumn),
 	)
 }

@@ -45,12 +45,17 @@ func main() {
 
 		// Artist endpoints
 		api.GET("/artists", getArtists(client))
+		api.GET("/artists/:id", getArtistByID(client))
 		api.POST("/artists", createArtist(client))
 		api.GET("/artists/:id/albums", getArtistAlbums(client))
 
 		// Album endpoints
 		api.GET("/albums/:id", getAlbumByID(client))
 		api.POST("/albums", createAlbum(client))
+		api.GET("/albums/:id/tracks", getAlbumTracks(client))
+
+		// Track endpoints
+		api.POST("/tracks", createTrack(client))
 	}
 
 	// User endpoints (non-versioned)
@@ -100,11 +105,13 @@ func getUserByID(client *ent.Client) gin.HandlerFunc {
 	}
 }
 
-// createUser creates a new user with email from request body
+// createUser creates a new user with email and optional first_name/last_name from request body
 func createUser(client *ent.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var body struct {
-			Email string `json:"email" binding:"required"`
+			Email     string  `json:"email" binding:"required"`
+			FirstName *string `json:"first_name"`
+			LastName  *string `json:"last_name"`
 		}
 
 		if err := c.ShouldBindJSON(&body); err != nil {
@@ -112,9 +119,15 @@ func createUser(client *ent.Client) gin.HandlerFunc {
 			return
 		}
 
-		u, err := client.User.Create().
-			SetEmail(body.Email).
-			Save(context.Background())
+		create := client.User.Create().SetEmail(body.Email)
+		if body.FirstName != nil {
+			create = create.SetFirstName(*body.FirstName)
+		}
+		if body.LastName != nil {
+			create = create.SetLastName(*body.LastName)
+		}
+
+		u, err := create.Save(context.Background())
 		if err != nil {
 			// Check for unique constraint violation
 			if ent.IsConstraintError(err) {
@@ -129,11 +142,13 @@ func createUser(client *ent.Client) gin.HandlerFunc {
 	}
 }
 
-// createUserWithBody creates a new user with email from request body
+// createUserWithBody creates a new user with email and optional first_name/last_name from request body
 func createUserWithBody(client *ent.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var body struct {
-			Email string `json:"email" binding:"required"`
+			Email     string  `json:"email" binding:"required"`
+			FirstName *string `json:"first_name"`
+			LastName  *string `json:"last_name"`
 		}
 
 		if err := c.ShouldBindJSON(&body); err != nil {
@@ -141,9 +156,15 @@ func createUserWithBody(client *ent.Client) gin.HandlerFunc {
 			return
 		}
 
-		u, err := client.User.Create().
-			SetEmail(body.Email).
-			Save(context.Background())
+		create := client.User.Create().SetEmail(body.Email)
+		if body.FirstName != nil {
+			create = create.SetFirstName(*body.FirstName)
+		}
+		if body.LastName != nil {
+			create = create.SetLastName(*body.LastName)
+		}
+
+		u, err := create.Save(context.Background())
 		if err != nil {
 			// Check for unique constraint violation
 			if ent.IsConstraintError(err) {
@@ -180,15 +201,43 @@ func deleteUser(client *ent.Client) gin.HandlerFunc {
 	}
 }
 
-// getArtists returns all artists
+// getArtists returns all artists with their associated albums
 func getArtists(client *ent.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		artists, err := client.Artist.Query().All(context.Background())
+		// Use WithAlbums() to eager load the albums relation
+		artists, err := client.Artist.Query().
+			WithAlbums(). // Eager load albums relation
+			All(context.Background())
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(http.StatusOK, artists)
+		c.JSON(http.StatusOK, artists) // Albums are included in each artist
+	}
+}
+
+// getArtistByID returns an artist by ID
+func getArtistByID(client *ent.Client) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		idStr := c.Param("id")
+		id, err := uuid.Parse(idStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid artist ID"})
+			return
+		}
+		a, err := client.Artist.Query().
+			Where(artist.IDEQ(id)).
+			WithAlbums(). // Eager load albums relation
+			Only(context.Background())
+		if err != nil {
+			if ent.IsNotFound(err) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "artist not found"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, a)
 	}
 }
 
@@ -216,7 +265,7 @@ func createArtist(client *ent.Client) gin.HandlerFunc {
 	}
 }
 
-// getAlbumByID returns an album by ID
+// getAlbumByID returns an album by ID with associated tracks
 func getAlbumByID(client *ent.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		idStr := c.Param("id")
@@ -227,7 +276,8 @@ func getAlbumByID(client *ent.Client) gin.HandlerFunc {
 		}
 		a, err := client.Album.Query().
 			Where(album.IDEQ(id)).
-			WithArtist().
+			WithArtist(). // Eager load artist relation
+			WithTracks(). // Eager load tracks relation
 			Only(context.Background())
 		if err != nil {
 			if ent.IsNotFound(err) {
@@ -275,6 +325,33 @@ func getArtistAlbums(client *ent.Client) gin.HandlerFunc {
 	}
 }
 
+// getAlbumTracks returns an album with its associated tracks
+func getAlbumTracks(client *ent.Client) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		idStr := c.Param("id")
+		albumID, err := uuid.Parse(idStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid album ID"})
+			return
+		}
+
+		// Use WithTracks() to eager load the tracks relation
+		a, err := client.Album.Query().
+			Where(album.IDEQ(albumID)).
+			WithTracks(). // Eager load tracks relation
+			Only(context.Background())
+		if err != nil {
+			if ent.IsNotFound(err) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "album not found"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, a) // Tracks are included in the album object
+	}
+}
+
 // createAlbum creates a new album with title and artist_id from request body
 func createAlbum(client *ent.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -317,5 +394,50 @@ func createAlbum(client *ent.Client) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusCreated, a)
+	}
+}
+
+// createTrack creates a new track with title and album_id from request body
+func createTrack(client *ent.Client) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var body struct {
+			Title   string `json:"title" binding:"required"`
+			AlbumID string `json:"album_id" binding:"required"`
+		}
+
+		if err := c.ShouldBindJSON(&body); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		albumID, err := uuid.Parse(body.AlbumID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid album_id format"})
+			return
+		}
+
+		// Verify album exists
+		_, err = client.Album.Query().
+			Where(album.IDEQ(albumID)).
+			Only(context.Background())
+		if err != nil {
+			if ent.IsNotFound(err) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "album not found"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		t, err := client.Track.Create().
+			SetTitle(body.Title).
+			SetAlbumID(albumID).
+			Save(context.Background())
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusCreated, t)
 	}
 }

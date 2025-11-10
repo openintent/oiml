@@ -12,5 +12,8 @@ type Album func(*sql.Selector)
 // Artist is the predicate function for artist builders.
 type Artist func(*sql.Selector)
 
+// Track is the predicate function for track builders.
+type Track func(*sql.Selector)
+
 // User is the predicate function for user builders.
 type User func(*sql.Selector)

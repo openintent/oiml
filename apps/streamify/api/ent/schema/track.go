@@ -9,13 +9,13 @@ import (
 	"github.com/google/uuid"
 )
 
-// Album holds the schema definition for the Album entity.
-type Album struct {
+// Track holds the schema definition for the Track entity.
+type Track struct {
 	ent.Schema
 }
 
-// Fields of the Album.
-func (Album) Fields() []ent.Field {
+// Fields of the Track.
+func (Track) Fields() []ent.Field {
 	return []ent.Field{
 		field.UUID("id", uuid.UUID{}).
 			Default(uuid.New).
@@ -27,20 +27,19 @@ func (Album) Fields() []ent.Field {
 				"mysql":    "varchar(255)",
 				"sqlite3":  "varchar(255)",
 			}),
-		field.UUID("artist_id", uuid.UUID{}),
+		field.UUID("album_id", uuid.UUID{}),
 		field.Time("created_at").
 			Default(time.Now),
 	}
 }
 
-// Edges of the Album.
-func (Album) Edges() []ent.Edge {
+// Edges of the Track.
+func (Track) Edges() []ent.Edge {
 	return []ent.Edge{
-		edge.To("artist", Artist.Type).
+		edge.To("album", Album.Type).
 			Unique().
 			Required().
-			Field("artist_id"),
-		edge.From("tracks", Track.Type).
-			Ref("album"),
+			Field("album_id"),
 	}
 }
+

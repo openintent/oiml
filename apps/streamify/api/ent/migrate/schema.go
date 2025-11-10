@@ -11,7 +11,7 @@ var (
 	// AlbumsColumns holds the columns for the "albums" table.
 	AlbumsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID, Unique: true},
-		{Name: "title", Type: field.TypeString, Size: 255},
+		{Name: "title", Type: field.TypeString, Size: 255, SchemaType: map[string]string{"mysql": "varchar(255)", "postgres": "varchar(255)", "sqlite3": "varchar(255)"}},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "artist_id", Type: field.TypeUUID},
 	}
@@ -32,7 +32,7 @@ var (
 	// ArtistsColumns holds the columns for the "artists" table.
 	ArtistsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID, Unique: true},
-		{Name: "name", Type: field.TypeString, Size: 255},
+		{Name: "name", Type: field.TypeString, Size: 255, SchemaType: map[string]string{"mysql": "varchar(255)", "postgres": "varchar(255)", "sqlite3": "varchar(255)"}},
 		{Name: "created_at", Type: field.TypeTime},
 	}
 	// ArtistsTable holds the schema information for the "artists" table.
@@ -41,10 +41,33 @@ var (
 		Columns:    ArtistsColumns,
 		PrimaryKey: []*schema.Column{ArtistsColumns[0]},
 	}
+	// TracksColumns holds the columns for the "tracks" table.
+	TracksColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID, Unique: true},
+		{Name: "title", Type: field.TypeString, Size: 255, SchemaType: map[string]string{"mysql": "varchar(255)", "postgres": "varchar(255)", "sqlite3": "varchar(255)"}},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "album_id", Type: field.TypeUUID},
+	}
+	// TracksTable holds the schema information for the "tracks" table.
+	TracksTable = &schema.Table{
+		Name:       "tracks",
+		Columns:    TracksColumns,
+		PrimaryKey: []*schema.Column{TracksColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "tracks_albums_album",
+				Columns:    []*schema.Column{TracksColumns[3]},
+				RefColumns: []*schema.Column{AlbumsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+	}
 	// UsersColumns holds the columns for the "users" table.
 	UsersColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID, Unique: true},
-		{Name: "email", Type: field.TypeString, Unique: true, Size: 255},
+		{Name: "email", Type: field.TypeString, Unique: true, Size: 255, SchemaType: map[string]string{"mysql": "varchar(255)", "postgres": "varchar(255)", "sqlite3": "varchar(255)"}},
+		{Name: "first_name", Type: field.TypeString, Nullable: true, Size: 255, SchemaType: map[string]string{"mysql": "varchar(255)", "postgres": "varchar(255)", "sqlite3": "varchar(255)"}},
+		{Name: "last_name", Type: field.TypeString, Nullable: true, Size: 255, SchemaType: map[string]string{"mysql": "varchar(255)", "postgres": "varchar(255)", "sqlite3": "varchar(255)"}},
 	}
 	// UsersTable holds the schema information for the "users" table.
 	UsersTable = &schema.Table{
@@ -56,10 +79,12 @@ var (
 	Tables = []*schema.Table{
 		AlbumsTable,
 		ArtistsTable,
+		TracksTable,
 		UsersTable,
 	}
 )
 
 func init() {
 	AlbumsTable.ForeignKeys[0].RefTable = ArtistsTable
+	TracksTable.ForeignKeys[0].RefTable = AlbumsTable
 }

@@ -1,9 +1,9 @@
 package schema
 
 import (
-	"github.com/google/uuid"
 	"entgo.io/ent"
 	"entgo.io/ent/schema/field"
+	"github.com/google/uuid"
 )
 
 // User holds the schema definition for the User entity.
@@ -19,7 +19,28 @@ func (User) Fields() []ent.Field {
 			Unique(),
 		field.String("email").
 			MaxLen(255).
+			SchemaType(map[string]string{
+				"postgres": "varchar(255)",
+				"mysql":    "varchar(255)",
+				"sqlite3":  "varchar(255)",
+			}).
 			Unique(),
+		field.String("first_name").
+			MaxLen(255).
+			SchemaType(map[string]string{
+				"postgres": "varchar(255)",
+				"mysql":    "varchar(255)",
+				"sqlite3":  "varchar(255)",
+			}).
+			Optional(),
+		field.String("last_name").
+			MaxLen(255).
+			SchemaType(map[string]string{
+				"postgres": "varchar(255)",
+				"mysql":    "varchar(255)",
+				"sqlite3":  "varchar(255)",
+			}).
+			Optional(),
 	}
 }
 

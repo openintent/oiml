@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"streamify/ent/album"
 	"streamify/ent/artist"
+	"streamify/ent/track"
 	"streamify/ent/user"
 	"sync"
 
@@ -77,6 +78,7 @@ func checkColumn(t, c string) error {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
 			album.Table:  album.ValidColumn,
 			artist.Table: artist.ValidColumn,
+			track.Table:  track.ValidColumn,
 			user.Table:   user.ValidColumn,
 		})
 	})

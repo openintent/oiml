@@ -5,7 +5,7 @@ package ent
 import (
 	"fmt"
 	"streamify/ent/album"
-	"streamify/ent/artist"
+	"streamify/ent/track"
 	"strings"
 	"time"
 
@@ -14,64 +14,53 @@ import (
 	"github.com/google/uuid"
 )
 
-// Album is the model entity for the Album schema.
-type Album struct {
+// Track is the model entity for the Track schema.
+type Track struct {
 	config `json:"-"`
 	// ID of the ent.
 	ID uuid.UUID `json:"id,omitempty"`
 	// Title holds the value of the "title" field.
 	Title string `json:"title,omitempty"`
-	// ArtistID holds the value of the "artist_id" field.
-	ArtistID uuid.UUID `json:"artist_id,omitempty"`
+	// AlbumID holds the value of the "album_id" field.
+	AlbumID uuid.UUID `json:"album_id,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
-	// The values are being populated by the AlbumQuery when eager-loading is set.
-	Edges        AlbumEdges `json:"edges"`
+	// The values are being populated by the TrackQuery when eager-loading is set.
+	Edges        TrackEdges `json:"edges"`
 	selectValues sql.SelectValues
 }
 
-// AlbumEdges holds the relations/edges for other nodes in the graph.
-type AlbumEdges struct {
-	// Artist holds the value of the artist edge.
-	Artist *Artist `json:"artist,omitempty"`
-	// Tracks holds the value of the tracks edge.
-	Tracks []*Track `json:"tracks,omitempty"`
+// TrackEdges holds the relations/edges for other nodes in the graph.
+type TrackEdges struct {
+	// Album holds the value of the album edge.
+	Album *Album `json:"album,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [2]bool
+	loadedTypes [1]bool
 }
 
-// ArtistOrErr returns the Artist value or an error if the edge
+// AlbumOrErr returns the Album value or an error if the edge
 // was not loaded in eager-loading, or loaded but was not found.
-func (e AlbumEdges) ArtistOrErr() (*Artist, error) {
-	if e.Artist != nil {
-		return e.Artist, nil
+func (e TrackEdges) AlbumOrErr() (*Album, error) {
+	if e.Album != nil {
+		return e.Album, nil
 	} else if e.loadedTypes[0] {
-		return nil, &NotFoundError{label: artist.Label}
+		return nil, &NotFoundError{label: album.Label}
 	}
-	return nil, &NotLoadedError{edge: "artist"}
-}
-
-// TracksOrErr returns the Tracks value or an error if the edge
-// was not loaded in eager-loading.
-func (e AlbumEdges) TracksOrErr() ([]*Track, error) {
-	if e.loadedTypes[1] {
-		return e.Tracks, nil
-	}
-	return nil, &NotLoadedError{edge: "tracks"}
+	return nil, &NotLoadedError{edge: "album"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
-func (*Album) scanValues(columns []string) ([]any, error) {
+func (*Track) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case album.FieldTitle:
+		case track.FieldTitle:
 			values[i] = new(sql.NullString)
-		case album.FieldCreatedAt:
+		case track.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
-		case album.FieldID, album.FieldArtistID:
+		case track.FieldID, track.FieldAlbumID:
 			values[i] = new(uuid.UUID)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -81,32 +70,32 @@ func (*Album) scanValues(columns []string) ([]any, error) {
 }
 
 // assignValues assigns the values that were returned from sql.Rows (after scanning)
-// to the Album fields.
-func (_m *Album) assignValues(columns []string, values []any) error {
+// to the Track fields.
+func (_m *Track) assignValues(columns []string, values []any) error {
 	if m, n := len(values), len(columns); m < n {
 		return fmt.Errorf("mismatch number of scan values: %d != %d", m, n)
 	}
 	for i := range columns {
 		switch columns[i] {
-		case album.FieldID:
+		case track.FieldID:
 			if value, ok := values[i].(*uuid.UUID); !ok {
 				return fmt.Errorf("unexpected type %T for field id", values[i])
 			} else if value != nil {
 				_m.ID = *value
 			}
-		case album.FieldTitle:
+		case track.FieldTitle:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field title", values[i])
 			} else if value.Valid {
 				_m.Title = value.String
 			}
-		case album.FieldArtistID:
+		case track.FieldAlbumID:
 			if value, ok := values[i].(*uuid.UUID); !ok {
-				return fmt.Errorf("unexpected type %T for field artist_id", values[i])
+				return fmt.Errorf("unexpected type %T for field album_id", values[i])
 			} else if value != nil {
-				_m.ArtistID = *value
+				_m.AlbumID = *value
 			}
-		case album.FieldCreatedAt:
+		case track.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
 			} else if value.Valid {
@@ -119,50 +108,45 @@ func (_m *Album) assignValues(columns []string, values []any) error {
 	return nil
 }
 
-// Value returns the ent.Value that was dynamically selected and assigned to the Album.
+// Value returns the ent.Value that was dynamically selected and assigned to the Track.
 // This includes values selected through modifiers, order, etc.
-func (_m *Album) Value(name string) (ent.Value, error) {
+func (_m *Track) Value(name string) (ent.Value, error) {
 	return _m.selectValues.Get(name)
 }
 
-// QueryArtist queries the "artist" edge of the Album entity.
-func (_m *Album) QueryArtist() *ArtistQuery {
-	return NewAlbumClient(_m.config).QueryArtist(_m)
+// QueryAlbum queries the "album" edge of the Track entity.
+func (_m *Track) QueryAlbum() *AlbumQuery {
+	return NewTrackClient(_m.config).QueryAlbum(_m)
 }
 
-// QueryTracks queries the "tracks" edge of the Album entity.
-func (_m *Album) QueryTracks() *TrackQuery {
-	return NewAlbumClient(_m.config).QueryTracks(_m)
-}
-
-// Update returns a builder for updating this Album.
-// Note that you need to call Album.Unwrap() before calling this method if this Album
+// Update returns a builder for updating this Track.
+// Note that you need to call Track.Unwrap() before calling this method if this Track
 // was returned from a transaction, and the transaction was committed or rolled back.
-func (_m *Album) Update() *AlbumUpdateOne {
-	return NewAlbumClient(_m.config).UpdateOne(_m)
+func (_m *Track) Update() *TrackUpdateOne {
+	return NewTrackClient(_m.config).UpdateOne(_m)
 }
 
-// Unwrap unwraps the Album entity that was returned from a transaction after it was closed,
+// Unwrap unwraps the Track entity that was returned from a transaction after it was closed,
 // so that all future queries will be executed through the driver which created the transaction.
-func (_m *Album) Unwrap() *Album {
+func (_m *Track) Unwrap() *Track {
 	_tx, ok := _m.config.driver.(*txDriver)
 	if !ok {
-		panic("ent: Album is not a transactional entity")
+		panic("ent: Track is not a transactional entity")
 	}
 	_m.config.driver = _tx.drv
 	return _m
 }
 
 // String implements the fmt.Stringer.
-func (_m *Album) String() string {
+func (_m *Track) String() string {
 	var builder strings.Builder
-	builder.WriteString("Album(")
+	builder.WriteString("Track(")
 	builder.WriteString(fmt.Sprintf("id=%v, ", _m.ID))
 	builder.WriteString("title=")
 	builder.WriteString(_m.Title)
 	builder.WriteString(", ")
-	builder.WriteString("artist_id=")
-	builder.WriteString(fmt.Sprintf("%v", _m.ArtistID))
+	builder.WriteString("album_id=")
+	builder.WriteString(fmt.Sprintf("%v", _m.AlbumID))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))
@@ -170,5 +154,5 @@ func (_m *Album) String() string {
 	return builder.String()
 }
 
-// Albums is a parsable slice of Album.
-type Albums []*Album
+// Tracks is a parsable slice of Track.
+type Tracks []*Track
