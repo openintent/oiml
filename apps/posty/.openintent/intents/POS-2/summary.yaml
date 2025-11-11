@@ -1,0 +1,119 @@
+version: 0.1.0
+applied_at: 2025-01-27T00:00:00Z
+status: success
+intents_processed: 1
+model: composer
+template_used:
+  framework: next
+  category: adapter
+  adapter_type: auth
+  pack: oiml://compat/oiml-next-auth/1.0.0
+  version: 1.0.0
+  compat:
+    oiml: '>=0.1.0 <0.2.0'
+    next: '>=16.0.0 <17.0.0'
+changes:
+  - file: prisma/schema.prisma
+    action: modified
+    description: Added password field (optional) to User model
+  - file: package.json
+    action: modified
+    description: Added next-auth, @auth/prisma-adapter, bcryptjs dependencies and @types/bcryptjs dev dependency
+  - file: auth.ts
+    action: created
+    description: Created NextAuth configuration with Credentials provider and JWT session strategy
+  - file: app/api/auth/[...nextauth]/route.ts
+    action: created
+    description: Created NextAuth API route handler
+  - file: app/api/auth/register/route.ts
+    action: created
+    description: Created user registration endpoint
+  - file: middleware.ts
+    action: created
+    description: Created Next.js middleware to protect all /api/* routes except /api/auth/*
+errors: []
+notes: |
+  Successfully implemented NextAuth authentication adapter for Next.js application.
+  
+  **Features Implemented:**
+  
+  1. **User Model Updates:**
+     - Added `password` field (optional) to User schema
+     - Password will be stored as bcrypt hash
+  
+  2. **NextAuth Configuration:**
+     - Created `auth.ts` with Credentials provider
+     - Configured JWT session strategy (24 hour expiration)
+     - Integrated with Prisma adapter
+  
+  3. **Auth Endpoints:**
+     - `POST /api/auth/register`: User registration
+     - `GET/POST /api/auth/[...nextauth]`: NextAuth handlers (signin, signout, session, etc.)
+  
+  4. **Route Protection:**
+     - All routes under `/api/*` are now protected by auth middleware
+     - Auth routes (`/api/auth/*`) remain public
+  
+  5. **Configuration:**
+     - JWT secret from `AUTH_SECRET` environment variable (NextAuth default)
+     - Session expiration: 24 hours (configurable via intent config)
+  
+  **Next Steps:**
+  
+  1. **Set AUTH_SECRET environment variable:**
+     ```bash
+     export AUTH_SECRET=$(openssl rand -base64 32)
+     ```
+     Or add to `.env.local`:
+     ```
+     AUTH_SECRET=your-secret-key-here
+     ```
+  
+  2. **Install dependencies:**
+     ```bash
+     npm install
+     # or
+     pnpm install
+     ```
+  
+  3. **Run Prisma migration:**
+     ```bash
+     npx prisma migrate dev --name add_password_to_user
+     ```
+  
+  4. **Generate Prisma client:**
+     ```bash
+     npx prisma generate
+     ```
+  
+  **Testing:**
+  
+  **Register a user:**
+  ```bash
+  curl -X POST http://localhost:3000/api/auth/register \
+    -H "Content-Type: application/json" \
+    -d '{
+      "email": "user@example.com",
+      "password": "password123",
+      "name": "John Doe"
+    }'
+  ```
+  
+  **Sign in (via NextAuth):**
+  ```bash
+  curl -X POST http://localhost:3000/api/auth/callback/credentials \
+    -H "Content-Type: application/json" \
+    -d '{
+      "email": "user@example.com",
+      "password": "password123"
+    }'
+  ```
+  
+  **Access protected endpoint:**
+  ```bash
+  curl -X GET http://localhost:3000/api/posts \
+    -H "Cookie: next-auth.session-token=<session-token>"
+  ```
+  
+  **Note:** NextAuth uses cookies for session management. In a browser, sessions are automatically handled. For API testing, you'll need to include the session cookie.
+

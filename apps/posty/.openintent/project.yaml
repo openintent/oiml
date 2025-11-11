@@ -3,7 +3,7 @@ name: Posty
 description: >
   A simple application built on the OpenIntent framework. It manages posts
   with a clean API and modern UI.
-version: 0.1.0
+oiml_version: 0.1.0
 
 api:
   framework: next

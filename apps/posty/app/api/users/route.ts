@@ -1,8 +1,18 @@
 import { NextResponse } from 'next/server';
+import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import type { UserInterface, UserResponse, ErrorResponse } from '@/packages/types';
 
 export async function GET() {
+  // Defense-in-depth: Check auth in route handler as well
+  const session = await auth();
+  if (!session) {
+    const errorResponse: ErrorResponse = {
+      success: false,
+      error: 'Unauthorized'
+    };
+    return NextResponse.json(errorResponse, { status: 401 });
+  }
   try {
     const users = await prisma.user.findMany({
       orderBy: { id: 'desc' }
