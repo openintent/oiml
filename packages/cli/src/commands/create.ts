@@ -54,6 +54,7 @@ async function validateProjectYaml(openintentDir: string): Promise<{ valid: bool
 function generateIntentTemplate(name: string, version: string): string {
   const yamlObj = {
     version: version,
+    type: "oiml.intent",
     ai_context: {
       purpose: "Conform to project frameworks, style, and conventions.",
       instructions:
