@@ -13,7 +13,7 @@
   },
   "bin": {
     "openintent": "./dist/cli.js",
-    "oi": "./dist/cli.js"
+    "oiml": "./dist/cli.js"
   },
   "main": "./dist/cli.js",
   "types": "./dist/cli.d.ts",
