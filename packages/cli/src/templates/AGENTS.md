@@ -100,6 +100,9 @@ OpenIntent supports the following intent types. For complete schema definitions,
 - **`add_endpoint`**: Create REST API endpoints
 - **`update_endpoint`**: Modify existing API endpoints to include additional fields in responses
 
+#### Capability Intents (scope: capability)
+- **`add_capability`**: Add capability modules for common services (auth, file upload, file streaming, SSE, websockets)
+
 #### UI Intents (scope: ui)
 - **`add_component`**: Create UI components (future support)
 
@@ -118,12 +121,15 @@ For each intent type:
       - Read `package.json` to get framework version(s):
         - For database intents: Check `prisma` or relevant database package version
         - For API intents: Check `next`, `express`, or relevant API framework version
+        - For capability intents: Extract `framework` from intent (e.g., `gin`, `next`, `express`) and check corresponding package version
         - For UI intents: Check `react`, `vue`, or relevant UI framework version
 
    b. **Locate template manifest**:
       - Templates are organized as: `@oiml/schema/templates/{category}/{framework}/{version}/manifest.json`
-      - Categories: `database`, `api`, `ui`
+      - For capability intents: `@oiml/schema/templates/capability/{capability_type}/{framework}/{version}/manifest.json`
+      - Categories: `database`, `api`, `capability`, `ui`
       - Example: `@oiml/schema/templates/database/prisma/1.0.0/manifest.json`
+      - Example (capability): `@oiml/schema/templates/capability/auth/gin/1.0.0/manifest.json`
 
    c. **Validate compatibility**:
       - Read the template's `manifest.json` file
@@ -178,6 +184,11 @@ For each intent type:
    **For API Intents** (`add_endpoint`, `update_endpoint`):
    - Use the validated template guide: `@oiml/schema/templates/api/{framework}/{version}/AGENTS.md`
    - Example: `@oiml/schema/templates/api/next/1.0.0/AGENTS.md`
+
+   **For Capability Intents** (`add_capability`):
+   - Use the validated template guide: `@oiml/schema/templates/capability/{capability_type}/{framework}/{version}/AGENTS.md`
+   - Example: `@oiml/schema/templates/capability/auth/gin/1.0.0/AGENTS.md`
+   - Capability types: `auth`, `file_upload`, `file_stream`, `sse`, `websocket`
 
    **For UI Intents** (`add_component`):
    - Use the validated template guide: `@oiml/schema/templates/ui/{framework}/{version}/AGENTS.md`
@@ -257,9 +268,10 @@ When processing an intent file, follow these steps:
 - Read `.openintent/project.yaml`
 - Extract framework configurations:
   - `database.framework` - for data intents
-  - `api.framework` - for API intents
+  - `api.framework` - for API intents (also used for capability intents)
   - `ui.framework` - for UI intents
 - Note configured paths (`paths.api`, `paths.types`, etc.)
+- For capability intents: Extract `framework` and `capability` fields from the intent itself
 
 ### 3. Check Framework and OIML Version Compatibility
 Before processing any intents, verify compatibility:
@@ -267,6 +279,7 @@ Before processing any intents, verify compatibility:
 1. **Extract versions**:
    - Read intent file `version` field (OIML schema version)
    - Read `package.json` to get installed framework versions
+   - For capability intents: Extract `capability` and `framework` fields from the intent to determine the template path
 
 2. **Resolve template** using MCP tool (if available):
    ```typescript
@@ -278,7 +291,9 @@ Before processing any intents, verify compatibility:
    ```
 
 3. **Validate compatibility**:
-   - Locate template manifest at `@oiml/schema/templates/{category}/{framework}/{version}/manifest.json`
+   - Locate template manifest:
+     - For capability intents: `@oiml/schema/templates/capability/{capability_type}/{framework}/{version}/manifest.json`
+     - For other intents: `@oiml/schema/templates/{category}/{framework}/{version}/manifest.json`
    - Verify versions against `compatible_oiml_versions` and `compatible_package_versions`
    - Check `minimum_versions` and `maximum_versions` constraints
 
@@ -294,6 +309,9 @@ For each intent in the `intents` array:
 2. **Use the compatible framework guide** determined in step 3:
    - Data intents → Use `@oiml/schema/templates/database/{framework}/{version}/AGENTS.md`
    - API intents (`add_endpoint`, `update_endpoint`) → Use `@oiml/schema/templates/api/{framework}/{version}/AGENTS.md`
+   - Capability intents (`add_capability`) → Use `@oiml/schema/templates/capability/{capability_type}/{framework}/{version}/AGENTS.md`
+     - Extract `capability_type` from intent (e.g., `auth`, `file_upload`, `file_stream`, `sse`, `websocket`)
+     - Extract `framework` from intent (e.g., `gin`, `next`, `express`)
    - UI intents → Use `@oiml/schema/templates/ui/{framework}/{version}/AGENTS.md`
    
    The specific version was validated for compatibility in step 3.
