@@ -257,8 +257,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 ## Learn More
 
 - **Website**: [oiml.dev](https://oiml.dev)
-- **Docs**: [docs.oiml.dev](https://docs.oiml.dev)
-- **GitHub**: [github.com/openintent/oiml](https://github.com/openintent/oiml)
 - **Discord**: [https://discord.gg/QnvqZ2Pj](https://discord.gg/QnvqZ2Pj)
 
 ## Support
