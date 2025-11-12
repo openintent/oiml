@@ -13,13 +13,18 @@
     "@prisma/client": "^6.19.0",
     "next-auth": "^5.0.0-beta.25",
     "@auth/prisma-adapter": "^2.7.0",
+    "@radix-ui/react-label": "^2.1.1",
+    "@radix-ui/react-slot": "^1.1.1",
     "bcryptjs": "^2.4.3",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "dotenv": "^17.2.3",
     "lucide-react": "^0.469.0",
     "next": "16.0.1",
     "prisma": "^6.19.0",
     "react": "19.2.0",
-    "react-dom": "19.2.0"
+    "react-dom": "19.2.0",
+    "tailwind-merge": "^2.5.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

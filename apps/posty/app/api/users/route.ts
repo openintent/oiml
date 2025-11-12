@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import type { UserInterface, UserResponse, ErrorResponse } from '@/packages/types';
+import type { Prisma } from '@prisma/client';
 
 export async function GET() {
   // Defense-in-depth: Check auth in route handler as well
@@ -47,9 +48,10 @@ export async function POST(request: Request) {
 
     const user = await prisma.user.create({
       data: {
-        email: body.email,
-        name: body.name ?? null,
-      }
+        email: body.email as string,
+        ...(body.first_name != null && { first_name: body.first_name }),
+        ...(body.last_name != null && { last_name: body.last_name }),
+      } as Prisma.UserCreateInput
     });
 
     const response: UserResponse = {
