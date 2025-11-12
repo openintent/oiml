@@ -40,6 +40,18 @@ This command will:
 
 - `-y, --yes`: Skip prompts and use defaults
 
+### Create a new intent
+
+```bash
+openintent create INT-123
+```
+
+This command will:
+
+- Create a folder `.openintent/intents/INT-123/`
+- Generate an `intent.yaml` file inside the folder
+- Include default OIML structure with ai_context and provenance
+
 ## Development
 
 ```bash
