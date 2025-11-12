@@ -221,7 +221,7 @@ paths:
 ## Workflow
 
 1. **Write Intent** - Create `intent.yaml` file describing what you want
-2. **Apply Intent** - AI agent generates code using locked templates
+2. **Apply Intent** - Provide the intent file in your prompt and say "apply this intent" 
 3. **Review Changes** - Check generated code and output summary
 4. **Commit** - Include intent, summary, and generated code
 
