@@ -1,0 +1,18 @@
+# Schema reference: https://github.com/openintent/oiml/blob/main/packages/schema/project/index.ts
+name: blogger
+description: ""
+oiml_version: 0.1.0
+api:
+  language: typescript
+  framework: next
+database:
+  type: postgres
+  framework: prisma
+  schema: prisma/schema.prisma
+  connection: env:DATABASE_URL
+ui:
+  framework: next
+  components: shadcn/ui
+  language: typescript
+intents:
+  directory: .openintent/intents
