@@ -37,31 +37,31 @@ intents:
   # CRUD endpoints for User entity
   - kind: add_endpoint
     scope: api
-    endpoint: /api/users
+    path: /api/users
     description: Create a new user
     method: POST
     entity: User
   - kind: add_endpoint
     scope: api
-    endpoint: /api/users
+    path: /api/users
     description: Get all users
     method: GET
     entity: User
   - kind: add_endpoint
     scope: api
-    endpoint: /api/users/{id}
+    path: /api/users/{id}
     description: Get a user by id
     method: GET
     entity: User
   - kind: add_endpoint
     scope: api
-    endpoint: /api/users/{id}
+    path: /api/users/{id}
     description: Update a user by id
     method: PUT
     entity: User
   - kind: add_endpoint
     scope: api
-    endpoint: /api/users/{id}
+    path: /api/users/{id}
     description: Delete a user by id
     method: DELETE
     entity: User

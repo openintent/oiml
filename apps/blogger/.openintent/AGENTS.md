@@ -93,7 +93,7 @@ OpenIntent supports the following intent types. For complete schema definitions,
 #### Data Intents (scope: data)
 - **`add_entity`**: Create new database models/entities
 - **`add_field`**: Add fields to existing entities
-- **`add_relation`** (scope: schema): Add relationships between entities
+- **`add_relation`** (scope: data): Add relationships between entities
 - **`remove_field`**: Remove fields from entities
 
 #### API Intents (scope: api)

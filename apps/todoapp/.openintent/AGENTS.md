@@ -226,12 +226,12 @@ ADD COLUMN email VARCHAR(255) NOT NULL UNIQUE;
 
 See complete field mapping details in the Field Type Mapping section above.
 
-#### 3. `add_relation` (scope: data/schema)
+#### 3. `add_relation` (scope: data)
 Adds relationships between existing database models/entities.
 
 ```yaml
 - kind: add_relation
-  scope: schema              # Note: scope is "schema" for relations
+  scope: data
   relation:
     source_entity: Todo      # Entity where the relation field will be added
     target_entity: User      # Entity being referenced

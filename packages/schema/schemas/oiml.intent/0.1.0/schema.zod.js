@@ -192,36 +192,6 @@ export const RemoveField = z
   })
   .strict();
 
-export const AddEndpoint = z
-  .object({
-    kind: z.literal("add_endpoint"),
-    scope: z.literal("api"),
-    method: z.enum(["GET", "POST", "PATCH", "DELETE"]),
-    path: z.string().regex(/^\//, "must start with '/'"),
-    description: z.string().optional(),
-    entity: z.string().optional(),
-    fields: z.array(Field).optional(),
-    auth: z
-      .object({
-        required: z.boolean().default(false),
-        roles: z.array(z.string()).optional()
-      })
-      .optional()
-  })
-  .strict();
-
-export const AddComponent = z
-  .object({
-    kind: z.literal("add_component"),
-    scope: z.literal("ui"),
-    component: z.string().min(1),
-    template: z.enum(["List", "Form", "Custom"]).default("Custom"),
-    entity: z.string().optional(),
-    display_fields: z.array(z.string()).optional(),
-    route: z.string().optional()
-  })
-  .strict();
-
 export const AddRelation = z
   .object({
     kind: z.literal("add_relation"),
@@ -266,6 +236,36 @@ export const AddRelation = z
       message: "reverse.kind must be the inverse of relation.kind"
     }
   );
+
+export const AddEndpoint = z
+  .object({
+    kind: z.literal("add_endpoint"),
+    scope: z.literal("api"),
+    method: z.enum(["GET", "POST", "PATCH", "DELETE"]),
+    path: z.string().regex(/^\//, "must start with '/'"),
+    description: z.string().optional(),
+    entity: z.string().optional(),
+    fields: z.array(Field).optional(),
+    auth: z
+      .object({
+        required: z.boolean().default(false),
+        roles: z.array(z.string()).optional()
+      })
+      .optional()
+  })
+  .strict();
+
+export const AddComponent = z
+  .object({
+    kind: z.literal("add_component"),
+    scope: z.literal("ui"),
+    component: z.string().min(1),
+    template: z.enum(["List", "Form", "Custom"]).default("Custom"),
+    entity: z.string().optional(),
+    display_fields: z.array(z.string()).optional(),
+    route: z.string().optional()
+  })
+  .strict();
 
 const FieldSource = z
   .object({
@@ -356,13 +356,21 @@ export const AddCapability = z
             .describe("Route group name (supports wildcard '*' to match all endpoints in a group, e.g., '/api/v1/*')")
         }).refine(
           (data) => {
-            // Either group is provided, OR both method and path are provided
+            // Either group is provided (without method/path), OR both method and path are provided (without group)
             const hasGroup = !!data.group;
             const hasMethodAndPath = !!data.method && !!data.path;
+            const hasMethodOrPath = !!data.method || !!data.path;
+            
+            // If group is provided, method and path must NOT be provided
+            if (hasGroup && hasMethodOrPath) {
+              return false;
+            }
+            
+            // Either group alone, or method+path together
             return hasGroup || hasMethodAndPath;
           },
           {
-            message: "Either 'group' must be provided, or both 'method' and 'path' must be provided"
+            message: "Either 'group' must be provided alone, or both 'method' and 'path' must be provided together (but not both group and method/path)"
           }
         )
       )

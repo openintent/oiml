@@ -12,9 +12,9 @@ provenance:
     name: ""
   created_at: 2025-11-10T22:51:13Z
 intents: 
-  - kind: add_adapter
-    scope: adapter
-    adapter: auth
+  - kind: add_capability
+    scope: capability
+    capability: auth
     framework: gin
     provider: jwt
     config:

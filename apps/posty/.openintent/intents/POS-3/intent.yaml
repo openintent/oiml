@@ -15,21 +15,21 @@ intents:
   - kind: add_field
     scope: data
     entity: User
-    field:
-      name: first_name
-      type: string
-      required: false
-      max_length: 255
+    fields:
+      - name: first_name
+        type: string
+        required: false
+        max_length: 255
   - kind: add_field
     scope: data
     entity: User
-    field:
-      name: last_name
-      type: string
-      required: false
-      max_length: 255
+    fields:
+      - name: last_name
+        type: string
+        required: false
+        max_length: 255
   - kind: remove_field
     scope: data
     entity: User
-    field:
-      name: name
+    fields:
+      - name

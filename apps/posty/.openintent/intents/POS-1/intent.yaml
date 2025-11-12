@@ -67,7 +67,7 @@ intents:
         required: true
 
   - kind: add_relation
-    scope: schema
+    scope: data
     relation:
       source_entity: Post
       target_entity: User
@@ -97,7 +97,7 @@ intents:
         unique: true
 
   - kind: add_relation
-    scope: schema
+    scope: data
     relation:
       source_entity: Profile
       target_entity: User
