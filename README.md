@@ -105,20 +105,20 @@ intents:
 │              Intent Files (intent.yaml)             │
 └─────────────────┬───────────────────────────────────┘
                   │
-        ┌─────────▼─────────┐
-        │  project.yaml     │
-        │  Configuration    │
-        └─────────┬─────────┘
-                  │
-        ┌─────────▼─────────┐
-        │ Implementation    │
-        │ Guides            │
-        │ (Prisma, Next.js) │
-        └─────────┬─────────┘
-                  │
-        ┌─────────▼─────────┐
-        │ Generated Code    │
-        └───────────────────┘
+                ┌─────────▼─────────┐
+                │  project.yaml     │
+                │  Configuration    │
+                └─────────┬─────────┘
+                          │
+                ┌─────────▼─────────┐
+                │ Implementation    │
+                │ Guides            │
+                │ (Prisma, Next.js) │
+                └─────────┬─────────┘
+                          │
+                ┌─────────▼─────────┐
+                │ Generated Code    │
+                └───────────────────┘
 ```
 
 ## CLI Commands
