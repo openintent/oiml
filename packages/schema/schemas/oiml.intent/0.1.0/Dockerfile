@@ -22,15 +22,3 @@ LABEL dev.oiml.schema.name="oiml.intent"
 LABEL dev.oiml.schema.version="0.1.0"
 LABEL dev.oiml.schema.engines.ajv="8.0.0"
 LABEL dev.oiml.schema.engines.zod="3.24.0"
-
-
-
-
-
-
-
-
-
-
-
-
