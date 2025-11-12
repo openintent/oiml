@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { apiFetch } from "@/lib/api";
 
 interface Album {
   id: string;
@@ -20,7 +21,7 @@ function AlbumsList() {
     const fetchAlbums = async () => {
       try {
         setLoading(true);
-        const response = await fetch(`/api/v1/artists/${artistId}/albums`);
+        const response = await apiFetch(`/api/v1/artists/${artistId}/albums`);
         if (!response.ok) {
           throw new Error(`Failed to fetch albums: ${response.statusText}`);
         }

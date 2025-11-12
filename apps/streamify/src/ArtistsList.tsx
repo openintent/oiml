@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { apiFetch } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface Artist {
   id: string;
@@ -16,6 +18,7 @@ interface Artist {
 
 function ArtistsList() {
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
   const [artists, setArtists] = useState<Artist[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -24,7 +27,7 @@ function ArtistsList() {
     const fetchArtists = async () => {
       try {
         setLoading(true);
-        const response = await fetch(`/api/v1/artists`);
+        const response = await apiFetch(`/api/v1/artists`);
         if (!response.ok) {
           throw new Error(`Failed to fetch artists: ${response.statusText}`);
         }
@@ -70,7 +73,17 @@ function ArtistsList() {
       <div className="container mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-3xl font-bold">Artists</h1>
-          <Button onClick={() => navigate("/docs")}>API Docs</Button>
+          <div className="flex items-center gap-4">
+            {user && (
+              <span className="text-sm text-muted-foreground">
+                {user.email}
+              </span>
+            )}
+            <Button variant="outline" onClick={logout}>
+              Logout
+            </Button>
+            <Button onClick={() => navigate("/docs")}>API Docs</Button>
+          </div>
         </div>
 
         {artists.length === 0 ? (

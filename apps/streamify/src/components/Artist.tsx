@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { apiFetch } from "@/lib/api";
 
 interface Album {
   id: string;
@@ -34,7 +35,7 @@ function Artist() {
 
       try {
         setLoading(true);
-        const response = await fetch(`/api/v1/artists/${artistId}`);
+        const response = await apiFetch(`/api/v1/artists/${artistId}`);
         if (!response.ok) {
           throw new Error(`Failed to fetch artist: ${response.statusText}`);
         }

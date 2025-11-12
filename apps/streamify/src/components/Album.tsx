@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { apiFetch } from "@/lib/api";
 
 interface Track {
   id: string;
@@ -35,7 +36,7 @@ function Album() {
 
       try {
         setLoading(true);
-        const response = await fetch(`/api/v1/albums/${albumId}`);
+        const response = await apiFetch(`/api/v1/albums/${albumId}`);
         if (!response.ok) {
           throw new Error(`Failed to fetch album: ${response.statusText}`);
         }
