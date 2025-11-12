@@ -1313,9 +1313,19 @@
                       "description": "Route group name (supports wildcard '*' to match all endpoints in a group, e.g., '/api/v1/*')"
                     }
                   },
-                  "required": [
-                    "method",
-                    "path"
+                  "oneOf": [
+                    {
+                      "required": ["group"],
+                      "not": {
+                        "anyOf": [
+                          { "required": ["method"] },
+                          { "required": ["path"] }
+                        ]
+                      }
+                    },
+                    {
+                      "required": ["method", "path"]
+                    }
                   ],
                   "additionalProperties": false
                 },

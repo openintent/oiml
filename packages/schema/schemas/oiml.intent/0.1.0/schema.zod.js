@@ -347,14 +347,24 @@ export const AddCapability = z
     endpoints: z
       .array(
         z.object({
-          method: z.enum(["GET", "POST", "PATCH", "DELETE"]),
-          path: z.string().regex(/^\//, "must start with '/'"),
+          method: z.enum(["GET", "POST", "PATCH", "DELETE"]).optional(),
+          path: z.string().regex(/^\//, "must start with '/'").optional(),
           description: z.string().optional(),
           group: z
             .string()
             .optional()
             .describe("Route group name (supports wildcard '*' to match all endpoints in a group, e.g., '/api/v1/*')")
-        })
+        }).refine(
+          (data) => {
+            // Either group is provided, OR both method and path are provided
+            const hasGroup = !!data.group;
+            const hasMethodAndPath = !!data.method && !!data.path;
+            return hasGroup || hasMethodAndPath;
+          },
+          {
+            message: "Either 'group' must be provided, or both 'method' and 'path' must be provided"
+          }
+        )
       )
       .optional()
       .describe("Additional endpoints to create for this capability")
