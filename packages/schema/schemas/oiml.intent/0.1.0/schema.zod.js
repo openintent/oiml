@@ -195,7 +195,7 @@ export const RemoveField = z
 export const AddRelation = z
   .object({
     kind: z.literal("add_relation"),
-    scope: z.literal("schema"),
+    scope: z.literal("data"),
     relation: z.object({
       source_entity: z.string().min(1),
       target_entity: z.string().min(1),
@@ -241,7 +241,7 @@ export const AddEndpoint = z
   .object({
     kind: z.literal("add_endpoint"),
     scope: z.literal("api"),
-    method: z.enum(["GET", "POST", "PATCH", "DELETE"]),
+    method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]),
     path: z.string().regex(/^\//, "must start with '/'"),
     description: z.string().optional(),
     entity: z.string().optional(),
@@ -313,7 +313,7 @@ export const UpdateEndpoint = z
   .object({
     kind: z.literal("update_endpoint"),
     scope: z.literal("api"),
-    method: z.enum(["GET", "POST", "PATCH", "DELETE"]),
+    method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]),
     path: z.string().regex(/^\//, "must start with '/'"),
     description: z.string().optional(),
     updates: z
@@ -347,7 +347,7 @@ export const AddCapability = z
     endpoints: z
       .array(
         z.object({
-          method: z.enum(["GET", "POST", "PATCH", "DELETE"]).optional(),
+          method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).optional(),
           path: z.string().regex(/^\//, "must start with '/'").optional(),
           description: z.string().optional(),
           group: z
