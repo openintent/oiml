@@ -8,7 +8,7 @@ OpenIntent allows developers to describe *what* they want instead of *how* to bu
 
 **Key Features:**
 - 📝 **Declarative Development** - Describe features, not implementation
-- 🔒 **Version Locking** - Deterministic code generation with lockfiles
+- 🔒 **Version Locking** - Deterministic code generation with versioned schemas and framework guides
 - 🎯 **Standardized Schema** - Consistent intent structure across projects
 - 🤖 **Agent-Friendly** - IDEs and AI agents can easily understand intents
 - 🔧 **Framework Agnostic** - Support for any database, API, or UI framework
@@ -73,7 +73,7 @@ intents:
 │
 └── intents/                  # All intents (organized by ticket/issue ID)
     ├── POS-1/                # One folder per intent
-    │   ├── intent.yaml  # Declarative specification
+    │   ├── intent.yaml       # Declarative specification
     │   ├── plan.yaml         # Execution plan (optional)
     │   └── summary.yaml      # Output summary
     │
@@ -82,14 +82,6 @@ intents:
         ├── plan.yaml
         └── summary.yaml
 ```
-
-**Benefits of Intent-Centric Structure:**
-- All artifacts for an intent in one place
-- Easy to review, archive, or remove entire intents
-- Scales better with many intents (50 folders vs 150 files)
-- Natural grouping: "everything about POS-1 is here"
-
-**Note:** No lockfile needed! Template compatibility is resolved on-the-fly by the MCP server using the intent schema version and framework versions from your `project.yaml` and `package.json`.
 
 ## Supported Frameworks
 
@@ -105,17 +97,16 @@ intents:
 
 ### UI
 - 🔄 React (coming soon)
-- 🔄 Vue (coming soon)
 
 ## 📚 Documentation
 
 - [**Lockfile System**](docs/LOCKFILE_SYSTEM.md) - Version management and compatibility
-- [**AGENTS.md**](apps/nextjs-prisma/.openintent/AGENTS.md) - Master implementation guide
+- [**AGENTS.md**](apps/next-prisma/.openintent/AGENTS.md) - Master implementation guide
 - [**Prisma Guide**](packages/schema/templates/database/prisma.md) - Prisma implementation
-- [**Next.js Guide**](packages/schema/templates/api/nextjs.md) - Next.js API implementation
+- [**Next.js Guide**](packages/schema/templates/api/next.md) - Next.js API implementation
 - [**Compatibility Matrix**](packages/schema/compatibility/README.md) - Version compatibility
 
-## 🏗️ Architecture
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -138,7 +129,7 @@ intents:
         └───────────────────┘
 ```
 
-## 🛠️ CLI Commands
+## CLI Commands
 
 ### Project Management
 ```bash
@@ -202,7 +193,7 @@ intents:
     description: Get all posts
 ```
 
-## 🎯 Intent Types
+## Intent Types
 
 | Intent Type | Scope | Description |
 |------------|-------|-------------|
@@ -221,7 +212,7 @@ name: My App
 oiml_version: 0.1.x
 
 api:
-  framework: nextjs
+  framework: next
   language: typescript
 
 database:
@@ -270,26 +261,6 @@ We welcome contributions! Areas to contribute:
    - Best practices
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-## Monorepo Structure
-
-```
-oiml/
-├── packages/
-│   ├── schema/              # OIML schema definitions
-│   │   ├── lockfile/        # Lockfile system (NEW!)
-│   │   ├── compatibility/   # Version compatibility (NEW!)
-│   │   ├── templates/       # Implementation guides
-│   │   └── project/         # Project config schema
-│   └── cli/                 # CLI tool
-│       └── commands/
-│           └── lock.ts      # Lockfile commands (NEW!)
-├── apps/
-│   ├── nextjs-prisma/       # Example Next.js + Prisma app
-│   └── todoapp/             # Example todo application
-├── mcp/                     # MCP server
-└── docs/                    # Documentation
-```
 
 ## Learn More
 
