@@ -98,14 +98,6 @@ intents:
 ### UI
 - 🔄 React (coming soon)
 
-## 📚 Documentation
-
-- [**Lockfile System**](docs/LOCKFILE_SYSTEM.md) - Version management and compatibility
-- [**AGENTS.md**](apps/next-prisma/.openintent/AGENTS.md) - Master implementation guide
-- [**Prisma Guide**](packages/schema/templates/database/prisma.md) - Prisma implementation
-- [**Next.js Guide**](packages/schema/templates/api/next.md) - Next.js API implementation
-- [**Compatibility Matrix**](packages/schema/compatibility/README.md) - Version compatibility
-
 ## Architecture
 
 ```
@@ -231,7 +223,7 @@ paths:
 1. **Write Intent** - Create `intent.yaml` file describing what you want
 2. **Apply Intent** - AI agent generates code using locked templates
 3. **Review Changes** - Check generated code and output summary
-4. **Commit** - Include intent, lockfile, and generated code
+4. **Commit** - Include intent, summary, and generated code
 
 ## Contributing
 
