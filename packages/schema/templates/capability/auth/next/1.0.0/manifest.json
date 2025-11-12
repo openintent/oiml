@@ -1,0 +1,59 @@
+{
+  "name": "oiml-next-auth",
+  "version": "1.0.0",
+  "description": "NextAuth authentication adapter template for OpenIntent",
+  "category": "adapter",
+  "framework": "next",
+  "adapter_type": "auth",
+  "compatible_oiml_versions": ["0.1.x"],
+  "compatible_package_versions": {
+    "next": [">=16.0.0 <17.0.0"],
+    "next-auth": [">=5.0.0-beta.0"]
+  },
+  "optional_dependencies": {
+    "@auth/prisma-adapter": [">=2.0.0"]
+  },
+  "minimum_versions": {
+    "node": "18.0.0"
+  },
+  "files": [
+    {
+      "path": "auth.ts",
+      "description": "NextAuth configuration file",
+      "required": true
+    },
+    {
+      "path": "app/api/auth/[...nextauth]/route.ts",
+      "description": "NextAuth API route handler",
+      "required": true
+    },
+    {
+      "path": "app/api/auth/login/route.ts",
+      "description": "User login endpoint",
+      "required": true
+    },
+    {
+      "path": "app/api/auth/register/route.ts",
+      "description": "User registration endpoint",
+      "required": true
+    },
+    {
+      "path": "middleware.ts",
+      "description": "Next.js middleware for route protection",
+      "required": true
+    },
+    {
+      "path": "types/next-auth.d.ts",
+      "description": "NextAuth type declarations",
+      "required": true
+    }
+  ],
+  "dependencies": [
+    "next-auth",
+    "bcryptjs"
+  ],
+  "optional_dependencies": [
+    "@auth/prisma-adapter"
+  ]
+}
+

@@ -568,6 +568,321 @@ func getUsers(db *database.Client) gin.HandlerFunc {
 
 **Note:** Replace `database.Client` and `GetUsersWithTodos` with your actual database client implementation and methods for loading relations.
 
+## Implementing `update_endpoint` Intent
+
+### Overview
+
+The `update_endpoint` intent allows you to modify existing API endpoints to include additional fields in the response. This is useful for:
+- Adding relations to GET endpoints
+- Including specific fields from related entities
+- Joining on foreign keys to add fields from other entities
+- Adding computed fields
+
+### Steps
+
+1. **Read intent** and extract:
+   - HTTP method and path of the endpoint to update
+   - `updates.add_field` array with field definitions
+   - Field source types (`relation`, `field`, `computed`)
+
+2. **Locate the existing endpoint handler** in your codebase
+
+3. **Update the handler** based on field source types:
+   - **`type: "relation"`**: Use eager loading (e.g., Ent's `With{Relation}()`)
+   - **`type: "field"`**: Join on foreign key and select specific field
+   - **`type: "computed"`**: Add computed logic in handler
+
+4. **Update response structure** to include new fields
+
+### Field Source Types
+
+#### Type: `relation` - Include Full Relation
+
+**Use Case:** Include a related entity in the response (e.g., albums for an artist)
+
+**Intent Example:**
+```yaml
+- kind: update_endpoint
+  scope: api
+  method: GET
+  path: /api/v1/artists
+  updates:
+    add_field:
+      - name: albums
+        source:
+          type: relation
+          relation: albums
+```
+
+**Implementation for Ent:**
+```go
+func getArtists(client *ent.Client) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        // Use WithAlbums() to eager load the albums relation
+        artists, err := client.Artist.Query().
+            WithAlbums().  // Eager load albums relation
+            All(context.Background())
+        if err != nil {
+            c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+            return
+        }
+        c.JSON(http.StatusOK, artists)  // Albums are included in each artist
+    }
+}
+```
+
+**Implementation for GORM:**
+```go
+func getArtists(db *gorm.DB) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        var artists []Artist
+        err := db.Preload("Albums").Find(&artists).Error
+        if err != nil {
+            c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+            return
+        }
+        c.JSON(http.StatusOK, artists)
+    }
+}
+```
+
+#### Type: `field` - Select Specific Field from Relation
+
+**Use Case:** Include a specific field from a related entity (e.g., album count)
+
+**Intent Example:**
+```yaml
+- kind: update_endpoint
+  scope: api
+  method: GET
+  path: /api/v1/artists
+  updates:
+    add_field:
+      - name: album_count
+        source:
+          type: relation
+          relation: albums
+          entity: Album
+          field: count  # Computed count
+```
+
+**Implementation:**
+```go
+func getArtists(client *ent.Client) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        artists, err := client.Artist.Query().
+            WithAlbums().
+            All(context.Background())
+        if err != nil {
+            c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+            return
+        }
+        
+        // Transform response to include computed field
+        result := make([]map[string]interface{}, len(artists))
+        for i, artist := range artists {
+            albums, _ := artist.Edges.AlbumsOrErr()
+            result[i] = map[string]interface{}{
+                "id":    artist.ID,
+                "name":  artist.Name,
+                "albums": albums,
+                "album_count": len(albums),  // Computed field
+            }
+        }
+        c.JSON(http.StatusOK, result)
+    }
+}
+```
+
+#### Type: `field` with `join` - Join on Foreign Key
+
+**Use Case:** Join on a foreign key and include a field from the joined entity
+
+**Intent Example:**
+```yaml
+- kind: update_endpoint
+  scope: api
+  method: GET
+  path: /api/v1/albums/{id}
+  updates:
+    add_field:
+      - name: artist_name
+        source:
+          type: field
+          entity: Artist
+          field: name
+          join:
+            foreign_key: artist_id
+            target_entity: Artist
+            target_field: name
+```
+
+**Implementation for Ent:**
+```go
+func getAlbumByID(client *ent.Client) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        idStr := c.Param("id")
+        id, err := uuid.Parse(idStr)
+        if err != nil {
+            c.JSON(http.StatusBadRequest, gin.H{"error": "invalid album ID"})
+            return
+        }
+        
+        // Use WithArtist() to eager load artist relation
+        album, err := client.Album.Query().
+            Where(album.IDEQ(id)).
+            WithArtist().  // Eager load artist relation
+            Only(context.Background())
+        if err != nil {
+            if ent.IsNotFound(err) {
+                c.JSON(http.StatusNotFound, gin.H{"error": "album not found"})
+                return
+            }
+            c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+            return
+        }
+        
+        // Transform to include artist_name field
+        artist, _ := album.Edges.ArtistOrErr()
+        response := map[string]interface{}{
+            "id":    album.ID,
+            "title": album.Title,
+            "artist_id": album.ArtistID,
+            "artist_name": artist.Name,  // Field from joined entity
+        }
+        c.JSON(http.StatusOK, response)
+    }
+}
+```
+
+**Implementation for GORM:**
+```go
+func getAlbumByID(db *gorm.DB) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        idStr := c.Param("id")
+        var album Album
+        err := db.Preload("Artist").First(&album, "id = ?", idStr).Error
+        if err != nil {
+            if errors.Is(err, gorm.ErrRecordNotFound) {
+                c.JSON(http.StatusNotFound, gin.H{"error": "album not found"})
+                return
+            }
+            c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+            return
+        }
+        
+        response := map[string]interface{}{
+            "id":    album.ID,
+            "title": album.Title,
+            "artist_id": album.ArtistID,
+            "artist_name": album.Artist.Name,  // Field from joined entity
+        }
+        c.JSON(http.StatusOK, response)
+    }
+}
+```
+
+#### Type: `computed` - Add Computed Field
+
+**Use Case:** Add a field that is computed in the handler (not from database)
+
+**Intent Example:**
+```yaml
+- kind: update_endpoint
+  scope: api
+  method: GET
+  path: /api/v1/artists
+  updates:
+    add_field:
+      - name: total_streams
+        source:
+          type: computed
+```
+
+**Implementation:**
+```go
+func getArtists(client *ent.Client) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        artists, err := client.Artist.Query().All(context.Background())
+        if err != nil {
+            c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+            return
+        }
+        
+        // Transform to include computed field
+        result := make([]map[string]interface{}, len(artists))
+        for i, artist := range artists {
+            // Compute total_streams (example: sum from albums)
+            totalStreams := computeTotalStreams(artist.ID)  // Your computation logic
+            
+            result[i] = map[string]interface{}{
+                "id":    artist.ID,
+                "name":  artist.Name,
+                "total_streams": totalStreams,  // Computed field
+            }
+        }
+        c.JSON(http.StatusOK, result)
+    }
+}
+```
+
+### Complete Example: Updating GET /api/v1/artists
+
+**Intent:**
+```yaml
+- kind: update_endpoint
+  scope: api
+  method: GET
+  path: /api/v1/artists
+  updates:
+    add_field:
+      - name: albums
+        source:
+          type: relation
+          relation: albums
+```
+
+**Before (Original Handler):**
+```go
+func getArtists(client *ent.Client) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        artists, err := client.Artist.Query().All(context.Background())
+        if err != nil {
+            c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+            return
+        }
+        c.JSON(http.StatusOK, artists)
+    }
+}
+```
+
+**After (Updated Handler):**
+```go
+func getArtists(client *ent.Client) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        // Added WithAlbums() to eager load albums relation
+        artists, err := client.Artist.Query().
+            WithAlbums().  // Added: Eager load albums relation
+            All(context.Background())
+        if err != nil {
+            c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+            return
+        }
+        c.JSON(http.StatusOK, artists)  // Albums are now included in response
+    }
+}
+```
+
+### Best Practices for `update_endpoint`
+
+1. **Use eager loading** for relations to avoid N+1 queries
+2. **Transform responses** when adding computed fields or specific fields from relations
+3. **Maintain backward compatibility** - existing fields should still be present
+4. **Handle errors** when loading relations (use `OrErr()` methods in Ent)
+5. **Document changes** in code comments explaining what fields were added
+6. **Test thoroughly** to ensure relations load correctly
+7. **Consider performance** - eager loading multiple large relations can be slow
+
 ### Request Validation
 
 **Using Gin's binding:**

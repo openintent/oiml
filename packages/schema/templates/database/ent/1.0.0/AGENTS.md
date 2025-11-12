@@ -61,9 +61,24 @@ project/
 | `required: false` | Add `.Optional()` | NULL allowed |
 | `unique: true` | Add `.Unique()` | **Creates UNIQUE constraint in database** |
 | `default: value` | Add `.Default(value)` | DEFAULT value in database |
-| `max_length: N` | Add `.MaxLen(N)` for strings | VARCHAR(N) or CHECK constraint |
+| `max_length: N` | Add `.MaxLen(N)` for strings + `.SchemaType()` | **VARCHAR(N) constraint in database** |
 
-**Important**: When `unique: true` is specified, `.Unique()` **must** be called on the field. This creates a database-level UNIQUE constraint that prevents duplicate values. After regenerating Ent code, you **must** run migrations to apply this constraint to the database.
+**Important**: 
+- When `unique: true` is specified, `.Unique()` **must** be called on the field. This creates a database-level UNIQUE constraint that prevents duplicate values. After regenerating Ent code, you **must** run migrations to apply this constraint to the database.
+- When `max_length: N` is specified, **both** `.MaxLen(N)` **and** `.SchemaType()` should be used to ensure the database column respects the constraint:
+  ```go
+  field.String("email").
+      MaxLen(255).
+      SchemaType(map[string]string{
+          "postgres": "varchar(255)",
+          "mysql":    "varchar(255)",
+          "sqlite3":  "varchar(255)",
+      })
+  ```
+  - `.MaxLen(N)` provides application-level validation
+  - `.SchemaType()` ensures the database column type is `VARCHAR(N)`, enforcing the constraint at the database level
+  - **Without `.SchemaType()`**, Ent may create columns without size constraints, especially for existing columns
+  - **With `.SchemaType()`**, Ent will create columns with the correct `VARCHAR(N)` type, ensuring `max_length` is respected
 
 ### Special Default Values
 
@@ -194,9 +209,19 @@ func (Customer) Fields() []ent.Field {
             Unique(),
         field.String("email").
             MaxLen(255).
+            SchemaType(map[string]string{
+                "postgres": "varchar(255)",
+                "mysql":    "varchar(255)",
+                "sqlite3":  "varchar(255)",
+            }).
             Unique(),
         field.String("name").
-            MaxLen(100),
+            MaxLen(100).
+            SchemaType(map[string]string{
+                "postgres": "varchar(100)",
+                "mysql":    "varchar(100)",
+                "sqlite3":  "varchar(100)",
+            }),
         field.Enum("status").
             Values("ACTIVE", "INACTIVE", "PENDING").
             Default("ACTIVE"),
@@ -223,7 +248,16 @@ func (Customer) Edges() []ent.Edge {
    - **For `unique: true`**: Always add `.Unique()` - this creates a database UNIQUE constraint
    - **For `required: true`**: Do NOT add `.Optional()` - this creates a NOT NULL constraint
    - **For `required: false`**: Add `.Optional()` - allows NULL values
-   - **For `max_length: N`**: Add `.MaxLen(N)` for string fields
+   - **For `max_length: N`**: Add `.MaxLen(N)` **and** `.SchemaType()` for string fields to ensure database-level enforcement:
+     ```go
+     field.String("field_name").
+         MaxLen(255).
+         SchemaType(map[string]string{
+             "postgres": "varchar(255)",
+             "mysql":    "varchar(255)",
+             "sqlite3":  "varchar(255)",
+         })
+     ```
 
 4. **Add enum definitions** (if needed) using `field.Enum()`
 
@@ -242,6 +276,45 @@ func (Customer) Edges() []ent.Edge {
    Or use Ent's migration tools to generate SQL migrations for production.
 
    **Note**: Without running migrations, unique constraints, NOT NULL constraints, and other database-level changes will **not** be applied to the database, even though the Ent code has been regenerated.
+
+   **Important Note on MaxLen() and SchemaType()**: 
+   - **For new fields**: Always use both `.MaxLen(N)` and `.SchemaType()` to ensure the database column type is `VARCHAR(N)`:
+     ```go
+     field.String("field_name").
+         MaxLen(255).
+         SchemaType(map[string]string{
+             "postgres": "varchar(255)",
+             "mysql":    "varchar(255)",
+             "sqlite3":  "varchar(255)",
+         })
+     ```
+     - `SchemaType()` ensures new columns are created with the correct `VARCHAR(N)` type
+   - **For existing fields**: Ent's auto-migration (`client.Schema.Create()`) **does not alter existing columns** even with `SchemaType()`. You **must** manually alter existing columns:
+     ```sql
+     -- PostgreSQL example
+     ALTER TABLE users ALTER COLUMN first_name TYPE VARCHAR(255);
+     ```
+     - **Note**: In PostgreSQL, the column type will show as `character varying` in `information_schema`, but this is equivalent to `varchar`. Check `character_maximum_length` to verify the size constraint.
+     - **Alternative for development**: Drop and recreate the table
+     - **For production**: Use Ent's Atlas migration tools to generate explicit SQL migrations
+
+   **Important Note on API Endpoints**: When adding fields to an entity, you should also update any existing POST endpoints for that entity to accept the new fields:
+   - **For required fields**: Add them to the request body struct with `binding:"required"`
+   - **For optional fields**: Add them as pointer types (`*string`, `*int`, etc.) so they can be `nil` if not provided
+   - Update the entity creation code to conditionally set optional fields only if they're not nil
+   - Example for optional fields:
+     ```go
+     var body struct {
+         RequiredField string  `json:"required_field" binding:"required"`
+         OptionalField *string `json:"optional_field"`
+     }
+     
+     create := client.Entity.Create().SetRequiredField(body.RequiredField)
+     if body.OptionalField != nil {
+         create = create.SetOptionalField(*body.OptionalField)
+     }
+     entity, err := create.Save(context.Background())
+     ```
 
 ### Example: Adding Fields to Customer
 
@@ -274,11 +347,26 @@ func (Customer) Fields() []ent.Field {
             Unique(),
         field.String("email").
             MaxLen(255).
+            SchemaType(map[string]string{
+                "postgres": "varchar(255)",
+                "mysql":    "varchar(255)",
+                "sqlite3":  "varchar(255)",
+            }).
             Unique(),  // Creates UNIQUE constraint in database
         field.String("name").
-            MaxLen(100),
+            MaxLen(100).
+            SchemaType(map[string]string{
+                "postgres": "varchar(100)",
+                "mysql":    "varchar(100)",
+                "sqlite3":  "varchar(100)",
+            }),
         field.String("phone").        // New field
             MaxLen(20).
+            SchemaType(map[string]string{
+                "postgres": "varchar(20)",
+                "mysql":    "varchar(20)",
+                "sqlite3":  "varchar(20)",
+            }).
             Optional(),
         field.Time("birthday").       // New field
             Optional(),
@@ -503,10 +591,15 @@ field.Time("updated_at").
     UpdateDefault(time.Now),
 ```
 
-### Optional Fields
+### Optional Fields with MaxLen
 ```go
 field.String("phone").
     MaxLen(20).
+    SchemaType(map[string]string{
+        "postgres": "varchar(20)",
+        "mysql":    "varchar(20)",
+        "sqlite3":  "varchar(20)",
+    }).
     Optional()
 ```
 
@@ -643,13 +736,20 @@ if err := client.Schema.Create(context.Background()); err != nil {
 **Important**: 
 - After regenerating Ent code with `go generate ./ent`, you **must** run migrations
 - Unique constraints (`.Unique()`) are **only** created in the database when migrations are run
+- Size constraints (`.MaxLen()`) are **only** applied to the database when migrations are run
+- **Limitation**: Ent's auto-migration (`client.Schema.Create()`) may not always apply size constraints to **existing columns**. If you add `MaxLen()` to an existing column, you may need to:
+  1. Drop and recreate the table (development only), OR
+  2. Use Ent's migration tools to generate explicit SQL migrations, OR
+  3. Manually alter the column using SQL
 - Without migrations, schema changes exist only in Go code, not in the database
 
 ### Verifying Constraints Were Applied
 
-After running migrations, verify unique constraints were created:
+After running migrations, verify constraints were created:
 
 **PostgreSQL:**
+
+**Verify Unique Constraints:**
 ```sql
 -- List all unique constraints on a table
 SELECT 
@@ -662,18 +762,52 @@ JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(c.conkey)
 WHERE t.relname = 'users' AND contype = 'u';
 ```
 
+**Verify Column Size (MaxLen) Constraints:**
+```sql
+-- Check column data type and character maximum length
+SELECT 
+    column_name,
+    data_type,
+    character_maximum_length
+FROM information_schema.columns
+WHERE table_name = 'artists' AND column_name = 'name';
+
+-- Expected result for MaxLen(255):
+-- column_name | data_type | character_maximum_length
+-- name        | character varying | 255
+```
+
 **MySQL:**
 ```sql
-SHOW CREATE TABLE users;
--- Look for UNIQUE KEY constraints
+SHOW CREATE TABLE artists;
+-- Look for VARCHAR(255) or other size constraints
+-- Example: `name` varchar(255) NOT NULL
 ```
 
 **SQLite:**
 ```sql
 SELECT sql FROM sqlite_master 
-WHERE type='table' AND name='users';
--- Look for UNIQUE constraints in the CREATE TABLE statement
+WHERE type='table' AND name='artists';
+-- Look for VARCHAR(255) or CHECK constraints in the CREATE TABLE statement
 ```
+
+**Important**: 
+- **PostgreSQL Note**: PostgreSQL displays `character varying` instead of `varchar` in `information_schema.columns`, but they are equivalent. The important thing is that `character_maximum_length` shows the correct value (e.g., 255).
+- If `MaxLen()` was specified but the column doesn't show the size constraint in the database:
+  1. **For new columns**: `SchemaType()` should ensure the constraint is applied when the column is created
+  2. **For existing columns**: Ent's auto-migration (`client.Schema.Create()`) **may not alter existing columns** even with `SchemaType()`. You need to manually alter the column:
+     ```sql
+     -- For PostgreSQL
+     ALTER TABLE users ALTER COLUMN first_name TYPE VARCHAR(255);
+     ALTER TABLE users ALTER COLUMN last_name TYPE VARCHAR(255);
+     
+     -- Verify the constraint was applied:
+     SELECT column_name, data_type, character_maximum_length
+     FROM information_schema.columns
+     WHERE table_name = 'users' AND column_name IN ('first_name', 'last_name');
+     ```
+  3. **Alternative for development**: Drop and recreate the table (development only)
+  4. **For production**: Use Ent's migration tools (Atlas) to generate explicit SQL migrations
 
 ### Production Migrations
 

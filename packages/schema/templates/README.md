@@ -7,15 +7,29 @@ This directory contains framework-specific implementation guides for applying Op
 ```
 templates/
 ├── database/          # Database framework implementation guides
-│   ├── prisma.md     # Prisma ORM implementation guide
-│   └── [future: mongoose.md, sqlalchemy.md, etc.]
+│   ├── prisma/
+│   │   └── 1.0.0/
+│   │       ├── AGENTS.md
+│   │       └── manifest.json
+│   ├── ent/
+│   │   └── 1.0.0/
+│   │       ├── AGENTS.md
+│   │       └── manifest.json
+│   └── [future: mongoose/, sqlalchemy/, etc.]
 │
 ├── api/              # API framework implementation guides
-│   ├── next.md    # Next.js App Router implementation guide
-│   └── [future: express.md, fastapi.md, etc.]
+│   ├── next/
+│   │   └── 1.0.0/
+│   │       ├── AGENTS.md
+│   │       └── manifest.json
+│   ├── gin/
+│   │   └── 1.0.0/
+│   │       ├── AGENTS.md
+│   │       └── manifest.json
+│   └── [future: express/, fastapi/, etc.]
 │
 └── ui/               # UI framework implementation guides
-    └── [future: react.md, vue.md, etc.]
+    └── [future: react/, vue/, etc.]
 ```
 
 ## Usage
@@ -44,30 +58,46 @@ These guides can be used to:
 
 ### Database Frameworks
 
-- **[Prisma](./database/prisma.md)** - Complete Prisma implementation guide
+- **[Prisma](./database/prisma/1.0.0/AGENTS.md)** - Complete Prisma implementation guide
   - Field type mappings (OpenIntent → Prisma)
   - Implementation steps for all data intents
   - Migration handling and patterns
   - TypeScript type generation
 
+- **[Ent](./database/ent/1.0.0/AGENTS.md)** - Complete Ent ORM implementation guide
+  - Field type mappings (OpenIntent → Ent)
+  - Schema definition patterns
+  - Code generation and auto-migration
+  - Go type generation and client usage
+
 ### API Frameworks
 
-- **[Next.js](./api/next.md)** - Complete Next.js App Router implementation guide
+- **[Next.js](./api/next/1.0.0/AGENTS.md)** - Complete Next.js App Router implementation guide
   - File structure and routing conventions
   - HTTP method templates (GET, POST, PATCH, DELETE)
   - Response structure patterns
   - Error handling and authentication
 
+- **[Gin](./api/gin/1.0.0/AGENTS.md)** - Complete Gin framework implementation guide
+  - Router setup and route patterns
+  - HTTP method templates (GET, POST, PATCH, DELETE)
+  - Handler function patterns
+  - Error handling and middleware integration
+
 ## Contributing New Templates
 
 To add support for a new framework:
 
-1. Create a new markdown file in the appropriate directory:
-   - Database: `database/{framework}.md`
-   - API: `api/{framework}.md`
-   - UI: `ui/{framework}.md`
+1. Create a new versioned directory structure:
+   - Database: `database/{framework}/1.0.0/`
+   - API: `api/{framework}/1.0.0/`
+   - UI: `ui/{framework}/1.0.0/`
 
-2. Follow the existing template structure:
+2. Create the required files:
+   - `AGENTS.md` - Complete implementation guide
+   - `manifest.json` - Template metadata and versioning info
+
+3. Follow the existing template structure:
    - **When to Use This Guide** - Condition for using this guide
    - **Prerequisites** - Required setup
    - **Type Mappings** - OpenIntent to framework type mappings
@@ -117,7 +147,7 @@ For each supported intent type:
 These templates are included in the `@oiml/schema` package and can be accessed at:
 
 ```
-@oiml/schema/templates/{category}/{framework}.md
+@oiml/schema/templates/{category}/{framework}/{version}/AGENTS.md
 ```
 
 **In published package:**
@@ -126,13 +156,13 @@ import path from 'path';
 import { readFileSync } from 'fs';
 
 // Get template path
-const templatePath = require.resolve('@oiml/schema/templates/database/prisma.md');
+const templatePath = require.resolve('@oiml/schema/templates/database/prisma/1.0.0/AGENTS.md');
 const content = readFileSync(templatePath, 'utf-8');
 ```
 
 **GitHub URL:**
 ```
-https://github.com/openintent/oiml/blob/main/packages/schema/templates/{category}/{framework}.md
+https://github.com/openintent/oiml/blob/main/packages/schema/templates/{category}/{framework}/{version}/AGENTS.md
 ```
 
 ## Validation

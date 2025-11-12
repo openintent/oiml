@@ -525,6 +525,324 @@ export async function GET() {
 }
 ```
 
+## Implementing `update_endpoint` Intent
+
+### Overview
+
+The `update_endpoint` intent allows you to modify existing API endpoints to include additional fields in the response. This is useful for:
+- Adding relations to GET endpoints
+- Including specific fields from related entities
+- Joining on foreign keys to add fields from other entities
+- Adding computed fields
+
+### Steps
+
+1. **Read intent** and extract:
+   - HTTP method and path of the endpoint to update
+   - `updates.add_field` array with field definitions
+   - Field source types (`relation`, `field`, `computed`)
+
+2. **Locate the existing route handler file** (e.g., `app/api/artists/route.ts`)
+
+3. **Update the handler function** based on field source types:
+   - **`type: "relation"`**: Use Prisma's `include` option
+   - **`type: "field"`**: Use `include` with `select` or transform response
+   - **`type: "computed"`**: Add computation logic in handler
+
+4. **Update TypeScript types** if needed to reflect new response structure
+
+### Field Source Types
+
+#### Type: `relation` - Include Full Relation
+
+**Use Case:** Include a related entity in the response (e.g., albums for an artist)
+
+**Intent Example:**
+```yaml
+- kind: update_endpoint
+  scope: api
+  method: GET
+  path: /api/v1/artists
+  updates:
+    add_field:
+      - name: albums
+        source:
+          type: relation
+          relation: albums
+```
+
+**Implementation:**
+```typescript
+export async function GET() {
+  try {
+    const artists = await prisma.artist.findMany({
+      include: {
+        albums: true,  // Added: Include albums relation
+      },
+      orderBy: { created_at: 'desc' }
+    });
+
+    const response: ArtistResponse = {
+      data: artists,
+    };
+
+    return NextResponse.json(response, { status: 200 });
+  } catch (error) {
+    console.error('Error fetching artists:', error);
+    const errorResponse: ErrorResponse = {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to fetch artists'
+    };
+    return NextResponse.json(errorResponse, { status: 500 });
+  }
+}
+```
+
+#### Type: `field` - Select Specific Field from Relation
+
+**Use Case:** Include a specific field from a related entity (e.g., album count)
+
+**Intent Example:**
+```yaml
+- kind: update_endpoint
+  scope: api
+  method: GET
+  path: /api/v1/artists
+  updates:
+    add_field:
+      - name: album_count
+        source:
+          type: relation
+          relation: albums
+          entity: Album
+          field: count
+```
+
+**Implementation:**
+```typescript
+export async function GET() {
+  try {
+    const artists = await prisma.artist.findMany({
+      include: {
+        albums: true,
+      },
+      orderBy: { created_at: 'desc' }
+    });
+
+    // Transform response to include computed field
+    const artistsWithCount = artists.map(artist => ({
+      ...artist,
+      album_count: artist.albums.length,  // Computed field
+    }));
+
+    const response: ArtistResponse = {
+      data: artistsWithCount,
+    };
+
+    return NextResponse.json(response, { status: 200 });
+  } catch (error) {
+    // ... error handling
+  }
+}
+```
+
+#### Type: `field` with `join` - Join on Foreign Key
+
+**Use Case:** Join on a foreign key and include a field from the joined entity
+
+**Intent Example:**
+```yaml
+- kind: update_endpoint
+  scope: api
+  method: GET
+  path: /api/v1/albums/{id}
+  updates:
+    add_field:
+      - name: artist_name
+        source:
+          type: field
+          entity: Artist
+          field: name
+          join:
+            foreign_key: artist_id
+            target_entity: Artist
+            target_field: name
+```
+
+**Implementation:**
+```typescript
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const resolvedParams = await params;
+  
+  try {
+    const album = await prisma.album.findUnique({
+      where: { id: resolvedParams.id },
+      include: {
+        artist: {
+          select: {
+            name: true,  // Select only the name field
+          },
+        },
+      },
+    });
+
+    if (!album) {
+      const errorResponse: ErrorResponse = {
+        success: false,
+        error: 'Album not found'
+      };
+      return NextResponse.json(errorResponse, { status: 404 });
+    }
+
+    // Transform to include artist_name field
+    const response = {
+      data: {
+        ...album,
+        artist_name: album.artist.name,  // Field from joined entity
+      },
+    };
+
+    return NextResponse.json(response, { status: 200 });
+  } catch (error) {
+    console.error('Error fetching album:', error);
+    const errorResponse: ErrorResponse = {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to fetch album'
+    };
+    return NextResponse.json(errorResponse, { status: 500 });
+  }
+}
+```
+
+#### Type: `computed` - Add Computed Field
+
+**Use Case:** Add a field that is computed in the handler (not from database)
+
+**Intent Example:**
+```yaml
+- kind: update_endpoint
+  scope: api
+  method: GET
+  path: /api/v1/artists
+  updates:
+    add_field:
+      - name: total_streams
+        source:
+          type: computed
+```
+
+**Implementation:**
+```typescript
+export async function GET() {
+  try {
+    const artists = await prisma.artist.findMany({
+      orderBy: { created_at: 'desc' }
+    });
+
+    // Transform to include computed field
+    const artistsWithStreams = await Promise.all(
+      artists.map(async (artist) => {
+        // Compute total_streams (example: sum from albums)
+        const totalStreams = await computeTotalStreams(artist.id);
+        
+        return {
+          ...artist,
+          total_streams: totalStreams,  // Computed field
+        };
+      })
+    );
+
+    const response: ArtistResponse = {
+      data: artistsWithStreams,
+    };
+
+    return NextResponse.json(response, { status: 200 });
+  } catch (error) {
+    // ... error handling
+  }
+}
+
+async function computeTotalStreams(artistId: string): Promise<number> {
+  // Your computation logic here
+  const albums = await prisma.album.findMany({
+    where: { artist_id: artistId },
+    include: { streams: true },
+  });
+  return albums.reduce((sum, album) => sum + album.streams.length, 0);
+}
+```
+
+### Complete Example: Updating GET /api/v1/artists
+
+**Intent:**
+```yaml
+- kind: update_endpoint
+  scope: api
+  method: GET
+  path: /api/v1/artists
+  updates:
+    add_field:
+      - name: albums
+        source:
+          type: relation
+          relation: albums
+```
+
+**Before (Original Handler):**
+```typescript
+export async function GET() {
+  try {
+    const artists = await prisma.artist.findMany({
+      orderBy: { created_at: 'desc' }
+    });
+
+    const response: ArtistResponse = {
+      data: artists,
+    };
+
+    return NextResponse.json(response, { status: 200 });
+  } catch (error) {
+    // ... error handling
+  }
+}
+```
+
+**After (Updated Handler):**
+```typescript
+export async function GET() {
+  try {
+    const artists = await prisma.artist.findMany({
+      include: {
+        albums: true,  // Added: Include albums relation
+      },
+      orderBy: { created_at: 'desc' }
+    });
+
+    const response: ArtistResponse = {
+      data: artists,
+    };
+
+    return NextResponse.json(response, { status: 200 });
+  } catch (error) {
+    // ... error handling
+  }
+}
+```
+
+### Best Practices for `update_endpoint`
+
+1. **Use Prisma's `include`** for relations to avoid N+1 queries
+2. **Use `select`** when you only need specific fields from relations
+3. **Transform responses** when adding computed fields or specific fields from relations
+4. **Update TypeScript types** to reflect new response structure
+5. **Maintain backward compatibility** - existing fields should still be present
+6. **Handle null relations** gracefully (e.g., `album.artist?.name`)
+7. **Consider performance** - including multiple large relations can be slow
+8. **Use `Promise.all()`** for parallel computations when adding multiple computed fields
+
 ## Status Codes
 
 Use appropriate HTTP status codes:
