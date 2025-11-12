@@ -13,7 +13,7 @@ LABEL org.opencontainers.image.title="OIML Intent Schema"
 LABEL org.opencontainers.image.description="Open Intent Modeling Language (OIML) Intent Schema v0.1.0"
 LABEL org.opencontainers.image.version="0.1.0"
 LABEL org.opencontainers.image.vendor="OpenIntent"
-LABEL org.opencontainers.image.licenses="MPL-2.0"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
 LABEL org.opencontainers.image.source="https://github.com/openintent/oiml"
 LABEL org.opencontainers.image.documentation="https://oiml.dev"
 

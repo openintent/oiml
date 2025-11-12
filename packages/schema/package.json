@@ -3,7 +3,7 @@
   "version": "0.1.3",
   "description": "OIML schema definitions",
   "author": "OpenIntent",
-  "license": "MPL-2.0",
+  "license": "Apache-2.0",
   "type": "module",
   "homepage": "https://github.com/openintent/oiml#readme",
   "repository": {

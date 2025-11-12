@@ -220,7 +220,7 @@ intents:
 
 ## License
 
-MPL-2.0
+Apache 2.0
 
 ## Links
 
