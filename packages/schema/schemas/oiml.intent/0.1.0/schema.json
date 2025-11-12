@@ -83,8 +83,16 @@
           "additionalProperties": false
         },
         "created_at": {
-          "type": "string",
-          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
+            },
+            {
+              "type": "string",
+              "format": "date-time"
+            }
+          ]
         },
         "source": {
           "type": "string"
@@ -340,6 +348,62 @@
                   "additionalProperties": false
                 },
                 "minItems": 1
+              },
+              "primary_key": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "unique": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "minItems": 1
+                }
+              },
+              "indexes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "fields": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "minItems": 1
+                    },
+                    "unique": {
+                      "type": "boolean",
+                      "default": false
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "btree",
+                        "hash",
+                        "gist",
+                        "gin"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "fields"
+                  ],
+                  "additionalProperties": false
+                }
               }
             },
             "required": [
@@ -347,6 +411,61 @@
               "scope",
               "entity",
               "fields"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "remove_entity"
+              },
+              "scope": {
+                "type": "string",
+                "const": "data"
+              },
+              "entity": {
+                "type": "string",
+                "minLength": 1
+              },
+              "cascade": {
+                "type": "boolean",
+                "default": false
+              }
+            },
+            "required": [
+              "kind",
+              "scope",
+              "entity"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "rename_entity"
+              },
+              "scope": {
+                "type": "string",
+                "const": "data"
+              },
+              "from": {
+                "type": "string",
+                "minLength": 1
+              },
+              "to": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "kind",
+              "scope",
+              "from",
+              "to"
             ],
             "additionalProperties": false
           },
@@ -631,6 +750,39 @@
               "scope",
               "entity",
               "fields"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "rename_field"
+              },
+              "scope": {
+                "type": "string",
+                "const": "data"
+              },
+              "entity": {
+                "type": "string",
+                "minLength": 1
+              },
+              "from": {
+                "type": "string",
+                "minLength": 1
+              },
+              "to": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "kind",
+              "scope",
+              "entity",
+              "from",
+              "to"
             ],
             "additionalProperties": false
           },
@@ -1335,6 +1487,7 @@
     }
   },
   "required": [
+    "type",
     "version",
     "intents"
   ],
@@ -1862,8 +2015,16 @@
           "additionalProperties": false
         },
         "created_at": {
-          "type": "string",
-          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
+            },
+            {
+              "type": "string",
+              "format": "date-time"
+            }
+          ]
         },
         "source": {
           "type": "string"
@@ -2154,6 +2315,62 @@
             "additionalProperties": false
           },
           "minItems": 1
+        },
+        "primary_key": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "unique": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1
+          }
+        },
+        "indexes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "fields": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "minItems": 1
+              },
+              "unique": {
+                "type": "boolean",
+                "default": false
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "btree",
+                  "hash",
+                  "gist",
+                  "gin"
+                ]
+              }
+            },
+            "required": [
+              "name",
+              "fields"
+            ],
+            "additionalProperties": false
+          }
         }
       },
       "required": [

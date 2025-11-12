@@ -10,7 +10,16 @@ import { z } from "zod";
 
 // Utility schemas
 export const OIMLVersion = z.string().regex(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/, "semver required");
-export const ISODate = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/, "ISO8601 UTC required");
+export const ISODate = z.union([
+  z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/, "ISO8601 UTC required"),
+  z.date()
+]).transform(val => {
+  // Normalize Date objects to ISO string format
+  if (val instanceof Date) {
+    return val.toISOString().replace(/\.\d{3}Z$/, 'Z');
+  }
+  return val;
+});
 
 // Field type definitions
 export const FieldType = z.enum([
@@ -93,6 +102,7 @@ export const Field = z
       .describe("API endpoint configuration for this field"),
     relation: FieldRelation.optional()
   })
+  .strict()
   .refine(
     data => {
       if (data.type === "array" && !data.array_type) return false;
@@ -164,13 +174,40 @@ export const AIContext = z
   })
   .strict();
 
+const EntityIndex = z.object({
+  name: z.string().min(1),
+  fields: z.array(z.string().min(1)).min(1),
+  unique: z.boolean().default(false),
+  type: z.enum(["btree","hash","gist","gin"]).optional() // allow generic hints
+})
+.strict();
+
 // Intent definitions
 export const AddEntity = z
   .object({
     kind: z.literal("add_entity"),
     scope: z.literal("data"),
     entity: z.string().min(1),
-    fields: z.array(Field).min(1)
+    fields: z.array(Field).min(1),
+    primary_key: z.array(z.string().min(1)).optional(),
+    unique: z.array(z.array(z.string().min(1)).min(1)).optional(),
+    indexes: z.array(EntityIndex).optional()
+  })
+  .strict();
+
+export const RemoveEntity = z.object({
+    kind: z.literal("remove_entity"),
+    scope: z.literal("data"),
+    entity: z.string().min(1),
+    cascade: z.boolean().default(false)
+  })
+  .strict();
+
+export const RenameEntity = z.object({
+    kind: z.literal("rename_entity"),
+    scope: z.literal("data"),
+    from: z.string().min(1),
+    to: z.string().min(1)
   })
   .strict();
 
@@ -192,6 +229,14 @@ export const RemoveField = z
   })
   .strict();
 
+export const RenameField = z.object({
+    kind: z.literal("rename_field"),
+    scope: z.literal("data"),
+    entity: z.string().min(1),
+    from: z.string().min(1),
+    to: z.string().min(1)
+  }).strict();
+
 export const AddRelation = z
   .object({
     kind: z.literal("add_relation"),
@@ -206,7 +251,9 @@ export const AddRelation = z
       reverse: ReverseRelation.optional(),
       emit_migration: z.boolean().default(true)
     })
+    .strict()
   })
+  .strict()
   .refine(
     i => {
       const kind = i.relation.kind;
@@ -381,8 +428,11 @@ export const AddCapability = z
 
 export const IntentUnion = z.union([
   AddEntity,
+  RemoveEntity,
+  RenameEntity,
   AddField,
   RemoveField,
+  RenameField,
   AddEndpoint,
   AddComponent,
   AddRelation,
@@ -394,7 +444,7 @@ export const IntentUnion = z.union([
 export const Intent = z
   .object({
     $schema: z.string().optional().describe("JSON Schema reference URI"),
-    type: z.literal("oiml.intent").optional().describe("Document type identifier"),
+    type: z.literal("oiml.intent").describe("Document type identifier"),
     version: OIMLVersion.describe("OIML schema version"),
     ai_context: AIContext.optional(),
     provenance: Provenance.optional(),
