@@ -1125,6 +1125,210 @@
               "relation"
             ],
             "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "update_endpoint"
+              },
+              "scope": {
+                "type": "string",
+                "const": "api"
+              },
+              "method": {
+                "type": "string",
+                "enum": [
+                  "GET",
+                  "POST",
+                  "PATCH",
+                  "DELETE"
+                ]
+              },
+              "path": {
+                "type": "string",
+                "pattern": "^\\/"
+              },
+              "description": {
+                "type": "string"
+              },
+              "updates": {
+                "type": "object",
+                "properties": {
+                  "add_field": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "Name of the field in the response"
+                        },
+                        "source": {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "relation",
+                                "field",
+                                "computed"
+                              ],
+                              "description": "Type of field source"
+                            },
+                            "relation": {
+                              "type": "string",
+                              "minLength": 1,
+                              "description": "Relation name (required when type is 'relation')"
+                            },
+                            "entity": {
+                              "type": "string",
+                              "minLength": 1,
+                              "description": "Entity name (required when type is 'field' or when selecting a field from a relation)"
+                            },
+                            "field": {
+                              "type": "string",
+                              "minLength": 1,
+                              "description": "Field name to select (when type is 'field' or when selecting a specific field from a relation)"
+                            },
+                            "join": {
+                              "type": "object",
+                              "properties": {
+                                "foreign_key": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "description": "Foreign key field name to join on"
+                                },
+                                "target_entity": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "description": "Target entity to join with"
+                                },
+                                "target_field": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "description": "Target field to select from joined entity"
+                                }
+                              },
+                              "required": [
+                                "foreign_key",
+                                "target_entity",
+                                "target_field"
+                              ],
+                              "additionalProperties": false,
+                              "description": "Join configuration for foreign key relationships"
+                            }
+                          },
+                          "required": [
+                            "type"
+                          ],
+                          "additionalProperties": false,
+                          "description": "Source configuration for the field"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "source"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "description": "Fields to add to the endpoint response (relations, specific fields, or computed values)"
+                  }
+                },
+                "additionalProperties": false,
+                "description": "Object specifying what to update in the endpoint"
+              }
+            },
+            "required": [
+              "kind",
+              "scope",
+              "method",
+              "path",
+              "updates"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "add_capability"
+              },
+              "scope": {
+                "type": "string",
+                "const": "capability"
+              },
+              "capability": {
+                "type": "string",
+                "enum": [
+                  "auth",
+                  "file_upload",
+                  "file_stream",
+                  "sse",
+                  "websocket"
+                ],
+                "description": "Type of capability to add"
+              },
+              "framework": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Target framework (e.g., 'gin', 'next', 'express')"
+              },
+              "provider": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Provider/library name (e.g., 'jwt', 'next-auth', 'passport')"
+              },
+              "config": {
+                "type": "object",
+                "additionalProperties": {},
+                "description": "Capability-specific configuration options"
+              },
+              "endpoints": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "method": {
+                      "type": "string",
+                      "enum": [
+                        "GET",
+                        "POST",
+                        "PATCH",
+                        "DELETE"
+                      ]
+                    },
+                    "path": {
+                      "type": "string",
+                      "pattern": "^\\/"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "group": {
+                      "type": "string",
+                      "description": "Route group name (supports wildcard '*' to match all endpoints in a group, e.g., '/api/v1/*')"
+                    }
+                  },
+                  "required": [
+                    "method",
+                    "path"
+                  ],
+                  "additionalProperties": false
+                },
+                "description": "Additional endpoints to create for this capability"
+              }
+            },
+            "required": [
+              "kind",
+              "scope",
+              "capability",
+              "framework"
+            ],
+            "additionalProperties": false
           }
         ]
       },

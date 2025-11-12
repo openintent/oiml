@@ -267,13 +267,109 @@ export const AddRelation = z
     }
   );
 
+const FieldSource = z
+  .object({
+    type: z.enum(["relation", "field", "computed"]).describe("Type of field source"),
+    relation: z
+      .string()
+      .min(1)
+      .optional()
+      .describe("Relation name (required when type is 'relation')"),
+    entity: z
+      .string()
+      .min(1)
+      .optional()
+      .describe("Entity name (required when type is 'field' or when selecting a field from a relation)"),
+    field: z
+      .string()
+      .min(1)
+      .optional()
+      .describe("Field name to select (when type is 'field' or when selecting a specific field from a relation)"),
+    join: z
+      .object({
+        foreign_key: z.string().min(1).describe("Foreign key field name to join on"),
+        target_entity: z.string().min(1).describe("Target entity to join with"),
+        target_field: z.string().min(1).describe("Target field to select from joined entity")
+      })
+      .optional()
+      .describe("Join configuration for foreign key relationships")
+  })
+  .refine(
+    data => {
+      if (data.type === "relation") {
+        return !!data.relation;
+      }
+      if (data.type === "field") {
+        return !!data.entity && !!data.field;
+      }
+      return true;
+    },
+    {
+      message: "relation is required when type is 'relation', entity and field are required when type is 'field'"
+    }
+  );
+
+export const UpdateEndpoint = z
+  .object({
+    kind: z.literal("update_endpoint"),
+    scope: z.literal("api"),
+    method: z.enum(["GET", "POST", "PATCH", "DELETE"]),
+    path: z.string().regex(/^\//, "must start with '/'"),
+    description: z.string().optional(),
+    updates: z
+      .object({
+        add_field: z
+          .array(
+            z.object({
+              name: z.string().min(1).describe("Name of the field in the response"),
+              source: FieldSource.describe("Source configuration for the field")
+            })
+          )
+          .optional()
+          .describe("Fields to add to the endpoint response (relations, specific fields, or computed values)")
+      })
+      .strict()
+      .refine(data => Object.keys(data).length > 0, {
+        message: "updates object must have at least one property"
+      })
+      .describe("Object specifying what to update in the endpoint")
+  })
+  .strict();
+
+export const AddCapability = z
+  .object({
+    kind: z.literal("add_capability"),
+    scope: z.literal("capability"),
+    capability: z.enum(["auth", "file_upload", "file_stream", "sse", "websocket"]).describe("Type of capability to add"),
+    framework: z.string().min(1).describe("Target framework (e.g., 'gin', 'next', 'express')"),
+    provider: z.string().min(1).optional().describe("Provider/library name (e.g., 'jwt', 'next-auth', 'passport')"),
+    config: z.record(z.any()).optional().describe("Capability-specific configuration options"),
+    endpoints: z
+      .array(
+        z.object({
+          method: z.enum(["GET", "POST", "PATCH", "DELETE"]),
+          path: z.string().regex(/^\//, "must start with '/'"),
+          description: z.string().optional(),
+          group: z
+            .string()
+            .optional()
+            .describe("Route group name (supports wildcard '*' to match all endpoints in a group, e.g., '/api/v1/*')")
+        })
+      )
+      .optional()
+      .describe("Additional endpoints to create for this capability")
+  })
+  .strict();
+
 export const IntentUnion = z.union([
   AddEntity,
   AddField,
   RemoveField,
   AddEndpoint,
   AddComponent,
-  AddRelation
+  AddRelation,
+  UpdateEndpoint,
+  AddCapability
 ]);
 
 // Top-level document
