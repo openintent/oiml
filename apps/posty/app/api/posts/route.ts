@@ -2,6 +2,27 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import type { PostInterface, PostResponse, ErrorResponse } from '@/packages/types';
 
+export async function GET() {
+  try {
+    const posts = await prisma.post.findMany({
+      orderBy: { created_at: 'desc' }
+    });
+
+    const response: PostResponse = {
+      data: posts,
+    };
+
+    return NextResponse.json(response, { status: 200 });
+  } catch (error) {
+    console.error('Error fetching posts:', error);
+    const errorResponse: ErrorResponse = {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to fetch posts'
+    };
+    return NextResponse.json(errorResponse, { status: 500 });
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const body: Partial<PostInterface> = await request.json();

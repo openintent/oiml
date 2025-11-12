@@ -6,7 +6,7 @@ import type { ErrorResponse } from "@/packages/types";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { email, password, name } = body;
+    const { email, password, first_name, last_name } = body;
 
     if (!email || !password) {
       const errorResponse: ErrorResponse = {
@@ -37,12 +37,14 @@ export async function POST(request: Request) {
       data: {
         email,
         password: hashedPassword,
-        name: name || null,
+        first_name: first_name || null,
+        last_name: last_name || null,
       },
       select: {
         id: true,
         email: true,
-        name: true,
+        first_name: true,
+        last_name: true,
       },
     });
 

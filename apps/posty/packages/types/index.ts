@@ -9,7 +9,8 @@ export interface ErrorResponse {
 export interface UserInterface {
   id: number;
   email: string;
-  name: string | null;
+  first_name: string | null;
+  last_name: string | null;
 }
 
 export interface UserResponse {
