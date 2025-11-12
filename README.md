@@ -7,11 +7,11 @@
 OpenIntent allows developers to describe *what* they want instead of *how* to build it. AI agents read intent files and generate code using framework-specific implementation guides.
 
 **Key Features:**
-- 📝 **Declarative Development** - Describe features, not implementation
-- 🔒 **Version Locking** - Deterministic code generation with versioned schemas and framework guides
-- 🎯 **Standardized Schema** - Consistent intent structure across projects
-- 🤖 **Agent-Friendly** - IDEs and AI agents can easily understand intents
-- 🔧 **Framework Agnostic** - Support for any database, API, or UI framework
+- **Declarative Development** - Describe features, not implementation
+- **Version Locking** - Deterministic code generation with versioned schemas and framework guides
+- **Standardized Schema** - Consistent intent structure across projects
+- **Agent-Friendly** - IDEs and AI agents can easily understand intents
+- **Framework Agnostic** - Support for any database, API, or UI framework
 
 ## Quick Start
 
@@ -32,13 +32,13 @@ pnpm add -g @oiml/cli
 oiml init
 
 # Create your first intent
-oiml create INT-1
+oiml create FEAT-1
 ```
 
 ### Example Intent File
 
 ```yaml
-# .openintent/intents/INT-1/intent.yaml
+# .openintent/intents/FEAT-1/intent.yaml
 version: 0.1.x
 intents:
   - kind: add_entity
@@ -72,14 +72,12 @@ intents:
 ├── AGENTS.md                 # AI implementation guide
 │
 └── intents/                  # All intents (organized by ticket/issue ID)
-    ├── POS-1/                # One folder per intent
+    ├── FEAT-1/               # One folder per intent
     │   ├── intent.yaml       # Declarative specification
-    │   ├── plan.yaml         # Execution plan (optional)
     │   └── summary.yaml      # Output summary
     │
-    └── POS-2/                # Another intent
+    └── FEAT-2/               # Another intent
         ├── intent.yaml
-        ├── plan.yaml
         └── summary.yaml
 ```
 
@@ -87,11 +85,13 @@ intents:
 
 ### Database
 - ✅ Prisma
+- ✅ Ent
 - 🔄 Mongoose (coming soon)
 - 🔄 SQLAlchemy (coming soon)
 
 ### API
 - ✅ Next.js
+- ✅ Gin
 - 🔄 Express (coming soon)
 - 🔄 FastAPI (coming soon)
 
@@ -169,7 +169,7 @@ intents:
 version: 0.1.x
 intents:
   - kind: add_relation
-    scope: schema
+    scope: data
     relation:
       source_entity: Post
       target_entity: User
@@ -199,7 +199,7 @@ intents:
 |------------|-------|-------------|
 | `add_entity` | data | Create database entity/model |
 | `add_field` | data | Add fields to existing entity |
-| `add_relation` | schema | Create relationship between entities |
+| `add_relation` | data | Create relationship between entities |
 | `add_endpoint` | api | Create REST API endpoint |
 | `add_component` | ui | Create UI component (future) |
 
