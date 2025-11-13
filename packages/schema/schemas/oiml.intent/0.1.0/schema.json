@@ -37,7 +37,9 @@
             "properties": {
               "kind": {
                 "type": "string",
-                "enum": ["file"],
+                "enum": [
+                  "file"
+                ],
                 "description": "Type of reference"
               },
               "path": {
@@ -45,7 +47,10 @@
                 "description": "Path to the referenced resource"
               }
             },
-            "required": ["kind", "path"],
+            "required": [
+              "kind",
+              "path"
+            ],
             "additionalProperties": false
           },
           "description": "References to external resources"
@@ -61,7 +66,11 @@
           "properties": {
             "type": {
               "type": "string",
-              "enum": ["human", "agent", "system"],
+              "enum": [
+                "human",
+                "agent",
+                "system"
+              ],
               "default": "human"
             },
             "name": {
@@ -155,7 +164,16 @@
                     },
                     "array_type": {
                       "type": "string",
-                      "enum": ["string", "text", "integer", "bigint", "float", "decimal", "boolean", "uuid"]
+                      "enum": [
+                        "string",
+                        "text",
+                        "integer",
+                        "bigint",
+                        "float",
+                        "decimal",
+                        "boolean",
+                        "uuid"
+                      ]
                     },
                     "enum_values": {
                       "type": "array",
@@ -178,7 +196,9 @@
                           "description": "Specific endpoints to include this field in"
                         }
                       },
-                      "required": ["include"],
+                      "required": [
+                        "include"
+                      ],
                       "additionalProperties": false,
                       "description": "API endpoint configuration for this field"
                     },
@@ -191,7 +211,12 @@
                         },
                         "kind": {
                           "type": "string",
-                          "enum": ["one_to_one", "one_to_many", "many_to_one", "many_to_many"]
+                          "enum": [
+                            "one_to_one",
+                            "one_to_many",
+                            "many_to_one",
+                            "many_to_many"
+                          ]
                         },
                         "foreign_key": {
                           "type": "object",
@@ -208,7 +233,10 @@
                               "type": "string"
                             }
                           },
-                          "required": ["local_field", "target_field"],
+                          "required": [
+                            "local_field",
+                            "target_field"
+                          ],
                           "additionalProperties": false
                         },
                         "attributes": {
@@ -236,7 +264,9 @@
                                 "additionalProperties": {}
                               }
                             },
-                            "required": ["name"],
+                            "required": [
+                              "name"
+                            ],
                             "additionalProperties": false
                           },
                           "default": []
@@ -254,7 +284,12 @@
                             },
                             "kind": {
                               "type": "string",
-                              "enum": ["one_to_one", "one_to_many", "many_to_one", "many_to_many"]
+                              "enum": [
+                                "one_to_one",
+                                "one_to_many",
+                                "many_to_one",
+                                "many_to_many"
+                              ]
                             },
                             "attributes": {
                               "type": "array",
@@ -281,13 +316,17 @@
                                     "additionalProperties": {}
                                   }
                                 },
-                                "required": ["name"],
+                                "required": [
+                                  "name"
+                                ],
                                 "additionalProperties": false
                               },
                               "default": []
                             }
                           },
-                          "required": ["field_name"],
+                          "required": [
+                            "field_name"
+                          ],
                           "additionalProperties": false
                         },
                         "emit_migration": {
@@ -295,11 +334,17 @@
                           "default": true
                         }
                       },
-                      "required": ["target_entity", "kind"],
+                      "required": [
+                        "target_entity",
+                        "kind"
+                      ],
                       "additionalProperties": false
                     }
                   },
-                  "required": ["name", "type"],
+                  "required": [
+                    "name",
+                    "type"
+                  ],
                   "additionalProperties": false
                 },
                 "minItems": 1
@@ -345,15 +390,28 @@
                     },
                     "type": {
                       "type": "string",
-                      "enum": ["btree", "hash", "gist", "gin"]
+                      "enum": [
+                        "btree",
+                        "hash",
+                        "gist",
+                        "gin"
+                      ]
                     }
                   },
-                  "required": ["name", "fields"],
+                  "required": [
+                    "name",
+                    "fields"
+                  ],
                   "additionalProperties": false
                 }
               }
             },
-            "required": ["kind", "scope", "entity", "fields"],
+            "required": [
+              "kind",
+              "scope",
+              "entity",
+              "fields"
+            ],
             "additionalProperties": false
           },
           {
@@ -376,7 +434,11 @@
                 "default": false
               }
             },
-            "required": ["kind", "scope", "entity"],
+            "required": [
+              "kind",
+              "scope",
+              "entity"
+            ],
             "additionalProperties": false
           },
           {
@@ -399,7 +461,12 @@
                 "minLength": 1
               }
             },
-            "required": ["kind", "scope", "from", "to"],
+            "required": [
+              "kind",
+              "scope",
+              "from",
+              "to"
+            ],
             "additionalProperties": false
           },
           {
@@ -459,7 +526,16 @@
                     },
                     "array_type": {
                       "type": "string",
-                      "enum": ["string", "text", "integer", "bigint", "float", "decimal", "boolean", "uuid"]
+                      "enum": [
+                        "string",
+                        "text",
+                        "integer",
+                        "bigint",
+                        "float",
+                        "decimal",
+                        "boolean",
+                        "uuid"
+                      ]
                     },
                     "enum_values": {
                       "type": "array",
@@ -482,7 +558,9 @@
                           "description": "Specific endpoints to include this field in"
                         }
                       },
-                      "required": ["include"],
+                      "required": [
+                        "include"
+                      ],
                       "additionalProperties": false,
                       "description": "API endpoint configuration for this field"
                     },
@@ -495,7 +573,12 @@
                         },
                         "kind": {
                           "type": "string",
-                          "enum": ["one_to_one", "one_to_many", "many_to_one", "many_to_many"]
+                          "enum": [
+                            "one_to_one",
+                            "one_to_many",
+                            "many_to_one",
+                            "many_to_many"
+                          ]
                         },
                         "foreign_key": {
                           "type": "object",
@@ -512,7 +595,10 @@
                               "type": "string"
                             }
                           },
-                          "required": ["local_field", "target_field"],
+                          "required": [
+                            "local_field",
+                            "target_field"
+                          ],
                           "additionalProperties": false
                         },
                         "attributes": {
@@ -540,7 +626,9 @@
                                 "additionalProperties": {}
                               }
                             },
-                            "required": ["name"],
+                            "required": [
+                              "name"
+                            ],
                             "additionalProperties": false
                           },
                           "default": []
@@ -558,7 +646,12 @@
                             },
                             "kind": {
                               "type": "string",
-                              "enum": ["one_to_one", "one_to_many", "many_to_one", "many_to_many"]
+                              "enum": [
+                                "one_to_one",
+                                "one_to_many",
+                                "many_to_one",
+                                "many_to_many"
+                              ]
                             },
                             "attributes": {
                               "type": "array",
@@ -585,13 +678,17 @@
                                     "additionalProperties": {}
                                   }
                                 },
-                                "required": ["name"],
+                                "required": [
+                                  "name"
+                                ],
                                 "additionalProperties": false
                               },
                               "default": []
                             }
                           },
-                          "required": ["field_name"],
+                          "required": [
+                            "field_name"
+                          ],
                           "additionalProperties": false
                         },
                         "emit_migration": {
@@ -599,17 +696,28 @@
                           "default": true
                         }
                       },
-                      "required": ["target_entity", "kind"],
+                      "required": [
+                        "target_entity",
+                        "kind"
+                      ],
                       "additionalProperties": false
                     }
                   },
-                  "required": ["name", "type"],
+                  "required": [
+                    "name",
+                    "type"
+                  ],
                   "additionalProperties": false
                 },
                 "minItems": 1
               }
             },
-            "required": ["kind", "scope", "entity", "fields"],
+            "required": [
+              "kind",
+              "scope",
+              "entity",
+              "fields"
+            ],
             "additionalProperties": false
           },
           {
@@ -637,7 +745,12 @@
                 "description": "Array of field names to remove from the entity"
               }
             },
-            "required": ["kind", "scope", "entity", "fields"],
+            "required": [
+              "kind",
+              "scope",
+              "entity",
+              "fields"
+            ],
             "additionalProperties": false
           },
           {
@@ -664,7 +777,13 @@
                 "minLength": 1
               }
             },
-            "required": ["kind", "scope", "entity", "from", "to"],
+            "required": [
+              "kind",
+              "scope",
+              "entity",
+              "from",
+              "to"
+            ],
             "additionalProperties": false
           },
           {
@@ -680,7 +799,13 @@
               },
               "method": {
                 "type": "string",
-                "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"]
+                "enum": [
+                  "GET",
+                  "POST",
+                  "PUT",
+                  "PATCH",
+                  "DELETE"
+                ]
               },
               "path": {
                 "type": "string",
@@ -734,7 +859,16 @@
                     },
                     "array_type": {
                       "type": "string",
-                      "enum": ["string", "text", "integer", "bigint", "float", "decimal", "boolean", "uuid"]
+                      "enum": [
+                        "string",
+                        "text",
+                        "integer",
+                        "bigint",
+                        "float",
+                        "decimal",
+                        "boolean",
+                        "uuid"
+                      ]
                     },
                     "enum_values": {
                       "type": "array",
@@ -757,7 +891,9 @@
                           "description": "Specific endpoints to include this field in"
                         }
                       },
-                      "required": ["include"],
+                      "required": [
+                        "include"
+                      ],
                       "additionalProperties": false,
                       "description": "API endpoint configuration for this field"
                     },
@@ -770,7 +906,12 @@
                         },
                         "kind": {
                           "type": "string",
-                          "enum": ["one_to_one", "one_to_many", "many_to_one", "many_to_many"]
+                          "enum": [
+                            "one_to_one",
+                            "one_to_many",
+                            "many_to_one",
+                            "many_to_many"
+                          ]
                         },
                         "foreign_key": {
                           "type": "object",
@@ -787,7 +928,10 @@
                               "type": "string"
                             }
                           },
-                          "required": ["local_field", "target_field"],
+                          "required": [
+                            "local_field",
+                            "target_field"
+                          ],
                           "additionalProperties": false
                         },
                         "attributes": {
@@ -815,7 +959,9 @@
                                 "additionalProperties": {}
                               }
                             },
-                            "required": ["name"],
+                            "required": [
+                              "name"
+                            ],
                             "additionalProperties": false
                           },
                           "default": []
@@ -833,7 +979,12 @@
                             },
                             "kind": {
                               "type": "string",
-                              "enum": ["one_to_one", "one_to_many", "many_to_one", "many_to_many"]
+                              "enum": [
+                                "one_to_one",
+                                "one_to_many",
+                                "many_to_one",
+                                "many_to_many"
+                              ]
                             },
                             "attributes": {
                               "type": "array",
@@ -860,13 +1011,17 @@
                                     "additionalProperties": {}
                                   }
                                 },
-                                "required": ["name"],
+                                "required": [
+                                  "name"
+                                ],
                                 "additionalProperties": false
                               },
                               "default": []
                             }
                           },
-                          "required": ["field_name"],
+                          "required": [
+                            "field_name"
+                          ],
                           "additionalProperties": false
                         },
                         "emit_migration": {
@@ -874,11 +1029,17 @@
                           "default": true
                         }
                       },
-                      "required": ["target_entity", "kind"],
+                      "required": [
+                        "target_entity",
+                        "kind"
+                      ],
                       "additionalProperties": false
                     }
                   },
-                  "required": ["name", "type"],
+                  "required": [
+                    "name",
+                    "type"
+                  ],
                   "additionalProperties": false
                 }
               },
@@ -899,7 +1060,12 @@
                 "additionalProperties": false
               }
             },
-            "required": ["kind", "scope", "method", "path"],
+            "required": [
+              "kind",
+              "scope",
+              "method",
+              "path"
+            ],
             "additionalProperties": false
           },
           {
@@ -919,7 +1085,11 @@
               },
               "template": {
                 "type": "string",
-                "enum": ["List", "Form", "Custom"],
+                "enum": [
+                  "List",
+                  "Form",
+                  "Custom"
+                ],
                 "default": "Custom"
               },
               "entity": {
@@ -935,7 +1105,11 @@
                 "type": "string"
               }
             },
-            "required": ["kind", "scope", "component"],
+            "required": [
+              "kind",
+              "scope",
+              "component"
+            ],
             "additionalProperties": false
           },
           {
@@ -962,7 +1136,12 @@
                   },
                   "kind": {
                     "type": "string",
-                    "enum": ["one_to_one", "one_to_many", "many_to_one", "many_to_many"]
+                    "enum": [
+                      "one_to_one",
+                      "one_to_many",
+                      "many_to_one",
+                      "many_to_many"
+                    ]
                   },
                   "field_name": {
                     "type": "string",
@@ -983,7 +1162,10 @@
                         "type": "string"
                       }
                     },
-                    "required": ["local_field", "target_field"],
+                    "required": [
+                      "local_field",
+                      "target_field"
+                    ],
                     "additionalProperties": false
                   },
                   "attributes": {
@@ -1011,7 +1193,9 @@
                           "additionalProperties": {}
                         }
                       },
-                      "required": ["name"],
+                      "required": [
+                        "name"
+                      ],
                       "additionalProperties": false
                     },
                     "default": []
@@ -1029,7 +1213,12 @@
                       },
                       "kind": {
                         "type": "string",
-                        "enum": ["one_to_one", "one_to_many", "many_to_one", "many_to_many"]
+                        "enum": [
+                          "one_to_one",
+                          "one_to_many",
+                          "many_to_one",
+                          "many_to_many"
+                        ]
                       },
                       "attributes": {
                         "type": "array",
@@ -1056,13 +1245,17 @@
                               "additionalProperties": {}
                             }
                           },
-                          "required": ["name"],
+                          "required": [
+                            "name"
+                          ],
                           "additionalProperties": false
                         },
                         "default": []
                       }
                     },
-                    "required": ["field_name"],
+                    "required": [
+                      "field_name"
+                    ],
                     "additionalProperties": false
                   },
                   "emit_migration": {
@@ -1070,11 +1263,20 @@
                     "default": true
                   }
                 },
-                "required": ["source_entity", "target_entity", "kind", "field_name"],
+                "required": [
+                  "source_entity",
+                  "target_entity",
+                  "kind",
+                  "field_name"
+                ],
                 "additionalProperties": false
               }
             },
-            "required": ["kind", "scope", "relation"],
+            "required": [
+              "kind",
+              "scope",
+              "relation"
+            ],
             "additionalProperties": false
           },
           {
@@ -1090,7 +1292,13 @@
               },
               "method": {
                 "type": "string",
-                "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"]
+                "enum": [
+                  "GET",
+                  "POST",
+                  "PUT",
+                  "PATCH",
+                  "DELETE"
+                ]
               },
               "path": {
                 "type": "string",
@@ -1117,7 +1325,11 @@
                           "properties": {
                             "type": {
                               "type": "string",
-                              "enum": ["relation", "field", "computed"],
+                              "enum": [
+                                "relation",
+                                "field",
+                                "computed"
+                              ],
                               "description": "Type of field source"
                             },
                             "relation": {
@@ -1154,17 +1366,26 @@
                                   "description": "Target field to select from joined entity"
                                 }
                               },
-                              "required": ["foreign_key", "target_entity", "target_field"],
+                              "required": [
+                                "foreign_key",
+                                "target_entity",
+                                "target_field"
+                              ],
                               "additionalProperties": false,
                               "description": "Join configuration for foreign key relationships"
                             }
                           },
-                          "required": ["type"],
+                          "required": [
+                            "type"
+                          ],
                           "additionalProperties": false,
                           "description": "Source configuration for the field"
                         }
                       },
-                      "required": ["name", "source"],
+                      "required": [
+                        "name",
+                        "source"
+                      ],
                       "additionalProperties": false
                     },
                     "description": "Fields to add to the endpoint response (relations, specific fields, or computed values)"
@@ -1174,7 +1395,13 @@
                 "description": "Object specifying what to update in the endpoint"
               }
             },
-            "required": ["kind", "scope", "method", "path", "updates"],
+            "required": [
+              "kind",
+              "scope",
+              "method",
+              "path",
+              "updates"
+            ],
             "additionalProperties": false
           },
           {
@@ -1190,7 +1417,13 @@
               },
               "capability": {
                 "type": "string",
-                "enum": ["auth", "file_upload", "file_stream", "sse", "websocket"],
+                "enum": [
+                  "auth",
+                  "file_upload",
+                  "file_stream",
+                  "sse",
+                  "websocket"
+                ],
                 "description": "Type of capability to add"
               },
               "framework": {
@@ -1215,7 +1448,13 @@
                   "properties": {
                     "method": {
                       "type": "string",
-                      "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"]
+                      "enum": [
+                        "GET",
+                        "POST",
+                        "PUT",
+                        "PATCH",
+                        "DELETE"
+                      ]
                     },
                     "path": {
                       "type": "string",
@@ -1234,7 +1473,12 @@
                 "description": "Additional endpoints to create for this capability"
               }
             },
-            "required": ["kind", "scope", "capability", "framework"],
+            "required": [
+              "kind",
+              "scope",
+              "capability",
+              "framework"
+            ],
             "additionalProperties": false
           }
         ]
@@ -1242,7 +1486,11 @@
       "minItems": 1
     }
   },
-  "required": ["type", "version", "intents"],
+  "required": [
+    "type",
+    "version",
+    "intents"
+  ],
   "additionalProperties": false,
   "definitions": {
     "FieldType": {
@@ -1288,7 +1536,9 @@
           "additionalProperties": {}
         }
       },
-      "required": ["name"],
+      "required": [
+        "name"
+      ],
       "additionalProperties": false
     },
     "ForeignKey": {
@@ -1306,12 +1556,20 @@
           "type": "string"
         }
       },
-      "required": ["local_field", "target_field"],
+      "required": [
+        "local_field",
+        "target_field"
+      ],
       "additionalProperties": false
     },
     "RelationKind": {
       "type": "string",
-      "enum": ["one_to_one", "one_to_many", "many_to_one", "many_to_many"]
+      "enum": [
+        "one_to_one",
+        "one_to_many",
+        "many_to_one",
+        "many_to_many"
+      ]
     },
     "ReverseRelation": {
       "type": "object",
@@ -1326,7 +1584,12 @@
         },
         "kind": {
           "type": "string",
-          "enum": ["one_to_one", "one_to_many", "many_to_one", "many_to_many"]
+          "enum": [
+            "one_to_one",
+            "one_to_many",
+            "many_to_one",
+            "many_to_many"
+          ]
         },
         "attributes": {
           "type": "array",
@@ -1353,13 +1616,17 @@
                 "additionalProperties": {}
               }
             },
-            "required": ["name"],
+            "required": [
+              "name"
+            ],
             "additionalProperties": false
           },
           "default": []
         }
       },
-      "required": ["field_name"],
+      "required": [
+        "field_name"
+      ],
       "additionalProperties": false
     },
     "FieldRelation": {
@@ -1371,7 +1638,12 @@
         },
         "kind": {
           "type": "string",
-          "enum": ["one_to_one", "one_to_many", "many_to_one", "many_to_many"]
+          "enum": [
+            "one_to_one",
+            "one_to_many",
+            "many_to_one",
+            "many_to_many"
+          ]
         },
         "foreign_key": {
           "type": "object",
@@ -1388,7 +1660,10 @@
               "type": "string"
             }
           },
-          "required": ["local_field", "target_field"],
+          "required": [
+            "local_field",
+            "target_field"
+          ],
           "additionalProperties": false
         },
         "attributes": {
@@ -1416,7 +1691,9 @@
                 "additionalProperties": {}
               }
             },
-            "required": ["name"],
+            "required": [
+              "name"
+            ],
             "additionalProperties": false
           },
           "default": []
@@ -1434,7 +1711,12 @@
             },
             "kind": {
               "type": "string",
-              "enum": ["one_to_one", "one_to_many", "many_to_one", "many_to_many"]
+              "enum": [
+                "one_to_one",
+                "one_to_many",
+                "many_to_one",
+                "many_to_many"
+              ]
             },
             "attributes": {
               "type": "array",
@@ -1461,13 +1743,17 @@
                     "additionalProperties": {}
                   }
                 },
-                "required": ["name"],
+                "required": [
+                  "name"
+                ],
                 "additionalProperties": false
               },
               "default": []
             }
           },
-          "required": ["field_name"],
+          "required": [
+            "field_name"
+          ],
           "additionalProperties": false
         },
         "emit_migration": {
@@ -1475,7 +1761,10 @@
           "default": true
         }
       },
-      "required": ["target_entity", "kind"],
+      "required": [
+        "target_entity",
+        "kind"
+      ],
       "additionalProperties": false
     },
     "Field": {
@@ -1518,7 +1807,16 @@
         },
         "array_type": {
           "type": "string",
-          "enum": ["string", "text", "integer", "bigint", "float", "decimal", "boolean", "uuid"]
+          "enum": [
+            "string",
+            "text",
+            "integer",
+            "bigint",
+            "float",
+            "decimal",
+            "boolean",
+            "uuid"
+          ]
         },
         "enum_values": {
           "type": "array",
@@ -1541,7 +1839,9 @@
               "description": "Specific endpoints to include this field in"
             }
           },
-          "required": ["include"],
+          "required": [
+            "include"
+          ],
           "additionalProperties": false,
           "description": "API endpoint configuration for this field"
         },
@@ -1554,7 +1854,12 @@
             },
             "kind": {
               "type": "string",
-              "enum": ["one_to_one", "one_to_many", "many_to_one", "many_to_many"]
+              "enum": [
+                "one_to_one",
+                "one_to_many",
+                "many_to_one",
+                "many_to_many"
+              ]
             },
             "foreign_key": {
               "type": "object",
@@ -1571,7 +1876,10 @@
                   "type": "string"
                 }
               },
-              "required": ["local_field", "target_field"],
+              "required": [
+                "local_field",
+                "target_field"
+              ],
               "additionalProperties": false
             },
             "attributes": {
@@ -1599,7 +1907,9 @@
                     "additionalProperties": {}
                   }
                 },
-                "required": ["name"],
+                "required": [
+                  "name"
+                ],
                 "additionalProperties": false
               },
               "default": []
@@ -1617,7 +1927,12 @@
                 },
                 "kind": {
                   "type": "string",
-                  "enum": ["one_to_one", "one_to_many", "many_to_one", "many_to_many"]
+                  "enum": [
+                    "one_to_one",
+                    "one_to_many",
+                    "many_to_one",
+                    "many_to_many"
+                  ]
                 },
                 "attributes": {
                   "type": "array",
@@ -1644,13 +1959,17 @@
                         "additionalProperties": {}
                       }
                     },
-                    "required": ["name"],
+                    "required": [
+                      "name"
+                    ],
                     "additionalProperties": false
                   },
                   "default": []
                 }
               },
-              "required": ["field_name"],
+              "required": [
+                "field_name"
+              ],
               "additionalProperties": false
             },
             "emit_migration": {
@@ -1658,11 +1977,17 @@
               "default": true
             }
           },
-          "required": ["target_entity", "kind"],
+          "required": [
+            "target_entity",
+            "kind"
+          ],
           "additionalProperties": false
         }
       },
-      "required": ["name", "type"],
+      "required": [
+        "name",
+        "type"
+      ],
       "additionalProperties": false
     },
     "Provenance": {
@@ -1673,7 +1998,11 @@
           "properties": {
             "type": {
               "type": "string",
-              "enum": ["human", "agent", "system"],
+              "enum": [
+                "human",
+                "agent",
+                "system"
+              ],
               "default": "human"
             },
             "name": {
@@ -1724,7 +2053,9 @@
             "properties": {
               "kind": {
                 "type": "string",
-                "enum": ["file"],
+                "enum": [
+                  "file"
+                ],
                 "description": "Type of reference"
               },
               "path": {
@@ -1732,7 +2063,10 @@
                 "description": "Path to the referenced resource"
               }
             },
-            "required": ["kind", "path"],
+            "required": [
+              "kind",
+              "path"
+            ],
             "additionalProperties": false
           },
           "description": "References to external resources"
@@ -1797,7 +2131,16 @@
               },
               "array_type": {
                 "type": "string",
-                "enum": ["string", "text", "integer", "bigint", "float", "decimal", "boolean", "uuid"]
+                "enum": [
+                  "string",
+                  "text",
+                  "integer",
+                  "bigint",
+                  "float",
+                  "decimal",
+                  "boolean",
+                  "uuid"
+                ]
               },
               "enum_values": {
                 "type": "array",
@@ -1820,7 +2163,9 @@
                     "description": "Specific endpoints to include this field in"
                   }
                 },
-                "required": ["include"],
+                "required": [
+                  "include"
+                ],
                 "additionalProperties": false,
                 "description": "API endpoint configuration for this field"
               },
@@ -1833,7 +2178,12 @@
                   },
                   "kind": {
                     "type": "string",
-                    "enum": ["one_to_one", "one_to_many", "many_to_one", "many_to_many"]
+                    "enum": [
+                      "one_to_one",
+                      "one_to_many",
+                      "many_to_one",
+                      "many_to_many"
+                    ]
                   },
                   "foreign_key": {
                     "type": "object",
@@ -1850,7 +2200,10 @@
                         "type": "string"
                       }
                     },
-                    "required": ["local_field", "target_field"],
+                    "required": [
+                      "local_field",
+                      "target_field"
+                    ],
                     "additionalProperties": false
                   },
                   "attributes": {
@@ -1878,7 +2231,9 @@
                           "additionalProperties": {}
                         }
                       },
-                      "required": ["name"],
+                      "required": [
+                        "name"
+                      ],
                       "additionalProperties": false
                     },
                     "default": []
@@ -1896,7 +2251,12 @@
                       },
                       "kind": {
                         "type": "string",
-                        "enum": ["one_to_one", "one_to_many", "many_to_one", "many_to_many"]
+                        "enum": [
+                          "one_to_one",
+                          "one_to_many",
+                          "many_to_one",
+                          "many_to_many"
+                        ]
                       },
                       "attributes": {
                         "type": "array",
@@ -1923,13 +2283,17 @@
                               "additionalProperties": {}
                             }
                           },
-                          "required": ["name"],
+                          "required": [
+                            "name"
+                          ],
                           "additionalProperties": false
                         },
                         "default": []
                       }
                     },
-                    "required": ["field_name"],
+                    "required": [
+                      "field_name"
+                    ],
                     "additionalProperties": false
                   },
                   "emit_migration": {
@@ -1937,11 +2301,17 @@
                     "default": true
                   }
                 },
-                "required": ["target_entity", "kind"],
+                "required": [
+                  "target_entity",
+                  "kind"
+                ],
                 "additionalProperties": false
               }
             },
-            "required": ["name", "type"],
+            "required": [
+              "name",
+              "type"
+            ],
             "additionalProperties": false
           },
           "minItems": 1
@@ -1987,15 +2357,28 @@
               },
               "type": {
                 "type": "string",
-                "enum": ["btree", "hash", "gist", "gin"]
+                "enum": [
+                  "btree",
+                  "hash",
+                  "gist",
+                  "gin"
+                ]
               }
             },
-            "required": ["name", "fields"],
+            "required": [
+              "name",
+              "fields"
+            ],
             "additionalProperties": false
           }
         }
       },
-      "required": ["kind", "scope", "entity", "fields"],
+      "required": [
+        "kind",
+        "scope",
+        "entity",
+        "fields"
+      ],
       "additionalProperties": false
     },
     "AddField": {
@@ -2055,7 +2438,16 @@
               },
               "array_type": {
                 "type": "string",
-                "enum": ["string", "text", "integer", "bigint", "float", "decimal", "boolean", "uuid"]
+                "enum": [
+                  "string",
+                  "text",
+                  "integer",
+                  "bigint",
+                  "float",
+                  "decimal",
+                  "boolean",
+                  "uuid"
+                ]
               },
               "enum_values": {
                 "type": "array",
@@ -2078,7 +2470,9 @@
                     "description": "Specific endpoints to include this field in"
                   }
                 },
-                "required": ["include"],
+                "required": [
+                  "include"
+                ],
                 "additionalProperties": false,
                 "description": "API endpoint configuration for this field"
               },
@@ -2091,7 +2485,12 @@
                   },
                   "kind": {
                     "type": "string",
-                    "enum": ["one_to_one", "one_to_many", "many_to_one", "many_to_many"]
+                    "enum": [
+                      "one_to_one",
+                      "one_to_many",
+                      "many_to_one",
+                      "many_to_many"
+                    ]
                   },
                   "foreign_key": {
                     "type": "object",
@@ -2108,7 +2507,10 @@
                         "type": "string"
                       }
                     },
-                    "required": ["local_field", "target_field"],
+                    "required": [
+                      "local_field",
+                      "target_field"
+                    ],
                     "additionalProperties": false
                   },
                   "attributes": {
@@ -2136,7 +2538,9 @@
                           "additionalProperties": {}
                         }
                       },
-                      "required": ["name"],
+                      "required": [
+                        "name"
+                      ],
                       "additionalProperties": false
                     },
                     "default": []
@@ -2154,7 +2558,12 @@
                       },
                       "kind": {
                         "type": "string",
-                        "enum": ["one_to_one", "one_to_many", "many_to_one", "many_to_many"]
+                        "enum": [
+                          "one_to_one",
+                          "one_to_many",
+                          "many_to_one",
+                          "many_to_many"
+                        ]
                       },
                       "attributes": {
                         "type": "array",
@@ -2181,13 +2590,17 @@
                               "additionalProperties": {}
                             }
                           },
-                          "required": ["name"],
+                          "required": [
+                            "name"
+                          ],
                           "additionalProperties": false
                         },
                         "default": []
                       }
                     },
-                    "required": ["field_name"],
+                    "required": [
+                      "field_name"
+                    ],
                     "additionalProperties": false
                   },
                   "emit_migration": {
@@ -2195,17 +2608,28 @@
                     "default": true
                   }
                 },
-                "required": ["target_entity", "kind"],
+                "required": [
+                  "target_entity",
+                  "kind"
+                ],
                 "additionalProperties": false
               }
             },
-            "required": ["name", "type"],
+            "required": [
+              "name",
+              "type"
+            ],
             "additionalProperties": false
           },
           "minItems": 1
         }
       },
-      "required": ["kind", "scope", "entity", "fields"],
+      "required": [
+        "kind",
+        "scope",
+        "entity",
+        "fields"
+      ],
       "additionalProperties": false
     },
     "RemoveField": {
@@ -2233,7 +2657,12 @@
           "description": "Array of field names to remove from the entity"
         }
       },
-      "required": ["kind", "scope", "entity", "fields"],
+      "required": [
+        "kind",
+        "scope",
+        "entity",
+        "fields"
+      ],
       "additionalProperties": false
     },
     "AddEndpoint": {
@@ -2249,7 +2678,13 @@
         },
         "method": {
           "type": "string",
-          "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"]
+          "enum": [
+            "GET",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE"
+          ]
         },
         "path": {
           "type": "string",
@@ -2303,7 +2738,16 @@
               },
               "array_type": {
                 "type": "string",
-                "enum": ["string", "text", "integer", "bigint", "float", "decimal", "boolean", "uuid"]
+                "enum": [
+                  "string",
+                  "text",
+                  "integer",
+                  "bigint",
+                  "float",
+                  "decimal",
+                  "boolean",
+                  "uuid"
+                ]
               },
               "enum_values": {
                 "type": "array",
@@ -2326,7 +2770,9 @@
                     "description": "Specific endpoints to include this field in"
                   }
                 },
-                "required": ["include"],
+                "required": [
+                  "include"
+                ],
                 "additionalProperties": false,
                 "description": "API endpoint configuration for this field"
               },
@@ -2339,7 +2785,12 @@
                   },
                   "kind": {
                     "type": "string",
-                    "enum": ["one_to_one", "one_to_many", "many_to_one", "many_to_many"]
+                    "enum": [
+                      "one_to_one",
+                      "one_to_many",
+                      "many_to_one",
+                      "many_to_many"
+                    ]
                   },
                   "foreign_key": {
                     "type": "object",
@@ -2356,7 +2807,10 @@
                         "type": "string"
                       }
                     },
-                    "required": ["local_field", "target_field"],
+                    "required": [
+                      "local_field",
+                      "target_field"
+                    ],
                     "additionalProperties": false
                   },
                   "attributes": {
@@ -2384,7 +2838,9 @@
                           "additionalProperties": {}
                         }
                       },
-                      "required": ["name"],
+                      "required": [
+                        "name"
+                      ],
                       "additionalProperties": false
                     },
                     "default": []
@@ -2402,7 +2858,12 @@
                       },
                       "kind": {
                         "type": "string",
-                        "enum": ["one_to_one", "one_to_many", "many_to_one", "many_to_many"]
+                        "enum": [
+                          "one_to_one",
+                          "one_to_many",
+                          "many_to_one",
+                          "many_to_many"
+                        ]
                       },
                       "attributes": {
                         "type": "array",
@@ -2429,13 +2890,17 @@
                               "additionalProperties": {}
                             }
                           },
-                          "required": ["name"],
+                          "required": [
+                            "name"
+                          ],
                           "additionalProperties": false
                         },
                         "default": []
                       }
                     },
-                    "required": ["field_name"],
+                    "required": [
+                      "field_name"
+                    ],
                     "additionalProperties": false
                   },
                   "emit_migration": {
@@ -2443,11 +2908,17 @@
                     "default": true
                   }
                 },
-                "required": ["target_entity", "kind"],
+                "required": [
+                  "target_entity",
+                  "kind"
+                ],
                 "additionalProperties": false
               }
             },
-            "required": ["name", "type"],
+            "required": [
+              "name",
+              "type"
+            ],
             "additionalProperties": false
           }
         },
@@ -2468,7 +2939,12 @@
           "additionalProperties": false
         }
       },
-      "required": ["kind", "scope", "method", "path"],
+      "required": [
+        "kind",
+        "scope",
+        "method",
+        "path"
+      ],
       "additionalProperties": false
     },
     "AddComponent": {
@@ -2488,7 +2964,11 @@
         },
         "template": {
           "type": "string",
-          "enum": ["List", "Form", "Custom"],
+          "enum": [
+            "List",
+            "Form",
+            "Custom"
+          ],
           "default": "Custom"
         },
         "entity": {
@@ -2504,7 +2984,11 @@
           "type": "string"
         }
       },
-      "required": ["kind", "scope", "component"],
+      "required": [
+        "kind",
+        "scope",
+        "component"
+      ],
       "additionalProperties": false
     },
     "AddRelation": {
@@ -2531,7 +3015,12 @@
             },
             "kind": {
               "type": "string",
-              "enum": ["one_to_one", "one_to_many", "many_to_one", "many_to_many"]
+              "enum": [
+                "one_to_one",
+                "one_to_many",
+                "many_to_one",
+                "many_to_many"
+              ]
             },
             "field_name": {
               "type": "string",
@@ -2552,7 +3041,10 @@
                   "type": "string"
                 }
               },
-              "required": ["local_field", "target_field"],
+              "required": [
+                "local_field",
+                "target_field"
+              ],
               "additionalProperties": false
             },
             "attributes": {
@@ -2580,7 +3072,9 @@
                     "additionalProperties": {}
                   }
                 },
-                "required": ["name"],
+                "required": [
+                  "name"
+                ],
                 "additionalProperties": false
               },
               "default": []
@@ -2598,7 +3092,12 @@
                 },
                 "kind": {
                   "type": "string",
-                  "enum": ["one_to_one", "one_to_many", "many_to_one", "many_to_many"]
+                  "enum": [
+                    "one_to_one",
+                    "one_to_many",
+                    "many_to_one",
+                    "many_to_many"
+                  ]
                 },
                 "attributes": {
                   "type": "array",
@@ -2625,13 +3124,17 @@
                         "additionalProperties": {}
                       }
                     },
-                    "required": ["name"],
+                    "required": [
+                      "name"
+                    ],
                     "additionalProperties": false
                   },
                   "default": []
                 }
               },
-              "required": ["field_name"],
+              "required": [
+                "field_name"
+              ],
               "additionalProperties": false
             },
             "emit_migration": {
@@ -2639,11 +3142,20 @@
               "default": true
             }
           },
-          "required": ["source_entity", "target_entity", "kind", "field_name"],
+          "required": [
+            "source_entity",
+            "target_entity",
+            "kind",
+            "field_name"
+          ],
           "additionalProperties": false
         }
       },
-      "required": ["kind", "scope", "relation"],
+      "required": [
+        "kind",
+        "scope",
+        "relation"
+      ],
       "additionalProperties": false
     }
   }
