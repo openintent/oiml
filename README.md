@@ -135,6 +135,7 @@ oiml create [name]     # Create new intent file
 
 ```yaml
 version: 0.1.x
+type: oiml.intent
 intents:
   - kind: add_entity
     scope: data
@@ -159,6 +160,7 @@ intents:
 
 ```yaml
 version: 0.1.x
+type: oiml.intent
 intents:
   - kind: add_relation
     scope: data
@@ -176,6 +178,7 @@ intents:
 
 ```yaml
 version: 0.1.x
+type: oiml.intent
 intents:
   - kind: add_endpoint
     scope: api
