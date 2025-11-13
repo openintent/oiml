@@ -79,7 +79,6 @@
     "publish": "vsce publish --no-dependencies"
   },
   "devDependencies": {
-    "@types/glob": "^9.0.0",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.10.0",
     "@types/vscode": "^1.85.0",
