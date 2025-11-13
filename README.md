@@ -1,6 +1,6 @@
 # OIML - Open Intent Modeling Language
 
-**OIML (Open Intent Modeling Language)** is a global standard for AI-driven development that enables declarative code generation through standardized intents.
+**OIML (Open Intent Modeling Language)** is a standard for AI-driven development that enables declarative code generation through structured intents.
 
 ## What is OpenIntent?
 
@@ -40,6 +40,7 @@ oiml create FEAT-1
 ```yaml
 # .openintent/intents/FEAT-1/intent.yaml
 version: 0.1.x
+type: oiml.intent
 intents:
   - kind: add_entity
     scope: data
@@ -135,6 +136,7 @@ oiml create [name]     # Create new intent file
 
 ```yaml
 version: 0.1.x
+type: oiml.intent
 intents:
   - kind: add_entity
     scope: data
@@ -159,6 +161,7 @@ intents:
 
 ```yaml
 version: 0.1.x
+type: oiml.intent
 intents:
   - kind: add_relation
     scope: data
@@ -176,6 +179,7 @@ intents:
 
 ```yaml
 version: 0.1.x
+type: oiml.intent
 intents:
   - kind: add_endpoint
     scope: api
