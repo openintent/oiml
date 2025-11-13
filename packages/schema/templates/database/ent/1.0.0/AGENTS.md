@@ -67,6 +67,7 @@ project/
 
 - When `unique: true` is specified, `.Unique()` **must** be called on the field. This creates a database-level UNIQUE constraint that prevents duplicate values. After regenerating Ent code, you **must** run migrations to apply this constraint to the database.
 - When `max_length: N` is specified, **both** `.MaxLen(N)` **and** `.SchemaType()` should be used to ensure the database column respects the constraint:
+
   ```go
   field.String("email").
       MaxLen(255).
@@ -293,6 +294,7 @@ func (Customer) Edges() []ent.Edge {
 
    **Important Note on MaxLen() and SchemaType()**:
    - **For new fields**: Always use both `.MaxLen(N)` and `.SchemaType()` to ensure the database column type is `VARCHAR(N)`:
+
      ```go
      field.String("field_name").
          MaxLen(255).
@@ -304,7 +306,9 @@ func (Customer) Edges() []ent.Edge {
      ```
 
      - `SchemaType()` ensures new columns are created with the correct `VARCHAR(N)` type
+
    - **For existing fields**: Ent's auto-migration (`client.Schema.Create()`) **does not alter existing columns** even with `SchemaType()`. You **must** manually alter existing columns:
+
      ```sql
      -- PostgreSQL example
      ALTER TABLE users ALTER COLUMN first_name TYPE VARCHAR(255);
@@ -314,10 +318,11 @@ func (Customer) Edges() []ent.Edge {
      - **Alternative for development**: Drop and recreate the table
      - **For production**: Use Ent's Atlas migration tools to generate explicit SQL migrations
 
-   **Important Note on API Endpoints**: When adding fields to an entity, you should also update any existing POST endpoints for that entity to accept the new fields:
+   **CRITICAL Note on API Endpoints**: When adding fields to an entity, you **must** update any existing POST/PATCH endpoints for that entity to accept the new fields:
    - **For required fields**: Add them to the request body struct with `binding:"required"`
    - **For optional fields**: Add them as pointer types (`*string`, `*int`, etc.) so they can be `nil` if not provided
    - Update the entity creation code to conditionally set optional fields only if they're not nil
+   - Update TypeScript types in `packages/types/index.ts` if using TypeScript API layer
    - Example for optional fields:
 
      ```go
@@ -332,6 +337,12 @@ func (Customer) Edges() []ent.Edge {
      }
      entity, err := create.Save(context.Background())
      ```
+
+   **IMPORTANT:** After adding fields:
+   1. Regenerate Ent code: `go generate ./ent`
+   2. Run migrations: `client.Schema.Create(context.Background())`
+   3. Update API endpoints to accept new fields
+   4. Update response types if needed
 
 ### Example: Adding Fields to Customer
 
@@ -1097,20 +1108,29 @@ field.Strings("tags").
 
 ## Best Practices
 
-1. **Always regenerate Ent code** after schema changes
+1. **Always regenerate Ent code** after schema changes: `go generate ./ent`
 2. **Always run migrations** after regenerating Ent code - this is **critical** for applying database constraints (UNIQUE, NOT NULL, etc.)
 3. **Verify constraints were applied** - after migrations, check that unique constraints and other database-level changes were actually created
-4. **Use descriptive field names** (snake_case convention)
-5. **Add validation** using field methods (`.MaxLen()`, `.Min()`, etc.)
-6. **Use enums** for fixed value sets
-7. **Run migrations** in development before production
-8. **Keep schema files organized** - one entity per file
-9. **Use edges for relations** instead of manual foreign keys
-10. **Document complex fields** with comments
-11. **Test schema changes** before committing
-12. **Use transactions** for multi-entity operations
+4. **Update API endpoints** when adding fields to entities - ensure POST/PATCH handlers accept new fields
+5. **Update TypeScript types** if using TypeScript API layer - update `packages/types/index.ts` after schema changes
+6. **Use descriptive field names** (snake_case convention)
+7. **Add validation** using field methods (`.MaxLen()`, `.Min()`, etc.)
+8. **Use enums** for fixed value sets
+9. **Run migrations** in development before production
+10. **Keep schema files organized** - one entity per file
+11. **Use edges for relations** instead of manual foreign keys
+12. **Document complex fields** with comments
+13. **Test schema changes** before committing
+14. **Use transactions** for multi-entity operations
+15. **Handle nullable fields correctly** - Ent returns zero values, check for nil/empty appropriately
 
-**Critical Reminder**: Regenerating Ent code (`go generate ./ent`) only updates Go code. Database schema changes (including unique constraints) are **only** applied when you run migrations (`client.Schema.Create()`). Always run both steps in sequence.
+**Critical Reminder**: Regenerating Ent code (`go generate ./ent`) only updates Go code. Database schema changes (including unique constraints) are **only** applied when you run migrations (`client.Schema.Create()`). Always run both steps in sequence:
+
+1. Update schema file
+2. Regenerate Ent code: `go generate ./ent`
+3. Run migrations: `client.Schema.Create(context.Background())`
+4. Update API endpoints if fields were added/modified
+5. Update TypeScript types if using TypeScript API layer
 
 ## Type Generation
 

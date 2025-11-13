@@ -335,7 +335,9 @@ This creates the following NextAuth endpoints automatically:
 
 ### Step 5: Create Login Endpoint
 
-**Check if the route already exists:** Verify if `app/api/auth/login/route.ts` exists. If it does, skip this step. Otherwise, create it:
+**CRITICAL:** Check if the route already exists before creating. Verify if `app/api/auth/login/route.ts` exists. If it does, review and update it rather than overwriting.
+
+**File location:** `app/api/auth/login/route.ts` (based on `paths.api: app/api` from `project.yaml`)
 
 Create `app/api/auth/login/route.ts`:
 
@@ -427,6 +429,8 @@ export async function POST(request: Request) {
     }
 
     // Return user data (password excluded)
+    // Follow api.response.success.object configuration from project.yaml
+    // Default to { data: ... } if not configured
     return NextResponse.json(
       {
         success: true,
@@ -487,7 +491,9 @@ async function findUserByEmail(email: string) {
 
 ### Step 6: Create Registration Endpoint
 
-**Check if the route already exists:** Verify if `app/api/auth/register/route.ts` exists. If it does, skip this step. Otherwise, create it:
+**CRITICAL:** Check if the route already exists before creating. Verify if `app/api/auth/register/route.ts` exists. If it does, review and update it rather than overwriting.
+
+**File location:** `app/api/auth/register/route.ts` (based on `paths.api: app/api` from `project.yaml`)
 
 Create `app/api/auth/register/route.ts`:
 
@@ -637,7 +643,9 @@ async function createUser(data: { email: string; password: string; name?: string
 
 ### Step 7: Create Middleware for Route Protection
 
-Create `middleware.ts` in the project root:
+**CRITICAL:** Create `middleware.ts` in the project root (same level as `package.json`). This file is required for route protection.
+
+Create `middleware.ts`:
 
 ```typescript
 import { auth } from "@/auth";
@@ -648,7 +656,9 @@ export default auth(req => {
 
   // Public routes that don't require authentication
   const publicRoutes = [
-    "/api/auth" // Authentication endpoints (login, register, etc.)
+    "/api/auth", // Authentication endpoints (login, register, etc.)
+    "/api/health", // Health check endpoint (if exists)
+    "/api/public" // Public API endpoints (if exists)
   ];
 
   // Check if the current path is a public route
@@ -658,6 +668,8 @@ export default auth(req => {
   if (pathname.startsWith("/api") && !isPublicRoute) {
     // Check if user is authenticated
     if (!req.auth) {
+      // Read api.response.error configuration from project.yaml
+      // Default to { success: false, error: "..." } if not configured
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
   }
@@ -670,49 +682,65 @@ export const config = {
     /*
      * Match all API routes
      * The middleware function will exclude /api/auth/* routes
-     * Using regex pattern that Next.js middleware supports
+     * Using regex pattern that Next.js middleware supports (not route syntax like /api/:path*)
      */
     "/api/(.*)"
   ]
 };
 ```
 
-**Important Notes:**
+**CRITICAL Notes:**
 
-- The matcher pattern `/api/(.*)` uses regex syntax that Next.js middleware supports (not route syntax like `/api/:path*`)
-- After making changes to middleware, **restart your Next.js dev server** for changes to take effect
-- The middleware will run on all `/api/*` routes, but the function logic excludes public routes (auth, routes metadata, schema metadata)
-- Add any additional public routes to the `publicRoutes` array if needed (e.g., health checks, public API endpoints)
+- **File location**: `middleware.ts` must be in the project root (same level as `package.json`)
+- **Matcher pattern**: `/api/(.*)` uses regex syntax that Next.js middleware supports (NOT route syntax like `/api/:path*`)
+- **Restart required**: After creating or modifying `middleware.ts`, **restart your Next.js dev server** for changes to take effect
+- **Public routes**: Add any additional public routes to the `publicRoutes` array (e.g., health checks, public API endpoints, OpenAPI docs)
+- **Response format**: Follow `api.response.error` configuration from `project.yaml` for error responses
+- **Middleware execution**: The middleware runs on all `/api/*` routes, but the function logic excludes public routes
 
 **Handling Group Wildcards:**
 
 When the intent specifies a `group` property with a wildcard (e.g., `group: /api/*`), update the middleware accordingly:
 
 ```typescript
-// If intent specifies group: /api/*
-if (pathname.startsWith("/api") && !pathname.startsWith("/api/auth")) {
-  if (!req.auth) {
-    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-  }
-}
+export default auth(req => {
+  const { pathname } = req.nextUrl;
 
-// If intent specifies group: /api/v1/*
-if (pathname.startsWith("/api/v1")) {
-  if (!req.auth) {
-    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-  }
-}
+  // Public routes
+  const publicRoutes = ["/api/auth"];
 
-// Multiple groups can be protected
-const protectedPaths = ["/api/v1", "/api/admin"];
-if (protectedPaths.some(path => pathname.startsWith(path))) {
-  if (!req.auth) {
-    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+  // If intent specifies group: /api/* (protect all /api routes except auth)
+  if (pathname.startsWith("/api") && !publicRoutes.some(route => pathname.startsWith(route))) {
+    if (!req.auth) {
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
   }
-}
+
+  // If intent specifies group: /api/v1/* (protect only v1 routes)
+  // if (pathname.startsWith("/api/v1")) {
+  //   if (!req.auth) {
+  //     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+  //   }
+  // }
+
+  // Multiple groups can be protected
+  // const protectedPaths = ["/api/v1", "/api/admin"];
+  // if (protectedPaths.some(path => pathname.startsWith(path))) {
+  //   if (!req.auth) {
+  //     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+  //   }
+  // }
+
+  return NextResponse.next();
+});
 ```
 
-**Note:** The `group` property in the intent is informational - it tells you which route groups should be protected. You need to implement the middleware logic accordingly.
+**IMPORTANT:**
+
+- The `group` property in the intent is informational - it tells you which route groups should be protected
+- You must implement the middleware logic accordingly based on the `group` value
+- Uncomment and adapt the appropriate protection logic based on your intent's `group` configuration
+- Always exclude `/api/auth` routes from protection
 
 ### Step 8: Create Type Declarations
 
@@ -955,13 +983,20 @@ Without authentication, you'll receive:
 
 ### Middleware not protecting routes / API requests allowed without authentication
 
-- **Most common issue**: Restart your Next.js dev server after creating or modifying `middleware.ts`
-- Verify the matcher pattern uses regex syntax: `/api/(.*)` (not route syntax like `/api/:path*`)
-- Check that `middleware.ts` is in the project root (same level as `package.json`)
-- Ensure `AUTH_SECRET` environment variable is set
-- Verify the middleware function is checking `!req.auth` (not `!isLoggedIn` or `!!req.auth`)
-- Check browser/Postman cookies - NextAuth uses httpOnly cookies for session management
-- Test with a browser (which handles cookies automatically) rather than Postman if cookies aren't being sent
+**Troubleshooting Steps:**
+
+1. **Restart Next.js dev server** - **MOST COMMON FIX**: After creating or modifying `middleware.ts`, restart your dev server (`npm run dev` or `pnpm dev`)
+2. **Verify matcher pattern**: Ensure it uses regex syntax: `/api/(.*)` (NOT route syntax like `/api/:path*`)
+3. **Check file location**: Verify `middleware.ts` is in the project root (same level as `package.json`, NOT in `app/` directory)
+4. **Verify AUTH_SECRET**: Ensure `AUTH_SECRET` environment variable is set in `.env.local`
+5. **Check middleware logic**: Verify the middleware function is checking `!req.auth` (NOT `!isLoggedIn` or `!!req.auth`)
+6. **Test authentication**:
+   - Test with a browser (which handles cookies automatically) rather than Postman
+   - NextAuth uses httpOnly cookies for session management
+   - Check browser DevTools → Application → Cookies to verify session cookie is set
+7. **Verify public routes**: Ensure `/api/auth` is in the `publicRoutes` array
+8. **Check Next.js version**: Ensure you're using Next.js 13+ with App Router
+9. **Verify auth export**: Ensure `auth` is exported from `auth.ts` correctly
 
 ### Session not persisting
 

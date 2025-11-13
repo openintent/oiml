@@ -14,8 +14,22 @@ Use this guide when `api.framework` in `project.yaml` is set to `"next"`.
 ## Prerequisites
 
 - Next.js 13+ with App Router is installed
-- `app/api/` directory exists
+- `app/api/` directory exists (or configured `paths.api` directory)
+- Database client is configured (Prisma, MongoDB, Drizzle, TypeORM, or other)
 - API response format is configured in `project.yaml`
+
+## Database Framework Support
+
+This guide is **database framework agnostic** and works with any database framework:
+
+- **Prisma** (`database.framework: "prisma"`)
+- **MongoDB/Mongoose** (`database.framework: "mongoose"`)
+- **Drizzle ORM** (`database.framework: "drizzle"`)
+- **TypeORM** (`database.framework: "typeorm"`)
+- **Raw SQL** (any SQL database with direct queries)
+- **Other ORMs** (adapt patterns to your framework)
+
+**IMPORTANT:** Read `database.framework` from `project.yaml` to determine which database client to use. Examples in this guide use Prisma for clarity, but adapt the patterns to your chosen framework.
 
 ## File Structure Convention
 
@@ -54,11 +68,15 @@ export async function GET(
    - Auth requirements (optional)
 
 2. **Read `project.yaml`** to get:
-   - `api.response.success.object` (e.g., `"data"`)
-   - `api.response.error.object` (e.g., `"error"`)
-   - `paths.api` (default: `"app/api"`)
-   - `database.framework` (e.g., `"prisma"`)
-   - `paths.types` (default: `"packages/types"`)
+   - `api.response.success.object` (e.g., `"data"`) - **CRITICAL:** Use this for success response wrapper
+   - `api.response.error.object` (e.g., `"error"`) - **CRITICAL:** Use this for error response wrapper
+   - `paths.api` (default: `"app/api"`) - Verify this directory exists
+   - `database.framework` (e.g., `"prisma"`) - Required for database queries
+   - `paths.types` (default: `"packages/types"`) - Location for TypeScript types
+
+   **IMPORTANT:** If `api.response` is not configured in `project.yaml`, use defaults:
+   - Success: `{ data: ... }`
+   - Error: `{ success: false, error: "..." }`
 
 3. **Convert path to file structure**:
    - `/api/customers` → `app/api/customers/route.ts`
@@ -70,8 +88,13 @@ export async function GET(
 
 6. **Import dependencies**:
    - `NextResponse` from `'next/server'`
-   - Database client (e.g., Prisma from `'@/lib/prisma'`)
-   - TypeScript types from configured types path
+   - Database client based on `database.framework` from `project.yaml`:
+     - Prisma: `import { prisma } from '@/lib/prisma'`
+     - MongoDB: `import { db } from '@/lib/mongodb'` or `import mongoose from 'mongoose'`
+     - Drizzle: `import { db } from '@/lib/db'`
+     - TypeORM: `import { AppDataSource } from '@/lib/data-source'`
+     - Other: Import your database client from the configured location
+   - TypeScript types from configured types path (`paths.types` from `project.yaml`)
 
 7. **Structure response** according to `api.response` configuration
 
@@ -81,7 +104,9 @@ export async function GET(
 
 ### Response Structure
 
-Based on `api.response` configuration in `project.yaml`:
+**CRITICAL:** Always follow `api.response` configuration from `project.yaml`. If not configured, use defaults below.
+
+**Configuration Example:**
 
 ```yaml
 api:
@@ -92,39 +117,91 @@ api:
       object: error # Error responses use "error" field
 ```
 
-**Success Response:**
+**Success Response Format:**
 
 ```typescript
+// If api.response.success.object is "data":
 {
-  data: [...results...]
+  data: [...results...]  // Array for GET all, single object for GET by ID/POST
+}
+
+// If api.response.success.object is "result":
+{
+  result: [...results...]
 }
 ```
 
-**Error Response:**
+**Error Response Format:**
 
 ```typescript
+// If api.response.error.object is "error":
 {
   success: false,
   error: "Error message"
 }
+
+// If api.response.error.object is "message":
+{
+  success: false,
+  message: "Error message"
+}
 ```
 
+**Default (if api.response not configured):**
+
+```typescript
+// Success
+{ data: ... }
+
+// Error
+{ success: false, error: "..." }
+```
+
+**IMPORTANT:** Always check `project.yaml` for `api.response` configuration before generating response structures.
+
 ## HTTP Method Templates
+
+**IMPORTANT:** The templates below use generic database client patterns. Replace `db` and database operations with your framework's specific syntax. Prisma examples are provided for reference, but adapt to your `database.framework`.
+
+### Database Client Import Patterns
+
+Based on `database.framework` from `project.yaml`:
+
+```typescript
+// Prisma
+import { prisma } from '@/lib/prisma';
+
+// MongoDB/Mongoose
+import mongoose from 'mongoose';
+import { {Entity} } from '@/models/{entity}'; // Mongoose model
+
+// Drizzle ORM
+import { db } from '@/lib/db';
+import { {entity_plural} } from '@/lib/schema';
+
+// TypeORM
+import { AppDataSource } from '@/lib/data-source';
+import { {Entity} } from '@/entities/{entity}';
+
+// Raw SQL (PostgreSQL example)
+import { query } from '@/lib/database';
+```
 
 ### GET - Fetch All Entities
 
 **Use Case:** Retrieve all records of an entity with optional filtering/pagination
 
+**Generic Pattern:**
+
 ```typescript
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+// Import your database client (see patterns above)
 import type { {Entity}Response, ErrorResponse } from '@/packages/types';
 
 export async function GET() {
   try {
-    const {entity_plural} = await prisma.{entity_lower}.findMany({
-      orderBy: { created_at: 'desc' }
-    });
+    // Replace with your database framework's query method
+    const {entity_plural} = await db.query{EntityPlural}();
 
     // Response structure from api.response.success.object
     const response: {Entity}Response = {
@@ -144,15 +221,68 @@ export async function GET() {
 }
 ```
 
+**Framework-Specific Examples:**
+
+**Prisma:**
+
+```typescript
+import { prisma } from '@/lib/prisma';
+
+const {entity_plural} = await prisma.{entity_lower}.findMany({
+  orderBy: { created_at: 'desc' }
+});
+```
+
+**MongoDB/Mongoose:**
+
+```typescript
+import { {Entity} } from '@/models/{entity}';
+
+const {entity_plural} = await {Entity}.find().sort({ created_at: -1 });
+```
+
+**Drizzle:**
+
+```typescript
+import { db } from '@/lib/db';
+import { {entity_plural} } from '@/lib/schema';
+import { desc } from 'drizzle-orm';
+
+const result = await db.select().from({entity_plural}).orderBy(desc({entity_plural}.created_at));
+const {entity_plural} = result;
+```
+
+**TypeORM:**
+
+```typescript
+import { AppDataSource } from '@/lib/data-source';
+import { {Entity} } from '@/entities/{entity}';
+
+const {entity_plural} = await AppDataSource.getRepository({Entity}).find({
+  order: { created_at: 'DESC' }
+});
+```
+
+**Raw SQL:**
+
+```typescript
+import { query } from "@/lib/database";
+
+const result = await query("SELECT * FROM {entity_plural} ORDER BY created_at DESC");
+const { entity_plural } = result.rows;
+```
+
 ### GET - Fetch Single Entity by ID
 
 **Use Case:** Retrieve one record by its ID
 
 **File:** `app/api/{entity_plural}/[id]/route.ts`
 
+**Generic Pattern:**
+
 ```typescript
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+// Import your database client
 import type { {Entity}Response, ErrorResponse } from '@/packages/types';
 
 export async function GET(
@@ -163,9 +293,8 @@ export async function GET(
   const resolvedParams = await params;
 
   try {
-    const {entity} = await prisma.{entity_lower}.findUnique({
-      where: { id: resolvedParams.id }
-    });
+    // Replace with your database framework's find-by-ID method
+    const {entity} = await db.find{Entity}ById(resolvedParams.id);
 
     if (!{entity}) {
       const errorResponse: ErrorResponse = {
@@ -191,13 +320,66 @@ export async function GET(
 }
 ```
 
+**Framework-Specific Examples:**
+
+**Prisma:**
+
+```typescript
+import { prisma } from '@/lib/prisma';
+
+const {entity} = await prisma.{entity_lower}.findUnique({
+  where: { id: resolvedParams.id }
+});
+```
+
+**MongoDB/Mongoose:**
+
+```typescript
+import { {Entity} } from '@/models/{entity}';
+
+const {entity} = await {Entity}.findById(resolvedParams.id);
+```
+
+**Drizzle:**
+
+```typescript
+import { db } from '@/lib/db';
+import { {entity_plural} } from '@/lib/schema';
+import { eq } from 'drizzle-orm';
+
+const result = await db.select().from({entity_plural}).where(eq({entity_plural}.id, resolvedParams.id));
+const {entity} = result[0] || null;
+```
+
+**TypeORM:**
+
+```typescript
+import { AppDataSource } from '@/lib/data-source';
+import { {Entity} } from '@/entities/{entity}';
+
+const {entity} = await AppDataSource.getRepository({Entity}).findOne({
+  where: { id: resolvedParams.id }
+});
+```
+
+**Raw SQL:**
+
+```typescript
+import { query } from "@/lib/database";
+
+const result = await query("SELECT * FROM {entity_plural} WHERE id = $1", [resolvedParams.id]);
+const { entity } = result.rows[0] || null;
+```
+
 ### POST - Create New Entity
 
 **Use Case:** Create a new record
 
+**Generic Pattern:**
+
 ```typescript
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+// Import your database client
 import type { {Entity}Interface, {Entity}Response, ErrorResponse } from '@/packages/types';
 
 export async function POST(request: Request) {
@@ -213,12 +395,11 @@ export async function POST(request: Request) {
       return NextResponse.json(errorResponse, { status: 400 });
     }
 
-    const {entity} = await prisma.{entity_lower}.create({
-      data: {
-        field1: body.field1,
-        field2: body.field2,
-        field3: body.field3,
-      }
+    // Replace with your database framework's create method
+    const {entity} = await db.create{Entity}({
+      field1: body.field1,
+      field2: body.field2,
+      field3: body.field3,
     });
 
     const response: {Entity}Response = {
@@ -237,13 +418,85 @@ export async function POST(request: Request) {
 }
 ```
 
+**Framework-Specific Examples:**
+
+**Prisma:**
+
+```typescript
+import { prisma } from '@/lib/prisma';
+
+const {entity} = await prisma.{entity_lower}.create({
+  data: {
+    field1: body.field1,
+    field2: body.field2,
+    field3: body.field3,
+  }
+});
+```
+
+**MongoDB/Mongoose:**
+
+```typescript
+import { {Entity} } from '@/models/{entity}';
+
+const {entity} = await {Entity}.create({
+  field1: body.field1,
+  field2: body.field2,
+  field3: body.field3,
+});
+```
+
+**Drizzle:**
+
+```typescript
+import { db } from '@/lib/db';
+import { {entity_plural} } from '@/lib/schema';
+
+const result = await db.insert({entity_plural}).values({
+  field1: body.field1,
+  field2: body.field2,
+  field3: body.field3,
+}).returning();
+const {entity} = result[0];
+```
+
+**TypeORM:**
+
+```typescript
+import { AppDataSource } from '@/lib/data-source';
+import { {Entity} } from '@/entities/{entity}';
+
+const repository = AppDataSource.getRepository({Entity});
+const {entity} = repository.create({
+  field1: body.field1,
+  field2: body.field2,
+  field3: body.field3,
+});
+await repository.save({entity});
+```
+
+**Raw SQL:**
+
+```typescript
+import { query } from "@/lib/database";
+
+const result = await query("INSERT INTO {entity_plural} (field1, field2, field3) VALUES ($1, $2, $3) RETURNING *", [
+  body.field1,
+  body.field2,
+  body.field3
+]);
+const { entity } = result.rows[0];
+```
+
 ### PATCH - Update Entity
 
 **Use Case:** Update an existing record
 
+**Generic Pattern:**
+
 ```typescript
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+// Import your database client
 import type { {Entity}Interface, {Entity}Response, ErrorResponse } from '@/packages/types';
 
 export async function PATCH(
@@ -256,10 +509,8 @@ export async function PATCH(
   try {
     const body: Partial<{Entity}Interface> = await request.json();
 
-    // Check if entity exists
-    const existing = await prisma.{entity_lower}.findUnique({
-      where: { id: resolvedParams.id }
-    });
+    // Check if entity exists (replace with your framework's find method)
+    const existing = await db.find{Entity}ById(resolvedParams.id);
 
     if (!existing) {
       const errorResponse: ErrorResponse = {
@@ -269,10 +520,8 @@ export async function PATCH(
       return NextResponse.json(errorResponse, { status: 404 });
     }
 
-    const {entity} = await prisma.{entity_lower}.update({
-      where: { id: resolvedParams.id },
-      data: body
-    });
+    // Replace with your database framework's update method
+    const {entity} = await db.update{Entity}(resolvedParams.id, body);
 
     const response: {Entity}Response = {
       data: {entity},
@@ -290,13 +539,86 @@ export async function PATCH(
 }
 ```
 
+**Framework-Specific Examples:**
+
+**Prisma:**
+
+```typescript
+import { prisma } from '@/lib/prisma';
+
+const existing = await prisma.{entity_lower}.findUnique({
+  where: { id: resolvedParams.id }
+});
+
+const {entity} = await prisma.{entity_lower}.update({
+  where: { id: resolvedParams.id },
+  data: body
+});
+```
+
+**MongoDB/Mongoose:**
+
+```typescript
+import { {Entity} } from '@/models/{entity}';
+
+const existing = await {Entity}.findById(resolvedParams.id);
+const {entity} = await {Entity}.findByIdAndUpdate(
+  resolvedParams.id,
+  body,
+  { new: true, runValidators: true }
+);
+```
+
+**Drizzle:**
+
+```typescript
+import { db } from '@/lib/db';
+import { {entity_plural} } from '@/lib/schema';
+import { eq } from 'drizzle-orm';
+
+const existing = await db.select().from({entity_plural}).where(eq({entity_plural}.id, resolvedParams.id));
+const result = await db.update({entity_plural})
+  .set(body)
+  .where(eq({entity_plural}.id, resolvedParams.id))
+  .returning();
+const {entity} = result[0];
+```
+
+**TypeORM:**
+
+```typescript
+import { AppDataSource } from '@/lib/data-source';
+import { {Entity} } from '@/entities/{entity}';
+
+const repository = AppDataSource.getRepository({Entity});
+const existing = await repository.findOne({ where: { id: resolvedParams.id } });
+await repository.update(resolvedParams.id, body);
+const {entity} = await repository.findOne({ where: { id: resolvedParams.id } });
+```
+
+**Raw SQL:**
+
+```typescript
+import { query } from "@/lib/database";
+
+const existing = await query("SELECT * FROM {entity_plural} WHERE id = $1", [resolvedParams.id]);
+const updateFields = Object.keys(body)
+  .map((key, i) => `${key} = $${i + 2}`)
+  .join(", ");
+const values = [resolvedParams.id, ...Object.values(body)];
+const result = await query(`UPDATE {entity_plural} SET ${updateFields} WHERE id = $1 RETURNING *`, values);
+const { entity } = result.rows[0];
+```
+
 ### DELETE - Remove Entity
 
 **Use Case:** Delete a record by ID
 
+**Generic Pattern:**
+
 ```typescript
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+// Import your database client
 import type { ErrorResponse } from '@/packages/types';
 
 export async function DELETE(
@@ -307,10 +629,8 @@ export async function DELETE(
   const resolvedParams = await params;
 
   try {
-    // Check if entity exists
-    const existing = await prisma.{entity_lower}.findUnique({
-      where: { id: resolvedParams.id }
-    });
+    // Check if entity exists (replace with your framework's find method)
+    const existing = await db.find{Entity}ById(resolvedParams.id);
 
     if (!existing) {
       const errorResponse: ErrorResponse = {
@@ -320,9 +640,8 @@ export async function DELETE(
       return NextResponse.json(errorResponse, { status: 404 });
     }
 
-    await prisma.{entity_lower}.delete({
-      where: { id: resolvedParams.id }
-    });
+    // Replace with your database framework's delete method
+    await db.delete{Entity}(resolvedParams.id);
 
     return NextResponse.json(
       { success: true, message: '{Entity} deleted successfully' },
@@ -337,6 +656,62 @@ export async function DELETE(
     return NextResponse.json(errorResponse, { status: 500 });
   }
 }
+```
+
+**Framework-Specific Examples:**
+
+**Prisma:**
+
+```typescript
+import { prisma } from '@/lib/prisma';
+
+const existing = await prisma.{entity_lower}.findUnique({
+  where: { id: resolvedParams.id }
+});
+
+await prisma.{entity_lower}.delete({
+  where: { id: resolvedParams.id }
+});
+```
+
+**MongoDB/Mongoose:**
+
+```typescript
+import { {Entity} } from '@/models/{entity}';
+
+const existing = await {Entity}.findById(resolvedParams.id);
+await {Entity}.findByIdAndDelete(resolvedParams.id);
+```
+
+**Drizzle:**
+
+```typescript
+import { db } from '@/lib/db';
+import { {entity_plural} } from '@/lib/schema';
+import { eq } from 'drizzle-orm';
+
+const existing = await db.select().from({entity_plural}).where(eq({entity_plural}.id, resolvedParams.id));
+await db.delete({entity_plural}).where(eq({entity_plural}.id, resolvedParams.id));
+```
+
+**TypeORM:**
+
+```typescript
+import { AppDataSource } from '@/lib/data-source';
+import { {Entity} } from '@/entities/{entity}';
+
+const repository = AppDataSource.getRepository({Entity});
+const existing = await repository.findOne({ where: { id: resolvedParams.id } });
+await repository.delete(resolvedParams.id);
+```
+
+**Raw SQL:**
+
+```typescript
+import { query } from "@/lib/database";
+
+const existing = await query("SELECT * FROM {entity_plural} WHERE id = $1", [resolvedParams.id]);
+await query("DELETE FROM {entity_plural} WHERE id = $1", [resolvedParams.id]);
 ```
 
 ## Complete Example: User API Endpoints
@@ -361,16 +736,26 @@ intents:
 
 ### Generated File: `app/api/users/route.ts`
 
+**Note:** This example uses Prisma. Adapt database operations to your `database.framework` from `project.yaml`.
+
 ```typescript
 import { NextResponse } from "next/server";
+// Import your database client based on database.framework from project.yaml
+// Example with Prisma:
 import { prisma } from "@/lib/prisma";
+// For MongoDB: import { User } from "@/models/user";
+// For Drizzle: import { db } from "@/lib/db"; import { users } from "@/lib/schema";
 import type { UserInterface, UserResponse, ErrorResponse } from "@/packages/types";
 
 export async function GET() {
   try {
+    // Replace with your database framework's query method
+    // Prisma example:
     const users = await prisma.user.findMany({
       orderBy: { created_at: "desc" }
     });
+    // MongoDB: const users = await User.find().sort({ created_at: -1 });
+    // Drizzle: const users = await db.select().from(users).orderBy(desc(users.created_at));
 
     const response: UserResponse = {
       data: users
@@ -399,12 +784,16 @@ export async function POST(request: Request) {
       return NextResponse.json(errorResponse, { status: 400 });
     }
 
+    // Replace with your database framework's create method
+    // Prisma example:
     const user = await prisma.user.create({
       data: {
         email: body.email,
         name: body.name
       }
     });
+    // MongoDB: const user = await User.create({ email: body.email, name: body.name });
+    // Drizzle: const user = await db.insert(users).values({ email: body.email, name: body.name }).returning();
 
     const response: UserResponse = {
       data: user
@@ -428,6 +817,8 @@ export async function POST(request: Request) {
 
 **GET with filtering/pagination:**
 
+**Generic Pattern:**
+
 ```typescript
 export async function GET(request: Request) {
   try {
@@ -436,17 +827,14 @@ export async function GET(request: Request) {
     const limit = parseInt(searchParams.get("limit") || "10");
     const status = searchParams.get("status");
 
-    const where = status ? { status } : {};
-
-    const [users, total] = await Promise.all([
-      prisma.user.findMany({
-        where,
-        skip: (page - 1) * limit,
-        take: limit,
-        orderBy: { created_at: "desc" }
-      }),
-      prisma.user.count({ where })
-    ]);
+    // Replace with your database framework's query method
+    // Adapt filtering, pagination, and counting to your framework
+    const [users, total] = await db.queryUsersWithPagination({
+      where: status ? { status } : {},
+      skip: (page - 1) * limit,
+      take: limit,
+      orderBy: { created_at: "desc" }
+    });
 
     const response = {
       data: users,
@@ -463,6 +851,84 @@ export async function GET(request: Request) {
     // ... error handling
   }
 }
+```
+
+**Framework-Specific Examples:**
+
+**Prisma:**
+
+```typescript
+const where = status ? { status } : {};
+const [users, total] = await Promise.all([
+  prisma.user.findMany({
+    where,
+    skip: (page - 1) * limit,
+    take: limit,
+    orderBy: { created_at: "desc" }
+  }),
+  prisma.user.count({ where })
+]);
+```
+
+**MongoDB/Mongoose:**
+
+```typescript
+const filter = status ? { status } : {};
+const [users, total] = await Promise.all([
+  User.find(filter)
+    .skip((page - 1) * limit)
+    .limit(limit)
+    .sort({ created_at: -1 }),
+  User.countDocuments(filter)
+]);
+```
+
+**Drizzle:**
+
+```typescript
+import { count, desc, eq } from "drizzle-orm";
+
+const whereCondition = status ? eq(users.status, status) : undefined;
+const [users, totalResult] = await Promise.all([
+  db
+    .select()
+    .from(users)
+    .where(whereCondition)
+    .limit(limit)
+    .offset((page - 1) * limit)
+    .orderBy(desc(users.created_at)),
+  db.select({ count: count() }).from(users).where(whereCondition)
+]);
+const total = totalResult[0].count;
+```
+
+**TypeORM:**
+
+```typescript
+const repository = AppDataSource.getRepository(User);
+const where = status ? { status } : {};
+const [users, total] = await repository.findAndCount({
+  where,
+  skip: (page - 1) * limit,
+  take: limit,
+  order: { created_at: "DESC" }
+});
+```
+
+**Raw SQL:**
+
+```typescript
+const whereClause = status ? "WHERE status = $1" : "";
+const values = status ? [status, limit, (page - 1) * limit] : [limit, (page - 1) * limit];
+const [usersResult, totalResult] = await Promise.all([
+  query(
+    `SELECT * FROM users ${whereClause} ORDER BY created_at DESC LIMIT $${status ? 2 : 1} OFFSET $${status ? 3 : 2}`,
+    values
+  ),
+  query(`SELECT COUNT(*) as total FROM users ${whereClause}`, status ? [status] : [])
+]);
+const users = usersResult.rows;
+const total = parseInt(totalResult.rows[0].total);
 ```
 
 ### Authentication
@@ -507,14 +973,15 @@ export async function GET(request: Request) {
 
 **Include related entities:**
 
+**Generic Pattern:**
+
 ```typescript
 export async function GET() {
   try {
-    const users = await prisma.user.findMany({
-      include: {
-        posts: true, // Include related posts
-        profile: true // Include related profile
-      },
+    // Replace with your database framework's method for including relations
+    // Adapt eager loading/joins to your framework's syntax
+    const users = await db.findUsersWithRelations({
+      include: ["posts", "profile"], // Adapt to your framework's relation syntax
       orderBy: { created_at: "desc" }
     });
 
@@ -527,6 +994,71 @@ export async function GET() {
     // ... error handling
   }
 }
+```
+
+**Framework-Specific Examples:**
+
+**Prisma:**
+
+```typescript
+const users = await prisma.user.findMany({
+  include: {
+    posts: true,
+    profile: true
+  },
+  orderBy: { created_at: "desc" }
+});
+```
+
+**MongoDB/Mongoose:**
+
+```typescript
+const users = await User.find().populate("posts").populate("profile").sort({ created_at: -1 });
+```
+
+**Drizzle:**
+
+```typescript
+import { relations } from "drizzle-orm";
+
+// Define relations in schema, then query with joins
+const users = await db.query.users.findMany({
+  with: {
+    posts: true,
+    profile: true
+  },
+  orderBy: (users, { desc }) => [desc(users.created_at)]
+});
+```
+
+**TypeORM:**
+
+```typescript
+const users = await AppDataSource.getRepository(User).find({
+  relations: ["posts", "profile"],
+  order: { created_at: "DESC" }
+});
+```
+
+**Raw SQL:**
+
+```typescript
+const result = await query(`
+  SELECT 
+    u.*,
+    json_agg(DISTINCT p.*) as posts,
+    json_agg(DISTINCT pr.*) as profile
+  FROM users u
+  LEFT JOIN posts p ON p.user_id = u.id
+  LEFT JOIN profiles pr ON pr.user_id = u.id
+  GROUP BY u.id
+  ORDER BY u.created_at DESC
+`);
+const users = result.rows.map(row => ({
+  ...row,
+  posts: row.posts,
+  profile: row.profile[0] || null
+}));
 ```
 
 ## Implementing `update_endpoint` Intent
@@ -577,15 +1109,14 @@ The `update_endpoint` intent allows you to modify existing API endpoints to incl
           relation: albums
 ```
 
-**Implementation:**
+**Generic Implementation:**
 
 ```typescript
 export async function GET() {
   try {
-    const artists = await prisma.artist.findMany({
-      include: {
-        albums: true // Added: Include albums relation
-      },
+    // Replace with your database framework's method for including relations
+    // Adapt eager loading/joins to your framework's syntax
+    const artists = await db.findArtistsWithAlbums({
       orderBy: { created_at: "desc" }
     });
 
@@ -603,6 +1134,45 @@ export async function GET() {
     return NextResponse.json(errorResponse, { status: 500 });
   }
 }
+```
+
+**Framework-Specific Examples:**
+
+**Prisma:**
+
+```typescript
+const artists = await prisma.artist.findMany({
+  include: {
+    albums: true // Added: Include albums relation
+  },
+  orderBy: { created_at: "desc" }
+});
+```
+
+**MongoDB/Mongoose:**
+
+```typescript
+const artists = await Artist.find().populate("albums").sort({ created_at: -1 });
+```
+
+**Drizzle:**
+
+```typescript
+const artists = await db.query.artists.findMany({
+  with: {
+    albums: true
+  },
+  orderBy: (artists, { desc }) => [desc(artists.created_at)]
+});
+```
+
+**TypeORM:**
+
+```typescript
+const artists = await AppDataSource.getRepository(Artist).find({
+  relations: ["albums"],
+  order: { created_at: "DESC" }
+});
 ```
 
 #### Type: `field` - Select Specific Field from Relation
@@ -679,23 +1249,15 @@ export async function GET() {
             target_field: name
 ```
 
-**Implementation:**
+**Generic Implementation:**
 
 ```typescript
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
 
   try {
-    const album = await prisma.album.findUnique({
-      where: { id: resolvedParams.id },
-      include: {
-        artist: {
-          select: {
-            name: true // Select only the name field
-          }
-        }
-      }
-    });
+    // Replace with your database framework's method for joining/selecting specific fields
+    const album = await db.findAlbumWithArtistName(resolvedParams.id);
 
     if (!album) {
       const errorResponse: ErrorResponse = {
@@ -709,7 +1271,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     const response = {
       data: {
         ...album,
-        artist_name: album.artist.name // Field from joined entity
+        artist_name: album.artist_name // Field from joined entity
       }
     };
 
@@ -723,6 +1285,71 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json(errorResponse, { status: 500 });
   }
 }
+```
+
+**Framework-Specific Examples:**
+
+**Prisma:**
+
+```typescript
+const album = await prisma.album.findUnique({
+  where: { id: resolvedParams.id },
+  include: {
+    artist: {
+      select: {
+        name: true
+      }
+    }
+  }
+});
+// Transform: artist_name: album.artist.name
+```
+
+**MongoDB/Mongoose:**
+
+```typescript
+const album = await Album.findById(resolvedParams.id).populate("artist", "name");
+// Transform: artist_name: album.artist.name
+```
+
+**Drizzle:**
+
+```typescript
+const result = await db
+  .select({
+    album: albums,
+    artistName: artists.name
+  })
+  .from(albums)
+  .innerJoin(artists, eq(albums.artist_id, artists.id))
+  .where(eq(albums.id, resolvedParams.id));
+// Transform: artist_name: result[0].artistName
+```
+
+**TypeORM:**
+
+```typescript
+const album = await AppDataSource.getRepository(Album).findOne({
+  where: { id: resolvedParams.id },
+  relations: ["artist"],
+  select: {
+    artist: {
+      name: true
+    }
+  }
+});
+// Transform: artist_name: album.artist.name
+```
+
+**Raw SQL:**
+
+```typescript
+const result = await query(
+  "SELECT a.*, ar.name as artist_name FROM albums a JOIN artists ar ON a.artist_id = ar.id WHERE a.id = $1",
+  [resolvedParams.id]
+);
+const album = result.rows[0];
+// artist_name is already included in result
 ```
 
 #### Type: `computed` - Add Computed Field
@@ -743,12 +1370,13 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
           type: computed
 ```
 
-**Implementation:**
+**Generic Implementation:**
 
 ```typescript
 export async function GET() {
   try {
-    const artists = await prisma.artist.findMany({
+    // Replace with your database framework's query method
+    const artists = await db.findArtists({
       orderBy: { created_at: "desc" }
     });
 
@@ -776,10 +1404,67 @@ export async function GET() {
 }
 
 async function computeTotalStreams(artistId: string): Promise<number> {
-  // Your computation logic here
+  // Replace with your database framework's query method
+  // Adapt to your framework's syntax for querying related data
+  const albums = await db.findAlbumsByArtist(artistId, { includeStreams: true });
+  return albums.reduce((sum, album) => sum + album.streams.length, 0);
+}
+```
+
+**Framework-Specific Examples:**
+
+**Prisma:**
+
+```typescript
+const artists = await prisma.artist.findMany({
+  orderBy: { created_at: "desc" }
+});
+
+async function computeTotalStreams(artistId: string): Promise<number> {
   const albums = await prisma.album.findMany({
     where: { artist_id: artistId },
     include: { streams: true }
+  });
+  return albums.reduce((sum, album) => sum + album.streams.length, 0);
+}
+```
+
+**MongoDB/Mongoose:**
+
+```typescript
+const artists = await Artist.find().sort({ created_at: -1 });
+
+async function computeTotalStreams(artistId: string): Promise<number> {
+  const albums = await Album.find({ artist_id: artistId }).populate("streams");
+  return albums.reduce((sum, album) => sum + album.streams.length, 0);
+}
+```
+
+**Drizzle:**
+
+```typescript
+const artists = await db.select().from(artists).orderBy(desc(artists.created_at));
+
+async function computeTotalStreams(artistId: string): Promise<number> {
+  const albums = await db.query.albums.findMany({
+    where: eq(albums.artist_id, artistId),
+    with: { streams: true }
+  });
+  return albums.reduce((sum, album) => sum + album.streams.length, 0);
+}
+```
+
+**TypeORM:**
+
+```typescript
+const artists = await AppDataSource.getRepository(Artist).find({
+  order: { created_at: "DESC" }
+});
+
+async function computeTotalStreams(artistId: string): Promise<number> {
+  const albums = await AppDataSource.getRepository(Album).find({
+    where: { artist_id: artistId },
+    relations: ["streams"]
   });
   return albums.reduce((sum, album) => sum + album.streams.length, 0);
 }
@@ -807,7 +1492,8 @@ async function computeTotalStreams(artistId: string): Promise<number> {
 ```typescript
 export async function GET() {
   try {
-    const artists = await prisma.artist.findMany({
+    // Replace with your database framework's query method
+    const artists = await db.findArtists({
       orderBy: { created_at: "desc" }
     });
 
@@ -827,12 +1513,16 @@ export async function GET() {
 ```typescript
 export async function GET() {
   try {
+    // Updated to include albums relation - adapt to your framework
+    // Prisma example:
     const artists = await prisma.artist.findMany({
       include: {
         albums: true // Added: Include albums relation
       },
       orderBy: { created_at: "desc" }
     });
+    // MongoDB: const artists = await Artist.find().populate('albums').sort({ created_at: -1 });
+    // Drizzle: const artists = await db.query.artists.findMany({ with: { albums: true } });
 
     const response: ArtistResponse = {
       data: artists
@@ -847,14 +1537,19 @@ export async function GET() {
 
 ### Best Practices for `update_endpoint`
 
-1. **Use Prisma's `include`** for relations to avoid N+1 queries
-2. **Use `select`** when you only need specific fields from relations
+1. **Use eager loading** for relations to avoid N+1 queries (adapt to your framework):
+   - Prisma: `include`
+   - MongoDB: `populate`
+   - Drizzle: `with` in queries
+   - TypeORM: `relations` option
+2. **Use field selection** when you only need specific fields from relations (adapt to your framework)
 3. **Transform responses** when adding computed fields or specific fields from relations
 4. **Update TypeScript types** to reflect new response structure
 5. **Maintain backward compatibility** - existing fields should still be present
-6. **Handle null relations** gracefully (e.g., `album.artist?.name`)
+6. **Handle null relations** gracefully (e.g., `album.artist?.name` or null checks)
 7. **Consider performance** - including multiple large relations can be slow
 8. **Use `Promise.all()`** for parallel computations when adding multiple computed fields
+9. **Adapt to your database framework** - use framework-specific patterns for joins and relations
 
 ## Status Codes
 
@@ -872,37 +1567,78 @@ Use appropriate HTTP status codes:
 
 ## Error Handling Best Practices
 
-1. **Always catch errors** and return proper error responses
-2. **Log errors** with `console.error()` for debugging
-3. **Use typed error responses** following `api.response.error` config
-4. **Validate input** before database operations
-5. **Check for existence** before update/delete operations
-6. **Return appropriate status codes**
-7. **Never expose sensitive error details** to clients
+1. **Always catch errors** and return proper error responses following `api.response.error` format
+2. **Log errors** with `console.error()` for debugging - include full error details in logs
+3. **Use typed error responses** - ensure `ErrorResponse` interface matches `api.response.error` config
+4. **Validate input** before database operations - return 400 for validation errors
+5. **Check for existence** before update/delete operations - return 404 if not found
+6. **Return appropriate status codes**:
+   - `200` - Successful GET, PATCH, DELETE
+   - `201` - Successful POST (created)
+   - `400` - Bad request (validation errors)
+   - `401` - Unauthorized (not authenticated)
+   - `403` - Forbidden (not authorized)
+   - `404` - Not found
+   - `409` - Conflict (e.g., duplicate email)
+   - `500` - Internal server error
+7. **Never expose sensitive error details** to clients - sanitize error messages
+8. **Handle database errors** appropriately based on your framework:
+   - **Prisma**:
+     - `P2002` - Unique constraint violation → 409 Conflict
+     - `P2025` - Record not found → 404 Not Found
+     - Other Prisma errors → 500 Internal Server Error
+   - **MongoDB/Mongoose**:
+     - `11000` (duplicate key) → 409 Conflict
+     - `CastError` (invalid ID) → 400 Bad Request
+     - `DocumentNotFoundError` → 404 Not Found
+   - **Drizzle/TypeORM/Raw SQL**:
+     - Unique constraint violations → 409 Conflict
+     - Foreign key violations → 400 Bad Request
+     - Not found errors → 404 Not Found
+     - Other database errors → 500 Internal Server Error
 
 ## TypeScript Types
 
-Ensure proper types are defined in `packages/types/index.ts`:
+**CRITICAL:** Always define proper types in `packages/types/index.ts`. Types must match `api.response` configuration.
+
+**Entity Interface:**
 
 ```typescript
-// Entity interface
+// Entity interface - matches Prisma model
 export interface UserInterface {
   id: string;
   email: string;
   name: string;
+  phone: string | null; // Prisma nullable fields use | null, not ?
   created_at: Date;
 }
+```
 
-// Response types (based on api.response configuration)
+**Response Types (based on api.response configuration):**
+
+```typescript
+// If api.response.success.object is "data":
 export interface UserResponse {
   data: UserInterface | UserInterface[];
 }
 
+// If api.response.success.object is "result":
+export interface UserResponse {
+  result: UserInterface | UserInterface[];
+}
+
+// Error response - matches api.response.error.object
 export interface ErrorResponse {
   success: false;
-  error: string;
+  error: string; // or "message" if api.response.error.object is "message"
 }
 ```
+
+**IMPORTANT:**
+
+- Update types after every database schema change
+- Use `| null` for Prisma nullable fields (not `?`)
+- Ensure response types match `api.response` configuration from `project.yaml`
 
 ## Testing Endpoints
 
@@ -1037,10 +1773,9 @@ When data intents (`remove_entity`, `rename_entity`, `rename_field`) are applied
 ```typescript
 // app/api/orders/route.ts
 export async function GET() {
-  const orders = await prisma.order.findMany({
-    include: {
-      customer: true // This will break after Customer is removed
-    }
+  // Replace with your database framework's query method
+  const orders = await db.findOrders({
+    include: ["customer"] // This will break after Customer is removed
   });
   return NextResponse.json({ data: orders });
 }
@@ -1051,9 +1786,9 @@ export async function GET() {
 ```typescript
 // app/api/orders/route.ts
 export async function GET() {
-  const orders = await prisma.order.findMany({
-    // Remove customer include - relation no longer exists
-  });
+  // Remove customer include - relation no longer exists
+  // Adapt to your database framework
+  const orders = await db.findOrders(); // No include/relations
   return NextResponse.json({ data: orders });
 }
 ```
@@ -1105,7 +1840,8 @@ export async function GET() {
 import type { CustomerInterface, CustomerResponse } from "@/packages/types";
 
 export async function GET() {
-  const customers = await prisma.customer.findMany();
+  // Replace with your database framework's query method
+  const customers = await db.findCustomers();
   const response: CustomerResponse = { data: customers };
   return NextResponse.json(response);
 }
@@ -1117,7 +1853,11 @@ export async function GET() {
 import type { ClientInterface, ClientResponse } from "@/packages/types";
 
 export async function GET() {
-  const clients = await prisma.client.findMany();
+  // Updated entity name - adapt to your database framework
+  // Prisma: await prisma.client.findMany()
+  // MongoDB: await Client.find()
+  // Drizzle: await db.select().from(clients)
+  const clients = await db.findClients();
   const response: ClientResponse = { data: clients };
   return NextResponse.json(response);
 }
@@ -1202,11 +1942,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: false, error: "Missing required fields: email, name" }, { status: 400 });
   }
 
-  const customer = await prisma.customer.create({
-    data: {
-      email: body.email,
-      name: body.name // Old field name
-    }
+  // Replace with your database framework's create method
+  const customer = await db.createCustomer({
+    email: body.email,
+    name: body.name // Old field name
   });
 
   return NextResponse.json({ data: customer }, { status: 201 });
@@ -1224,11 +1963,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: false, error: "Missing required fields: email, full_name" }, { status: 400 });
   }
 
-  const customer = await prisma.customer.create({
-    data: {
-      email: body.email,
-      full_name: body.full_name // New field name
-    }
+  // Updated field name - adapt to your database framework
+  // Prisma: await prisma.customer.create({ data: { email: body.email, full_name: body.full_name } })
+  // MongoDB: await Customer.create({ email: body.email, full_name: body.full_name })
+  const customer = await db.createCustomer({
+    email: body.email,
+    full_name: body.full_name // New field name
   });
 
   return NextResponse.json({ data: customer }, { status: 201 });
@@ -1244,10 +1984,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const resolvedParams = await params;
   const body: Partial<CustomerInterface> = await request.json();
 
-  const customer = await prisma.customer.update({
-    where: { id: resolvedParams.id },
-    data: body // This will work if body uses new field name
-  });
+  // Replace with your database framework's update method
+  const customer = await db.updateCustomer(resolvedParams.id, body);
 
   return NextResponse.json({ data: customer });
 }
@@ -1256,20 +1994,21 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 **After:**
 
 ```typescript
-// No changes needed if using spread operator with body
-// But if you're explicitly setting fields:
+// Updated field name - adapt to your database framework
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
   const body: Partial<CustomerInterface> = await request.json();
 
+  // Build update data with new field name
   const updateData: any = {};
   if (body.email !== undefined) updateData.email = body.email;
-  if (body.full_name !== undefined) updateData.full_name = body.full_name; // Updated
+  if (body.full_name !== undefined) updateData.full_name = body.full_name; // Updated field name
 
-  const customer = await prisma.customer.update({
-    where: { id: resolvedParams.id },
-    data: updateData
-  });
+  // Adapt to your database framework
+  // Prisma: await prisma.customer.update({ where: { id: resolvedParams.id }, data: updateData })
+  // MongoDB: await Customer.findByIdAndUpdate(resolvedParams.id, updateData, { new: true })
+  // Drizzle: await db.update(customers).set(updateData).where(eq(customers.id, resolvedParams.id))
+  const customer = await db.updateCustomer(resolvedParams.id, updateData);
 
   return NextResponse.json({ data: customer });
 }

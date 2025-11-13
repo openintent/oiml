@@ -574,7 +574,9 @@ field.String("password").
 
 ### Step 6: Register Auth Routes in main.go
 
-Update `main.go` to initialize auth and register routes:
+**CRITICAL:** Update `main.go` to initialize auth and register routes. Ensure auth initialization happens before route registration.
+
+Update `main.go`:
 
 ```go
 package main
@@ -592,7 +594,7 @@ import (
 func main() {
 	// ... existing setup code ...
 
-	// Initialize auth
+	// Initialize auth - MUST be called before using auth middleware
 	jwtSecret := os.Getenv("JWT_SECRET")
 	if jwtSecret == "" {
 		log.Fatal("JWT_SECRET environment variable is required")
@@ -600,14 +602,15 @@ func main() {
 	auth.InitJWT(jwtSecret)
 
 	// Initialize auth config from intent config or defaults
-	expirationHours := 24
-	refreshExpirationHours := 168
+	// Read from intent config if available, otherwise use defaults
+	expirationHours := 24        // From intent config.expiration_hours or default
+	refreshExpirationHours := 168 // From intent config.refresh_expiration_hours or default
 	auth.InitAuthConfig(expirationHours, refreshExpirationHours)
 
 	// Setup Gin router
 	r := gin.Default()
 
-	// Auth routes (public)
+	// Auth routes (public - no authentication required)
 	authGroup := r.Group("/api/auth")
 	{
 		authGroup.POST("/login", auth.Login(client))
@@ -628,6 +631,13 @@ func main() {
 	// ... rest of setup ...
 }
 ```
+
+**IMPORTANT:**
+
+- Auth initialization (`auth.InitJWT()`) must be called before registering routes
+- Public auth routes (`/api/auth/*`) should NOT have auth middleware applied
+- Protected route groups should have `api.Use(auth.AuthMiddleware())` applied
+- Follow the `group` property from intent to determine which routes to protect
 
 **Handling Group Wildcards:**
 
@@ -761,33 +771,55 @@ curl -X POST http://localhost:8080/api/auth/refresh \
 
 ## Security Best Practices
 
-1. **Password Requirements**: Enforce minimum password length (8+ characters)
-2. **HTTPS**: Always use HTTPS in production
-3. **Token Storage**: Store tokens securely (httpOnly cookies recommended for web apps)
+1. **Password Requirements**: Enforce minimum password length (8+ characters) in registration handler
+2. **HTTPS**: Always use HTTPS in production - JWT tokens in Authorization headers are sensitive
+3. **Token Storage**: Store tokens securely (httpOnly cookies recommended for web apps, secure storage for mobile)
 4. **Token Expiration**: Use short-lived access tokens (24 hours) and longer refresh tokens (7 days)
-5. **Secret Management**: Never commit JWT secrets to version control
+5. **Secret Management**: Never commit JWT secrets to version control - use environment variables
 6. **Password Hashing**: Always use bcrypt with appropriate cost (default is fine)
-7. **Rate Limiting**: Implement rate limiting on login/register endpoints
+7. **Rate Limiting**: Implement rate limiting on login/register endpoints to prevent brute force attacks
 8. **CORS**: Configure CORS properly for your frontend domain
+9. **Error Messages**: Don't reveal whether email exists or not - use generic "Invalid email or password" messages
+10. **Response Format**: Follow `api.response` configuration from `project.yaml` for all error responses
+11. **Logging**: Log authentication failures for security monitoring, but don't expose details to clients
 
 ## Troubleshooting
 
 ### "JWT_SECRET is required" error
 
-- Ensure `JWT_SECRET` environment variable is set
+**Solution:**
+
+- Ensure `JWT_SECRET` environment variable is set in your environment
 - Check that `auth.InitJWT()` is called before using auth middleware
+- Verify `auth.InitJWT()` is called in `main.go` before route registration
 
 ### "Invalid or expired token" error
 
-- Check that token hasn't expired
-- Verify token is sent in correct format: `Authorization: Bearer <token>`
-- Ensure JWT_SECRET matches between token generation and validation
+**Solution:**
+
+- Check that token hasn't expired (verify expiration time in token claims)
+- Verify token is sent in correct format: `Authorization: Bearer <token>` (with space after "Bearer")
+- Ensure `JWT_SECRET` matches between token generation and validation
+- Check that token was generated with the same secret used for validation
+- Verify token signing method matches (HS256)
 
 ### "User not found" in Me endpoint
 
-- Verify user ID type matches (UUID vs string)
-- Check that user exists in database
-- Ensure middleware is applied before handler
+**Solution:**
+
+- Verify user ID type matches (UUID vs string) - check token claims match database ID type
+- Check that user exists in database - token may reference deleted user
+- Ensure middleware is applied before handler - verify `api.Use(auth.AuthMiddleware())` is called
+- Check that `user_id` is set in context by middleware - verify `c.Get("user_id")` returns value
+
+### Middleware not protecting routes
+
+**Solution:**
+
+- Verify `auth.AuthMiddleware()` is applied to route groups: `api.Use(auth.AuthMiddleware())`
+- Check that `auth.InitJWT()` was called before middleware usage
+- Ensure middleware is applied to the correct route groups based on intent `group` property
+- Verify public routes (`/api/auth/*`) do NOT have auth middleware applied
 
 ## Next Steps
 

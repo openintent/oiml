@@ -262,19 +262,24 @@ ui:
 When processing an intent file, follow these steps:
 
 ### 1. Validate Intent File
-- Use OpenIntent MCP server: `mcp_oiml_validate_intent(filePath)` if available
+- **CRITICAL:** Use OpenIntent MCP server: `mcp_oiml_validate_intent(filePath)` if available
 - Verify file exists and is valid YAML
 - Validate against schema from `@oiml/schema`
 - **Stop immediately if validation fails** - do not apply any code changes
+- **Verify intent structure**: Check that `version`, `type`, and `intents` array are present and valid
+- **Check for empty intents array**: Ensure at least one intent is specified
 
 ### 2. Read Project Configuration
-- Read `.openintent/project.yaml`
+- **CRITICAL:** Read `.openintent/project.yaml` - this file is required for all implementations
+- **Verify file exists**: If `project.yaml` is missing, STOP and report error to user
 - Extract framework configurations:
-  - `database.framework` - for data intents
-  - `api.framework` - for API intents (also used for capability intents)
-  - `ui.framework` - for UI intents
-- Note configured paths (`paths.api`, `paths.types`, etc.)
+  - `database.framework` - for data intents (e.g., `"prisma"`, `"ent"`)
+  - `api.framework` - for API intents (e.g., `"next"`, `"gin"`, `"express"`) - also used for capability intents
+  - `ui.framework` - for UI intents (e.g., `"next"`, `"react"`)
+- Note configured paths (`paths.api`, `paths.types`, `paths.components`, etc.)
+- **Verify paths exist**: Check that configured directories exist or can be created
 - For capability intents: Extract `framework` and `capability` fields from the intent itself
+- **Read `api.response` configuration**: Note success/error response structure for API endpoints
 
 ### 3. Check Framework and OIML Version Compatibility
 Before processing any intents, verify compatibility:
@@ -287,11 +292,17 @@ Before processing any intents, verify compatibility:
 2. **Resolve template** using MCP tool (if available):
    ```typescript
    const template = await mcp_oiml_resolve_template({
-     intent_schema_version: intentVersion,
-     framework: frameworkName,
-     framework_version: installedVersion
+     intent_schema_version: intentVersion,  // From intent.yaml version field
+     framework: frameworkName,              // From project.yaml or intent
+     framework_version: installedVersion   // From package.json
    });
    ```
+   
+   **If MCP tool is not available**, manually locate template manifest:
+   - For data intents: `@oiml/schema/templates/database/{framework}/{version}/manifest.json`
+   - For API intents: `@oiml/schema/templates/api/{framework}/{version}/manifest.json`
+   - For capability intents: `@oiml/schema/templates/capability/{capability_type}/{framework}/{version}/manifest.json`
+   - Read `manifest.json` to verify compatibility
 
 3. **Validate compatibility**:
    - Locate template manifest:
@@ -326,10 +337,14 @@ For each intent in the `intents` array:
 4. **Generate code** according to the guide's instructions
 
 ### 5. Verify and Complete
-- Check for linting errors
-- Verify file paths match `project.yaml` configuration
-- Ensure all imports are correct
-- Test generated code follows project patterns
+- **Check for linting errors**: Run linter on all modified files
+- **Verify file paths match `project.yaml` configuration**: Ensure files are created in correct directories
+- **Ensure all imports are correct**: Verify import paths match project structure
+- **Test generated code follows project patterns**: Check code style matches existing codebase
+- **Verify response formats**: Ensure API responses match `api.response` configuration from `project.yaml`
+- **Check TypeScript types**: Ensure all types compile without errors
+- **Verify database migrations**: For data intents, ensure migrations were created and applied
+- **Test critical paths**: Verify generated endpoints/handlers can be imported and used
 
 **Important**: All detailed implementation steps, code examples, and type mappings are in the framework-specific guides. This document only provides high-level orchestration.
 
@@ -365,12 +380,28 @@ All framework-specific code generation patterns, examples, and best practices ar
 1. **Response Structure**: Always follow `api.response` configuration from `project.yaml`
    - Success responses use `api.response.success.object` field (e.g., `data`)
    - Error responses use `api.response.error.object` field (e.g., `error`)
+   - **CRITICAL:** If `api.response` is not configured, use default structure: `{ data: ... }` for success, `{ success: false, error: "..." }` for errors
 
 2. **Type Safety**: Generate proper types for all entities and responses
+   - **Always update** `packages/types/index.ts` after database schema changes
+   - Use correct nullable types: `string | null` (not `string?`) for Prisma nullable fields
+   - Ensure types match database framework return types
 
 3. **Error Handling**: Include comprehensive error handling with appropriate HTTP status codes
+   - Always catch and handle errors gracefully
+   - Return proper error responses following `api.response.error` format
+   - Log errors for debugging but don't expose sensitive details to clients
 
 4. **Database Integration**: Use the database client specified in `database.framework`
+   - Import client from correct location (e.g., `@/lib/prisma` for Prisma)
+   - Follow framework-specific patterns for queries and mutations
+   - Always handle database errors appropriately
+
+5. **Migration Safety**: For data intents, always create and apply migrations
+   - Run migrations immediately after schema changes
+   - Regenerate database client after migrations
+   - Update TypeScript types after schema changes
+   - Update API endpoints when fields are added/modified
 
 **For complete code examples and templates, refer to the framework-specific implementation guides.**
 

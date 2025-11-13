@@ -45,11 +45,15 @@ Gin uses a router-based approach with handler functions:
    - Auth requirements (optional)
 
 2. **Read `project.yaml`** to get:
-   - `api.response.success.object` (e.g., `"data"`)
-   - `api.response.error.object` (e.g., `"error"`)
-   - `paths.api` (default: `"api"` or router location)
-   - `database.framework` (e.g., `"ent"`)
-   - `paths.types` (if applicable)
+   - `api.response.success.object` (e.g., `"data"`) - **CRITICAL:** Use this for success response wrapper
+   - `api.response.error.object` (e.g., `"error"`) - **CRITICAL:** Use this for error response wrapper
+   - `paths.api` (default: `"api"` or router location) - Verify this directory exists
+   - `database.framework` (e.g., `"ent"`, `"gorm"`) - Required for database queries
+   - `paths.types` (if applicable) - Location for Go types/interfaces
+
+   **IMPORTANT:** If `api.response` is not configured in `project.yaml`, use defaults:
+   - Success: `gin.H{"data": ...}`
+   - Error: `gin.H{"error": "..."}`
 
 3. **Convert path to route pattern**:
    - `/api/customers` → `"/customers"`
@@ -70,7 +74,9 @@ Gin uses a router-based approach with handler functions:
 
 ### Response Structure
 
-Based on `api.response` configuration in `project.yaml`:
+**CRITICAL:** Always follow `api.response` configuration from `project.yaml`. If not configured, use defaults below.
+
+**Configuration Example:**
 
 ```yaml
 api:
@@ -81,21 +87,45 @@ api:
       object: error # Error responses use "error" field
 ```
 
-**Success Response:**
+**Success Response Format:**
 
 ```go
+// If api.response.success.object is "data":
 gin.H{
-    "data": [...results...]
+    "data": [...results...]  // Array for GET all, single object for GET by ID/POST
+}
+
+// If api.response.success.object is "result":
+gin.H{
+    "result": [...results...]
 }
 ```
 
-**Error Response:**
+**Error Response Format:**
 
 ```go
+// If api.response.error.object is "error":
 gin.H{
     "error": "Error message"
 }
+
+// If api.response.error.object is "message":
+gin.H{
+    "message": "Error message"
+}
 ```
+
+**Default (if api.response not configured):**
+
+```go
+// Success
+gin.H{"data": ...}
+
+// Error
+gin.H{"error": "..."}
+```
+
+**IMPORTANT:** Always check `project.yaml` for `api.response` configuration before generating response structures. Use consistent response format across all endpoints.
 
 ## HTTP Method Templates
 
@@ -893,14 +923,29 @@ Use appropriate HTTP status codes:
 
 ## Error Handling Best Practices
 
-1. **Always catch errors** and return proper error responses
-2. **Log errors** with `log.Printf()` or structured logging
-3. **Use typed error responses** following `api.response.error` config
-4. **Validate input** before database operations using `c.ShouldBindJSON()`
-5. **Check for existence** before update/delete operations
-6. **Return appropriate status codes**
-7. **Never expose sensitive error details** to clients
-8. **Check for not found errors** using your database framework's error checking (e.g., `errors.Is(err, ErrNotFound)`)
+1. **Always catch errors** and return proper error responses following `api.response.error` format
+2. **Log errors** with `log.Printf()` or structured logging - include full error details in logs
+3. **Use typed error responses** - ensure error format matches `api.response.error` config
+4. **Validate input** before database operations using `c.ShouldBindJSON()` - return 400 for validation errors
+5. **Check for existence** before update/delete operations - return 404 if not found
+6. **Return appropriate status codes**:
+   - `200` - Successful GET, PATCH, DELETE
+   - `201` - Successful POST (created)
+   - `400` - Bad request (validation errors)
+   - `401` - Unauthorized (not authenticated)
+   - `403` - Forbidden (not authorized)
+   - `404` - Not found
+   - `409` - Conflict (e.g., duplicate email)
+   - `500` - Internal server error
+7. **Never expose sensitive error details** to clients - sanitize error messages
+8. **Check for not found errors** using your database framework's error checking:
+   - Ent: `ent.IsNotFound(err)`
+   - GORM: `errors.Is(err, gorm.ErrRecordNotFound)`
+   - Custom: `errors.Is(err, ErrNotFound)`
+9. **Handle database constraint violations** appropriately:
+   - Unique constraint violations → 409 Conflict
+   - Foreign key violations → 400 Bad Request
+   - Other database errors → 500 Internal Server Error
 
 ## Common Patterns
 
@@ -1478,8 +1523,53 @@ func TestGetUsers(t *testing.T) {
 This template is database framework agnostic. Replace the generic `database.Client` patterns with your actual database client implementation:
 
 - **Ent**: Use `*ent.Client` and Ent's query builder methods
+
+  ```go
+  import "your-project/ent"
+
+  func getUsers(client *ent.Client) gin.HandlerFunc {
+      return func(c *gin.Context) {
+          users, err := client.User.Query().All(context.Background())
+          if err != nil {
+              if ent.IsNotFound(err) {
+                  c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+                  return
+              }
+              c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+              return
+          }
+          c.JSON(http.StatusOK, gin.H{"data": users})
+      }
+  }
+  ```
+
 - **GORM**: Use `*gorm.DB` and GORM's query methods
+
+  ```go
+  import "gorm.io/gorm"
+
+  func getUsers(db *gorm.DB) gin.HandlerFunc {
+      return func(c *gin.Context) {
+          var users []User
+          if err := db.Find(&users).Error; err != nil {
+              if errors.Is(err, gorm.ErrRecordNotFound) {
+                  c.JSON(http.StatusNotFound, gin.H{"error": "Users not found"})
+                  return
+              }
+              c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+              return
+          }
+          c.JSON(http.StatusOK, gin.H{"data": users})
+      }
+  }
+  ```
+
 - **Raw SQL**: Use `*sql.DB` and SQL queries
 - **Other ORMs**: Adapt the patterns to your chosen framework
 
-The key is to maintain consistent handler function signatures and error handling patterns regardless of the underlying database framework.
+**IMPORTANT:**
+
+- Always handle database errors appropriately
+- Use framework-specific error checking methods
+- Maintain consistent handler function signatures and error handling patterns regardless of the underlying database framework
+- Follow `api.response` configuration for all responses

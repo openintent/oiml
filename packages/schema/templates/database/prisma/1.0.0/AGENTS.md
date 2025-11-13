@@ -167,10 +167,19 @@ model Customer {
    - For single field: `add_customer_phone`
    - For multiple fields: `add_customer_phone_address`
 
+   **CRITICAL:** Always run migrations immediately after schema changes. Prisma migrations apply database-level constraints (UNIQUE, NOT NULL, etc.) that are essential for data integrity.
+
 6. **Regenerate Prisma client**:
+
    ```bash
    npx prisma generate
    ```
+
+   **IMPORTANT:** After regenerating the Prisma client, you **must** update any existing API endpoints that create or update this entity to handle the new fields:
+   - **For required fields**: Add them to request body validation with appropriate error messages
+   - **For optional fields**: Add them as optional properties in request body types
+   - Update TypeScript interfaces in `packages/types/index.ts` to include new fields
+   - Ensure POST/PATCH handlers accept and process the new fields correctly
 
 ### Example: Adding Fields to Customer
 
@@ -203,6 +212,51 @@ model Customer {
   created_at DateTime       @default(now())
 
   @@map("customers")
+}
+```
+
+**After adding fields, update API endpoints:**
+
+If you have a POST endpoint for creating customers (e.g., `app/api/customers/route.ts`), update it to accept the new optional fields:
+
+```typescript
+export async function POST(request: Request) {
+  try {
+    const body: Partial<CustomerInterface> = await request.json();
+
+    // Existing validation
+    if (!body.email || !body.name) {
+      return NextResponse.json({ success: false, error: "Missing required fields: email, name" }, { status: 400 });
+    }
+
+    const customer = await prisma.customer.create({
+      data: {
+        email: body.email,
+        name: body.name,
+        phone: body.phone || null, // New optional field
+        birthday: body.birthday || null, // New optional field
+        status: body.status || "ACTIVE"
+      }
+    });
+
+    return NextResponse.json({ data: customer }, { status: 201 });
+  } catch (error) {
+    // ... error handling
+  }
+}
+```
+
+**Update TypeScript types** in `packages/types/index.ts`:
+
+```typescript
+export interface CustomerInterface {
+  id: string;
+  email: string;
+  name: string;
+  phone: string | null; // New field - Prisma returns null, not undefined
+  birthday: Date | null; // New field - Prisma returns null, not undefined
+  status: "ACTIVE" | "INACTIVE" | "PENDING";
+  created_at: Date;
 }
 ```
 
@@ -633,6 +687,15 @@ ALTER TABLE "todos" RENAME COLUMN "user_id" TO "owner_id";
 npx prisma migrate dev --name {migration_name}
 ```
 
+**CRITICAL STEPS:**
+
+1. **Create migration**: `npx prisma migrate dev --name {migration_name}`
+2. **Review migration SQL** in `prisma/migrations/{timestamp}_{migration_name}/migration.sql`
+3. **Verify migration applied**: Check database schema matches Prisma schema
+4. **Regenerate Prisma client**: `npx prisma generate` (required after every migration)
+5. **Update TypeScript types**: Update `packages/types/index.ts` with new field types
+6. **Update API endpoints**: Ensure POST/PATCH handlers accept new fields
+
 ### Database Drift
 
 If you encounter "Database drift detected" errors:
@@ -642,6 +705,19 @@ npx prisma migrate dev --create-only --name {migration_name}
 ```
 
 This creates the migration file without applying it. Review the migration, then apply manually if needed.
+
+**Common causes of drift:**
+
+- Manual database changes outside Prisma
+- Conflicting migrations
+- Schema changes made directly in database
+
+**Resolution:**
+
+1. Review the drift report carefully
+2. Use `--create-only` to generate migration without applying
+3. Manually edit migration SQL if needed
+4. Apply migration: `npx prisma migrate deploy` (production) or `npx prisma migrate dev` (development)
 
 ### Migration Naming Conventions
 
@@ -721,19 +797,32 @@ metadata  Json
 ## Best Practices
 
 1. **Always use `@@map()` directive** for consistent table naming
-2. **Create migrations immediately** after schema changes
-3. **Use appropriate Prisma types** for database optimization
-4. **Add indexes** for foreign keys (Prisma does this automatically)
-5. **Review generated migrations** before applying to production
-6. **Backup database** before running migrations
-7. **Test migrations** in development environment first
-8. **Keep enum names PascalCase** and values UPPER_SNAKE_CASE
+2. **Create migrations immediately** after schema changes - **CRITICAL** for applying database constraints
+3. **Always regenerate Prisma client** after migrations: `npx prisma generate`
+4. **Update API endpoints** when adding fields to entities - ensure POST/PATCH handlers accept new fields
+5. **Update TypeScript types** in `packages/types/index.ts` after schema changes
+6. **Use appropriate Prisma types** for database optimization
+7. **Add indexes** for foreign keys (Prisma does this automatically)
+8. **Review generated migrations** before applying to production
+9. **Backup database** before running migrations
+10. **Test migrations** in development environment first
+11. **Keep enum names PascalCase** and values UPPER_SNAKE_CASE
+12. **Verify migrations applied correctly** - check database schema matches Prisma schema
+13. **Handle nullable fields correctly** - Prisma returns `null`, not `undefined` for optional fields
 
 ## TypeScript Type Generation
 
-After applying Prisma changes, update TypeScript types in `packages/types/index.ts`:
+**CRITICAL:** After applying Prisma changes, you **must** update TypeScript types in `packages/types/index.ts`. This ensures type safety across your application.
 
 **IMPORTANT:** Prisma returns `null` for nullable fields, not `undefined`. Always use `| null` for nullable fields, NOT optional `?` syntax.
+
+**Steps:**
+
+1. **Read the Prisma schema** to identify all fields and their types
+2. **Map Prisma types to TypeScript types** using the mapping table below
+3. **Update entity interfaces** in `packages/types/index.ts`
+4. **Update response types** if needed
+5. **Verify types compile** - run TypeScript compiler to check for errors
 
 ```typescript
 // Map Prisma types to TypeScript types
