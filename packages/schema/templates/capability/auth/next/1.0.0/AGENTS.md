@@ -11,6 +11,7 @@ This guide provides complete implementation instructions for adding authenticati
 ## When to Use This Guide
 
 Use this guide when:
+
 - `api.framework` in `project.yaml` is set to `"next"`
 - An `add_capability` intent with `capability: "auth"` and `framework: "next"` (or `framework: "next-auth"`) is being applied
 - You need to implement NextAuth-based authentication for your Next.js API
@@ -27,6 +28,7 @@ Use this guide when:
 ## Overview
 
 The auth capability implements:
+
 - **NextAuth v5** with Credentials provider
 - **JWT session strategy** for stateless authentication
 - **Password hashing** using `bcryptjs`
@@ -47,7 +49,7 @@ intents:
     config:
       secret: env:AUTH_SECRET
       expiration_hours: 24
-      refresh_expiration_hours: 168  # 7 days (not used with JWT strategy)
+      refresh_expiration_hours: 168 # 7 days (not used with JWT strategy)
     endpoints:
       - group: /api/*
 ```
@@ -57,6 +59,7 @@ intents:
 The `group` property allows you to specify which route group should be protected by auth middleware. This is particularly useful when you want to apply authentication to an entire group of endpoints.
 
 **Wildcard Support:**
+
 - Use `*` as a wildcard to match all endpoints in a route group
 - Example: `group: /api/*` applies auth middleware to all routes under `/api/`
 - Example: `group: /api/v1/*` applies auth middleware to all routes under `/api/v1/`
@@ -79,6 +82,7 @@ endpoints:
 ## Implementation Steps
 
 **Important:** Before creating any files, check if they already exist. The following steps will create:
+
 - `auth.ts` - NextAuth configuration
 - `app/api/auth/[...nextauth]/route.ts` - NextAuth API handlers
 - `app/api/auth/login/route.ts` - Custom login endpoint
@@ -91,6 +95,7 @@ If any of these files already exist, review them and update as needed rather tha
 ### Step 1: Verify User Entity
 
 The auth adapter requires a `User` entity with at minimum:
+
 - `email` (string, unique, required)
 - `password` (string, optional initially, then required for new users) - will store bcrypt hash
 - `id` (integer or UUID, primary key)
@@ -134,12 +139,14 @@ npm install -D @types/bcryptjs
 ```
 
 Or with pnpm:
+
 ```bash
 pnpm add next-auth@beta bcryptjs
 pnpm add -D @types/bcryptjs
 ```
 
 **If using Prisma**, also install the Prisma adapter:
+
 ```bash
 npm install @auth/prisma-adapter
 # or
@@ -171,14 +178,14 @@ import type { NextAuthConfig } from "next-auth";
 async function findUserByEmail(email: string) {
   // Example with Prisma:
   // return await prisma.user.findUnique({ where: { email } });
-  
+
   // Example with raw SQL:
   // const result = await query('SELECT * FROM users WHERE email = $1', [email]);
   // return result.rows[0];
-  
+
   // Example with Drizzle:
   // return await db.select().from(users).where(eq(users.email, email)).limit(1)[0];
-  
+
   // Replace with your actual database query
   throw new Error("Implement findUserByEmail with your database client");
 }
@@ -186,13 +193,13 @@ async function findUserByEmail(email: string) {
 export const authConfig = {
   // Optional: Only include adapter if using Prisma
   // adapter: PrismaAdapter(prisma) as any,
-  
+
   providers: [
     Credentials({
       name: "credentials",
       credentials: {
         email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" },
+        password: { label: "Password", type: "password" }
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
@@ -207,10 +214,7 @@ export const authConfig = {
         }
 
         // Verify password
-        const isPasswordValid = await bcrypt.compare(
-          credentials.password as string,
-          user.password
-        );
+        const isPasswordValid = await bcrypt.compare(credentials.password as string, user.password);
 
         if (!isPasswordValid) {
           return null;
@@ -220,17 +224,17 @@ export const authConfig = {
         return {
           id: user.id.toString(),
           email: user.email,
-          name: user.name || undefined,
+          name: user.name || undefined
         };
-      },
-    }),
+      }
+    })
   ],
   session: {
     strategy: "jwt",
-    maxAge: 24 * 60 * 60, // 24 hours (from intent config)
+    maxAge: 24 * 60 * 60 // 24 hours (from intent config)
   },
   pages: {
-    signIn: "/auth/signin",
+    signIn: "/auth/signin"
   },
   callbacks: {
     async jwt({ token, user }) {
@@ -248,14 +252,15 @@ export const authConfig = {
         session.user.name = token.name as string;
       }
       return session;
-    },
-  },
+    }
+  }
 } satisfies NextAuthConfig;
 
 export const { handlers, auth, signIn, signOut } = NextAuth(authConfig);
 ```
 
 **Configuration Notes:**
+
 - `adapter`: Optional - only include if using Prisma (`PrismaAdapter(prisma)`)
 - `session.strategy: "jwt"`: Uses JWT tokens stored in cookies (stateless)
 - `maxAge`: Session expiration in seconds (default: 24 hours)
@@ -265,6 +270,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth(authConfig);
 **Database-Specific Examples:**
 
 **Prisma:**
+
 ```typescript
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/prisma";
@@ -275,27 +281,29 @@ export const authConfig = {
     Credentials({
       async authorize(credentials) {
         const user = await prisma.user.findUnique({
-          where: { email: credentials.email as string },
+          where: { email: credentials.email as string }
         });
         // ... rest of authorize logic
-      },
-    }),
-  ],
+      }
+    })
+  ]
   // ... rest of config
 };
 ```
 
 **Raw SQL (PostgreSQL with pg):**
+
 ```typescript
 import { query } from "@/lib/database"; // Your database connection
 
 async function findUserByEmail(email: string) {
-  const result = await query('SELECT * FROM users WHERE email = $1', [email]);
+  const result = await query("SELECT * FROM users WHERE email = $1", [email]);
   return result.rows[0] || null;
 }
 ```
 
 **Drizzle ORM:**
+
 ```typescript
 import { db } from "@/lib/db";
 import { users } from "@/lib/schema";
@@ -318,6 +326,7 @@ export const { GET, POST } = handlers;
 ```
 
 This creates the following NextAuth endpoints automatically:
+
 - `GET/POST /api/auth/signin` - Sign in page/handler
 - `GET/POST /api/auth/signout` - Sign out handler
 - `GET /api/auth/session` - Get current session
@@ -346,11 +355,11 @@ import type { ErrorResponse } from "@/packages/types";
 async function findUserByEmail(email: string) {
   // Example with Prisma:
   // return await prisma.user.findUnique({ where: { email } });
-  
+
   // Example with raw SQL:
   // const result = await query('SELECT * FROM users WHERE email = $1', [email]);
   // return result.rows[0];
-  
+
   // Replace with your actual database query
   throw new Error("Implement findUserByEmail with your database client");
 }
@@ -363,7 +372,7 @@ export async function POST(request: Request) {
     if (!email || !password) {
       const errorResponse: ErrorResponse = {
         success: false,
-        error: "Email and password are required",
+        error: "Email and password are required"
       };
       return NextResponse.json(errorResponse, { status: 400 });
     }
@@ -374,7 +383,7 @@ export async function POST(request: Request) {
     if (!user || !user.password) {
       const errorResponse: ErrorResponse = {
         success: false,
-        error: "Invalid email or password",
+        error: "Invalid email or password"
       };
       return NextResponse.json(errorResponse, { status: 401 });
     }
@@ -385,7 +394,7 @@ export async function POST(request: Request) {
     if (!isPasswordValid) {
       const errorResponse: ErrorResponse = {
         success: false,
-        error: "Invalid email or password",
+        error: "Invalid email or password"
       };
       return NextResponse.json(errorResponse, { status: 401 });
     }
@@ -396,14 +405,14 @@ export async function POST(request: Request) {
       const result = await signIn("credentials", {
         email,
         password,
-        redirect: false,
+        redirect: false
       });
 
       // If signIn returns an error, handle it
       if (result?.error) {
         const errorResponse: ErrorResponse = {
           success: false,
-          error: "Authentication failed",
+          error: "Authentication failed"
         };
         return NextResponse.json(errorResponse, { status: 401 });
       }
@@ -412,7 +421,7 @@ export async function POST(request: Request) {
       console.error("SignIn error:", error);
       const errorResponse: ErrorResponse = {
         success: false,
-        error: "Failed to create session",
+        error: "Failed to create session"
       };
       return NextResponse.json(errorResponse, { status: 500 });
     }
@@ -424,8 +433,8 @@ export async function POST(request: Request) {
         data: {
           id: user.id,
           email: user.email,
-          name: user.name,
-        },
+          name: user.name
+        }
       },
       { status: 200 }
     );
@@ -433,7 +442,7 @@ export async function POST(request: Request) {
     console.error("Error logging in:", error);
     const errorResponse: ErrorResponse = {
       success: false,
-      error: error instanceof Error ? error.message : "Failed to log in",
+      error: error instanceof Error ? error.message : "Failed to log in"
     };
     return NextResponse.json(errorResponse, { status: 500 });
   }
@@ -443,6 +452,7 @@ export async function POST(request: Request) {
 **Database-Specific Examples:**
 
 **Prisma:**
+
 ```typescript
 import { prisma } from "@/lib/prisma";
 
@@ -452,16 +462,18 @@ async function findUserByEmail(email: string) {
 ```
 
 **Raw SQL (PostgreSQL with pg):**
+
 ```typescript
 import { query } from "@/lib/database";
 
 async function findUserByEmail(email: string) {
-  const result = await query('SELECT * FROM users WHERE email = $1', [email]);
+  const result = await query("SELECT * FROM users WHERE email = $1", [email]);
   return result.rows[0] || null;
 }
 ```
 
 **Drizzle ORM:**
+
 ```typescript
 import { db } from "@/lib/db";
 import { users } from "@/lib/schema";
@@ -510,7 +522,7 @@ export async function POST(request: Request) {
     if (!email || !password) {
       const errorResponse: ErrorResponse = {
         success: false,
-        error: "Email and password are required",
+        error: "Email and password are required"
       };
       return NextResponse.json(errorResponse, { status: 400 });
     }
@@ -521,7 +533,7 @@ export async function POST(request: Request) {
     if (existingUser) {
       const errorResponse: ErrorResponse = {
         success: false,
-        error: "User with this email already exists",
+        error: "User with this email already exists"
       };
       return NextResponse.json(errorResponse, { status: 409 });
     }
@@ -533,7 +545,7 @@ export async function POST(request: Request) {
     const user = await createUser({
       email,
       password: hashedPassword,
-      name: name || null,
+      name: name || null
     });
 
     return NextResponse.json({ data: user }, { status: 201 });
@@ -541,7 +553,7 @@ export async function POST(request: Request) {
     console.error("Error registering user:", error);
     const errorResponse: ErrorResponse = {
       success: false,
-      error: error instanceof Error ? error.message : "Failed to register user",
+      error: error instanceof Error ? error.message : "Failed to register user"
     };
     return NextResponse.json(errorResponse, { status: 500 });
   }
@@ -551,6 +563,7 @@ export async function POST(request: Request) {
 **Database-Specific Examples:**
 
 **Prisma:**
+
 ```typescript
 import { prisma } from "@/lib/prisma";
 
@@ -563,29 +576,30 @@ async function createUser(data: { email: string; password: string; name?: string
     data: {
       email: data.email,
       password: data.password,
-      name: data.name || null,
+      name: data.name || null
     },
     select: {
       id: true,
       email: true,
-      name: true,
-    },
+      name: true
+    }
   });
 }
 ```
 
 **Raw SQL (PostgreSQL with pg):**
+
 ```typescript
 import { query } from "@/lib/database";
 
 async function findUserByEmail(email: string) {
-  const result = await query('SELECT * FROM users WHERE email = $1', [email]);
+  const result = await query("SELECT * FROM users WHERE email = $1", [email]);
   return result.rows[0] || null;
 }
 
 async function createUser(data: { email: string; password: string; name?: string | null }) {
   const result = await query(
-    'INSERT INTO users (email, password, name) VALUES ($1, $2, $3) RETURNING id, email, name',
+    "INSERT INTO users (email, password, name) VALUES ($1, $2, $3) RETURNING id, email, name",
     [data.email, data.password, data.name]
   );
   return result.rows[0];
@@ -593,6 +607,7 @@ async function createUser(data: { email: string; password: string; name?: string
 ```
 
 **Drizzle ORM:**
+
 ```typescript
 import { db } from "@/lib/db";
 import { users } from "@/lib/schema";
@@ -604,15 +619,18 @@ async function findUserByEmail(email: string) {
 }
 
 async function createUser(data: { email: string; password: string; name?: string | null }) {
-  const result = await db.insert(users).values({
-    email: data.email,
-    password: data.password,
-    name: data.name,
-  }).returning({
-    id: users.id,
-    email: users.email,
-    name: users.name,
-  });
+  const result = await db
+    .insert(users)
+    .values({
+      email: data.email,
+      password: data.password,
+      name: data.name
+    })
+    .returning({
+      id: users.id,
+      email: users.email,
+      name: users.name
+    });
   return result[0];
 }
 ```
@@ -625,25 +643,22 @@ Create `middleware.ts` in the project root:
 import { auth } from "@/auth";
 import { NextResponse } from "next/server";
 
-export default auth((req) => {
+export default auth(req => {
   const { pathname } = req.nextUrl;
-  
+
   // Public routes that don't require authentication
   const publicRoutes = [
-    "/api/auth",      // Authentication endpoints (login, register, etc.)
+    "/api/auth" // Authentication endpoints (login, register, etc.)
   ];
-  
+
   // Check if the current path is a public route
   const isPublicRoute = publicRoutes.some(route => pathname.startsWith(route));
-  
+
   // Protect all /api routes except public routes
   if (pathname.startsWith("/api") && !isPublicRoute) {
     // Check if user is authenticated
     if (!req.auth) {
-      return NextResponse.json(
-        { success: false, error: "Unauthorized" },
-        { status: 401 }
-      );
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
   }
 
@@ -657,12 +672,13 @@ export const config = {
      * The middleware function will exclude /api/auth/* routes
      * Using regex pattern that Next.js middleware supports
      */
-    "/api/(.*)",
-  ],
+    "/api/(.*)"
+  ]
 };
 ```
 
 **Important Notes:**
+
 - The matcher pattern `/api/(.*)` uses regex syntax that Next.js middleware supports (not route syntax like `/api/:path*`)
 - After making changes to middleware, **restart your Next.js dev server** for changes to take effect
 - The middleware will run on all `/api/*` routes, but the function logic excludes public routes (auth, routes metadata, schema metadata)
@@ -676,20 +692,14 @@ When the intent specifies a `group` property with a wildcard (e.g., `group: /api
 // If intent specifies group: /api/*
 if (pathname.startsWith("/api") && !pathname.startsWith("/api/auth")) {
   if (!req.auth) {
-    return NextResponse.json(
-      { success: false, error: "Unauthorized" },
-      { status: 401 }
-    );
+    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   }
 }
 
 // If intent specifies group: /api/v1/*
 if (pathname.startsWith("/api/v1")) {
   if (!req.auth) {
-    return NextResponse.json(
-      { success: false, error: "Unauthorized" },
-      { status: 401 }
-    );
+    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   }
 }
 
@@ -697,10 +707,7 @@ if (pathname.startsWith("/api/v1")) {
 const protectedPaths = ["/api/v1", "/api/admin"];
 if (protectedPaths.some(path => pathname.startsWith(path))) {
   if (!req.auth) {
-    return NextResponse.json(
-      { success: false, error: "Unauthorized" },
-      { status: 401 }
-    );
+    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   }
 }
 ```
@@ -752,17 +759,14 @@ import { NextResponse } from "next/server";
 
 export async function GET() {
   const session = await auth();
-  
+
   if (!session) {
-    return NextResponse.json(
-      { success: false, error: "Unauthorized" },
-      { status: 401 }
-    );
+    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   }
 
   // Use session.user.id, session.user.email, etc.
   const userId = session.user.id;
-  
+
   // Your protected route logic here
   return NextResponse.json({ data: { userId } });
 }
@@ -775,23 +779,27 @@ export async function GET() {
 After adding the password field to your User model/table, run the appropriate migration command for your database setup:
 
 **Prisma:**
+
 ```bash
 npx prisma migrate dev --name add_password_to_user
 npx prisma generate
 ```
 
 **Drizzle:**
+
 ```bash
 npm run db:push  # or your migration command
 ```
 
 **TypeORM:**
+
 ```bash
 npm run migration:run  # or your migration command
 ```
 
 **Raw SQL:**
 Run the SQL migration manually:
+
 ```sql
 ALTER TABLE users ADD COLUMN password VARCHAR(255);
 ```
@@ -809,6 +817,7 @@ AUTH_SECRET=your-secret-key-here-minimum-32-characters
 ```
 
 **Security Note:** Use a strong, random secret key. Generate one with:
+
 ```bash
 openssl rand -base64 32
 ```
@@ -852,6 +861,7 @@ curl -X POST http://localhost:3000/api/auth/login \
 ```
 
 This will:
+
 - Validate credentials
 - Create a NextAuth session (sets session cookie)
 - Return user data
@@ -861,6 +871,7 @@ This will:
 ### Alternative: NextAuth Sign-In Page
 
 NextAuth also provides a built-in sign-in page. In a browser, navigate to:
+
 ```
 http://localhost:3000/api/auth/signin
 ```
@@ -897,6 +908,7 @@ curl -X GET http://localhost:3000/api/posts \
 ```
 
 Without authentication, you'll receive:
+
 ```json
 {
   "success": false,
@@ -919,25 +931,30 @@ Without authentication, you'll receive:
 ## Troubleshooting
 
 ### "AUTH_SECRET is required" error
+
 - Ensure `AUTH_SECRET` environment variable is set in `.env.local`
 - Restart the Next.js dev server after adding the variable
 
 ### "Cannot find module 'bcryptjs'" error
+
 - Run `npm install bcryptjs @types/bcryptjs`
 - Ensure `@types/bcryptjs` is in `devDependencies`
 
 ### "password field does not exist" error
+
 - Ensure the database migration has been applied (adds the `password` column to users table)
 - If using Prisma: Run `npx prisma generate` to regenerate Prisma client
 - If using TypeORM/Drizzle: Regenerate your ORM types/schema
 - Verify the column exists in your database: `SELECT * FROM users LIMIT 1;`
 
 ### "Unauthorized" on all API routes
+
 - Check that middleware is correctly configured
 - Verify session is being set (check cookies in browser DevTools)
 - Ensure `auth()` function is exported from `auth.ts`
 
 ### Middleware not protecting routes / API requests allowed without authentication
+
 - **Most common issue**: Restart your Next.js dev server after creating or modifying `middleware.ts`
 - Verify the matcher pattern uses regex syntax: `/api/(.*)` (not route syntax like `/api/:path*`)
 - Check that `middleware.ts` is in the project root (same level as `package.json`)
@@ -947,6 +964,7 @@ Without authentication, you'll receive:
 - Test with a browser (which handles cookies automatically) rather than Postman if cookies aren't being sent
 
 ### Session not persisting
+
 - Check that cookies are enabled in browser
 - Verify `AUTH_SECRET` is set correctly
 - Check browser console for cookie-related errors
@@ -954,6 +972,7 @@ Without authentication, you'll receive:
 ## Next Steps
 
 After implementing auth:
+
 1. Add role-based access control (RBAC) if needed
 2. Implement password reset functionality
 3. Add email verification
@@ -969,4 +988,3 @@ After implementing auth:
 - **Type Safety**: Strong TypeScript integration with type declarations
 - **Provider System**: NextAuth supports multiple providers (Credentials, OAuth, etc.)
 - **No Manual Token Management**: NextAuth handles token generation and validation automatically
-

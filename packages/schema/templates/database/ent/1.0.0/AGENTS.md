@@ -37,33 +37,34 @@ project/
 
 ### OpenIntent Type → Ent Type
 
-| OpenIntent Type | Ent Type | Ent Method | Notes |
-|----------------|----------|------------|-------|
-| `string` | `string` | `field.String()` | Text field |
-| `text` | `string` | `field.String()` | Long text content |
-| `integer` | `int` | `field.Int()` | 32-bit integer |
-| `bigint` | `int64` | `field.Int64()` | 64-bit integer |
-| `float` | `float64` | `field.Float64()` | Floating point |
-| `boolean` | `bool` | `field.Bool()` | True/false value |
-| `datetime` | `time.Time` | `field.Time()` | Date and time |
-| `date` | `time.Time` | `field.Time()` | Date only |
-| `uuid` | `string` | `field.UUID()` | UUID string |
-| `json` | `any` | `field.JSON()` | JSON data |
-| `enum` | Custom type | `field.Enum()` | Requires enum values |
-| `array` | `[]Type` | `field.Strings()` | Array of strings |
-| `bytes` | `[]byte` | `field.Bytes()` | Binary data |
+| OpenIntent Type | Ent Type    | Ent Method        | Notes                |
+| --------------- | ----------- | ----------------- | -------------------- |
+| `string`        | `string`    | `field.String()`  | Text field           |
+| `text`          | `string`    | `field.String()`  | Long text content    |
+| `integer`       | `int`       | `field.Int()`     | 32-bit integer       |
+| `bigint`        | `int64`     | `field.Int64()`   | 64-bit integer       |
+| `float`         | `float64`   | `field.Float64()` | Floating point       |
+| `boolean`       | `bool`      | `field.Bool()`    | True/false value     |
+| `datetime`      | `time.Time` | `field.Time()`    | Date and time        |
+| `date`          | `time.Time` | `field.Time()`    | Date only            |
+| `uuid`          | `string`    | `field.UUID()`    | UUID string          |
+| `json`          | `any`       | `field.JSON()`    | JSON data            |
+| `enum`          | Custom type | `field.Enum()`    | Requires enum values |
+| `array`         | `[]Type`    | `field.Strings()` | Array of strings     |
+| `bytes`         | `[]byte`    | `field.Bytes()`   | Binary data          |
 
 ### Field Attributes
 
-| OpenIntent Attribute | Ent Implementation | Database Impact |
-|---------------------|-------------------|----------------|
-| `required: true` | No `.Optional()` call | NOT NULL constraint |
-| `required: false` | Add `.Optional()` | NULL allowed |
-| `unique: true` | Add `.Unique()` | **Creates UNIQUE constraint in database** |
-| `default: value` | Add `.Default(value)` | DEFAULT value in database |
-| `max_length: N` | Add `.MaxLen(N)` for strings + `.SchemaType()` | **VARCHAR(N) constraint in database** |
+| OpenIntent Attribute | Ent Implementation                             | Database Impact                           |
+| -------------------- | ---------------------------------------------- | ----------------------------------------- |
+| `required: true`     | No `.Optional()` call                          | NOT NULL constraint                       |
+| `required: false`    | Add `.Optional()`                              | NULL allowed                              |
+| `unique: true`       | Add `.Unique()`                                | **Creates UNIQUE constraint in database** |
+| `default: value`     | Add `.Default(value)`                          | DEFAULT value in database                 |
+| `max_length: N`      | Add `.MaxLen(N)` for strings + `.SchemaType()` | **VARCHAR(N) constraint in database**     |
 
-**Important**: 
+**Important**:
+
 - When `unique: true` is specified, `.Unique()` **must** be called on the field. This creates a database-level UNIQUE constraint that prevents duplicate values. After regenerating Ent code, you **must** run migrations to apply this constraint to the database.
 - When `max_length: N` is specified, **both** `.MaxLen(N)` **and** `.SchemaType()` should be used to ensure the database column respects the constraint:
   ```go
@@ -75,6 +76,7 @@ project/
           "sqlite3":  "varchar(255)",
       })
   ```
+
   - `.MaxLen(N)` provides application-level validation
   - `.SchemaType()` ensures the database column type is `VARCHAR(N)`, enforcing the constraint at the database level
   - **Without `.SchemaType()`**, Ent may create columns without size constraints, especially for existing columns
@@ -95,6 +97,7 @@ project/
    - Array of fields with their types and attributes
 
 2. **Create schema file** in `ent/schema/{entity_lower}.go`:
+
    ```go
    package schema
 
@@ -131,6 +134,7 @@ project/
    ```
 
 3. **Add enum definitions** (if needed) using `field.Enum()`:
+
    ```go
    field.Enum("status").
        Values("ACTIVE", "INACTIVE", "PENDING").
@@ -138,13 +142,17 @@ project/
    ```
 
 4. **Generate Ent code**:
+
    ```bash
    go generate ./ent
    ```
+
    Or manually:
+
    ```bash
    go run -mod=mod entgo.io/ent/cmd/ent generate ./ent/schema
    ```
+
    This regenerates the Ent client code but **does not** update the database schema.
 
 5. **Run migrations** - **CRITICAL**: You **must** run migrations to apply schema changes to the database:
@@ -158,6 +166,7 @@ project/
 ### Example: Adding a Customer Entity
 
 **Intent:**
+
 ```yaml
 - kind: add_entity
   scope: data
@@ -187,6 +196,7 @@ project/
 ```
 
 **Generated Ent Schema:**
+
 ```go
 package schema
 
@@ -262,22 +272,26 @@ func (Customer) Edges() []ent.Edge {
 4. **Add enum definitions** (if needed) using `field.Enum()`
 
 5. **Regenerate Ent code**:
+
    ```bash
    go generate ./ent
    ```
+
    This regenerates the Ent client code but **does not** update the database schema.
 
 6. **Run migrations** - **CRITICAL**: You **must** run migrations to apply schema changes to the database:
+
    ```go
    if err := client.Schema.Create(context.Background()); err != nil {
        log.Fatalf("failed creating schema resources: %v", err)
    }
    ```
+
    Or use Ent's migration tools to generate SQL migrations for production.
 
    **Note**: Without running migrations, unique constraints, NOT NULL constraints, and other database-level changes will **not** be applied to the database, even though the Ent code has been regenerated.
 
-   **Important Note on MaxLen() and SchemaType()**: 
+   **Important Note on MaxLen() and SchemaType()**:
    - **For new fields**: Always use both `.MaxLen(N)` and `.SchemaType()` to ensure the database column type is `VARCHAR(N)`:
      ```go
      field.String("field_name").
@@ -288,12 +302,14 @@ func (Customer) Edges() []ent.Edge {
              "sqlite3":  "varchar(255)",
          })
      ```
+
      - `SchemaType()` ensures new columns are created with the correct `VARCHAR(N)` type
    - **For existing fields**: Ent's auto-migration (`client.Schema.Create()`) **does not alter existing columns** even with `SchemaType()`. You **must** manually alter existing columns:
      ```sql
      -- PostgreSQL example
      ALTER TABLE users ALTER COLUMN first_name TYPE VARCHAR(255);
      ```
+
      - **Note**: In PostgreSQL, the column type will show as `character varying` in `information_schema`, but this is equivalent to `varchar`. Check `character_maximum_length` to verify the size constraint.
      - **Alternative for development**: Drop and recreate the table
      - **For production**: Use Ent's Atlas migration tools to generate explicit SQL migrations
@@ -303,12 +319,13 @@ func (Customer) Edges() []ent.Edge {
    - **For optional fields**: Add them as pointer types (`*string`, `*int`, etc.) so they can be `nil` if not provided
    - Update the entity creation code to conditionally set optional fields only if they're not nil
    - Example for optional fields:
+
      ```go
      var body struct {
          RequiredField string  `json:"required_field" binding:"required"`
          OptionalField *string `json:"optional_field"`
      }
-     
+
      create := client.Entity.Create().SetRequiredField(body.RequiredField)
      if body.OptionalField != nil {
          create = create.SetOptionalField(*body.OptionalField)
@@ -319,6 +336,7 @@ func (Customer) Edges() []ent.Edge {
 ### Example: Adding Fields to Customer
 
 **Intent:**
+
 ```yaml
 - kind: add_field
   scope: data
@@ -339,6 +357,7 @@ func (Customer) Edges() []ent.Edge {
 ```
 
 **Updated Ent Schema:**
+
 ```go
 func (Customer) Fields() []ent.Field {
     return []ent.Field{
@@ -380,6 +399,7 @@ func (Customer) Fields() []ent.Field {
 ```
 
 **After updating the schema:**
+
 1. Regenerate Ent code: `go generate ./ent`
 2. **Run migrations** to apply the unique constraint to the database:
    ```go
@@ -390,8 +410,8 @@ func (Customer) Fields() []ent.Field {
 3. Verify the constraint was created:
    ```sql
    -- PostgreSQL example
-   SELECT constraint_name, constraint_type 
-   FROM information_schema.table_constraints 
+   SELECT constraint_name, constraint_type
+   FROM information_schema.table_constraints
    WHERE table_name = 'customers' AND constraint_type = 'UNIQUE';
    ```
 
@@ -399,18 +419,19 @@ func (Customer) Fields() []ent.Field {
 
 ### Relation Types
 
-| OpenIntent Relation | Ent Implementation |
-|--------------------|-------------------|
-| `one_to_one` | `edge.To()` on one side, `edge.From()` on other |
-| `one_to_many` | `edge.To()` on many side, `edge.From()` on one side |
-| `many_to_one` | `edge.To()` on many side, `edge.From()` on one side |
-| `many_to_many` | `edge.To()` on both sides with `edge.From()` |
+| OpenIntent Relation | Ent Implementation                                  |
+| ------------------- | --------------------------------------------------- |
+| `one_to_one`        | `edge.To()` on one side, `edge.From()` on other     |
+| `one_to_many`       | `edge.To()` on many side, `edge.From()` on one side |
+| `many_to_one`       | `edge.To()` on many side, `edge.From()` on one side |
+| `many_to_many`      | `edge.To()` on both sides with `edge.From()`        |
 
 ### Steps for `many_to_one` Relation
 
 1. **Verify both entities exist** in the schema directory
 
 2. **Add edge to source entity** (many side):
+
    ```go
    import "entgo.io/ent/schema/edge"
 
@@ -424,6 +445,7 @@ func (Customer) Fields() []ent.Field {
    ```
 
 3. **Add reverse edge to target entity** (one side):
+
    ```go
    func ({TargetEntity}) Edges() []ent.Edge {
        return []ent.Edge{
@@ -434,6 +456,7 @@ func (Customer) Fields() []ent.Field {
    ```
 
 4. **Regenerate Ent code**:
+
    ```bash
    go generate ./ent
    ```
@@ -443,6 +466,7 @@ func (Customer) Fields() []ent.Field {
 ### Example: Todo → User Relation
 
 **Intent:**
+
 ```yaml
 - kind: add_relation
   scope: schema
@@ -462,6 +486,7 @@ func (Customer) Fields() []ent.Field {
 **Updated Ent Schemas:**
 
 `ent/schema/todo.go`:
+
 ```go
 import "entgo.io/ent/schema/edge"
 
@@ -475,6 +500,7 @@ func (Todo) Edges() []ent.Edge {
 ```
 
 `ent/schema/user.go`:
+
 ```go
 func (User) Edges() []ent.Edge {
     return []ent.Edge{
@@ -495,9 +521,11 @@ func (User) Edges() []ent.Edge {
 3. **Remove related enum references** if no longer used
 
 4. **Regenerate Ent code**:
+
    ```bash
    go generate ./ent
    ```
+
    This regenerates the Ent client code but **does not** update the database schema.
 
 5. **Run migrations** - **CRITICAL**: You **must** run migrations to apply schema changes to the database:
@@ -508,11 +536,436 @@ func (User) Edges() []ent.Edge {
    ```
    **Note**: Without running migrations, field removals, constraint removals, and other database-level changes will **not** be applied to the database, even though the Ent code has been regenerated.
 
+## Implementing `remove_entity` Intent
+
+### Steps
+
+1. **Verify the entity exists** in the schema directory
+
+2. **Check for dependencies**:
+   - Search for edges/relations in other entities that reference this entity
+   - If `cascade: true` is specified, related data will be deleted automatically via ON DELETE CASCADE
+   - If `cascade: false`, ensure no foreign keys reference this entity or handle them manually
+
+3. **Remove relations** in other entities:
+   - Open schema files for entities that have edges to this entity
+   - Remove edge definitions that reference the entity being deleted
+   - Update the `Edges()` method to remove these edges
+
+4. **Delete the schema file**: `ent/schema/{entity_lower}.go`
+
+5. **Regenerate Ent code**:
+
+   ```bash
+   go generate ./ent
+   ```
+
+   This regenerates the Ent client code but **does not** update the database schema.
+
+6. **Run migrations** - **CRITICAL**:
+
+   ```go
+   if err := client.Schema.Create(context.Background()); err != nil {
+       log.Fatalf("failed creating schema resources: %v", err)
+   }
+   ```
+
+   **Note**: Ent's auto-migration may not drop tables by default. For production, you may need to:
+   - Use explicit migration tools (Atlas)
+   - Manually drop the table:
+     ```sql
+     -- Drop foreign key constraints first if cascade is false
+     ALTER TABLE "related_table" DROP CONSTRAINT "fk_constraint_name";
+     -- Then drop the table
+     DROP TABLE "{entity_name}";
+     ```
+
+7. **Update application code**:
+   - Remove all queries and operations using this entity
+   - Remove API endpoints that reference this entity
+   - Update any business logic that depended on this entity
+
+### Example: Removing a Profile Entity
+
+**Intent:**
+
+```yaml
+- kind: remove_entity
+  scope: data
+  entity: Profile
+  cascade: false
+```
+
+**Before:**
+
+`ent/schema/user.go`:
+
+```go
+func (User) Edges() []ent.Edge {
+    return []ent.Edge{
+        edge.To("profile", Profile.Type).
+            Unique(),
+    }
+}
+```
+
+`ent/schema/profile.go`:
+
+```go
+package schema
+
+import (
+    "entgo.io/ent"
+    "entgo.io/ent/schema/edge"
+    "entgo.io/ent/schema/field"
+)
+
+type Profile struct {
+    ent.Schema
+}
+
+func (Profile) Fields() []ent.Field {
+    return []ent.Field{
+        field.Int("id").Positive().Unique(),
+        field.String("bio"),
+    }
+}
+
+func (Profile) Edges() []ent.Edge {
+    return []ent.Edge{
+        edge.From("user", User.Type).
+            Ref("profile").
+            Unique().
+            Required(),
+    }
+}
+```
+
+**After:**
+
+1. Remove `ent/schema/profile.go` file entirely
+2. Update `ent/schema/user.go` to remove the profile edge:
+
+```go
+func (User) Edges() []ent.Edge {
+    return []ent.Edge{
+        // profile edge removed
+    }
+}
+```
+
+3. Regenerate Ent code: `go generate ./ent`
+4. Run migrations or manually drop the table
+
+## Implementing `rename_entity` Intent
+
+### Steps
+
+1. **Verify the entity exists** in the schema directory
+
+2. **Rename the schema file**:
+   - From: `ent/schema/{old_entity_lower}.go`
+   - To: `ent/schema/{new_entity_lower}.go`
+
+3. **Update the struct definition** in the renamed file:
+
+   ```go
+   // Before
+   type OldEntity struct {
+       ent.Schema
+   }
+
+   // After
+   type NewEntity struct {
+       ent.Schema
+   }
+   ```
+
+4. **Update all method receivers**:
+
+   ```go
+   // Before
+   func (OldEntity) Fields() []ent.Field { ... }
+   func (OldEntity) Edges() []ent.Edge { ... }
+
+   // After
+   func (NewEntity) Fields() []ent.Field { ... }
+   func (NewEntity) Edges() []ent.Edge { ... }
+   ```
+
+5. **Update all references** in other entity schemas:
+   - Update edge type references from `OldEntity.Type` to `NewEntity.Type`
+   - Update import statements if needed
+   - Example:
+
+     ```go
+     // Before
+     edge.To("old_entity", OldEntity.Type)
+
+     // After
+     edge.To("new_entity", NewEntity.Type)
+     ```
+
+6. **Regenerate Ent code**:
+
+   ```bash
+   go generate ./ent
+   ```
+
+7. **Run migrations**:
+
+   ```go
+   if err := client.Schema.Create(context.Background()); err != nil {
+       log.Fatalf("failed creating schema resources: %v", err)
+   }
+   ```
+
+   **Important**: Ent's auto-migration may create a new table instead of renaming. For production:
+   - Use explicit migration with table rename:
+     ```sql
+     ALTER TABLE "{old_entity_name}" RENAME TO "{new_entity_name}";
+     ```
+   - Or use Ent's Atlas migration tools to generate proper rename migrations
+
+8. **Update application code**:
+   - Update all database queries using the old entity name
+   - Update API routes and handlers
+   - Update business logic and imports
+
+### Example: Renaming Customer to Client
+
+**Intent:**
+
+```yaml
+- kind: rename_entity
+  scope: data
+  from: Customer
+  to: Client
+```
+
+**Steps:**
+
+1. Rename file: `ent/schema/customer.go` → `ent/schema/client.go`
+
+2. Update `ent/schema/client.go`:
+
+**Before:**
+
+```go
+package schema
+
+import (
+    "entgo.io/ent"
+    "entgo.io/ent/schema/field"
+)
+
+type Customer struct {
+    ent.Schema
+}
+
+func (Customer) Fields() []ent.Field {
+    return []ent.Field{
+        field.Int("id").Positive().Unique(),
+        field.String("email").MaxLen(255).Unique(),
+        field.String("name").MaxLen(100),
+    }
+}
+
+func (Customer) Edges() []ent.Edge {
+    return []ent.Edge{}
+}
+```
+
+**After:**
+
+```go
+package schema
+
+import (
+    "entgo.io/ent"
+    "entgo.io/ent/schema/field"
+)
+
+type Client struct {
+    ent.Schema
+}
+
+func (Client) Fields() []ent.Field {
+    return []ent.Field{
+        field.Int("id").Positive().Unique(),
+        field.String("email").MaxLen(255).Unique(),
+        field.String("name").MaxLen(100),
+    }
+}
+
+func (Client) Edges() []ent.Edge {
+    return []ent.Edge{}
+}
+```
+
+3. If other entities reference Customer, update those as well
+4. Regenerate code and run migrations
+5. Manually rename table in database if needed:
+   ```sql
+   ALTER TABLE "customers" RENAME TO "clients";
+   ```
+
+## Implementing `rename_field` Intent
+
+### Steps
+
+1. **Verify the entity and field exist** in the schema
+
+2. **Update the field definition** in `ent/schema/{entity_lower}.go`:
+   - Change the field name in the `field.Type("field_name")` call
+   - Maintain all field attributes (MaxLen, Unique, Optional, etc.)
+
+3. **Update edge references** if the field is part of a relation:
+   - If it's a foreign key field used in an edge, update the edge definition
+   - Update corresponding edges in related entities
+
+4. **Regenerate Ent code**:
+
+   ```bash
+   go generate ./ent
+   ```
+
+5. **Run migrations**:
+
+   ```go
+   if err := client.Schema.Create(context.Background()); err != nil {
+       log.Fatalf("failed creating schema resources: %v", err)
+   }
+   ```
+
+   **Important**: Ent's auto-migration may create a new column instead of renaming. For production:
+   - Manually rename the column:
+     ```sql
+     ALTER TABLE "{entity_name}" RENAME COLUMN "{old_field}" TO "{new_field}";
+     ```
+   - Or use Ent's Atlas migration tools to generate proper rename migrations
+
+6. **Update application code**:
+   - Update all queries using the old field name
+   - Update API request/response structures
+   - Update business logic that references this field
+
+### Example: Renaming 'name' to 'full_name'
+
+**Intent:**
+
+```yaml
+- kind: rename_field
+  scope: data
+  entity: Customer
+  from: name
+  to: full_name
+```
+
+**Before:**
+
+```go
+func (Customer) Fields() []ent.Field {
+    return []ent.Field{
+        field.Int("id").Positive().Unique(),
+        field.String("email").MaxLen(255).Unique(),
+        field.String("name").MaxLen(100),
+        field.Time("created_at").Default(time.Now),
+    }
+}
+```
+
+**After:**
+
+```go
+func (Customer) Fields() []ent.Field {
+    return []ent.Field{
+        field.Int("id").Positive().Unique(),
+        field.String("email").MaxLen(255).Unique(),
+        field.String("full_name").MaxLen(100),
+        field.Time("created_at").Default(time.Now),
+    }
+}
+```
+
+**Database Migration:**
+
+```sql
+ALTER TABLE "customers" RENAME COLUMN "name" TO "full_name";
+```
+
+### Example: Renaming a Field Used in Edge (Foreign Key)
+
+**Intent:**
+
+```yaml
+- kind: rename_field
+  scope: data
+  entity: Todo
+  from: user_id
+  to: owner_id
+```
+
+**Before:**
+
+`ent/schema/todo.go`:
+
+```go
+func (Todo) Fields() []ent.Field {
+    return []ent.Field{
+        field.Int("id").Positive().Unique(),
+        field.String("description"),
+        field.Int("user_id"),
+    }
+}
+
+func (Todo) Edges() []ent.Edge {
+    return []ent.Edge{
+        edge.To("user", User.Type).
+            Field("user_id").
+            Unique().
+            Required(),
+    }
+}
+```
+
+**After:**
+
+`ent/schema/todo.go`:
+
+```go
+func (Todo) Fields() []ent.Field {
+    return []ent.Field{
+        field.Int("id").Positive().Unique(),
+        field.String("description"),
+        field.Int("owner_id"),
+    }
+}
+
+func (Todo) Edges() []ent.Edge {
+    return []ent.Edge{
+        edge.To("owner", User.Type).
+            Field("owner_id").
+            Unique().
+            Required(),
+    }
+}
+```
+
+**Note**: In this example, we also renamed the edge from "user" to "owner" to maintain consistency with the field name. This is optional but recommended.
+
+**Database Migration:**
+
+```sql
+ALTER TABLE "todos" RENAME COLUMN "user_id" TO "owner_id";
+```
+
 ## Code Generation
 
 ### Setup Generation Directive
 
 Create `ent/generate.go`:
+
 ```go
 package ent
 
@@ -526,6 +979,7 @@ go generate ./ent
 ```
 
 Or manually:
+
 ```bash
 go run -mod=mod entgo.io/ent/cmd/ent generate ./ent/schema
 ```
@@ -565,6 +1019,7 @@ func main() {
 ## Common Patterns
 
 ### Auto-incrementing ID
+
 ```go
 field.Int("id").
     Positive().
@@ -572,6 +1027,7 @@ field.Int("id").
 ```
 
 ### UUID Primary Key
+
 ```go
 import "github.com/google/uuid"
 
@@ -581,6 +1037,7 @@ field.UUID("id", uuid.UUID{}).
 ```
 
 ### Timestamps
+
 ```go
 import "time"
 
@@ -592,6 +1049,7 @@ field.Time("updated_at").
 ```
 
 ### Optional Fields with MaxLen
+
 ```go
 field.String("phone").
     MaxLen(20).
@@ -604,12 +1062,14 @@ field.String("phone").
 ```
 
 ### JSON Fields
+
 ```go
 field.JSON("metadata", map[string]interface{}{}).
     Optional()
 ```
 
 ### Array Fields
+
 ```go
 field.Strings("tags").
     Optional()
@@ -620,15 +1080,19 @@ field.Strings("tags").
 ### Common Errors
 
 **"undefined: ent.Open"**
+
 - Solution: Run `go generate ./ent` to generate Ent code
 
 **"schema not found"**
+
 - Solution: Verify schema file exists in `ent/schema/` directory
 
 **"field already exists"**
+
 - Solution: Check if field was already added in schema
 
 **"relation ambiguity"**
+
 - Solution: Ensure edge names are unique and properly referenced
 
 ## Best Practices
@@ -666,6 +1130,7 @@ user, err := client.User.
 ## Database Client Usage
 
 ### Create
+
 ```go
 user, err := client.User.
     Create().
@@ -675,6 +1140,7 @@ user, err := client.User.
 ```
 
 ### Read
+
 ```go
 // Find all
 users, err := client.User.Query().All(context.Background())
@@ -692,6 +1158,7 @@ users, err := client.User.Query().
 ```
 
 ### Update
+
 ```go
 user, err := client.User.
     UpdateOneID(1).
@@ -700,6 +1167,7 @@ user, err := client.User.
 ```
 
 ### Delete
+
 ```go
 err := client.User.
     DeleteOneID(1).
@@ -707,6 +1175,7 @@ err := client.User.
 ```
 
 ### Relations
+
 ```go
 // Query with relations
 todos, err := client.Todo.Query().
@@ -733,7 +1202,8 @@ if err := client.Schema.Create(context.Background()); err != nil {
 }
 ```
 
-**Important**: 
+**Important**:
+
 - After regenerating Ent code with `go generate ./ent`, you **must** run migrations
 - Unique constraints (`.Unique()`) are **only** created in the database when migrations are run
 - Size constraints (`.MaxLen()`) are **only** applied to the database when migrations are run
@@ -750,9 +1220,10 @@ After running migrations, verify constraints were created:
 **PostgreSQL:**
 
 **Verify Unique Constraints:**
+
 ```sql
 -- List all unique constraints on a table
-SELECT 
+SELECT
     conname AS constraint_name,
     contype AS constraint_type,
     a.attname AS column_name
@@ -763,9 +1234,10 @@ WHERE t.relname = 'users' AND contype = 'u';
 ```
 
 **Verify Column Size (MaxLen) Constraints:**
+
 ```sql
 -- Check column data type and character maximum length
-SELECT 
+SELECT
     column_name,
     data_type,
     character_maximum_length
@@ -778,6 +1250,7 @@ WHERE table_name = 'artists' AND column_name = 'name';
 ```
 
 **MySQL:**
+
 ```sql
 SHOW CREATE TABLE artists;
 -- Look for VARCHAR(255) or other size constraints
@@ -785,33 +1258,38 @@ SHOW CREATE TABLE artists;
 ```
 
 **SQLite:**
+
 ```sql
-SELECT sql FROM sqlite_master 
+SELECT sql FROM sqlite_master
 WHERE type='table' AND name='artists';
 -- Look for VARCHAR(255) or CHECK constraints in the CREATE TABLE statement
 ```
 
-**Important**: 
+**Important**:
+
 - **PostgreSQL Note**: PostgreSQL displays `character varying` instead of `varchar` in `information_schema.columns`, but they are equivalent. The important thing is that `character_maximum_length` shows the correct value (e.g., 255).
 - If `MaxLen()` was specified but the column doesn't show the size constraint in the database:
   1. **For new columns**: `SchemaType()` should ensure the constraint is applied when the column is created
   2. **For existing columns**: Ent's auto-migration (`client.Schema.Create()`) **may not alter existing columns** even with `SchemaType()`. You need to manually alter the column:
+
      ```sql
      -- For PostgreSQL
      ALTER TABLE users ALTER COLUMN first_name TYPE VARCHAR(255);
      ALTER TABLE users ALTER COLUMN last_name TYPE VARCHAR(255);
-     
+
      -- Verify the constraint was applied:
      SELECT column_name, data_type, character_maximum_length
      FROM information_schema.columns
      WHERE table_name = 'users' AND column_name IN ('first_name', 'last_name');
      ```
+
   3. **Alternative for development**: Drop and recreate the table (development only)
   4. **For production**: Use Ent's migration tools (Atlas) to generate explicit SQL migrations
 
 ### Production Migrations
 
 For production, consider using:
+
 - `client.Schema.WriteTo()` to generate SQL migrations:
   ```go
   // Generate SQL migration
@@ -822,4 +1300,3 @@ For production, consider using:
 - Manual migration scripts for complex changes
 - Version control for schema changes
 - Migration tools like Atlas or golang-migrate for versioned migrations
-

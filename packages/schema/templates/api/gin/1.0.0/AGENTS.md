@@ -22,13 +22,14 @@ Use this guide when `api.framework` in `project.yaml` is set to `"gin"`.
 
 Gin uses a router-based approach with handler functions:
 
-| Intent Path | Route Pattern | Handler Function |
-|------------|---------------|------------------|
-| `/api/users` | `api.GET("/users", ...)` | `getUsers(client)` |
+| Intent Path      | Route Pattern                | Handler Function      |
+| ---------------- | ---------------------------- | --------------------- |
+| `/api/users`     | `api.GET("/users", ...)`     | `getUsers(client)`    |
 | `/api/users/:id` | `api.GET("/users/:id", ...)` | `getUserByID(client)` |
-| `/api/posts` | `api.GET("/posts", ...)` | `getPosts(client)` |
+| `/api/posts`     | `api.GET("/posts", ...)`     | `getPosts(client)`    |
 
 **Important:** For routes with path parameters (e.g., `:id`):
+
 - Use `c.Param("id")` to extract the parameter
 - Convert string parameters to appropriate types (int, UUID, etc.)
 - Validate parameters before use
@@ -75,12 +76,13 @@ Based on `api.response` configuration in `project.yaml`:
 api:
   response:
     success:
-      object: data    # Success responses wrap result in "data" field
+      object: data # Success responses wrap result in "data" field
     error:
-      object: error   # Error responses use "error" field
+      object: error # Error responses use "error" field
 ```
 
 **Success Response:**
+
 ```go
 gin.H{
     "data": [...results...]
@@ -88,6 +90,7 @@ gin.H{
 ```
 
 **Error Response:**
+
 ```go
 gin.H{
     "error": "Error message"
@@ -111,7 +114,7 @@ func get{EntityPlural}(db *database.Client) gin.HandlerFunc {
             })
             return
         }
-        
+
         c.JSON(http.StatusOK, gin.H{
             "data": {entity_plural},
         })
@@ -138,7 +141,7 @@ func get{Entity}ByID(db *database.Client) gin.HandlerFunc {
             })
             return
         }
-        
+
         {entity}, err := db.Get{Entity}ByID(context.Background(), id)
         if err != nil {
             // Check if entity not found (adjust based on your database framework)
@@ -153,7 +156,7 @@ func get{Entity}ByID(db *database.Client) gin.HandlerFunc {
             })
             return
         }
-        
+
         c.JSON(http.StatusOK, gin.H{
             "data": {entity},
         })
@@ -175,14 +178,14 @@ func create{Entity}(db *database.Client) gin.HandlerFunc {
             Field2 string `json:"field2"`
             Field3 int    `json:"field3"`
         }
-        
+
         if err := c.ShouldBindJSON(&body); err != nil {
             c.JSON(http.StatusBadRequest, gin.H{
                 "error": err.Error(),
             })
             return
         }
-        
+
         // Create {entity} using your database client
         {entity}, err := db.Create{Entity}(context.Background(), &body)
         if err != nil {
@@ -191,7 +194,7 @@ func create{Entity}(db *database.Client) gin.HandlerFunc {
             })
             return
         }
-        
+
         c.JSON(http.StatusCreated, gin.H{
             "data": {entity},
         })
@@ -218,7 +221,7 @@ func update{Entity}(db *database.Client) gin.HandlerFunc {
             })
             return
         }
-        
+
         // Check if entity exists
         existing, err := db.Get{Entity}ByID(context.Background(), id)
         if err != nil {
@@ -234,20 +237,20 @@ func update{Entity}(db *database.Client) gin.HandlerFunc {
             return
         }
         _ = existing // Use existing if needed
-        
+
         var body struct {
             Field1 *string `json:"field1"`
             Field2 *string `json:"field2"`
             Field3 *int    `json:"field3"`
         }
-        
+
         if err := c.ShouldBindJSON(&body); err != nil {
             c.JSON(http.StatusBadRequest, gin.H{
                 "error": err.Error(),
             })
             return
         }
-        
+
         // Update {entity} using your database client
         {entity}, err := db.Update{Entity}(context.Background(), id, &body)
         if err != nil {
@@ -256,7 +259,7 @@ func update{Entity}(db *database.Client) gin.HandlerFunc {
             })
             return
         }
-        
+
         c.JSON(http.StatusOK, gin.H{
             "data": {entity},
         })
@@ -283,7 +286,7 @@ func delete{Entity}(db *database.Client) gin.HandlerFunc {
             })
             return
         }
-        
+
         // Check if entity exists
         _, err = db.Get{Entity}ByID(context.Background(), id)
         if err != nil {
@@ -298,7 +301,7 @@ func delete{Entity}(db *database.Client) gin.HandlerFunc {
             })
             return
         }
-        
+
         // Delete {entity} using your database client
         err = db.Delete{Entity}(context.Background(), id)
         if err != nil {
@@ -307,7 +310,7 @@ func delete{Entity}(db *database.Client) gin.HandlerFunc {
             })
             return
         }
-        
+
         c.JSON(http.StatusOK, gin.H{
             "message": "{Entity} deleted successfully",
         })
@@ -329,19 +332,19 @@ intents:
     method: GET
     path: /api/users
     entity: User
-  
+
   - kind: add_endpoint
     scope: api
     method: POST
     path: /api/users
     entity: User
-  
+
   - kind: add_endpoint
     scope: api
     method: GET
     path: /api/users/:id
     entity: User
-  
+
   - kind: add_endpoint
     scope: api
     method: DELETE
@@ -441,12 +444,12 @@ func createUser(db *database.Client) gin.HandlerFunc {
             Email string `json:"email" binding:"required"`
             Name  string `json:"name" binding:"required"`
         }
-        
+
         if err := c.ShouldBindJSON(&body); err != nil {
             c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
             return
         }
-        
+
         u, err := db.CreateUser(context.Background(), &body)
         if err != nil {
             c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -573,6 +576,7 @@ func getUsers(db *database.Client) gin.HandlerFunc {
 ### Overview
 
 The `update_endpoint` intent allows you to modify existing API endpoints to include additional fields in the response. This is useful for:
+
 - Adding relations to GET endpoints
 - Including specific fields from related entities
 - Joining on foreign keys to add fields from other entities
@@ -601,6 +605,7 @@ The `update_endpoint` intent allows you to modify existing API endpoints to incl
 **Use Case:** Include a related entity in the response (e.g., albums for an artist)
 
 **Intent Example:**
+
 ```yaml
 - kind: update_endpoint
   scope: api
@@ -614,43 +619,30 @@ The `update_endpoint` intent allows you to modify existing API endpoints to incl
           relation: albums
 ```
 
-**Implementation for Ent:**
+**Generic Implementation:**
+
 ```go
-func getArtists(client *ent.Client) gin.HandlerFunc {
+func getArtists(db *database.Client) gin.HandlerFunc {
     return func(c *gin.Context) {
-        // Use WithAlbums() to eager load the albums relation
-        artists, err := client.Artist.Query().
-            WithAlbums().  // Eager load albums relation
-            All(context.Background())
+        // Use your database client's eager loading method for relations
+        artists, err := db.GetArtistsWithAlbums(context.Background())
         if err != nil {
             c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
             return
         }
-        c.JSON(http.StatusOK, artists)  // Albums are included in each artist
+        c.JSON(http.StatusOK, gin.H{"data": artists})  // Albums are included in each artist
     }
 }
 ```
 
-**Implementation for GORM:**
-```go
-func getArtists(db *gorm.DB) gin.HandlerFunc {
-    return func(c *gin.Context) {
-        var artists []Artist
-        err := db.Preload("Albums").Find(&artists).Error
-        if err != nil {
-            c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-            return
-        }
-        c.JSON(http.StatusOK, artists)
-    }
-}
-```
+**Note:** Consult your database framework guide (e.g., Ent, Prisma) for specific eager loading syntax and methods for including relations in queries.
 
 #### Type: `field` - Select Specific Field from Relation
 
 **Use Case:** Include a specific field from a related entity (e.g., album count)
 
 **Intent Example:**
+
 ```yaml
 - kind: update_endpoint
   scope: api
@@ -663,42 +655,44 @@ func getArtists(db *gorm.DB) gin.HandlerFunc {
           type: relation
           relation: albums
           entity: Album
-          field: count  # Computed count
+          field: count # Computed count
 ```
 
-**Implementation:**
+**Generic Implementation:**
+
 ```go
-func getArtists(client *ent.Client) gin.HandlerFunc {
+func getArtists(db *database.Client) gin.HandlerFunc {
     return func(c *gin.Context) {
-        artists, err := client.Artist.Query().
-            WithAlbums().
-            All(context.Background())
+        // Query artists with albums relation loaded
+        artists, err := db.GetArtistsWithAlbums(context.Background())
         if err != nil {
             c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
             return
         }
-        
+
         // Transform response to include computed field
         result := make([]map[string]interface{}, len(artists))
         for i, artist := range artists {
-            albums, _ := artist.Edges.AlbumsOrErr()
             result[i] = map[string]interface{}{
-                "id":    artist.ID,
-                "name":  artist.Name,
-                "albums": albums,
-                "album_count": len(albums),  // Computed field
+                "id":          artist.ID,
+                "name":        artist.Name,
+                "albums":      artist.Albums,
+                "album_count": len(artist.Albums),  // Computed field
             }
         }
-        c.JSON(http.StatusOK, result)
+        c.JSON(http.StatusOK, gin.H{"data": result})
     }
 }
 ```
+
+**Note:** Consult your database framework guide for specific methods to load relations and access related data.
 
 #### Type: `field` with `join` - Join on Foreign Key
 
 **Use Case:** Join on a foreign key and include a field from the joined entity
 
 **Intent Example:**
+
 ```yaml
 - kind: update_endpoint
   scope: api
@@ -717,76 +711,49 @@ func getArtists(client *ent.Client) gin.HandlerFunc {
             target_field: name
 ```
 
-**Implementation for Ent:**
+**Generic Implementation:**
+
 ```go
-func getAlbumByID(client *ent.Client) gin.HandlerFunc {
+func getAlbumByID(db *database.Client) gin.HandlerFunc {
     return func(c *gin.Context) {
         idStr := c.Param("id")
-        id, err := uuid.Parse(idStr)
+        id, err := parseID(idStr)  // Use appropriate ID parsing for your ID type
         if err != nil {
             c.JSON(http.StatusBadRequest, gin.H{"error": "invalid album ID"})
             return
         }
-        
-        // Use WithArtist() to eager load artist relation
-        album, err := client.Album.Query().
-            Where(album.IDEQ(id)).
-            WithArtist().  // Eager load artist relation
-            Only(context.Background())
+
+        // Query album with artist relation loaded
+        album, err := db.GetAlbumByIDWithArtist(context.Background(), id)
         if err != nil {
-            if ent.IsNotFound(err) {
+            if errors.Is(err, ErrNotFound) {
                 c.JSON(http.StatusNotFound, gin.H{"error": "album not found"})
                 return
             }
             c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
             return
         }
-        
-        // Transform to include artist_name field
-        artist, _ := album.Edges.ArtistOrErr()
+
+        // Transform to include artist_name field from joined entity
         response := map[string]interface{}{
-            "id":    album.ID,
-            "title": album.Title,
-            "artist_id": album.ArtistID,
-            "artist_name": artist.Name,  // Field from joined entity
+            "id":          album.ID,
+            "title":       album.Title,
+            "artist_id":   album.ArtistID,
+            "artist_name": album.Artist.Name,  // Field from joined entity
         }
-        c.JSON(http.StatusOK, response)
+        c.JSON(http.StatusOK, gin.H{"data": response})
     }
 }
 ```
 
-**Implementation for GORM:**
-```go
-func getAlbumByID(db *gorm.DB) gin.HandlerFunc {
-    return func(c *gin.Context) {
-        idStr := c.Param("id")
-        var album Album
-        err := db.Preload("Artist").First(&album, "id = ?", idStr).Error
-        if err != nil {
-            if errors.Is(err, gorm.ErrRecordNotFound) {
-                c.JSON(http.StatusNotFound, gin.H{"error": "album not found"})
-                return
-            }
-            c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-            return
-        }
-        
-        response := map[string]interface{}{
-            "id":    album.ID,
-            "title": album.Title,
-            "artist_id": album.ArtistID,
-            "artist_name": album.Artist.Name,  // Field from joined entity
-        }
-        c.JSON(http.StatusOK, response)
-    }
-}
-```
+**Note:** Consult your database framework guide for specific methods to join tables and access fields from related entities.
 
 #### Type: `computed` - Add Computed Field
 
 **Use Case:** Add a field that is computed in the handler (not from database)
 
 **Intent Example:**
+
 ```yaml
 - kind: update_endpoint
   scope: api
@@ -799,29 +766,30 @@ func getAlbumByID(db *gorm.DB) gin.HandlerFunc {
           type: computed
 ```
 
-**Implementation:**
+**Generic Implementation:**
+
 ```go
-func getArtists(client *ent.Client) gin.HandlerFunc {
+func getArtists(db *database.Client) gin.HandlerFunc {
     return func(c *gin.Context) {
-        artists, err := client.Artist.Query().All(context.Background())
+        artists, err := db.GetAllArtists(context.Background())
         if err != nil {
             c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
             return
         }
-        
+
         // Transform to include computed field
         result := make([]map[string]interface{}, len(artists))
         for i, artist := range artists {
             // Compute total_streams (example: sum from albums)
             totalStreams := computeTotalStreams(artist.ID)  // Your computation logic
-            
+
             result[i] = map[string]interface{}{
-                "id":    artist.ID,
-                "name":  artist.Name,
+                "id":            artist.ID,
+                "name":          artist.Name,
                 "total_streams": totalStreams,  // Computed field
             }
         }
-        c.JSON(http.StatusOK, result)
+        c.JSON(http.StatusOK, gin.H{"data": result})
     }
 }
 ```
@@ -829,6 +797,7 @@ func getArtists(client *ent.Client) gin.HandlerFunc {
 ### Complete Example: Updating GET /api/v1/artists
 
 **Intent:**
+
 ```yaml
 - kind: update_endpoint
   scope: api
@@ -843,35 +812,37 @@ func getArtists(client *ent.Client) gin.HandlerFunc {
 ```
 
 **Before (Original Handler):**
+
 ```go
-func getArtists(client *ent.Client) gin.HandlerFunc {
+func getArtists(db *database.Client) gin.HandlerFunc {
     return func(c *gin.Context) {
-        artists, err := client.Artist.Query().All(context.Background())
+        artists, err := db.GetAllArtists(context.Background())
         if err != nil {
             c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
             return
         }
-        c.JSON(http.StatusOK, artists)
+        c.JSON(http.StatusOK, gin.H{"data": artists})
     }
 }
 ```
 
 **After (Updated Handler):**
+
 ```go
-func getArtists(client *ent.Client) gin.HandlerFunc {
+func getArtists(db *database.Client) gin.HandlerFunc {
     return func(c *gin.Context) {
-        // Added WithAlbums() to eager load albums relation
-        artists, err := client.Artist.Query().
-            WithAlbums().  // Added: Eager load albums relation
-            All(context.Background())
+        // Updated to use method that eager loads albums relation
+        artists, err := db.GetArtistsWithAlbums(context.Background())
         if err != nil {
             c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
             return
         }
-        c.JSON(http.StatusOK, artists)  // Albums are now included in response
+        c.JSON(http.StatusOK, gin.H{"data": artists})  // Albums are now included in response
     }
 }
 ```
+
+**Note:** Consult your database framework guide for specific eager loading patterns and syntax.
 
 ### Best Practices for `update_endpoint`
 
@@ -910,15 +881,15 @@ func createUser(db *database.Client) gin.HandlerFunc {
 
 Use appropriate HTTP status codes:
 
-| Status Code | Usage |
-|------------|-------|
-| `200` | Successful GET, PATCH, DELETE |
-| `201` | Successful POST (created) |
-| `400` | Bad request (validation errors) |
-| `401` | Unauthorized (not authenticated) |
-| `403` | Forbidden (not authorized) |
-| `404` | Not found |
-| `500` | Internal server error |
+| Status Code | Usage                            |
+| ----------- | -------------------------------- |
+| `200`       | Successful GET, PATCH, DELETE    |
+| `201`       | Successful POST (created)        |
+| `400`       | Bad request (validation errors)  |
+| `401`       | Unauthorized (not authenticated) |
+| `403`       | Forbidden (not authorized)       |
+| `404`       | Not found                        |
+| `500`       | Internal server error            |
 
 ## Error Handling Best Practices
 
@@ -1015,6 +986,455 @@ r := gin.New()
 r.Use(gin.Recovery())
 ```
 
+## Handling Data Intent Side Effects on APIs
+
+When data intents (`remove_entity`, `rename_entity`, `rename_field`) are applied to the database schema, API endpoints that reference those entities or fields **must be updated** to prevent breakage. This section provides guidance on handling these side effects.
+
+### `remove_entity` Intent - API Impact
+
+**Impact:** Any endpoint that uses the removed entity will break.
+
+**Steps to Handle:**
+
+1. **Identify affected endpoints**:
+   - Search for handler functions that reference the entity
+   - Check for:
+     - Route registrations (e.g., `api.GET("/customers", ...)`)
+     - Handler function names (e.g., `getCustomers`, `createCustomer`)
+     - Database client calls (e.g., `client.Customer.Query()`, `db.GetAllCustomers()`)
+     - Struct definitions for the entity
+
+2. **Delete or deprecate endpoints**:
+   - **Option A - Delete immediately**: Remove handler functions and route registrations
+   - **Option B - Soft deprecation**: Return 410 Gone status:
+     ```go
+     func getCustomers(db *database.Client) gin.HandlerFunc {
+         return func(c *gin.Context) {
+             c.JSON(http.StatusGone, gin.H{
+                 "error": "This endpoint has been removed. The Customer resource is no longer available.",
+             })
+         }
+     }
+     ```
+
+3. **Remove route registrations** from router setup:
+
+   ```go
+   // REMOVE these lines from main.go or router setup:
+   // api.GET("/customers", getCustomers(db))
+   // api.GET("/customers/:id", getCustomerByID(db))
+   // api.POST("/customers", createCustomer(db))
+   ```
+
+4. **Update dependent endpoints**:
+   - If other entities have relations to the removed entity, update those handlers
+   - Remove eager loading for the removed relation (e.g., `WithCustomer()` in Ent)
+   - Update response structs to remove customer fields
+
+### Example: Handling `remove_entity` for Customer
+
+**Intent:**
+
+```yaml
+- kind: remove_entity
+  scope: data
+  entity: Customer
+  cascade: false
+```
+
+**Actions:**
+
+1. **Remove handler functions** from codebase:
+
+```go
+// DELETE these functions:
+// func getCustomers(db *database.Client) gin.HandlerFunc { ... }
+// func getCustomerByID(db *database.Client) gin.HandlerFunc { ... }
+// func createCustomer(db *database.Client) gin.HandlerFunc { ... }
+// func updateCustomer(db *database.Client) gin.HandlerFunc { ... }
+// func deleteCustomer(db *database.Client) gin.HandlerFunc { ... }
+```
+
+2. **Remove route registrations** from router:
+
+```go
+// main.go - REMOVE these lines:
+// api.GET("/customers", getCustomers(db))
+// api.GET("/customers/:id", getCustomerByID(db))
+// api.POST("/customers", createCustomer(db))
+// api.PATCH("/customers/:id", updateCustomer(db))
+// api.DELETE("/customers/:id", deleteCustomer(db))
+```
+
+3. **Update related endpoints** (if Order entity had a customer relation):
+
+**Before:**
+
+```go
+func getOrders(db *database.Client) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        // Query includes customer relation (will break after Customer is removed)
+        orders, err := db.GetOrdersWithCustomer(context.Background())
+        if err != nil {
+            c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+            return
+        }
+        c.JSON(http.StatusOK, gin.H{"data": orders})
+    }
+}
+```
+
+**After:**
+
+```go
+func getOrders(db *database.Client) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        // Remove customer relation - entity no longer exists
+        orders, err := db.GetAllOrders(context.Background())
+        if err != nil {
+            c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+            return
+        }
+        c.JSON(http.StatusOK, gin.H{"data": orders})
+    }
+}
+```
+
+**Note:** Consult your database framework guide for specific methods to query with or without relations.
+
+### `rename_entity` Intent - API Impact
+
+**Impact:** Route paths, handler function names, database queries, and type definitions need updates.
+
+**Steps to Handle:**
+
+1. **Update route registrations**:
+   - From: `api.GET("/customers", ...)`
+   - To: `api.GET("/clients", ...)`
+
+2. **Rename handler functions** (optional but recommended):
+   - From: `getCustomers`, `createCustomer`
+   - To: `getClients`, `createClient`
+
+3. **Update database client calls**:
+   - Update method names: `GetAllCustomers()` → `GetAllClients()`
+   - Update entity references in query methods
+   - Update struct names and type references
+
+4. **Update all references** in other endpoints:
+   - Update relation loading methods (e.g., `GetOrdersWithCustomer()` → `GetOrdersWithClient()`)
+   - Update field accesses for related entities
+
+**Note:** Consult your database framework guide for specific patterns when renaming entities in queries and relations.
+
+### Example: Handling `rename_entity` from Customer to Client
+
+**Intent:**
+
+```yaml
+- kind: rename_entity
+  scope: data
+  from: Customer
+  to: Client
+```
+
+**Actions:**
+
+1. **Update route registrations** in router:
+
+**Before:**
+
+```go
+api.GET("/customers", getCustomers(db))
+api.GET("/customers/:id", getCustomerByID(db))
+api.POST("/customers", createCustomer(db))
+```
+
+**After:**
+
+```go
+api.GET("/clients", getClients(db))
+api.GET("/clients/:id", getClientByID(db))
+api.POST("/clients", createClient(db))
+```
+
+2. **Rename and update handler functions**:
+
+**Before:**
+
+```go
+func getCustomers(db *database.Client) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        customers, err := db.GetAllCustomers(context.Background())
+        if err != nil {
+            c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+            return
+        }
+        c.JSON(http.StatusOK, gin.H{"data": customers})
+    }
+}
+```
+
+**After:**
+
+```go
+func getClients(db *database.Client) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        clients, err := db.GetAllClients(context.Background())
+        if err != nil {
+            c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+            return
+        }
+        c.JSON(http.StatusOK, gin.H{"data": clients})
+    }
+}
+```
+
+3. **Update request body structs** (if defined inline):
+
+**Before:**
+
+```go
+func createCustomer(db *database.Client) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        var body struct {
+            Email string `json:"email" binding:"required"`
+            Name  string `json:"name" binding:"required"`
+        }
+        // ... rest of handler with db.CreateCustomer()
+    }
+}
+```
+
+**After:**
+
+```go
+func createClient(db *database.Client) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        var body struct {
+            Email string `json:"email" binding:"required"`
+            Name  string `json:"name" binding:"required"`
+        }
+        // ... rest of handler with db.CreateClient() (struct fields stay the same, only entity name changes)
+    }
+}
+```
+
+### `rename_field` Intent - API Impact
+
+**Impact:** Request validation, database queries, and response transformations need field name updates.
+
+**Steps to Handle:**
+
+1. **Update request body structs**:
+   - Update JSON tags: `json:"name"` → `json:"full_name"`
+   - Update struct field names if they match
+
+2. **Update database client calls**:
+   - Update method parameters for create/update operations
+   - Field names in database operations must match new field name
+
+3. **Update response transformations**:
+   - If you're manually building response maps, update field names
+
+4. **Update field validation**:
+   - Update binding tags and error messages
+
+**Note:** Consult your database framework guide for specific patterns when renaming fields in queries and mutations.
+
+### Example: Handling `rename_field` from 'name' to 'full_name'
+
+**Intent:**
+
+```yaml
+- kind: rename_field
+  scope: data
+  entity: Customer
+  from: name
+  to: full_name
+```
+
+**Actions:**
+
+1. **Update POST handler**:
+
+**Before:**
+
+```go
+func createCustomer(db *database.Client) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        var body struct {
+            Email string `json:"email" binding:"required"`
+            Name  string `json:"name" binding:"required"`  // Old field name
+        }
+
+        if err := c.ShouldBindJSON(&body); err != nil {
+            c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+            return
+        }
+
+        customer, err := db.CreateCustomer(context.Background(), body.Email, body.Name)
+        if err != nil {
+            c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+            return
+        }
+
+        c.JSON(http.StatusCreated, gin.H{"data": customer})
+    }
+}
+```
+
+**After:**
+
+```go
+func createCustomer(db *database.Client) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        var body struct {
+            Email    string `json:"email" binding:"required"`
+            FullName string `json:"full_name" binding:"required"`  // New field name
+        }
+
+        if err := c.ShouldBindJSON(&body); err != nil {
+            c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+            return
+        }
+
+        customer, err := db.CreateCustomer(context.Background(), body.Email, body.FullName)
+        if err != nil {
+            c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+            return
+        }
+
+        c.JSON(http.StatusCreated, gin.H{"data": customer})
+    }
+}
+```
+
+2. **Update PATCH handler**:
+
+**Before:**
+
+```go
+func updateCustomer(db *database.Client) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        idStr := c.Param("id")
+        id, err := strconv.Atoi(idStr)
+        if err != nil {
+            c.JSON(http.StatusBadRequest, gin.H{"error": "invalid customer ID"})
+            return
+        }
+
+        var body struct {
+            Email *string `json:"email"`
+            Name  *string `json:"name"`  // Old field name
+        }
+
+        if err := c.ShouldBindJSON(&body); err != nil {
+            c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+            return
+        }
+
+        // Build update with fields that are provided
+        updateData := make(map[string]interface{})
+        if body.Email != nil {
+            updateData["email"] = *body.Email
+        }
+        if body.Name != nil {
+            updateData["name"] = *body.Name  // Old field
+        }
+
+        customer, err := db.UpdateCustomer(context.Background(), id, updateData)
+        if err != nil {
+            c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+            return
+        }
+
+        c.JSON(http.StatusOK, gin.H{"data": customer})
+    }
+}
+```
+
+**After:**
+
+```go
+func updateCustomer(db *database.Client) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        idStr := c.Param("id")
+        id, err := strconv.Atoi(idStr)
+        if err != nil {
+            c.JSON(http.StatusBadRequest, gin.H{"error": "invalid customer ID"})
+            return
+        }
+
+        var body struct {
+            Email    *string `json:"email"`
+            FullName *string `json:"full_name"`  // New field name
+        }
+
+        if err := c.ShouldBindJSON(&body); err != nil {
+            c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+            return
+        }
+
+        // Build update with fields that are provided
+        updateData := make(map[string]interface{})
+        if body.Email != nil {
+            updateData["email"] = *body.Email
+        }
+        if body.FullName != nil {
+            updateData["full_name"] = *body.FullName  // New field
+        }
+
+        customer, err := db.UpdateCustomer(context.Background(), id, updateData)
+        if err != nil {
+            c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+            return
+        }
+
+        c.JSON(http.StatusOK, gin.H{"data": customer})
+    }
+}
+```
+
+3. **Update response transformations** (if manually building responses):
+
+**Before:**
+
+```go
+result := map[string]interface{}{
+    "id":    customer.ID,
+    "email": customer.Email,
+    "name":  customer.Name,  // Old field
+}
+```
+
+**After:**
+
+```go
+result := map[string]interface{}{
+    "id":        customer.ID,
+    "email":     customer.Email,
+    "full_name": customer.FullName,  // New field
+}
+```
+
+### Best Practices for Handling Data Intent Side Effects
+
+1. **Search globally** for entity/field references before making changes
+2. **Use Go's type system** - compilation errors will guide you to affected code
+3. **Test all affected endpoints** after updates
+4. **Consider API versioning** for breaking changes (e.g., `/api/v1/` vs `/api/v2/`)
+5. **Document breaking changes** in API changelog
+6. **Use deprecation periods** for public APIs rather than immediate removal
+7. **Update API documentation** (Swagger/OpenAPI specs) alongside code changes
+8. **Check for hardcoded strings** - search for entity/field names in string literals
+9. **Update tests** for affected endpoints
+10. **Coordinate with frontend** teams if endpoints are consumed by UI
+11. **Regenerate database client** according to your database framework's instructions before updating API handlers
+12. **Update middleware** if entity names are used in logging, caching, or auth logic
+
+**Note:** Consult your database framework guide for specific regeneration commands and patterns when schema changes occur.
+
 ## Best Practices
 
 1. **Follow REST conventions** for method usage
@@ -1029,15 +1449,18 @@ r.Use(gin.Recovery())
 10. **Set production mode** in production: `gin.SetMode(gin.ReleaseMode)`
 11. **Use context** for request cancellation and timeouts
 12. **Test thoroughly** before deploying
+13. **Handle data intent side effects** - when entities/fields are removed or renamed, update all affected API endpoints
 
 ## Testing Endpoints
 
 Use tools like:
+
 - **curl**: `curl http://localhost:8080/api/v1/users`
 - **Postman**: Create requests for each endpoint
 - **Go tests**: Write automated tests using `net/http/httptest`
 
 Example test:
+
 ```go
 func TestGetUsers(t *testing.T) {
     router := setupRouter()
@@ -1060,4 +1483,3 @@ This template is database framework agnostic. Replace the generic `database.Clie
 - **Other ORMs**: Adapt the patterns to your chosen framework
 
 The key is to maintain consistent handler function signatures and error handling patterns regardless of the underlying database framework.
-

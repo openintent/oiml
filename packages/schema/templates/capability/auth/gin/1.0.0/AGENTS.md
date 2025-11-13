@@ -10,6 +10,7 @@ This guide provides complete implementation instructions for adding authenticati
 ## When to Use This Guide
 
 Use this guide when:
+
 - `api.framework` in `project.yaml` is set to `"gin"`
 - An `add_capability` intent with `capability: "auth"` and `framework: "gin"` is being applied
 - You need to implement JWT-based authentication for your Gin API
@@ -25,6 +26,7 @@ Use this guide when:
 ## Overview
 
 The auth capability implements:
+
 - **JWT-based authentication** using `github.com/golang-jwt/jwt/v5`
 - **Password hashing** using `golang.org/x/crypto/bcrypt`
 - **Middleware** for protecting routes
@@ -43,7 +45,7 @@ intents:
     config:
       secret: env:JWT_SECRET
       expiration_hours: 24
-      refresh_expiration_hours: 168  # 7 days
+      refresh_expiration_hours: 168 # 7 days
     endpoints:
       - method: POST
         path: /api/auth/login
@@ -57,7 +59,7 @@ intents:
       - method: GET
         path: /api/auth/me
         description: Get current user info
-        group: /api/v1/*  # Apply auth to all endpoints in /api/v1/* group
+        group: /api/v1/* # Apply auth to all endpoints in /api/v1/* group
 ```
 
 ### Endpoint Group Property
@@ -65,6 +67,7 @@ intents:
 The `group` property allows you to specify which route group should be protected by auth middleware. This is particularly useful when you want to apply authentication to an entire group of endpoints.
 
 **Wildcard Support:**
+
 - Use `*` as a wildcard to match all endpoints in a route group
 - Example: `group: /api/v1/*` applies auth middleware to all routes under `/api/v1/`
 - Example: `group: /api/*` applies auth middleware to all routes under `/api/`
@@ -95,6 +98,7 @@ endpoints:
 ### Step 1: Verify User Entity
 
 The auth capability requires a `User` entity with at minimum:
+
 - `email` (string, unique, required)
 - `password` (string, required) - will store bcrypt hash
 - `id` (UUID or integer, primary key)
@@ -273,7 +277,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
-	
+
 	"your-project/ent"
 	"your-project/ent/user"
 )
@@ -564,6 +568,7 @@ field.String("password").
 ```
 
 **Important:** After adding the password field:
+
 1. Regenerate Ent code: `go generate ./ent`
 2. Run migrations: `client.Schema.Create(context.Background())`
 
@@ -593,7 +598,7 @@ func main() {
 		log.Fatal("JWT_SECRET environment variable is required")
 	}
 	auth.InitJWT(jwtSecret)
-	
+
 	// Initialize auth config from intent config or defaults
 	expirationHours := 24
 	refreshExpirationHours := 168
@@ -700,6 +705,7 @@ JWT_SECRET=your-secret-key-here-minimum-32-characters
 ```
 
 **Security Note:** Use a strong, random secret key. Generate one with:
+
 ```bash
 openssl rand -base64 32
 ```
@@ -767,15 +773,18 @@ curl -X POST http://localhost:8080/api/auth/refresh \
 ## Troubleshooting
 
 ### "JWT_SECRET is required" error
+
 - Ensure `JWT_SECRET` environment variable is set
 - Check that `auth.InitJWT()` is called before using auth middleware
 
 ### "Invalid or expired token" error
+
 - Check that token hasn't expired
 - Verify token is sent in correct format: `Authorization: Bearer <token>`
 - Ensure JWT_SECRET matches between token generation and validation
 
 ### "User not found" in Me endpoint
+
 - Verify user ID type matches (UUID vs string)
 - Check that user exists in database
 - Ensure middleware is applied before handler
@@ -783,9 +792,9 @@ curl -X POST http://localhost:8080/api/auth/refresh \
 ## Next Steps
 
 After implementing auth:
+
 1. Add role-based access control (RBAC) if needed
 2. Implement password reset functionality
 3. Add email verification
 4. Implement logout (token blacklisting)
 5. Add rate limiting to auth endpoints
-

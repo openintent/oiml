@@ -14,33 +14,33 @@ Use this guide when `database.framework` in `project.yaml` is set to `"prisma"`.
 
 ### OpenIntent Type → Prisma Type
 
-| OpenIntent Type | Prisma Type | Prisma Modifier | Notes |
-|----------------|-------------|-----------------|-------|
-| `string` | `String` | `@db.VarChar(255)` | Use `max_length` attribute if specified |
-| `text` | `String` | `@db.Text` | For long text content |
-| `integer` | `Int` | - | 32-bit integer |
-| `bigint` | `BigInt` | - | 64-bit integer |
-| `float` | `Float` | - | Floating point number |
-| `decimal` | `Decimal` | - | Precise decimal number |
-| `boolean` | `Boolean` | - | True/false value |
-| `datetime` | `DateTime` | - | Date and time |
-| `date` | `DateTime` | `@db.Date` | Date only |
-| `time` | `DateTime` | `@db.Time` | Time only |
-| `uuid` | `String` | `@db.Uuid` | UUID string |
-| `json` | `Json` | - | JSON data |
-| `enum` | `EnumName` | - | Requires enum definition |
-| `array` | `Type[]` | - | Array of specified type |
-| `bytes` | `Bytes` | - | Binary data |
+| OpenIntent Type | Prisma Type | Prisma Modifier    | Notes                                   |
+| --------------- | ----------- | ------------------ | --------------------------------------- |
+| `string`        | `String`    | `@db.VarChar(255)` | Use `max_length` attribute if specified |
+| `text`          | `String`    | `@db.Text`         | For long text content                   |
+| `integer`       | `Int`       | -                  | 32-bit integer                          |
+| `bigint`        | `BigInt`    | -                  | 64-bit integer                          |
+| `float`         | `Float`     | -                  | Floating point number                   |
+| `decimal`       | `Decimal`   | -                  | Precise decimal number                  |
+| `boolean`       | `Boolean`   | -                  | True/false value                        |
+| `datetime`      | `DateTime`  | -                  | Date and time                           |
+| `date`          | `DateTime`  | `@db.Date`         | Date only                               |
+| `time`          | `DateTime`  | `@db.Time`         | Time only                               |
+| `uuid`          | `String`    | `@db.Uuid`         | UUID string                             |
+| `json`          | `Json`      | -                  | JSON data                               |
+| `enum`          | `EnumName`  | -                  | Requires enum definition                |
+| `array`         | `Type[]`    | -                  | Array of specified type                 |
+| `bytes`         | `Bytes`     | -                  | Binary data                             |
 
 ### Field Attributes
 
-| OpenIntent Attribute | Prisma Implementation |
-|---------------------|----------------------|
-| `required: true` | No `?` after type (e.g., `String`) |
-| `required: false` | Add `?` after type (e.g., `String?`) |
-| `unique: true` | Add `@unique` attribute |
-| `default: value` | Add `@default(value)` attribute |
-| `max_length: N` | Use `@db.VarChar(N)` for strings |
+| OpenIntent Attribute | Prisma Implementation                |
+| -------------------- | ------------------------------------ |
+| `required: true`     | No `?` after type (e.g., `String`)   |
+| `required: false`    | Add `?` after type (e.g., `String?`) |
+| `unique: true`       | Add `@unique` attribute              |
+| `default: value`     | Add `@default(value)` attribute      |
+| `max_length: N`      | Use `@db.VarChar(N)` for strings     |
 
 ### Special Default Values
 
@@ -58,17 +58,19 @@ Use this guide when `database.framework` in `project.yaml` is set to `"prisma"`.
    - Array of fields with their types and attributes
 
 2. **Generate Prisma model**:
+
    ```prisma
    model {EntityName} {
      field1  Type1  @id @default(uuid()) @db.Uuid
      field2  Type2  @unique @db.VarChar(255)
      field3  Type3
-     
+
      @@map("{entity_name_plural}")
    }
    ```
 
 3. **Add enum definitions** (if needed) BEFORE the model:
+
    ```prisma
    enum Status {
      ACTIVE
@@ -82,6 +84,7 @@ Use this guide when `database.framework` in `project.yaml` is set to `"prisma"`.
    - Example: `User` → `@@map("users")`, `Customer` → `@@map("customers")`
 
 5. **Create and apply migration**:
+
    ```bash
    npx prisma migrate dev --name add_{entity_lower}_entity
    ```
@@ -94,6 +97,7 @@ Use this guide when `database.framework` in `project.yaml` is set to `"prisma"`.
 ### Example: Adding a Customer Entity
 
 **Intent:**
+
 ```yaml
 - kind: add_entity
   scope: data
@@ -123,6 +127,7 @@ Use this guide when `database.framework` in `project.yaml` is set to `"prisma"`.
 ```
 
 **Generated Prisma Schema:**
+
 ```prisma
 enum CustomerStatus {
   ACTIVE
@@ -154,9 +159,11 @@ model Customer {
 4. **Add enum definitions** (if needed) before the model if they don't exist
 
 5. **Create and apply migration**:
+
    ```bash
    npx prisma migrate dev --name add_{entity_lower}_{field_names}
    ```
+
    - For single field: `add_customer_phone`
    - For multiple fields: `add_customer_phone_address`
 
@@ -168,6 +175,7 @@ model Customer {
 ### Example: Adding Fields to Customer
 
 **Intent:**
+
 ```yaml
 - kind: add_field
   scope: data
@@ -183,6 +191,7 @@ model Customer {
 ```
 
 **Updated Prisma Model:**
+
 ```prisma
 model Customer {
   id         String         @id @default(uuid()) @db.Uuid
@@ -201,33 +210,37 @@ model Customer {
 
 ### Relation Types
 
-| OpenIntent Relation | Prisma Implementation |
-|--------------------|----------------------|
-| `one_to_one` | Foreign key field + `@unique`, relation field with `@relation` |
-| `one_to_many` | Reverse: array field on target entity |
-| `many_to_one` | Foreign key field, relation field with `@relation` |
-| `many_to_many` | Array fields on both sides, Prisma creates join table |
+| OpenIntent Relation | Prisma Implementation                                          |
+| ------------------- | -------------------------------------------------------------- |
+| `one_to_one`        | Foreign key field + `@unique`, relation field with `@relation` |
+| `one_to_many`       | Reverse: array field on target entity                          |
+| `many_to_one`       | Foreign key field, relation field with `@relation`             |
+| `many_to_many`      | Array fields on both sides, Prisma creates join table          |
 
 ### Steps for `many_to_one` Relation
 
 1. **Verify both entities exist** in the schema
 
 2. **Add foreign key field** to source entity:
+
    ```prisma
    {field_name}  String  @db.Uuid
    ```
 
 3. **Add relation field** to source entity:
+
    ```prisma
    {relation_name}  {TargetEntity}  @relation(fields: [{field_name}], references: [id])
    ```
 
 4. **Add reverse relation** to target entity (if specified):
+
    ```prisma
    {reverse_field_name}  {SourceEntity}[]
    ```
 
 5. **Create and apply migration**:
+
    ```bash
    npx prisma migrate dev --name add_{source_entity}_{target_entity}_relation
    ```
@@ -240,6 +253,7 @@ model Customer {
 ### Example: Todo → User Relation
 
 **Intent:**
+
 ```yaml
 - kind: add_relation
   scope: schema
@@ -257,13 +271,14 @@ model Customer {
 ```
 
 **Updated Prisma Schema:**
+
 ```prisma
 model Todo {
   id          String   @id @default(uuid()) @db.Uuid
   description String   @db.Text
   user_id     String   @db.Uuid                    // Foreign key field
   user        User     @relation(fields: [user_id], references: [id])  // Relation field
-  
+
   @@map("todos")
 }
 
@@ -271,7 +286,7 @@ model User {
   id    String @id @default(uuid()) @db.Uuid
   email String @unique
   todos Todo[]  // Reverse relation
-  
+
   @@map("users")
 }
 ```
@@ -287,6 +302,7 @@ model User {
 3. **Remove related enum definitions** if no longer used
 
 4. **Create and apply migration**:
+
    ```bash
    npx prisma migrate dev --name remove_{entity_lower}_{field_names}
    ```
@@ -300,6 +316,314 @@ model User {
    ```bash
    npx prisma generate
    ```
+
+## Implementing `remove_entity` Intent
+
+### Steps
+
+1. **Verify the entity exists** in the Prisma schema
+
+2. **Check for dependencies**:
+   - Search for relations referencing this entity
+   - If `cascade: true` is specified, related entities will be handled automatically
+   - If `cascade: false`, ensure no foreign keys reference this entity
+
+3. **Remove the model** from `prisma/schema.prisma`:
+   - Delete the entire model definition
+   - Remove any enum definitions used exclusively by this entity
+
+4. **Remove relations** in other entities:
+   - If other entities have relations to this entity, remove those relation fields
+   - Update migration to drop foreign key constraints first
+
+5. **Create and apply migration**:
+
+   ```bash
+   npx prisma migrate dev --name remove_{entity_lower}_entity
+   ```
+
+6. **If migration fails** due to foreign key constraints:
+   - Manually create migration with proper order:
+     ```sql
+     -- First drop foreign key constraints
+     ALTER TABLE "related_table" DROP CONSTRAINT "fk_constraint_name";
+     -- Then drop the table
+     DROP TABLE "{entity_name}s";
+     ```
+
+7. **Regenerate Prisma client**:
+   ```bash
+   npx prisma generate
+   ```
+
+### Example: Removing a Profile Entity
+
+**Intent:**
+
+```yaml
+- kind: remove_entity
+  scope: data
+  entity: Profile
+  cascade: false
+```
+
+**Before:**
+
+```prisma
+model User {
+  id      String   @id @default(uuid()) @db.Uuid
+  email   String   @unique
+  profile Profile?
+
+  @@map("users")
+}
+
+model Profile {
+  id      String @id @default(uuid()) @db.Uuid
+  bio     String @db.Text
+  user_id String @unique @db.Uuid
+  user    User   @relation(fields: [user_id], references: [id])
+
+  @@map("profiles")
+}
+```
+
+**After (both model and relation removed):**
+
+```prisma
+model User {
+  id    String @id @default(uuid()) @db.Uuid
+  email String @unique
+
+  @@map("users")
+}
+```
+
+## Implementing `rename_entity` Intent
+
+### Steps
+
+1. **Verify the entity exists** in the Prisma schema
+
+2. **Rename the model** in `prisma/schema.prisma`:
+   - Change the model name from old to new (PascalCase)
+   - Update the `@@map()` directive to use the new table name (plural, lowercase)
+
+3. **Update all references** to this entity:
+   - Update relation fields in other models
+   - Update enum names if they include the entity name
+   - Update TypeScript types and interfaces
+
+4. **Create and apply migration**:
+
+   ```bash
+   npx prisma migrate dev --name rename_{old_entity}_to_{new_entity}
+   ```
+
+   The migration will include:
+
+   ```sql
+   ALTER TABLE "{old_entity_name}s" RENAME TO "{new_entity_name}s";
+   ```
+
+5. **Regenerate Prisma client**:
+
+   ```bash
+   npx prisma generate
+   ```
+
+6. **Update application code**:
+   - Update all database queries using the old entity name
+   - Update API routes and handlers
+   - Update TypeScript types
+
+### Example: Renaming Customer to Client
+
+**Intent:**
+
+```yaml
+- kind: rename_entity
+  scope: data
+  from: Customer
+  to: Client
+```
+
+**Before:**
+
+```prisma
+model Customer {
+  id         String   @id @default(uuid()) @db.Uuid
+  email      String   @unique @db.VarChar(255)
+  name       String   @db.VarChar(100)
+  created_at DateTime @default(now())
+
+  @@map("customers")
+}
+```
+
+**After:**
+
+```prisma
+model Client {
+  id         String   @id @default(uuid()) @db.Uuid
+  email      String   @unique @db.VarChar(255)
+  name       String   @db.VarChar(100)
+  created_at DateTime @default(now())
+
+  @@map("clients")
+}
+```
+
+**Generated Migration:**
+
+```sql
+-- Rename table
+ALTER TABLE "customers" RENAME TO "clients";
+```
+
+## Implementing `rename_field` Intent
+
+### Steps
+
+1. **Verify the entity and field exist** in the schema
+
+2. **Rename the field** in the Prisma model:
+   - Change the field name
+   - If the field has a `@map()` directive, update the database column name as well
+   - Maintain all attributes (type, required, unique, default, etc.)
+
+3. **Update relation references** if the field is part of a relation:
+   - Update `@relation` attributes that reference this field
+   - Update foreign key field references
+
+4. **Create and apply migration**:
+
+   ```bash
+   npx prisma migrate dev --name rename_{entity_lower}_{old_field}_to_{new_field}
+   ```
+
+   The migration will include:
+
+   ```sql
+   ALTER TABLE "{entity_name}s" RENAME COLUMN "{old_field}" TO "{new_field}";
+   ```
+
+5. **Regenerate Prisma client**:
+
+   ```bash
+   npx prisma generate
+   ```
+
+6. **Update application code**:
+   - Update all queries and mutations using the old field name
+   - Update TypeScript types and interfaces
+   - Update API response fields if exposed
+
+### Example: Renaming 'name' to 'full_name'
+
+**Intent:**
+
+```yaml
+- kind: rename_field
+  scope: data
+  entity: Customer
+  from: name
+  to: full_name
+```
+
+**Before:**
+
+```prisma
+model Customer {
+  id         String   @id @default(uuid()) @db.Uuid
+  email      String   @unique @db.VarChar(255)
+  name       String   @db.VarChar(100)
+  created_at DateTime @default(now())
+
+  @@map("customers")
+}
+```
+
+**After:**
+
+```prisma
+model Customer {
+  id         String   @id @default(uuid()) @db.Uuid
+  email      String   @unique @db.VarChar(255)
+  full_name  String   @db.VarChar(100)
+  created_at DateTime @default(now())
+
+  @@map("customers")
+}
+```
+
+**Generated Migration:**
+
+```sql
+-- Rename column
+ALTER TABLE "customers" RENAME COLUMN "name" TO "full_name";
+```
+
+### Example: Renaming a Foreign Key Field
+
+**Intent:**
+
+```yaml
+- kind: rename_field
+  scope: data
+  entity: Todo
+  from: user_id
+  to: owner_id
+```
+
+**Before:**
+
+```prisma
+model Todo {
+  id          String   @id @default(uuid()) @db.Uuid
+  description String   @db.Text
+  user_id     String   @db.Uuid
+  user        User     @relation(fields: [user_id], references: [id])
+
+  @@map("todos")
+}
+
+model User {
+  id    String @id @default(uuid()) @db.Uuid
+  email String @unique
+  todos Todo[]
+
+  @@map("users")
+}
+```
+
+**After:**
+
+```prisma
+model Todo {
+  id          String   @id @default(uuid()) @db.Uuid
+  description String   @db.Text
+  owner_id    String   @db.Uuid
+  owner       User     @relation(fields: [owner_id], references: [id])
+
+  @@map("todos")
+}
+
+model User {
+  id    String @id @default(uuid()) @db.Uuid
+  email String @unique
+  todos Todo[]
+
+  @@map("users")
+}
+```
+
+**Generated Migration:**
+
+```sql
+-- Rename foreign key column
+ALTER TABLE "todos" RENAME COLUMN "user_id" TO "owner_id";
+```
 
 ## Migration Handling
 
@@ -324,42 +648,52 @@ This creates the migration file without applying it. Review the migration, then 
 - Add entity: `add_{entity_lower}_entity`
 - Add field(s): `add_{entity_lower}_{field_name(s)}`
 - Remove field(s): `remove_{entity_lower}_{field_name(s)}`
+- Remove entity: `remove_{entity_lower}_entity`
+- Rename entity: `rename_{old_entity}_to_{new_entity}`
+- Rename field: `rename_{entity_lower}_{old_field}_to_{new_field}`
 - Add relation: `add_{source_entity}_{target_entity}_relation`
 
 ## Common Patterns
 
 ### Auto-incrementing ID
+
 ```prisma
 id  Int  @id @default(autoincrement())
 ```
 
 ### UUID Primary Key
+
 ```prisma
 id  String  @id @default(uuid()) @db.Uuid
 ```
 
 ### CUID Primary Key
+
 ```prisma
 id  String  @id @default(cuid())
 ```
 
 ### Timestamps
+
 ```prisma
 created_at  DateTime  @default(now())
 updated_at  DateTime  @updatedAt
 ```
 
 ### Optional Fields
+
 ```prisma
 field_name  String?  @db.VarChar(255)
 ```
 
 ### Array Fields
+
 ```prisma
 tags  String[]
 ```
 
 ### JSON Fields
+
 ```prisma
 metadata  Json
 ```
@@ -369,15 +703,19 @@ metadata  Json
 ### Common Errors
 
 **"Database drift detected"**
+
 - Solution: Use `--create-only` flag and review migration manually
 
 **"Model not found"**
+
 - Solution: Verify entity name matches exactly (case-sensitive)
 
 **"Field already exists"**
+
 - Solution: Check if field was already added in a previous migration
 
 **"Relation ambiguity"**
+
 - Solution: Add relation name to `@relation("relationName")`
 
 ## Best Practices
@@ -400,13 +738,13 @@ After applying Prisma changes, update TypeScript types in `packages/types/index.
 ```typescript
 // Map Prisma types to TypeScript types
 export interface CustomerInterface {
-  id: string;              // String → string
-  email: string;           // String → string
-  name: string;            // String → string
-  phone: string | null;    // String? → string | null (NOT phone?: string)
-  birthday: Date | null;   // DateTime? → Date | null (NOT birthday?: Date)
-  status: 'ACTIVE' | 'INACTIVE' | 'PENDING';  // Enum → union type
-  created_at: Date;        // DateTime → Date
+  id: string; // String → string
+  email: string; // String → string
+  name: string; // String → string
+  phone: string | null; // String? → string | null (NOT phone?: string)
+  birthday: Date | null; // DateTime? → Date | null (NOT birthday?: Date)
+  status: "ACTIVE" | "INACTIVE" | "PENDING"; // Enum → union type
+  created_at: Date; // DateTime → Date
 }
 
 export interface CustomerResponse {
@@ -424,6 +762,7 @@ export interface CustomerResponse {
 | `Json?` | `any \| null` | `any \| undefined` or `any?` |
 
 **Why `| null` instead of `?`:**
+
 - Prisma client returns `null` for NULL database values
 - TypeScript optional (`?`) resolves to `type | undefined`
 - Mismatch causes type errors: `Type 'null' is not assignable to 'undefined'`
@@ -443,7 +782,7 @@ const customer = await prisma.customer.create({
 // Read
 const customers = await prisma.customer.findMany({
   where: { status: "ACTIVE" },
-  orderBy: { created_at: 'desc' }
+  orderBy: { created_at: "desc" }
 });
 
 // Update
@@ -457,4 +796,3 @@ await prisma.customer.delete({
   where: { id: "some-uuid" }
 });
 ```
-
