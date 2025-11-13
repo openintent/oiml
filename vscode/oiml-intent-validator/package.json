@@ -1,0 +1,96 @@
+{
+  "name": "oiml-intent-validator",
+  "displayName": "OIML - Intent Validator",
+  "description": "Validates OpenIntent Modeling Language (OIML) intent.yaml files",
+  "version": "0.1.6",
+  "publisher": "openintent",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/openintent/oiml"
+  },
+  "icon": "icon.png",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Linters",
+    "Programming Languages"
+  ],
+  "keywords": [
+    "oiml",
+    "openintent",
+    "intent",
+    "yaml",
+    "validation",
+    "schema"
+  ],
+  "activationEvents": [
+    "onLanguage:yaml"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "oiml.validateWorkspace",
+        "title": "OIML: Validate All Intent Files in Workspace"
+      },
+      {
+        "command": "oiml.validateCurrentFile",
+        "title": "OIML: Validate Current File"
+      }
+    ],
+    "configuration": {
+      "title": "OIML",
+      "properties": {
+        "oiml.validateOnSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically validate intent.yaml files on save"
+        },
+        "oiml.validateOnType": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically validate intent.yaml files as you type"
+        },
+        "oiml.filePattern": {
+          "type": "string",
+          "default": "**/intent.yaml",
+          "description": "Glob pattern to match OIML intent files"
+        },
+        "oiml.schemaVersion": {
+          "type": "string",
+          "default": "0.1.0",
+          "description": "OIML schema version to use for validation. All available versions are bundled with the extension. Select from the dropdown to change the schema version.",
+          "enum": [
+            "0.1.0"
+          ]
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "pnpm run build",
+    "build": "node esbuild.js --production",
+    "watch": "node esbuild.js --watch",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js",
+    "package": "vsce package --no-dependencies",
+    "publish": "vsce publish --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/glob": "^9.0.0",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20.10.0",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "esbuild": "^0.27.0",
+    "eslint": "^8.54.0",
+    "typescript": "^5.3.2"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0",
+    "zod": "^3.22.4"
+  }
+}
