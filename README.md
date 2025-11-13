@@ -40,6 +40,7 @@ oiml create FEAT-1
 ```yaml
 # .openintent/intents/FEAT-1/intent.yaml
 version: 0.1.x
+type: oiml.intent
 intents:
   - kind: add_entity
     scope: data
