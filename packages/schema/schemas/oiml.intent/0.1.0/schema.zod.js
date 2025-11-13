@@ -1,7 +1,7 @@
 /**
  * Open Intent Modeling Language (OIML) Intent Schema - Zod Export
  * Version: 0.1.0
- * 
+ *
  * This file provides Zod schema definitions for validation engines that use Zod.
  * For JSON Schema validation, use schema.json instead.
  */
@@ -10,16 +10,15 @@ import { z } from "zod";
 
 // Utility schemas
 export const OIMLVersion = z.string().regex(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/, "semver required");
-export const ISODate = z.union([
-  z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/, "ISO8601 UTC required"),
-  z.date()
-]).transform(val => {
-  // Normalize Date objects to ISO string format
-  if (val instanceof Date) {
-    return val.toISOString().replace(/\.\d{3}Z$/, 'Z');
-  }
-  return val;
-});
+export const ISODate = z
+  .union([z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/, "ISO8601 UTC required"), z.date()])
+  .transform(val => {
+    // Normalize Date objects to ISO string format
+    if (val instanceof Date) {
+      return val.toISOString().replace(/\.\d{3}Z$/, "Z");
+    }
+    return val;
+  });
 
 // Field type definitions
 export const FieldType = z.enum([
@@ -93,10 +92,7 @@ export const Field = z
     api: z
       .object({
         include: z.boolean().describe("Whether to include this field in API endpoints"),
-        endpoints: z
-          .array(z.string())
-          .optional()
-          .describe("Specific endpoints to include this field in")
+        endpoints: z.array(z.string()).optional().describe("Specific endpoints to include this field in")
       })
       .optional()
       .describe("API endpoint configuration for this field"),
@@ -174,13 +170,14 @@ export const AIContext = z
   })
   .strict();
 
-const EntityIndex = z.object({
-  name: z.string().min(1),
-  fields: z.array(z.string().min(1)).min(1),
-  unique: z.boolean().default(false),
-  type: z.enum(["btree","hash","gist","gin"]).optional() // allow generic hints
-})
-.strict();
+const EntityIndex = z
+  .object({
+    name: z.string().min(1),
+    fields: z.array(z.string().min(1)).min(1),
+    unique: z.boolean().default(false),
+    type: z.enum(["btree", "hash", "gist", "gin"]).optional() // allow generic hints
+  })
+  .strict();
 
 // Intent definitions
 export const AddEntity = z
@@ -195,7 +192,8 @@ export const AddEntity = z
   })
   .strict();
 
-export const RemoveEntity = z.object({
+export const RemoveEntity = z
+  .object({
     kind: z.literal("remove_entity"),
     scope: z.literal("data"),
     entity: z.string().min(1),
@@ -203,7 +201,8 @@ export const RemoveEntity = z.object({
   })
   .strict();
 
-export const RenameEntity = z.object({
+export const RenameEntity = z
+  .object({
     kind: z.literal("rename_entity"),
     scope: z.literal("data"),
     from: z.string().min(1),
@@ -229,29 +228,32 @@ export const RemoveField = z
   })
   .strict();
 
-export const RenameField = z.object({
+export const RenameField = z
+  .object({
     kind: z.literal("rename_field"),
     scope: z.literal("data"),
     entity: z.string().min(1),
     from: z.string().min(1),
     to: z.string().min(1)
-  }).strict();
+  })
+  .strict();
 
 export const AddRelation = z
   .object({
     kind: z.literal("add_relation"),
     scope: z.literal("data"),
-    relation: z.object({
-      source_entity: z.string().min(1),
-      target_entity: z.string().min(1),
-      kind: RelationKind,
-      field_name: z.string().min(1),
-      foreign_key: ForeignKey.optional(),
-      attributes: z.array(FieldAttribute).default([]),
-      reverse: ReverseRelation.optional(),
-      emit_migration: z.boolean().default(true)
-    })
-    .strict()
+    relation: z
+      .object({
+        source_entity: z.string().min(1),
+        target_entity: z.string().min(1),
+        kind: RelationKind,
+        field_name: z.string().min(1),
+        foreign_key: ForeignKey.optional(),
+        attributes: z.array(FieldAttribute).default([]),
+        reverse: ReverseRelation.optional(),
+        emit_migration: z.boolean().default(true)
+      })
+      .strict()
   })
   .strict()
   .refine(
@@ -317,11 +319,7 @@ export const AddComponent = z
 const FieldSource = z
   .object({
     type: z.enum(["relation", "field", "computed"]).describe("Type of field source"),
-    relation: z
-      .string()
-      .min(1)
-      .optional()
-      .describe("Relation name (required when type is 'relation')"),
+    relation: z.string().min(1).optional().describe("Relation name (required when type is 'relation')"),
     entity: z
       .string()
       .min(1)
@@ -387,39 +385,44 @@ export const AddCapability = z
   .object({
     kind: z.literal("add_capability"),
     scope: z.literal("capability"),
-    capability: z.enum(["auth", "file_upload", "file_stream", "sse", "websocket"]).describe("Type of capability to add"),
+    capability: z
+      .enum(["auth", "file_upload", "file_stream", "sse", "websocket"])
+      .describe("Type of capability to add"),
     framework: z.string().min(1).describe("Target framework (e.g., 'gin', 'next', 'express')"),
     provider: z.string().min(1).optional().describe("Provider/library name (e.g., 'jwt', 'next-auth', 'passport')"),
     config: z.record(z.any()).optional().describe("Capability-specific configuration options"),
     endpoints: z
       .array(
-        z.object({
-          method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).optional(),
-          path: z.string().regex(/^\//, "must start with '/'").optional(),
-          description: z.string().optional(),
-          group: z
-            .string()
-            .optional()
-            .describe("Route group name (supports wildcard '*' to match all endpoints in a group, e.g., '/api/v1/*')")
-        }).refine(
-          (data) => {
-            // Either group is provided (without method/path), OR both method and path are provided (without group)
-            const hasGroup = !!data.group;
-            const hasMethodAndPath = !!data.method && !!data.path;
-            const hasMethodOrPath = !!data.method || !!data.path;
-            
-            // If group is provided, method and path must NOT be provided
-            if (hasGroup && hasMethodOrPath) {
-              return false;
+        z
+          .object({
+            method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).optional(),
+            path: z.string().regex(/^\//, "must start with '/'").optional(),
+            description: z.string().optional(),
+            group: z
+              .string()
+              .optional()
+              .describe("Route group name (supports wildcard '*' to match all endpoints in a group, e.g., '/api/v1/*')")
+          })
+          .refine(
+            data => {
+              // Either group is provided (without method/path), OR both method and path are provided (without group)
+              const hasGroup = !!data.group;
+              const hasMethodAndPath = !!data.method && !!data.path;
+              const hasMethodOrPath = !!data.method || !!data.path;
+
+              // If group is provided, method and path must NOT be provided
+              if (hasGroup && hasMethodOrPath) {
+                return false;
+              }
+
+              // Either group alone, or method+path together
+              return hasGroup || hasMethodAndPath;
+            },
+            {
+              message:
+                "Either 'group' must be provided alone, or both 'method' and 'path' must be provided together (but not both group and method/path)"
             }
-            
-            // Either group alone, or method+path together
-            return hasGroup || hasMethodAndPath;
-          },
-          {
-            message: "Either 'group' must be provided alone, or both 'method' and 'path' must be provided together (but not both group and method/path)"
-          }
-        )
+          )
       )
       .optional()
       .describe("Additional endpoints to create for this capability")
@@ -451,4 +454,3 @@ export const Intent = z
     intents: z.array(IntentUnion).min(1)
   })
   .strict();
-

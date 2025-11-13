@@ -34,8 +34,8 @@ npm install @oiml/schema
 ```
 
 ```javascript
-import { Intent } from '@oiml/schema/schemas/oiml.intent/0.1.0/schema.zod.js';
-import schema from '@oiml/schema/schemas/oiml.intent/0.1.0/schema.json';
+import { Intent } from "@oiml/schema/schemas/oiml.intent/0.1.0/schema.zod.js";
+import schema from "@oiml/schema/schemas/oiml.intent/0.1.0/schema.json";
 ```
 
 ## Usage
@@ -76,15 +76,17 @@ type IntentDoc = z.infer<typeof Intent>;
 ### With AJV (JSON Schema)
 
 ```javascript
-import Ajv from 'ajv';
-import schema from './schema.json' assert { type: 'json' };
+import Ajv from "ajv";
+import schema from "./schema.json" assert { type: "json" };
 
 const ajv = new Ajv();
 const validate = ajv.compile(schema);
 
 const doc = {
   version: "0.1.0",
-  intents: [/* ... */]
+  intents: [
+    /* ... */
+  ]
 };
 
 if (validate(doc)) {
@@ -228,15 +230,3 @@ Apache 2.0
 - **Repository**: https://github.com/openintent/oiml
 - **Package Registry**: https://github.com/orgs/openintent/packages
 - **Issues**: https://github.com/openintent/oiml/issues
-
-
-
-
-
-
-
-
-
-
-
-

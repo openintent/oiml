@@ -5,6 +5,7 @@ This directory contains version compatibility information for OpenIntent templat
 ## Purpose
 
 The compatibility matrix ensures that users get template versions that are compatible with their:
+
 - OIML schema version
 - Installed package versions (e.g., Prisma 6.19.0, Next.js 16.0.1)
 
@@ -13,6 +14,7 @@ The compatibility matrix ensures that users get template versions that are compa
 ### `matrix.json`
 
 The main compatibility matrix file that maps:
+
 - Framework name (e.g., "prisma", "next")
 - Template version (e.g., "1.0.0", "1.1.0")
 - Compatible OIML versions (e.g., ["0.1.x", "0.2.x"])
@@ -38,6 +40,7 @@ interface TemplateCompatibility {
 ## Version Matching
 
 Version ranges are matched using simple semantic versioning:
+
 - `"6.x.x"` - Matches any 6.x.x version (e.g., 6.19.0, 6.20.1)
 - `"6.19.0"` - Exact version match
 - `"*"` - Matches any version
@@ -47,12 +50,15 @@ Version ranges are matched using simple semantic versioning:
 When you update a template to support new package versions:
 
 1. **Create new template version** (if breaking changes)
+
    ```
    templates/database/prisma.v1.1.0.md
    ```
+
    Or update the existing template if non-breaking.
 
 2. **Update `matrix.json`**
+
    ```json
    {
      "framework": "prisma",
@@ -65,10 +71,7 @@ When you update a template to support new package versions:
            "prisma": ["6.x.x", "7.0.0"],
            "@prisma/client": ["6.x.x", "7.0.0"]
          },
-         "breaking_changes": [
-           "Added support for Prisma 7.x",
-           "Updated migration patterns"
-         ]
+         "breaking_changes": ["Added support for Prisma 7.x", "Updated migration patterns"]
        }
      ]
    }
@@ -93,10 +96,12 @@ When you update a template to support new package versions:
 ## Example
 
 **Given:**
+
 - project.yaml: `oiml_version: "0.1.0"`
 - package.json: `"prisma": "6.19.0"`
 
 **Resolution:**
+
 1. Find "prisma" + "database" in matrix
 2. Check versions:
    - v1.0.0: OIML 0.1.x ✓, Prisma 6.x.x ✓ → **Compatible**
@@ -104,6 +109,7 @@ When you update a template to support new package versions:
 3. Select latest compatible: **v1.1.0**
 
 **Result:**
+
 ```yaml
 templates:
   - framework: prisma
@@ -111,13 +117,3 @@ templates:
     template_path: "templates/database/prisma.md"
     compatible_package_versions: ["6.x.x", "7.0.0"]
 ```
-
-
-
-
-
-
-
-
-
-

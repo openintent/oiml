@@ -9,6 +9,7 @@ This directory contains versioned schema artifacts that are published to GitHub 
 Intent definitions for the Open Intent Modeling Language.
 
 **Versions:**
+
 - `0.1.0` - Initial release
 
 ## Publishing to GitHub Container Registry
@@ -30,6 +31,7 @@ Schemas are automatically published when changes are pushed to `main`:
 Go to Actions → "Publish Schemas to GHCR" → Run workflow
 
 Inputs:
+
 - `schema_name`: e.g., `oiml.intent`
 - `schema_version`: e.g., `0.1.0`
 
@@ -122,6 +124,7 @@ Each image includes OCI labels:
 ## Adding a New Schema Version
 
 1. Create the version directory:
+
    ```bash
    mkdir -p schemas/<name>/<version>
    ```
@@ -132,6 +135,7 @@ Each image includes OCI labels:
    - `Dockerfile`
 
 3. Generate JSON Schema:
+
    ```bash
    pnpm run generate:schemas
    ```
@@ -155,6 +159,7 @@ ghcr.io/<org>/schemas/<schema-name>:<version>
 ```
 
 Examples:
+
 - `ghcr.io/openintent/schemas/oiml.intent:0.1.0`
 - `ghcr.io/openintent/schemas/oiml.intent:latest`
 
@@ -170,18 +175,3 @@ cosign verify ghcr.io/openintent/schemas/oiml.intent:0.1.0
 ## License
 
 All schemas are licensed under Apache 2.0.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

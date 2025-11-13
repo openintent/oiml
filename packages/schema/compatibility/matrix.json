@@ -21,10 +21,7 @@
           "prisma": ">=6.0.0 <8.0.0",
           "@prisma/client": ">=6.0.0 <8.0.0"
         },
-        "breaking_changes": [
-          "Added support for Prisma 7.x",
-          "Updated migration naming conventions"
-        ]
+        "breaking_changes": ["Added support for Prisma 7.x", "Updated migration naming conventions"]
       }
     ]
   },
@@ -86,4 +83,3 @@
     ]
   }
 ]
-

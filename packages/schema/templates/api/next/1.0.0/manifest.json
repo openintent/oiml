@@ -20,10 +20,7 @@
     {
       "version": "1.0.0",
       "date": "2025-11-01",
-      "changes": [
-        "Initial template version",
-        "Support for Next.js 14, 15, 16"
-      ]
+      "changes": ["Initial template version", "Support for Next.js 14, 15, 16"]
     }
   ],
   "authors": ["OpenIntent Team"],

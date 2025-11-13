@@ -26,9 +26,5 @@
       "required": true
     }
   ],
-  "dependencies": [
-    "github.com/golang-jwt/jwt/v5",
-    "golang.org/x/crypto/bcrypt"
-  ]
+  "dependencies": ["github.com/golang-jwt/jwt/v5", "golang.org/x/crypto/bcrypt"]
 }
-

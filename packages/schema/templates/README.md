@@ -49,6 +49,7 @@ When processing OpenIntent files (`intent.yaml`):
 ### For Developers
 
 These guides can be used to:
+
 - Understand how intents are mapped to actual code
 - Learn framework-specific patterns and best practices
 - Manually implement intents when needed
@@ -105,7 +106,7 @@ To add support for a new framework:
    - **Examples** - Complete code examples
    - **Best Practices** - Framework-specific recommendations
 
-3. Submit a pull request with:
+4. Submit a pull request with:
    - The new template file
    - Update to this README
    - Example intent files demonstrating usage
@@ -115,28 +116,34 @@ To add support for a new framework:
 Each implementation guide should include:
 
 ### 1. Introduction
+
 - When to use this guide
 - Prerequisites
 - Framework version requirements
 
 ### 2. Type Mappings
+
 - Complete mapping tables
 - Field attributes handling
 - Special cases and edge cases
 
 ### 3. Intent Implementations
+
 For each supported intent type:
+
 - Step-by-step implementation instructions
 - Code generation patterns
 - Migration/build steps
 - Type generation
 
 ### 4. Examples
+
 - Complete working examples
 - Before/after code snippets
 - Common use cases
 
 ### 5. Best Practices
+
 - Framework-specific patterns
 - Performance considerations
 - Security guidelines
@@ -151,16 +158,18 @@ These templates are included in the `@oiml/schema` package and can be accessed a
 ```
 
 **In published package:**
+
 ```javascript
-import path from 'path';
-import { readFileSync } from 'fs';
+import path from "path";
+import { readFileSync } from "fs";
 
 // Get template path
-const templatePath = require.resolve('@oiml/schema/templates/database/prisma/1.0.0/AGENTS.md');
-const content = readFileSync(templatePath, 'utf-8');
+const templatePath = require.resolve("@oiml/schema/templates/database/prisma/1.0.0/AGENTS.md");
+const content = readFileSync(templatePath, "utf-8");
 ```
 
 **GitHub URL:**
+
 ```
 https://github.com/openintent/oiml/blob/main/packages/schema/templates/{category}/{framework}/{version}/AGENTS.md
 ```
@@ -168,6 +177,7 @@ https://github.com/openintent/oiml/blob/main/packages/schema/templates/{category
 ## Validation
 
 Templates should be validated to ensure:
+
 - All OpenIntent field types are covered
 - All intent types are documented
 - Code examples are syntactically correct
@@ -183,6 +193,7 @@ Templates should be validated to ensure:
 ## Support
 
 For questions or issues with implementation guides:
+
 - Create an issue on [GitHub](https://github.com/openintent/oiml/issues)
 - Join the discussion on [Discord](https://discord.gg/openintent)
 - Review examples in the [examples directory](../../../examples)

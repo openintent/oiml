@@ -48,12 +48,6 @@
       "required": true
     }
   ],
-  "dependencies": [
-    "next-auth",
-    "bcryptjs"
-  ],
-  "optional_dependencies": [
-    "@auth/prisma-adapter"
-  ]
+  "dependencies": ["next-auth", "bcryptjs"],
+  "optional_dependencies": ["@auth/prisma-adapter"]
 }
-

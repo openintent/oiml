@@ -82,10 +82,10 @@ The generated schemas are included in the published npm package and can be impor
 
 ```javascript
 // For Zod validation
-import { Intent } from '@oiml/schema/schemas/oiml.intent/0.1.0/schema.zod.js';
+import { Intent } from "@oiml/schema/schemas/oiml.intent/0.1.0/schema.zod.js";
 
 // For JSON Schema (with AJV or similar)
-import schema from '@oiml/schema/schemas/oiml.intent/0.1.0/schema.json';
+import schema from "@oiml/schema/schemas/oiml.intent/0.1.0/schema.json";
 ```
 
 ### GitHub Container Registry
@@ -101,4 +101,3 @@ cd packages/schema
 ```
 
 See [`../schemas/README.md`](../schemas/README.md) for detailed GHCR usage.
-

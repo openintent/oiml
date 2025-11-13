@@ -94,6 +94,7 @@ git push origin main
 ```
 
 The workflow will:
+
 1. Detect changed schemas
 2. Build Docker images
 3. Push to GHCR automatically
@@ -120,18 +121,3 @@ docker cp temp:/schema.zod.js ./schema.zod.js
 docker cp temp:/metadata.json ./metadata.json
 docker rm temp
 ```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
