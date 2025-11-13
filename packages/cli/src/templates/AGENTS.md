@@ -93,8 +93,11 @@ OpenIntent supports the following intent types. For complete schema definitions,
 #### Data Intents (scope: data)
 - **`add_entity`**: Create new database models/entities
 - **`add_field`**: Add fields to existing entities
-- **`add_relation`** Add relationships between entities
+- **`add_relation`**: Add relationships between entities
+- **`remove_entity`**: Remove existing database models/entities
 - **`remove_field`**: Remove fields from entities
+- **`rename_entity`**: Rename an existing entity/model
+- **`rename_field`**: Rename a field in an entity
 
 #### API Intents (scope: api)
 - **`add_endpoint`**: Create REST API endpoints
@@ -317,6 +320,9 @@ For each intent in the `intents` array:
    The specific version was validated for compatibility in step 3.
 
 3. **Follow the framework guide** for detailed implementation steps
+   - For data intents: Consult the database framework guide for specific implementation patterns
+   - For `rename_entity` and `rename_field`: Follow renaming best practices to maintain referential integrity
+   - For `remove_entity`: Ensure cascade delete rules are properly handled if specified
 4. **Generate code** according to the guide's instructions
 
 ### 5. Verify and Complete
