@@ -156,13 +156,24 @@ project/
 
    This regenerates the Ent client code but **does not** update the database schema.
 
-5. **Run migrations** - **CRITICAL**: You **must** run migrations to apply schema changes to the database:
-   ```go
-   if err := client.Schema.Create(context.Background()); err != nil {
-       log.Fatalf("failed creating schema resources: %v", err)
-   }
-   ```
-   **Note**: Without running migrations, unique constraints, NOT NULL constraints, and other database-level changes will **not** be applied to the database, even though the Ent code has been regenerated.
+5. **Apply migrations** (only if `database.autorun_migrations` is `true` in `project.yaml`) - **CRITICAL**: Migrations are always created when Ent code is regenerated, but must be applied to update the database:
+
+   **CRITICAL:** Before applying migrations, check `project.yaml` for `database.autorun_migrations`:
+   - If `database.autorun_migrations: true`: Apply migration automatically:
+     ```go
+     if err := client.Schema.Create(context.Background()); err != nil {
+         log.Fatalf("failed creating schema resources: %v", err)
+     }
+     ```
+   - If `database.autorun_migrations: false` or not set: Migration is ready but not applied. Apply manually when ready:
+     ```go
+     // Migration ready - apply manually when ready:
+     // if err := client.Schema.Create(context.Background()); err != nil {
+     //     log.Fatalf("failed creating schema resources: %v", err)
+     // }
+     ```
+
+   **Note**: Migrations are created when Ent code is regenerated (`go generate ./ent`), but without applying migrations (`client.Schema.Create()`), unique constraints, NOT NULL constraints, and other database-level changes will **not** be applied to the database.
 
 ### Example: Adding a Customer Entity
 
@@ -280,17 +291,25 @@ func (Customer) Edges() []ent.Edge {
 
    This regenerates the Ent client code but **does not** update the database schema.
 
-6. **Run migrations** - **CRITICAL**: You **must** run migrations to apply schema changes to the database:
+6. **Apply migrations** (only if `database.autorun_migrations` is `true` in `project.yaml`) - **CRITICAL**: Migrations are always created when Ent code is regenerated, but must be applied to update the database:
 
-   ```go
-   if err := client.Schema.Create(context.Background()); err != nil {
-       log.Fatalf("failed creating schema resources: %v", err)
-   }
-   ```
+   **CRITICAL:** Before applying migrations, check `project.yaml` for `database.autorun_migrations`:
+   - If `database.autorun_migrations: true`: Apply migration automatically:
+     ```go
+     if err := client.Schema.Create(context.Background()); err != nil {
+         log.Fatalf("failed creating schema resources: %v", err)
+     }
+     ```
+     Or use Ent's migration tools to generate SQL migrations for production.
+   - If `database.autorun_migrations: false` or not set: Migration is ready but not applied. Apply manually when ready:
+     ```go
+     // Migration ready - apply manually when ready:
+     // if err := client.Schema.Create(context.Background()); err != nil {
+     //     log.Fatalf("failed creating schema resources: %v", err)
+     // }
+     ```
 
-   Or use Ent's migration tools to generate SQL migrations for production.
-
-   **Note**: Without running migrations, unique constraints, NOT NULL constraints, and other database-level changes will **not** be applied to the database, even though the Ent code has been regenerated.
+   **Note**: Migrations are created when Ent code is regenerated (`go generate ./ent`), but without applying migrations (`client.Schema.Create()`), unique constraints, NOT NULL constraints, and other database-level changes will **not** be applied to the database.
 
    **Important Note on MaxLen() and SchemaType()**:
    - **For new fields**: Always use both `.MaxLen(N)` and `.SchemaType()` to ensure the database column type is `VARCHAR(N)`:
@@ -339,8 +358,8 @@ func (Customer) Edges() []ent.Edge {
      ```
 
    **IMPORTANT:** After adding fields:
-   1. Regenerate Ent code: `go generate ./ent`
-   2. Run migrations: `client.Schema.Create(context.Background())`
+   1. Regenerate Ent code: `go generate ./ent` (creates migrations)
+   2. Apply migrations (only if `database.autorun_migrations: true`): `client.Schema.Create(context.Background())`
    3. Update API endpoints to accept new fields
    4. Update response types if needed
 
@@ -411,13 +430,24 @@ func (Customer) Fields() []ent.Field {
 
 **After updating the schema:**
 
-1. Regenerate Ent code: `go generate ./ent`
-2. **Run migrations** to apply the unique constraint to the database:
-   ```go
-   if err := client.Schema.Create(context.Background()); err != nil {
-       log.Fatalf("failed creating schema resources: %v", err)
-   }
-   ```
+1. Regenerate Ent code: `go generate ./ent` (creates migrations)
+2. **Apply migrations** (only if `database.autorun_migrations` is `true` in `project.yaml`) to apply the unique constraint to the database:
+
+   **CRITICAL:** Before applying migrations, check `project.yaml` for `database.autorun_migrations`:
+   - If `database.autorun_migrations: true`: Apply migration automatically:
+     ```go
+     if err := client.Schema.Create(context.Background()); err != nil {
+         log.Fatalf("failed creating schema resources: %v", err)
+     }
+     ```
+   - If `database.autorun_migrations: false` or not set: Migration is ready but not applied. Apply manually when ready:
+     ```go
+     // Migration ready - apply manually when ready:
+     // if err := client.Schema.Create(context.Background()); err != nil {
+     //     log.Fatalf("failed creating schema resources: %v", err)
+     // }
+     ```
+
 3. Verify the constraint was created:
    ```sql
    -- PostgreSQL example
@@ -472,7 +502,22 @@ func (Customer) Fields() []ent.Field {
    go generate ./ent
    ```
 
-5. **Run migrations** to update database schema
+5. **Apply migrations** (only if `database.autorun_migrations` is `true` in `project.yaml`) to update database schema:
+
+   **CRITICAL:** Before applying migrations, check `project.yaml` for `database.autorun_migrations`:
+   - If `database.autorun_migrations: true`: Apply migration automatically:
+     ```go
+     if err := client.Schema.Create(context.Background()); err != nil {
+         log.Fatalf("failed creating schema resources: %v", err)
+     }
+     ```
+   - If `database.autorun_migrations: false` or not set: Migration is ready but not applied. Apply manually when ready:
+     ```go
+     // Migration ready - apply manually when ready:
+     // if err := client.Schema.Create(context.Background()); err != nil {
+     //     log.Fatalf("failed creating schema resources: %v", err)
+     // }
+     ```
 
 ### Example: Todo → User Relation
 
@@ -539,13 +584,24 @@ func (User) Edges() []ent.Edge {
 
    This regenerates the Ent client code but **does not** update the database schema.
 
-5. **Run migrations** - **CRITICAL**: You **must** run migrations to apply schema changes to the database:
-   ```go
-   if err := client.Schema.Create(context.Background()); err != nil {
-       log.Fatalf("failed creating schema resources: %v", err)
-   }
-   ```
-   **Note**: Without running migrations, field removals, constraint removals, and other database-level changes will **not** be applied to the database, even though the Ent code has been regenerated.
+5. **Apply migrations** (only if `database.autorun_migrations` is `true` in `project.yaml`) - **CRITICAL**: Migrations are always created when Ent code is regenerated, but must be applied to update the database:
+
+   **CRITICAL:** Before applying migrations, check `project.yaml` for `database.autorun_migrations`:
+   - If `database.autorun_migrations: true`: Apply migration automatically:
+     ```go
+     if err := client.Schema.Create(context.Background()); err != nil {
+         log.Fatalf("failed creating schema resources: %v", err)
+     }
+     ```
+   - If `database.autorun_migrations: false` or not set: Migration is ready but not applied. Apply manually when ready:
+     ```go
+     // Migration ready - apply manually when ready:
+     // if err := client.Schema.Create(context.Background()); err != nil {
+     //     log.Fatalf("failed creating schema resources: %v", err)
+     // }
+     ```
+
+   **Note**: Migrations are created when Ent code is regenerated (`go generate ./ent`), but without applying migrations (`client.Schema.Create()`), field removals, constraint removals, and other database-level changes will **not** be applied to the database.
 
 ## Implementing `remove_entity` Intent
 
@@ -573,13 +629,22 @@ func (User) Edges() []ent.Edge {
 
    This regenerates the Ent client code but **does not** update the database schema.
 
-6. **Run migrations** - **CRITICAL**:
+6. **Apply migrations** (only if `database.autorun_migrations` is `true` in `project.yaml`) - **CRITICAL**:
 
-   ```go
-   if err := client.Schema.Create(context.Background()); err != nil {
-       log.Fatalf("failed creating schema resources: %v", err)
-   }
-   ```
+   **CRITICAL:** Before applying migrations, check `project.yaml` for `database.autorun_migrations`:
+   - If `database.autorun_migrations: true`: Apply migration automatically:
+     ```go
+     if err := client.Schema.Create(context.Background()); err != nil {
+         log.Fatalf("failed creating schema resources: %v", err)
+     }
+     ```
+   - If `database.autorun_migrations: false` or not set: Migration is ready but not applied. Apply manually when ready:
+     ```go
+     // Migration ready - apply manually when ready:
+     // if err := client.Schema.Create(context.Background()); err != nil {
+     //     log.Fatalf("failed creating schema resources: %v", err)
+     // }
+     ```
 
    **Note**: Ent's auto-migration may not drop tables by default. For production, you may need to:
    - Use explicit migration tools (Atlas)
@@ -723,13 +788,22 @@ func (User) Edges() []ent.Edge {
    go generate ./ent
    ```
 
-7. **Run migrations**:
+7. **Apply migrations** (only if `database.autorun_migrations` is `true` in `project.yaml`):
 
-   ```go
-   if err := client.Schema.Create(context.Background()); err != nil {
-       log.Fatalf("failed creating schema resources: %v", err)
-   }
-   ```
+   **CRITICAL:** Before applying migrations, check `project.yaml` for `database.autorun_migrations`:
+   - If `database.autorun_migrations: true`: Apply migration automatically:
+     ```go
+     if err := client.Schema.Create(context.Background()); err != nil {
+         log.Fatalf("failed creating schema resources: %v", err)
+     }
+     ```
+   - If `database.autorun_migrations: false` or not set: Migration is ready but not applied. Apply manually when ready:
+     ```go
+     // Migration ready - apply manually when ready:
+     // if err := client.Schema.Create(context.Background()); err != nil {
+     //     log.Fatalf("failed creating schema resources: %v", err)
+     // }
+     ```
 
    **Important**: Ent's auto-migration may create a new table instead of renaming. For production:
    - Use explicit migration with table rename:
@@ -815,8 +889,9 @@ func (Client) Edges() []ent.Edge {
 ```
 
 3. If other entities reference Customer, update those as well
-4. Regenerate code and run migrations
-5. Manually rename table in database if needed:
+4. Regenerate code: `go generate ./ent` (creates migrations)
+5. Apply migrations (only if `database.autorun_migrations: true`): `client.Schema.Create(context.Background())`
+6. Manually rename table in database if needed:
    ```sql
    ALTER TABLE "customers" RENAME TO "clients";
    ```
@@ -841,13 +916,22 @@ func (Client) Edges() []ent.Edge {
    go generate ./ent
    ```
 
-5. **Run migrations**:
+5. **Apply migrations** (only if `database.autorun_migrations` is `true` in `project.yaml`):
 
-   ```go
-   if err := client.Schema.Create(context.Background()); err != nil {
-       log.Fatalf("failed creating schema resources: %v", err)
-   }
-   ```
+   **CRITICAL:** Before applying migrations, check `project.yaml` for `database.autorun_migrations`:
+   - If `database.autorun_migrations: true`: Apply migration automatically:
+     ```go
+     if err := client.Schema.Create(context.Background()); err != nil {
+         log.Fatalf("failed creating schema resources: %v", err)
+     }
+     ```
+   - If `database.autorun_migrations: false` or not set: Migration is ready but not applied. Apply manually when ready:
+     ```go
+     // Migration ready - apply manually when ready:
+     // if err := client.Schema.Create(context.Background()); err != nil {
+     //     log.Fatalf("failed creating schema resources: %v", err)
+     // }
+     ```
 
    **Important**: Ent's auto-migration may create a new column instead of renaming. For production:
    - Manually rename the column:
@@ -1014,10 +1098,14 @@ func main() {
     }
     defer client.Close()
 
-    // Run auto-migration
+    // Apply migrations (only if database.autorun_migrations is true in project.yaml)
+    // Migrations are always created when Ent code is regenerated (go generate ./ent)
+    // Check project.yaml for database.autorun_migrations before applying:
+    // if database.autorun_migrations: true:
     if err := client.Schema.Create(context.Background()); err != nil {
         log.Fatalf("failed creating schema resources: %v", err)
     }
+    // if database.autorun_migrations: false or not set: Migration is ready but not applied
 }
 ```
 
@@ -1108,27 +1196,30 @@ field.Strings("tags").
 
 ## Best Practices
 
-1. **Always regenerate Ent code** after schema changes: `go generate ./ent`
-2. **Always run migrations** after regenerating Ent code - this is **critical** for applying database constraints (UNIQUE, NOT NULL, etc.)
-3. **Verify constraints were applied** - after migrations, check that unique constraints and other database-level changes were actually created
-4. **Update API endpoints** when adding fields to entities - ensure POST/PATCH handlers accept new fields
-5. **Update TypeScript types** if using TypeScript API layer - update `packages/types/index.ts` after schema changes
-6. **Use descriptive field names** (snake_case convention)
-7. **Add validation** using field methods (`.MaxLen()`, `.Min()`, etc.)
-8. **Use enums** for fixed value sets
-9. **Run migrations** in development before production
-10. **Keep schema files organized** - one entity per file
-11. **Use edges for relations** instead of manual foreign keys
-12. **Document complex fields** with comments
-13. **Test schema changes** before committing
-14. **Use transactions** for multi-entity operations
-15. **Handle nullable fields correctly** - Ent returns zero values, check for nil/empty appropriately
+1. **Always regenerate Ent code** after schema changes: `go generate ./ent` (this creates migrations)
+2. **Check `database.autorun_migrations`** in `project.yaml` before applying migrations:
+   - If `true`: Migrations are automatically applied during code generation
+   - If `false` or not set: Migrations are created but must be applied manually later
+3. **Always apply migrations** after regenerating Ent code - this is **critical** for applying database constraints (UNIQUE, NOT NULL, etc.) (only if `autorun_migrations: true`)
+4. **Verify constraints were applied** - after migrations, check that unique constraints and other database-level changes were actually created
+5. **Update API endpoints** when adding fields to entities - ensure POST/PATCH handlers accept new fields
+6. **Update TypeScript types** if using TypeScript API layer - update `packages/types/index.ts` after schema changes
+7. **Use descriptive field names** (snake_case convention)
+8. **Add validation** using field methods (`.MaxLen()`, `.Min()`, etc.)
+9. **Use enums** for fixed value sets
+10. **Apply migrations** in development before production
+11. **Keep schema files organized** - one entity per file
+12. **Use edges for relations** instead of manual foreign keys
+13. **Document complex fields** with comments
+14. **Test schema changes** before committing
+15. **Use transactions** for multi-entity operations
+16. **Handle nullable fields correctly** - Ent returns zero values, check for nil/empty appropriately
 
-**Critical Reminder**: Regenerating Ent code (`go generate ./ent`) only updates Go code. Database schema changes (including unique constraints) are **only** applied when you run migrations (`client.Schema.Create()`). Always run both steps in sequence:
+**Critical Reminder**: Regenerating Ent code (`go generate ./ent`) creates migrations in the code. Database schema changes (including unique constraints) are **only** applied when you run migrations (`client.Schema.Create()`). Always run both steps in sequence:
 
 1. Update schema file
-2. Regenerate Ent code: `go generate ./ent`
-3. Run migrations: `client.Schema.Create(context.Background())`
+2. Regenerate Ent code: `go generate ./ent` (creates migrations)
+3. Apply migrations (only if `database.autorun_migrations: true`): `client.Schema.Create(context.Background())`
 4. Update API endpoints if fields were added/modified
 5. Update TypeScript types if using TypeScript API layer
 
@@ -1214,7 +1305,19 @@ todo, err := client.Todo.
 
 ### Auto-Migration (Development)
 
-Ent uses auto-migration by default. **This is required** to apply schema changes including unique constraints, NOT NULL constraints, and other database-level changes:
+**CRITICAL:** Migrations are **always created** when Ent code is regenerated (`go generate ./ent`), but only **automatically applied** if `database.autorun_migrations: true` in `project.yaml`.
+
+**Step 1: Always create migrations** (happens automatically when regenerating Ent code):
+
+```bash
+go generate ./ent
+```
+
+This regenerates Ent code and creates the migration code. The migration is ready but not yet applied to the database.
+
+**Step 2: Apply migrations** (only if `database.autorun_migrations: true`):
+
+**If autorun_migrations is true:**
 
 ```go
 if err := client.Schema.Create(context.Background()); err != nil {
@@ -1222,16 +1325,22 @@ if err := client.Schema.Create(context.Background()); err != nil {
 }
 ```
 
+**If autorun_migrations is false or not set:**
+
+- Migration is created but not applied automatically
+- Apply manually when ready: `client.Schema.Create(context.Background())`
+
 **Important**:
 
-- After regenerating Ent code with `go generate ./ent`, you **must** run migrations
-- Unique constraints (`.Unique()`) are **only** created in the database when migrations are run
-- Size constraints (`.MaxLen()`) are **only** applied to the database when migrations are run
+- After regenerating Ent code with `go generate ./ent`, migrations are created in the code
+- You **must** apply migrations (only if `autorun_migrations: true`) to update the database
+- Unique constraints (`.Unique()`) are **only** created in the database when migrations are applied
+- Size constraints (`.MaxLen()`) are **only** applied to the database when migrations are applied
 - **Limitation**: Ent's auto-migration (`client.Schema.Create()`) may not always apply size constraints to **existing columns**. If you add `MaxLen()` to an existing column, you may need to:
   1. Drop and recreate the table (development only), OR
   2. Use Ent's migration tools to generate explicit SQL migrations, OR
   3. Manually alter the column using SQL
-- Without migrations, schema changes exist only in Go code, not in the database
+- Without applying migrations, schema changes exist only in Go code, not in the database
 
 ### Verifying Constraints Were Applied
 

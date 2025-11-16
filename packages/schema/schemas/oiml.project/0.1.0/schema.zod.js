@@ -89,7 +89,8 @@ export const Project = z
           .optional()
           .describe("Database framework"),
         schema: z.string().optional().describe("Path to schema file (e.g., 'prisma/schema.prisma', 'schema.sql')"),
-        connection: z.string().optional().describe("Database connection string (can use env:VAR_NAME format)")
+        connection: z.string().optional().describe("Database connection string (can use env:VAR_NAME format)"),
+        autorun_migrations: z.boolean().default(false).describe("Whether to automatically run migrations")
       })
       .optional()
       .describe("Database configuration"),

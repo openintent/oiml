@@ -804,35 +804,87 @@ export async function GET() {
 
 ### Step 10: Update Database Schema
 
-After adding the password field to your User model/table, run the appropriate migration command for your database setup:
+After adding the password field to your User model/table, create and apply migrations:
+
+**CRITICAL:** Migrations are **always created**, but only **automatically applied** if `database.autorun_migrations: true` in `project.yaml`.
 
 **Prisma:**
 
+**Step 1: Always create migration files:**
+
 ```bash
-npx prisma migrate dev --name add_password_to_user
-npx prisma generate
+npx prisma migrate dev --create-only --name add_password_to_user
 ```
+
+**Step 2: Apply migration** (only if `database.autorun_migrations: true`):
+
+- If `database.autorun_migrations: true`: Apply migration automatically:
+  ```bash
+  npx prisma migrate dev --name add_password_to_user
+  npx prisma generate
+  ```
+  (This creates and applies the migration in one step - you can skip `--create-only` if using this command)
+- If `database.autorun_migrations: false` or not set: Migration file is created but not applied. Apply manually when ready:
+  ```bash
+  # Migration file created - apply manually when ready:
+  # npx prisma migrate deploy
+  # or
+  # npx prisma migrate dev --name add_password_to_user
+  # npx prisma generate
+  ```
 
 **Drizzle:**
 
+**Step 1: Always create migration files:**
+
 ```bash
-npm run db:push  # or your migration command
+npm run db:generate  # or your migration generation command
 ```
+
+**Step 2: Apply migration** (only if `database.autorun_migrations: true`):
+
+- If `database.autorun_migrations: true`: Apply migration automatically:
+  ```bash
+  npm run db:push  # or your migration command
+  ```
+- If `database.autorun_migrations: false` or not set: Migration file is created but not applied. Apply manually when ready:
+  ```bash
+  # Migration file created - apply manually when ready:
+  # npm run db:push
+  ```
 
 **TypeORM:**
 
+**Step 1: Always create migration files:**
+
 ```bash
-npm run migration:run  # or your migration command
+npm run migration:generate -- -n AddPasswordToUser  # or your migration generation command
 ```
 
+**Step 2: Apply migration** (only if `database.autorun_migrations: true`):
+
+- If `database.autorun_migrations: true`: Apply migration automatically:
+  ```bash
+  npm run migration:run  # or your migration command
+  ```
+- If `database.autorun_migrations: false` or not set: Migration file is created but not applied. Apply manually when ready:
+  ```bash
+  # Migration file created - apply manually when ready:
+  # npm run migration:run
+  ```
+
 **Raw SQL:**
-Run the SQL migration manually:
+Create migration file manually, then apply:
+
+- Create migration file: `migrations/add_password_to_user.sql`
+- If `database.autorun_migrations: true`: Apply automatically
+- If `database.autorun_migrations: false` or not set: Apply manually when ready
 
 ```sql
 ALTER TABLE users ADD COLUMN password VARCHAR(255);
 ```
 
-**Note:** The exact migration command depends on your database setup. Ensure the `password` column is added to your users table before testing authentication.
+**Note:** The exact migration command depends on your database setup. Ensure the `password` column is added to your users table before testing authentication. Migration files are always created, but are only automatically applied if `autorun_migrations: true`.
 
 ## Configuration
 

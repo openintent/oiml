@@ -83,11 +83,25 @@ Use this guide when `database.framework` in `project.yaml` is set to `"prisma"`.
    - Convention: `{EntityName}` → `@@map("{entity_name}s")`
    - Example: `User` → `@@map("users")`, `Customer` → `@@map("customers")`
 
-5. **Create and apply migration**:
+5. **Create migration** (always create migration files):
 
    ```bash
-   npx prisma migrate dev --name add_{entity_lower}_entity
+   npx prisma migrate dev --create-only --name add_{entity_lower}_entity
    ```
+
+   **CRITICAL:** Before applying migrations, check `project.yaml` for `database.autorun_migrations`:
+   - If `database.autorun_migrations: true`: Apply migration automatically:
+     ```bash
+     npx prisma migrate dev --name add_{entity_lower}_entity
+     ```
+     (This creates and applies the migration in one step)
+   - If `database.autorun_migrations: false` or not set: Migration file is created but not applied. Apply manually when ready:
+     ```bash
+     # Migration file created - apply manually when ready:
+     # npx prisma migrate deploy
+     # or
+     # npx prisma migrate dev --name add_{entity_lower}_entity
+     ```
 
 6. **Regenerate Prisma client**:
    ```bash
@@ -158,16 +172,29 @@ model Customer {
 
 4. **Add enum definitions** (if needed) before the model if they don't exist
 
-5. **Create and apply migration**:
+5. **Create migration** (always create migration files):
 
    ```bash
-   npx prisma migrate dev --name add_{entity_lower}_{field_names}
+   npx prisma migrate dev --create-only --name add_{entity_lower}_{field_names}
    ```
 
    - For single field: `add_customer_phone`
    - For multiple fields: `add_customer_phone_address`
 
-   **CRITICAL:** Always run migrations immediately after schema changes. Prisma migrations apply database-level constraints (UNIQUE, NOT NULL, etc.) that are essential for data integrity.
+   **CRITICAL:** Before applying migrations, check `project.yaml` for `database.autorun_migrations`:
+   - If `database.autorun_migrations: true`: Apply migration automatically:
+     ```bash
+     npx prisma migrate dev --name add_{entity_lower}_{field_names}
+     ```
+     (This creates and applies the migration in one step)
+     - **CRITICAL:** Migrations apply database-level constraints (UNIQUE, NOT NULL, etc.) that are essential for data integrity.
+   - If `database.autorun_migrations: false` or not set: Migration file is created but not applied. Apply manually when ready:
+     ```bash
+     # Migration file created - apply manually when ready:
+     # npx prisma migrate deploy
+     # or
+     # npx prisma migrate dev --name add_{entity_lower}_{field_names}
+     ```
 
 6. **Regenerate Prisma client**:
 
@@ -293,11 +320,25 @@ export interface CustomerInterface {
    {reverse_field_name}  {SourceEntity}[]
    ```
 
-5. **Create and apply migration**:
+5. **Create migration** (always create migration files):
 
    ```bash
-   npx prisma migrate dev --name add_{source_entity}_{target_entity}_relation
+   npx prisma migrate dev --create-only --name add_{source_entity}_{target_entity}_relation
    ```
+
+   **CRITICAL:** Before applying migrations, check `project.yaml` for `database.autorun_migrations`:
+   - If `database.autorun_migrations: true`: Apply migration automatically:
+     ```bash
+     npx prisma migrate dev --name add_{source_entity}_{target_entity}_relation
+     ```
+     (This creates and applies the migration in one step)
+   - If `database.autorun_migrations: false` or not set: Migration file is created but not applied. Apply manually when ready:
+     ```bash
+     # Migration file created - apply manually when ready:
+     # npx prisma migrate deploy
+     # or
+     # npx prisma migrate dev --name add_{source_entity}_{target_entity}_relation
+     ```
 
 6. **Regenerate Prisma client**:
    ```bash
@@ -355,11 +396,25 @@ model User {
 
 3. **Remove related enum definitions** if no longer used
 
-4. **Create and apply migration**:
+4. **Create migration** (always create migration files):
 
    ```bash
-   npx prisma migrate dev --name remove_{entity_lower}_{field_names}
+   npx prisma migrate dev --create-only --name remove_{entity_lower}_{field_names}
    ```
+
+   **CRITICAL:** Before applying migrations, check `project.yaml` for `database.autorun_migrations`:
+   - If `database.autorun_migrations: true`: Apply migration automatically:
+     ```bash
+     npx prisma migrate dev --name remove_{entity_lower}_{field_names}
+     ```
+     (This creates and applies the migration in one step)
+   - If `database.autorun_migrations: false` or not set: Migration file is created but not applied. Apply manually when ready:
+     ```bash
+     # Migration file created - apply manually when ready:
+     # npx prisma migrate deploy
+     # or
+     # npx prisma migrate dev --name remove_{entity_lower}_{field_names}
+     ```
 
 5. **If migration fails** due to database drift:
    - Manually create migration directory: `prisma/migrations/{timestamp}_remove_{entity_lower}_{field_names}/`
@@ -390,11 +445,25 @@ model User {
    - If other entities have relations to this entity, remove those relation fields
    - Update migration to drop foreign key constraints first
 
-5. **Create and apply migration**:
+5. **Create migration** (always create migration files):
 
    ```bash
-   npx prisma migrate dev --name remove_{entity_lower}_entity
+   npx prisma migrate dev --create-only --name remove_{entity_lower}_entity
    ```
+
+   **CRITICAL:** Before applying migrations, check `project.yaml` for `database.autorun_migrations`:
+   - If `database.autorun_migrations: true`: Apply migration automatically:
+     ```bash
+     npx prisma migrate dev --name remove_{entity_lower}_entity
+     ```
+     (This creates and applies the migration in one step)
+   - If `database.autorun_migrations: false` or not set: Migration file is created but not applied. Apply manually when ready:
+     ```bash
+     # Migration file created - apply manually when ready:
+     # npx prisma migrate deploy
+     # or
+     # npx prisma migrate dev --name remove_{entity_lower}_entity
+     ```
 
 6. **If migration fails** due to foreign key constraints:
    - Manually create migration with proper order:
@@ -468,13 +537,27 @@ model User {
    - Update enum names if they include the entity name
    - Update TypeScript types and interfaces
 
-4. **Create and apply migration**:
+4. **Create migration** (always create migration files):
 
    ```bash
-   npx prisma migrate dev --name rename_{old_entity}_to_{new_entity}
+   npx prisma migrate dev --create-only --name rename_{old_entity}_to_{new_entity}
    ```
 
-   The migration will include:
+   **CRITICAL:** Before applying migrations, check `project.yaml` for `database.autorun_migrations`:
+   - If `database.autorun_migrations: true`: Apply migration automatically:
+     ```bash
+     npx prisma migrate dev --name rename_{old_entity}_to_{new_entity}
+     ```
+     (This creates and applies the migration in one step)
+     The migration will include:
+   - If `database.autorun_migrations: false` or not set: Migration file is created but not applied. Apply manually when ready:
+     ```bash
+     # Migration file created - apply manually when ready:
+     # npx prisma migrate deploy
+     # or
+     # npx prisma migrate dev --name rename_{old_entity}_to_{new_entity}
+     ```
+     The migration will include (when applied manually):
 
    ```sql
    ALTER TABLE "{old_entity_name}s" RENAME TO "{new_entity_name}s";
@@ -550,13 +633,27 @@ ALTER TABLE "customers" RENAME TO "clients";
    - Update `@relation` attributes that reference this field
    - Update foreign key field references
 
-4. **Create and apply migration**:
+4. **Create migration** (always create migration files):
 
    ```bash
-   npx prisma migrate dev --name rename_{entity_lower}_{old_field}_to_{new_field}
+   npx prisma migrate dev --create-only --name rename_{entity_lower}_{old_field}_to_{new_field}
    ```
 
-   The migration will include:
+   **CRITICAL:** Before applying migrations, check `project.yaml` for `database.autorun_migrations`:
+   - If `database.autorun_migrations: true`: Apply migration automatically:
+     ```bash
+     npx prisma migrate dev --name rename_{entity_lower}_{old_field}_to_{new_field}
+     ```
+     (This creates and applies the migration in one step)
+     The migration will include:
+   - If `database.autorun_migrations: false` or not set: Migration file is created but not applied. Apply manually when ready:
+     ```bash
+     # Migration file created - apply manually when ready:
+     # npx prisma migrate deploy
+     # or
+     # npx prisma migrate dev --name rename_{entity_lower}_{old_field}_to_{new_field}
+     ```
+     The migration will include (when applied manually):
 
    ```sql
    ALTER TABLE "{entity_name}s" RENAME COLUMN "{old_field}" TO "{new_field}";
@@ -683,18 +780,43 @@ ALTER TABLE "todos" RENAME COLUMN "user_id" TO "owner_id";
 
 ### Standard Migration
 
+**CRITICAL:** Migrations are **always created**, but only **automatically applied** if `database.autorun_migrations: true` in `project.yaml`.
+
+**Step 1: Always create migration files:**
+
+```bash
+npx prisma migrate dev --create-only --name {migration_name}
+```
+
+**Step 2: Apply migration** (only if `database.autorun_migrations: true`):
+
+**If autorun_migrations is true:**
+
 ```bash
 npx prisma migrate dev --name {migration_name}
 ```
 
+(This creates and applies the migration in one step - you can skip `--create-only` if using this command)
+
+**If autorun_migrations is false or not set:**
+
+- Migration file is created but not applied automatically
+- Apply manually when ready:
+  ```bash
+  npx prisma migrate deploy
+  # or
+  npx prisma migrate dev --name {migration_name}
+  ```
+
 **CRITICAL STEPS:**
 
-1. **Create migration**: `npx prisma migrate dev --name {migration_name}`
+1. **Create migration**: `npx prisma migrate dev --create-only --name {migration_name}` (always)
 2. **Review migration SQL** in `prisma/migrations/{timestamp}_{migration_name}/migration.sql`
-3. **Verify migration applied**: Check database schema matches Prisma schema
-4. **Regenerate Prisma client**: `npx prisma generate` (required after every migration)
-5. **Update TypeScript types**: Update `packages/types/index.ts` with new field types
-6. **Update API endpoints**: Ensure POST/PATCH handlers accept new fields
+3. **Apply migration** (only if `database.autorun_migrations: true`): `npx prisma migrate dev --name {migration_name}` or `npx prisma migrate deploy`
+4. **Verify migration applied**: Check database schema matches Prisma schema
+5. **Regenerate Prisma client**: `npx prisma generate` (required after every migration)
+6. **Update TypeScript types**: Update `packages/types/index.ts` with new field types
+7. **Update API endpoints**: Ensure POST/PATCH handlers accept new fields
 
 ### Database Drift
 
@@ -797,18 +919,22 @@ metadata  Json
 ## Best Practices
 
 1. **Always use `@@map()` directive** for consistent table naming
-2. **Create migrations immediately** after schema changes - **CRITICAL** for applying database constraints
-3. **Always regenerate Prisma client** after migrations: `npx prisma generate`
-4. **Update API endpoints** when adding fields to entities - ensure POST/PATCH handlers accept new fields
-5. **Update TypeScript types** in `packages/types/index.ts` after schema changes
-6. **Use appropriate Prisma types** for database optimization
-7. **Add indexes** for foreign keys (Prisma does this automatically)
-8. **Review generated migrations** before applying to production
-9. **Backup database** before running migrations
-10. **Test migrations** in development environment first
-11. **Keep enum names PascalCase** and values UPPER_SNAKE_CASE
-12. **Verify migrations applied correctly** - check database schema matches Prisma schema
-13. **Handle nullable fields correctly** - Prisma returns `null`, not `undefined` for optional fields
+2. **Always create migration files** after schema changes: `npx prisma migrate dev --create-only --name {migration_name}`
+3. **Check `database.autorun_migrations`** in `project.yaml` before applying migrations:
+   - If `true`: Migrations are automatically applied during code generation
+   - If `false` or not set: Migration files are created but must be applied manually later
+4. **Review migration SQL** before applying - check `prisma/migrations/{timestamp}_{migration_name}/migration.sql`
+5. **Always regenerate Prisma client** after migrations: `npx prisma generate`
+6. **Update API endpoints** when adding fields to entities - ensure POST/PATCH handlers accept new fields
+7. **Update TypeScript types** in `packages/types/index.ts` after schema changes
+8. **Use appropriate Prisma types** for database optimization
+9. **Add indexes** for foreign keys (Prisma does this automatically)
+10. **Review generated migrations** before applying to production
+11. **Backup database** before running migrations
+12. **Test migrations** in development environment first
+13. **Keep enum names PascalCase** and values UPPER_SNAKE_CASE
+14. **Verify migrations applied correctly** - check database schema matches Prisma schema
+15. **Handle nullable fields correctly** - Prisma returns `null`, not `undefined` for optional fields
 
 ## TypeScript Type Generation
 

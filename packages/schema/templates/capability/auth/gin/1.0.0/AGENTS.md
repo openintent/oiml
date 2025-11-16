@@ -569,8 +569,12 @@ field.String("password").
 
 **Important:** After adding the password field:
 
-1. Regenerate Ent code: `go generate ./ent`
-2. Run migrations: `client.Schema.Create(context.Background())`
+1. Regenerate Ent code: `go generate ./ent` (creates migrations)
+2. Apply migrations (only if `database.autorun_migrations` is `true` in `project.yaml`): `client.Schema.Create(context.Background())`
+
+   **CRITICAL:** Before applying migrations, check `project.yaml` for `database.autorun_migrations`:
+   - If `database.autorun_migrations: true`: Apply migration automatically
+   - If `database.autorun_migrations: false` or not set: Migration is ready but not applied. Apply manually when ready
 
 ### Step 6: Register Auth Routes in main.go
 
