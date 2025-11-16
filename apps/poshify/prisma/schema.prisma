@@ -11,10 +11,208 @@ datasource db {
 }
 
 model User {
-  id         String   @id @default(uuid()) @db.Uuid
-  email      String   @unique @db.VarChar(255)
-  first_name String   @db.VarChar(255)
-  last_name  String   @db.VarChar(255)
+  id         String @id @default(uuid()) @db.Uuid
+  email      String @unique @db.VarChar(255)
+  first_name String @db.VarChar(255)
+  last_name  String @db.VarChar(255)
 
   @@map("users")
+}
+
+// Enums
+enum ProductStatus {
+  draft
+  active
+  archived
+}
+
+enum WeightUnit {
+  kg
+  lb
+  oz
+  g
+}
+
+enum FinancialStatus {
+  pending
+  authorized
+  partially_paid
+  paid
+  partially_refunded
+  refunded
+  voided
+}
+
+enum FulfillmentStatus {
+  unfulfilled
+  partial
+  fulfilled
+  restocked
+}
+
+// Product Entities
+model Category {
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String    @unique @db.VarChar(255)
+  slug        String    @unique @db.VarChar(255)
+  description String?   @db.Text
+  image_url   String?   @db.VarChar(500)
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+  products    Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id          String           @id @default(uuid()) @db.Uuid
+  title       String           @db.VarChar(255)
+  slug        String           @unique @db.VarChar(255)
+  description String?          @db.Text
+  status      ProductStatus    @default(draft)
+  created_at  DateTime         @default(now())
+  updated_at  DateTime         @updatedAt
+  variants    ProductVariant[]
+  images      ProductImage[]
+  categories  Category[]
+
+  @@map("products")
+}
+
+model ProductVariant {
+  id                 String      @id @default(uuid()) @db.Uuid
+  product_id         String      @db.Uuid
+  title              String      @db.VarChar(255)
+  sku                String?     @unique @db.VarChar(100)
+  price              Decimal     @db.Decimal(10, 2)
+  compare_at_price   Decimal?    @db.Decimal(10, 2)
+  inventory_quantity Int         @default(0)
+  weight             Decimal?    @db.Decimal(10, 2)
+  weight_unit        WeightUnit? @default(kg)
+  barcode            String?     @db.VarChar(100)
+  created_at         DateTime    @default(now())
+  updated_at         DateTime    @updatedAt
+  product            Product     @relation(fields: [product_id], references: [id])
+  order_items        OrderItem[]
+  cart_items         CartItem[]
+
+  @@map("product_variants")
+}
+
+model ProductImage {
+  id         String   @id @default(uuid()) @db.Uuid
+  product_id String   @db.Uuid
+  url        String   @db.VarChar(500)
+  alt_text   String?  @db.VarChar(255)
+  position   Int      @default(0)
+  created_at DateTime @default(now())
+  product    Product  @relation(fields: [product_id], references: [id])
+
+  @@map("product_images")
+}
+
+// Customer Entities
+model Customer {
+  id                String    @id @default(uuid()) @db.Uuid
+  email             String    @unique @db.VarChar(255)
+  first_name        String?   @db.VarChar(255)
+  last_name         String?   @db.VarChar(255)
+  phone             String?   @db.VarChar(50)
+  accepts_marketing Boolean   @default(false)
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
+  orders            Order[]
+  addresses         Address[]
+  carts             Cart[]
+
+  @@map("customers")
+}
+
+model Address {
+  id                 String   @id @default(uuid()) @db.Uuid
+  customer_id        String   @db.Uuid
+  first_name         String   @db.VarChar(255)
+  last_name          String   @db.VarChar(255)
+  company            String?  @db.VarChar(255)
+  address1           String   @db.VarChar(500)
+  address2           String?  @db.VarChar(500)
+  city               String   @db.VarChar(255)
+  province           String   @db.VarChar(255)
+  country            String   @db.VarChar(100)
+  zip                String   @db.VarChar(20)
+  phone              String?  @db.VarChar(50)
+  is_default         Boolean  @default(false)
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
+  customer           Customer @relation(fields: [customer_id], references: [id])
+  orders_as_shipping Order[]  @relation("ShippingAddress")
+  orders_as_billing  Order[]  @relation("BillingAddress")
+
+  @@map("addresses")
+}
+
+// Order Entities
+model Order {
+  id                  String            @id @default(uuid()) @db.Uuid
+  order_number        String            @unique @db.VarChar(50)
+  customer_id         String?           @db.Uuid
+  email               String            @db.VarChar(255)
+  financial_status    FinancialStatus   @default(pending)
+  fulfillment_status  FulfillmentStatus @default(unfulfilled)
+  subtotal_price      Decimal           @db.Decimal(10, 2)
+  total_tax           Decimal           @default(0) @db.Decimal(10, 2)
+  total_discounts     Decimal           @default(0) @db.Decimal(10, 2)
+  total_price         Decimal           @db.Decimal(10, 2)
+  currency            String            @default("USD") @db.VarChar(3)
+  shipping_address_id String?           @db.Uuid
+  billing_address_id  String?           @db.Uuid
+  created_at          DateTime          @default(now())
+  updated_at          DateTime          @updatedAt
+  customer            Customer?         @relation(fields: [customer_id], references: [id])
+  shipping_address    Address?          @relation("ShippingAddress", fields: [shipping_address_id], references: [id])
+  billing_address     Address?          @relation("BillingAddress", fields: [billing_address_id], references: [id])
+  items               OrderItem[]
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id                 String         @id @default(uuid()) @db.Uuid
+  order_id           String         @db.Uuid
+  product_variant_id String         @db.Uuid
+  title              String         @db.VarChar(255)
+  quantity           Int
+  price              Decimal        @db.Decimal(10, 2)
+  sku                String?        @db.VarChar(100)
+  created_at         DateTime       @default(now())
+  order              Order          @relation(fields: [order_id], references: [id])
+  product_variant    ProductVariant @relation(fields: [product_variant_id], references: [id])
+
+  @@map("order_items")
+}
+
+// Cart Entities
+model Cart {
+  id          String     @id @default(uuid()) @db.Uuid
+  customer_id String?    @db.Uuid
+  session_id  String?    @db.VarChar(255)
+  created_at  DateTime   @default(now())
+  updated_at  DateTime   @updatedAt
+  customer    Customer?  @relation(fields: [customer_id], references: [id])
+  items       CartItem[]
+
+  @@map("carts")
+}
+
+model CartItem {
+  id                 String         @id @default(uuid()) @db.Uuid
+  cart_id            String         @db.Uuid
+  product_variant_id String         @db.Uuid
+  quantity           Int
+  created_at         DateTime       @default(now())
+  updated_at         DateTime       @updatedAt
+  cart               Cart           @relation(fields: [cart_id], references: [id])
+  product_variant    ProductVariant @relation(fields: [product_variant_id], references: [id])
+
+  @@map("cart_items")
 }

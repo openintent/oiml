@@ -1,0 +1,233 @@
+version: 0.1.0
+applied_at: 2025-11-14T01:51:26Z
+status: success
+intents_processed: 93
+model: claude-sonnet-4.5
+template_used:
+  framework: prisma
+  category: database
+  pack: oiml://compat/oiml-prisma/1.0.0
+  version: 1.0.0
+  digest: sha256-444a55ffe875c6269eee613cdee0aeb5015853aeb4e9466c24f08e0388683661
+  compat:
+    oiml: '>=0.1.0 <0.2.0'
+    prisma: '>=6.0.0 <7.0.0'
+changes:
+  # Database Schema Changes
+  - file: prisma/schema.prisma
+    action: modified
+    description: Added 4 enums (ProductStatus, WeightUnit, FinancialStatus, FulfillmentStatus)
+  - file: prisma/schema.prisma
+    action: modified
+    description: Added Category model with fields id, name, slug, description, image_url, created_at, updated_at
+  - file: prisma/schema.prisma
+    action: modified
+    description: Added Product model with fields id, title, slug, description, status, created_at, updated_at
+  - file: prisma/schema.prisma
+    action: modified
+    description: Added ProductVariant model with fields id, product_id, title, sku, price, compare_at_price, inventory_quantity, weight, weight_unit, barcode, created_at, updated_at
+  - file: prisma/schema.prisma
+    action: modified
+    description: Added ProductImage model with fields id, product_id, url, alt_text, position, created_at
+  - file: prisma/schema.prisma
+    action: modified
+    description: Added Customer model with fields id, email, first_name, last_name, phone, accepts_marketing, created_at, updated_at
+  - file: prisma/schema.prisma
+    action: modified
+    description: Added Address model with fields id, customer_id, first_name, last_name, company, address1, address2, city, province, country, zip, phone, is_default, created_at, updated_at
+  - file: prisma/schema.prisma
+    action: modified
+    description: Added Order model with fields id, order_number, customer_id, email, financial_status, fulfillment_status, subtotal_price, total_tax, total_discounts, total_price, currency, shipping_address_id, billing_address_id, created_at, updated_at
+  - file: prisma/schema.prisma
+    action: modified
+    description: Added OrderItem model with fields id, order_id, product_variant_id, title, quantity, price, sku, created_at
+  - file: prisma/schema.prisma
+    action: modified
+    description: Added Cart model with fields id, customer_id, session_id, created_at, updated_at
+  - file: prisma/schema.prisma
+    action: modified
+    description: Added CartItem model with fields id, cart_id, product_variant_id, quantity, created_at, updated_at
+  - file: prisma/schema.prisma
+    action: modified
+    description: Added ProductVariant -> Product relation (many-to-one with reverse one-to-many)
+  - file: prisma/schema.prisma
+    action: modified
+    description: Added ProductImage -> Product relation (many-to-one with reverse one-to-many)
+  - file: prisma/schema.prisma
+    action: modified
+    description: Added Product <-> Category relation (many-to-many)
+  - file: prisma/schema.prisma
+    action: modified
+    description: Added Order -> Customer relation (many-to-one with reverse one-to-many)
+  - file: prisma/schema.prisma
+    action: modified
+    description: Added Address -> Customer relation (many-to-one with reverse one-to-many)
+  - file: prisma/schema.prisma
+    action: modified
+    description: Added OrderItem -> Order relation (many-to-one with reverse one-to-many)
+  - file: prisma/schema.prisma
+    action: modified
+    description: Added OrderItem -> ProductVariant relation (many-to-one)
+  - file: prisma/schema.prisma
+    action: modified
+    description: Added Order -> Address shipping_address relation (many-to-one)
+  - file: prisma/schema.prisma
+    action: modified
+    description: Added Order -> Address billing_address relation (many-to-one)
+  - file: prisma/schema.prisma
+    action: modified
+    description: Added Cart -> Customer relation (many-to-one)
+  - file: prisma/schema.prisma
+    action: modified
+    description: Added CartItem -> Cart relation (many-to-one with reverse one-to-many)
+  - file: prisma/schema.prisma
+    action: modified
+    description: Added CartItem -> ProductVariant relation (many-to-one)
+
+  # Migration
+  - file: prisma/migrations/20251114015126_add_shopify_clone_entities/migration.sql
+    action: created
+    description: Generated and applied Prisma migration for all Shopify clone entities and relationships
+
+  # TypeScript Types
+  - file: packages/types/index.ts
+    action: modified
+    description: Added CategoryInterface type
+  - file: packages/types/index.ts
+    action: modified
+    description: Added ProductInterface type
+  - file: packages/types/index.ts
+    action: modified
+    description: Added ProductVariantInterface type
+  - file: packages/types/index.ts
+    action: modified
+    description: Added ProductImageInterface type
+  - file: packages/types/index.ts
+    action: modified
+    description: Added CustomerInterface type
+  - file: packages/types/index.ts
+    action: modified
+    description: Added AddressInterface type
+  - file: packages/types/index.ts
+    action: modified
+    description: Added OrderInterface type
+  - file: packages/types/index.ts
+    action: modified
+    description: Added OrderItemInterface type
+  - file: packages/types/index.ts
+    action: modified
+    description: Added CartInterface type
+  - file: packages/types/index.ts
+    action: modified
+    description: Added CartItemInterface type
+  - file: packages/types/index.ts
+    action: modified
+    description: Added CategoryResponse type
+  - file: packages/types/index.ts
+    action: modified
+    description: Added ProductResponse type
+  - file: packages/types/index.ts
+    action: modified
+    description: Added ProductVariantResponse type
+  - file: packages/types/index.ts
+    action: modified
+    description: Added ProductImageResponse type
+  - file: packages/types/index.ts
+    action: modified
+    description: Added CustomerResponse type
+  - file: packages/types/index.ts
+    action: modified
+    description: Added AddressResponse type
+  - file: packages/types/index.ts
+    action: modified
+    description: Added OrderResponse type
+  - file: packages/types/index.ts
+    action: modified
+    description: Added OrderItemResponse type
+  - file: packages/types/index.ts
+    action: modified
+    description: Added CartResponse type
+  - file: packages/types/index.ts
+    action: modified
+    description: Added CartItemResponse type
+
+  # Product API Endpoints
+  - file: app/api/products/route.ts
+    action: created
+    description: Created GET and POST endpoints for products
+  - file: app/api/products/[id]/route.ts
+    action: created
+    description: Created GET, PUT, DELETE endpoints for product by id
+  - file: app/api/products/slug/[slug]/route.ts
+    action: created
+    description: Created GET endpoint for product by slug
+  - file: app/api/products/[id]/variants/route.ts
+    action: created
+    description: Created GET and POST endpoints for product variants
+  - file: app/api/variants/[id]/route.ts
+    action: created
+    description: Created PUT and DELETE endpoints for product variant by id
+  - file: app/api/products/[id]/images/route.ts
+    action: created
+    description: Created GET and POST endpoints for product images
+  - file: app/api/images/[id]/route.ts
+    action: created
+    description: Created DELETE endpoint for product image by id
+
+  # Category API Endpoints
+  - file: app/api/categories/route.ts
+    action: created
+    description: Created GET and POST endpoints for categories
+  - file: app/api/categories/[id]/route.ts
+    action: created
+    description: Created GET, PUT, DELETE endpoints for category by id
+  - file: app/api/categories/[id]/products/route.ts
+    action: created
+    description: Created GET endpoint for products in a category
+
+  # Customer API Endpoints
+  - file: app/api/customers/route.ts
+    action: created
+    description: Created GET and POST endpoints for customers
+  - file: app/api/customers/[id]/route.ts
+    action: created
+    description: Created GET, PUT, DELETE endpoints for customer by id
+  - file: app/api/customers/[id]/addresses/route.ts
+    action: created
+    description: Created GET and POST endpoints for customer addresses
+  - file: app/api/addresses/[id]/route.ts
+    action: created
+    description: Created PUT and DELETE endpoints for address by id
+  - file: app/api/customers/[id]/orders/route.ts
+    action: created
+    description: Created GET endpoint for customer orders
+
+  # Order API Endpoints
+  - file: app/api/orders/route.ts
+    action: created
+    description: Created GET and POST endpoints for orders
+  - file: app/api/orders/[id]/route.ts
+    action: created
+    description: Created GET and PUT endpoints for order by id
+  - file: app/api/orders/number/[order_number]/route.ts
+    action: created
+    description: Created GET endpoint for order by order number
+
+  # Cart API Endpoints
+  - file: app/api/cart/route.ts
+    action: created
+    description: Created GET and POST endpoints for cart (get or create)
+  - file: app/api/cart/items/route.ts
+    action: created
+    description: Created POST endpoint to add items to cart
+  - file: app/api/cart/items/[id]/route.ts
+    action: created
+    description: Created PUT and DELETE endpoints for cart item
+  - file: app/api/cart/checkout/route.ts
+    action: created
+    description: Created POST endpoint for cart checkout (creates order)
+
+errors: []
+
+
+
