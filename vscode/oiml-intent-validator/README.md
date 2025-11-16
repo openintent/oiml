@@ -16,6 +16,7 @@ A Visual Studio Code extension that validates OpenIntent Modeling Language (OIML
 ### Automatic Validation
 
 The extension automatically validates any file named `intent.yaml` when you:
+
 - Open the file
 - Edit the file (real-time)
 - Save the file
@@ -90,14 +91,3 @@ MIT
 ## Contributing
 
 Contributions are welcome! Please open an issue or PR.
-
-
-
-
-
-
-
-
-
-
-

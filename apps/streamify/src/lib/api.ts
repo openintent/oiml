@@ -4,12 +4,9 @@ const getAuthToken = (): string | null => {
   return localStorage.getItem("auth_token");
 };
 
-export const apiFetch = async (
-  url: string,
-  options: RequestInit = {}
-): Promise<Response> => {
+export const apiFetch = async (url: string, options: RequestInit = {}): Promise<Response> => {
   const token = getAuthToken();
-  
+
   const headers = new Headers(options.headers);
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
@@ -17,7 +14,7 @@ export const apiFetch = async (
 
   const response = await fetch(url, {
     ...options,
-    headers,
+    headers
   });
 
   // If unauthorized, clear auth and redirect to login
@@ -29,4 +26,3 @@ export const apiFetch = async (
 
   return response;
 };
-

@@ -56,4 +56,3 @@ export interface CreateProjectResponse {
 export interface ProjectsResponse {
   data: Project[];
 }
-

@@ -1,11 +1,8 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import type { ErrorResponse } from '@/packages/types';
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import type { ErrorResponse } from "@/packages/types";
 
-export async function DELETE(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
 
   try {
@@ -16,7 +13,7 @@ export async function DELETE(
     if (!existing) {
       const errorResponse: ErrorResponse = {
         success: false,
-        error: 'Product image not found'
+        error: "Product image not found"
       };
       return NextResponse.json(errorResponse, { status: 404 });
     }
@@ -25,19 +22,13 @@ export async function DELETE(
       where: { id: resolvedParams.id }
     });
 
-    return NextResponse.json(
-      { success: true, message: 'Product image deleted successfully' },
-      { status: 200 }
-    );
+    return NextResponse.json({ success: true, message: "Product image deleted successfully" }, { status: 200 });
   } catch (error) {
-    console.error('Error deleting product image:', error);
+    console.error("Error deleting product image:", error);
     const errorResponse: ErrorResponse = {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to delete image'
+      error: error instanceof Error ? error.message : "Failed to delete image"
     };
     return NextResponse.json(errorResponse, { status: 500 });
   }
 }
-
-
-

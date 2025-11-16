@@ -1,6 +1,6 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import type { OrderResponse, ErrorResponse } from '@/packages/types';
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import type { OrderResponse, ErrorResponse } from "@/packages/types";
 
 export async function POST(request: Request) {
   try {
@@ -10,7 +10,7 @@ export async function POST(request: Request) {
     if (!cart_id || !email) {
       const errorResponse: ErrorResponse = {
         success: false,
-        error: 'Missing required fields: cart_id, email'
+        error: "Missing required fields: cart_id, email"
       };
       return NextResponse.json(errorResponse, { status: 400 });
     }
@@ -21,16 +21,16 @@ export async function POST(request: Request) {
       include: {
         items: {
           include: {
-            product_variant: true,
-          },
-        },
-      },
+            product_variant: true
+          }
+        }
+      }
     });
 
     if (!cart || cart.items.length === 0) {
       const errorResponse: ErrorResponse = {
         success: false,
-        error: 'Cart not found or is empty'
+        error: "Cart not found or is empty"
       };
       return NextResponse.json(errorResponse, { status: 404 });
     }
@@ -52,13 +52,13 @@ export async function POST(request: Request) {
         order_number: orderNumber,
         customer_id: customer_id || null,
         email,
-        financial_status: 'pending',
-        fulfillment_status: 'unfulfilled',
+        financial_status: "pending",
+        fulfillment_status: "unfulfilled",
         subtotal_price: subtotal,
         total_tax,
         total_discounts: 0,
         total_price,
-        currency: 'USD',
+        currency: "USD",
         shipping_address_id: shipping_address_id || null,
         billing_address_id: billing_address_id || null,
         items: {
@@ -67,37 +67,34 @@ export async function POST(request: Request) {
             title: item.product_variant.title,
             quantity: item.quantity,
             price: item.product_variant.price,
-            sku: item.product_variant.sku,
-          })),
-        },
+            sku: item.product_variant.sku
+          }))
+        }
       },
       include: {
         items: true,
         customer: true,
         shipping_address: true,
-        billing_address: true,
-      },
+        billing_address: true
+      }
     });
 
     // Clear cart items
     await prisma.cartItem.deleteMany({
-      where: { cart_id },
+      where: { cart_id }
     });
 
     const response: OrderResponse = {
-      data: order,
+      data: order
     };
 
     return NextResponse.json(response, { status: 201 });
   } catch (error) {
-    console.error('Error checking out cart:', error);
+    console.error("Error checking out cart:", error);
     const errorResponse: ErrorResponse = {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to checkout cart'
+      error: error instanceof Error ? error.message : "Failed to checkout cart"
     };
     return NextResponse.json(errorResponse, { status: 500 });
   }
 }
-
-
-

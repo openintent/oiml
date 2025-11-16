@@ -42,4 +42,3 @@ export interface ProfileInterface {
 export interface ProfileResponse {
   data: ProfileInterface | ProfileInterface[];
 }
-

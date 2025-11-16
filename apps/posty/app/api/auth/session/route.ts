@@ -4,7 +4,7 @@ import { auth } from "@/auth";
 export async function GET() {
   try {
     const session = await auth();
-    
+
     if (!session || !session.user) {
       return NextResponse.json({ user: null }, { status: 200 });
     }
@@ -15,4 +15,3 @@ export async function GET() {
     return NextResponse.json({ user: null }, { status: 200 });
   }
 }
-

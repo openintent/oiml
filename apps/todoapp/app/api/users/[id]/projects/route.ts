@@ -1,11 +1,8 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import type { ProjectsResponse, ErrorResponse } from '@/packages/types';
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import type { ProjectsResponse, ErrorResponse } from "@/packages/types";
 
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
-) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> | { id: string } }) {
   try {
     // Handle both Next.js 15+ (async params) and earlier versions
     const resolvedParams = params instanceof Promise ? await params : params;
@@ -15,7 +12,7 @@ export async function GET(
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(userId)) {
       const errorResponse: ErrorResponse = {
-        error: 'Invalid user ID format'
+        error: "Invalid user ID format"
       };
       return NextResponse.json(errorResponse, { status: 400 });
     }
@@ -27,7 +24,7 @@ export async function GET(
 
     if (!user) {
       const errorResponse: ErrorResponse = {
-        error: 'User not found'
+        error: "User not found"
       };
       return NextResponse.json(errorResponse, { status: 404 });
     }
@@ -38,7 +35,7 @@ export async function GET(
         user_id: userId
       },
       orderBy: {
-        created_at: 'desc'
+        created_at: "desc"
       }
     });
 
@@ -48,12 +45,11 @@ export async function GET(
 
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
-    console.error('Error fetching user projects:', error);
+    console.error("Error fetching user projects:", error);
     const errorResponse: ErrorResponse = {
-      error: error instanceof Error ? error.message : 'Failed to fetch projects'
+      error: error instanceof Error ? error.message : "Failed to fetch projects"
     };
 
     return NextResponse.json(errorResponse, { status: 500 });
   }
 }
-

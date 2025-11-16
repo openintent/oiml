@@ -12,7 +12,7 @@ export const authConfig = {
       name: "credentials",
       credentials: {
         email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" },
+        password: { label: "Password", type: "password" }
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
@@ -20,19 +20,15 @@ export const authConfig = {
         }
 
         const user = await prisma.user.findUnique({
-          where: { email: credentials.email as string },
+          where: { email: credentials.email as string }
         });
-
 
         const userWithPassword = user as User & { password: string | null };
         if (!userWithPassword || !userWithPassword.password) {
           return null;
         }
 
-        const isPasswordValid = await bcrypt.compare(
-          credentials.password as string,
-          userWithPassword.password
-        );
+        const isPasswordValid = await bcrypt.compare(credentials.password as string, userWithPassword.password);
 
         if (!isPasswordValid) {
           return null;
@@ -42,17 +38,17 @@ export const authConfig = {
           id: userWithPassword.id,
           email: userWithPassword.email,
           first_name: userWithPassword.first_name,
-          last_name: userWithPassword.last_name,
+          last_name: userWithPassword.last_name
         };
-      },
-    }),
+      }
+    })
   ],
   session: {
     strategy: "jwt",
-    maxAge: 24 * 60 * 60, // 24 hours
+    maxAge: 24 * 60 * 60 // 24 hours
   },
   pages: {
-    signIn: "/auth/signin",
+    signIn: "/auth/signin"
   },
   callbacks: {
     async jwt({ token, user }) {
@@ -72,9 +68,8 @@ export const authConfig = {
         session.user.last_name = token.last_name as string | null;
       }
       return session;
-    },
-  },
+    }
+  }
 } satisfies NextAuthConfig;
 
 export const { handlers, auth, signIn, signOut } = NextAuth(authConfig);
-

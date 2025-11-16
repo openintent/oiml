@@ -20,15 +20,13 @@ export function getOimlVersion(): string {
     // Workspace - from project root
     resolve(process.cwd(), "../../packages/schema/package.json"),
     // Alternative workspace location
-    resolve(__dirname, "../../../schema/package.json"),
+    resolve(__dirname, "../../../schema/package.json")
   ];
 
   for (const schemaPackagePath of possiblePaths) {
     try {
       if (existsSync(schemaPackagePath)) {
-        const packageJson = JSON.parse(
-          readFileSync(schemaPackagePath, "utf-8"),
-        );
+        const packageJson = JSON.parse(readFileSync(schemaPackagePath, "utf-8"));
         return packageJson.version || "0.1.0";
       }
     } catch (error) {

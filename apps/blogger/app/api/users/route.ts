@@ -1,23 +1,23 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import type { UserInterface, UserResponse, ErrorResponse } from '@/packages/types';
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import type { UserInterface, UserResponse, ErrorResponse } from "@/packages/types";
 
 export async function GET() {
   try {
     const users = await prisma.user.findMany({
-      orderBy: { email: 'asc' }
+      orderBy: { email: "asc" }
     });
 
     const response: UserResponse = {
-      data: users,
+      data: users
     };
 
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
-    console.error('Error fetching users:', error);
+    console.error("Error fetching users:", error);
     const errorResponse: ErrorResponse = {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to fetch users'
+      error: error instanceof Error ? error.message : "Failed to fetch users"
     };
     return NextResponse.json(errorResponse, { status: 500 });
   }
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
     if (!body.email || !body.first_name || !body.last_name) {
       const errorResponse: ErrorResponse = {
         success: false,
-        error: 'Missing required fields: email, first_name, last_name'
+        error: "Missing required fields: email, first_name, last_name"
       };
       return NextResponse.json(errorResponse, { status: 400 });
     }
@@ -40,20 +40,20 @@ export async function POST(request: Request) {
       data: {
         email: body.email,
         first_name: body.first_name,
-        last_name: body.last_name,
+        last_name: body.last_name
       }
     });
 
     const response: UserResponse = {
-      data: user,
+      data: user
     };
 
     return NextResponse.json(response, { status: 201 });
   } catch (error) {
-    console.error('Error creating user:', error);
+    console.error("Error creating user:", error);
     const errorResponse: ErrorResponse = {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to create user'
+      error: error instanceof Error ? error.message : "Failed to create user"
     };
     return NextResponse.json(errorResponse, { status: 500 });
   }

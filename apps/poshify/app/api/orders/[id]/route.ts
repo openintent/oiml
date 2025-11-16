@@ -1,11 +1,8 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import type { OrderInterface, OrderResponse, ErrorResponse } from '@/packages/types';
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import type { OrderInterface, OrderResponse, ErrorResponse } from "@/packages/types";
 
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
 
   try {
@@ -16,44 +13,41 @@ export async function GET(
           include: {
             product_variant: {
               include: {
-                product: true,
-              },
-            },
-          },
+                product: true
+              }
+            }
+          }
         },
         customer: true,
         shipping_address: true,
-        billing_address: true,
-      },
+        billing_address: true
+      }
     });
 
     if (!order) {
       const errorResponse: ErrorResponse = {
         success: false,
-        error: 'Order not found'
+        error: "Order not found"
       };
       return NextResponse.json(errorResponse, { status: 404 });
     }
 
     const response: OrderResponse = {
-      data: order,
+      data: order
     };
 
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
-    console.error('Error fetching order:', error);
+    console.error("Error fetching order:", error);
     const errorResponse: ErrorResponse = {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to fetch order'
+      error: error instanceof Error ? error.message : "Failed to fetch order"
     };
     return NextResponse.json(errorResponse, { status: 500 });
   }
 }
 
-export async function PUT(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
 
   try {
@@ -66,30 +60,27 @@ export async function PUT(
     if (!existing) {
       const errorResponse: ErrorResponse = {
         success: false,
-        error: 'Order not found'
+        error: "Order not found"
       };
       return NextResponse.json(errorResponse, { status: 404 });
     }
 
     const order = await prisma.order.update({
       where: { id: resolvedParams.id },
-      data: body,
+      data: body
     });
 
     const response: OrderResponse = {
-      data: order,
+      data: order
     };
 
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
-    console.error('Error updating order:', error);
+    console.error("Error updating order:", error);
     const errorResponse: ErrorResponse = {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to update order'
+      error: error instanceof Error ? error.message : "Failed to update order"
     };
     return NextResponse.json(errorResponse, { status: 500 });
   }
 }
-
-
-

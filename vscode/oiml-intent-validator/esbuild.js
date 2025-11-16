@@ -1,40 +1,40 @@
-const esbuild = require('esbuild');
-const fs = require('fs');
-const path = require('path');
+const esbuild = require("esbuild");
+const fs = require("fs");
+const path = require("path");
 
-const production = process.argv.includes('--production');
-const watch = process.argv.includes('--watch');
+const production = process.argv.includes("--production");
+const watch = process.argv.includes("--watch");
 
 // Discover all schema versions
 function discoverSchemaVersions() {
-  const schemaBasePath = path.resolve(__dirname, '../../packages/schema/schemas/oiml.intent');
+  const schemaBasePath = path.resolve(__dirname, "../../packages/schema/schemas/oiml.intent");
   const versions = [];
-  
+
   if (!fs.existsSync(schemaBasePath)) {
     console.warn(`Schema directory not found: ${schemaBasePath}`);
     return versions;
   }
-  
+
   const entries = fs.readdirSync(schemaBasePath, { withFileTypes: true });
-  
+
   for (const entry of entries) {
     if (entry.isDirectory()) {
       const version = entry.name;
-      const schemaPath = path.join(schemaBasePath, version, 'schema.zod.js');
-      
+      const schemaPath = path.join(schemaBasePath, version, "schema.zod.js");
+
       if (fs.existsSync(schemaPath)) {
         versions.push(version);
       }
     }
   }
-  
+
   return versions.sort();
 }
 
 // Generate schemas.ts file with all schema imports
 function generateSchemasFile(versions) {
-  const schemasPath = path.resolve(__dirname, 'src/schemas.ts');
-  
+  const schemasPath = path.resolve(__dirname, "src/schemas.ts");
+
   let content = `/**
  * Schema Registration File
  * 
@@ -47,96 +47,99 @@ function generateSchemasFile(versions) {
 import { registerSchema } from './schema-loader';
 
 `;
-  
+
   // Generate imports and registrations
   versions.forEach(version => {
-    const varName = `schema${version.replace(/\./g, '')}`;
+    const varName = `schema${version.replace(/\./g, "")}`;
     const importPath = `packages/schema/schemas/oiml.intent/${version}/schema.zod.js`;
     content += `// eslint-disable-next-line @typescript-eslint/no-var-requires\n`;
     content += `const ${varName} = require('${importPath}');\n`;
     content += `registerSchema('${version}', ${varName});\n\n`;
   });
-  
+
   content += `export function registerAllSchemas() {\n`;
   content += `  // All schemas are registered above\n`;
   content += `}\n`;
-  
-  fs.writeFileSync(schemasPath, content, 'utf8');
-  console.log(`Generated schemas.ts with ${versions.length} schema version(s): ${versions.join(', ')}`);
-  
+
+  fs.writeFileSync(schemasPath, content, "utf8");
+  console.log(`Generated schemas.ts with ${versions.length} schema version(s): ${versions.join(", ")}`);
+
   return versions;
 }
 
 // Update package.json with discovered schema versions as enum
 function updatePackageJson(versions) {
-  const packageJsonPath = path.resolve(__dirname, 'package.json');
-  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-  
+  const packageJsonPath = path.resolve(__dirname, "package.json");
+  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+
   // Update the schemaVersion setting to include enum
-  if (packageJson.contributes?.configuration?.properties?.['oiml.schemaVersion']) {
-    const schemaVersionSetting = packageJson.contributes.configuration.properties['oiml.schemaVersion'];
-    
+  if (packageJson.contributes?.configuration?.properties?.["oiml.schemaVersion"]) {
+    const schemaVersionSetting = packageJson.contributes.configuration.properties["oiml.schemaVersion"];
+
     // Preserve existing description if present, otherwise use default
-    const description = schemaVersionSetting.description || 
-      'OIML schema version to use for validation. All available versions are bundled with the extension. Select from the dropdown to change the schema version.';
-    
+    const description =
+      schemaVersionSetting.description ||
+      "OIML schema version to use for validation. All available versions are bundled with the extension. Select from the dropdown to change the schema version.";
+
     // Update enum and preserve other properties
-    packageJson.contributes.configuration.properties['oiml.schemaVersion'] = {
-      type: 'string',
+    packageJson.contributes.configuration.properties["oiml.schemaVersion"] = {
+      type: "string",
       default: versions.includes(schemaVersionSetting.default) ? schemaVersionSetting.default : versions[0],
       description: description,
       enum: versions
     };
   }
-  
-  fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n', 'utf8');
-  console.log(`Updated package.json with schema version enum: ${versions.join(', ')}`);
+
+  fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + "\n", "utf8");
+  console.log(`Updated package.json with schema version enum: ${versions.join(", ")}`);
 }
 
 async function main() {
   // Discover and generate schema registration file
   const versions = discoverSchemaVersions();
   if (versions.length === 0) {
-    console.error('No schema versions found!');
+    console.error("No schema versions found!");
     process.exit(1);
   }
-  
+
   generateSchemasFile(versions);
   updatePackageJson(versions);
-  
+
   const ctx = await esbuild.context({
-    entryPoints: [path.resolve(__dirname, 'src/extension.ts')],
+    entryPoints: [path.resolve(__dirname, "src/extension.ts")],
     bundle: true,
-    format: 'cjs',
+    format: "cjs",
     minify: production,
     sourcemap: !production,
     sourcesContent: false,
-    platform: 'node',
-    outfile: 'dist/extension.js',
-    external: ['vscode'],
-    logLevel: 'info',
+    platform: "node",
+    outfile: "dist/extension.js",
+    external: ["vscode"],
+    logLevel: "info",
     metafile: true,
-    absWorkingDir: path.resolve(__dirname, '../..'),
-    plugins: [{
-      name: 'resolve-schema',
-      setup(build) {
-        // Resolve schema paths that start with "packages/"
-        build.onResolve({ filter: /^packages\/.*\.zod\.js$/ }, args => {
-          return {
-            path: path.resolve(__dirname, '../..', args.path),
-          };
-        });
-      },
-    }],
+    absWorkingDir: path.resolve(__dirname, "../.."),
+    plugins: [
+      {
+        name: "resolve-schema",
+        setup(build) {
+          // Resolve schema paths that start with "packages/"
+          build.onResolve({ filter: /^packages\/.*\.zod\.js$/ }, args => {
+            return {
+              path: path.resolve(__dirname, "../..", args.path)
+            };
+          });
+        }
+      }
+    ]
   });
 
   if (watch) {
     await ctx.watch();
-    console.log('Watching for changes...');
+    console.log("Watching for changes...");
   } else {
     await ctx.rebuild();
     await ctx.dispose();
-    console.log('Build complete!');
+    console.log("Build complete!");
   }
 }
 
@@ -144,7 +147,3 @@ main().catch(e => {
   console.error(e);
   process.exit(1);
 });
-
-
-
-

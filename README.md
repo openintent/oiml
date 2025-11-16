@@ -4,9 +4,10 @@
 
 ## What is OpenIntent?
 
-OpenIntent allows developers to describe *what* they want instead of *how* to build it. AI agents read intent files and generate code using framework-specific implementation guides.
+OpenIntent allows developers to describe _what_ they want instead of _how_ to build it. AI agents read intent files and generate code using framework-specific implementation guides.
 
 **Key Features:**
+
 - **Declarative Development** - Describe features, not implementation
 - **Version Locking** - Deterministic code generation with versioned schemas and framework guides
 - **Standardized Schema** - Consistent intent structure across projects
@@ -56,7 +57,7 @@ intents:
       - name: name
         type: string
         required: true
-  
+
   - kind: add_endpoint
     scope: api
     method: POST
@@ -85,18 +86,21 @@ intents:
 ## Supported Frameworks
 
 ### Database
+
 - ✅ Prisma
 - ✅ Ent
 - 🔄 Mongoose (coming soon)
 - 🔄 SQLAlchemy (coming soon)
 
 ### API
+
 - ✅ Next.js
 - ✅ Gin
 - 🔄 Express (coming soon)
 - 🔄 FastAPI (coming soon)
 
 ### UI
+
 - 🔄 React (coming soon)
 
 ## Architecture
@@ -125,6 +129,7 @@ intents:
 ## CLI Commands
 
 ### Project Management
+
 ```bash
 oiml init              # Initialize OpenIntent project
 oiml create [name]     # Create new intent file
@@ -191,13 +196,13 @@ intents:
 
 ## Intent Types
 
-| Intent Type | Scope | Description |
-|------------|-------|-------------|
-| `add_entity` | data | Create database entity/model |
-| `add_field` | data | Add fields to existing entity |
-| `add_relation` | data | Create relationship between entities |
-| `add_endpoint` | api | Create REST API endpoint |
-| `add_component` | ui | Create UI component (future) |
+| Intent Type     | Scope | Description                          |
+| --------------- | ----- | ------------------------------------ |
+| `add_entity`    | data  | Create database entity/model         |
+| `add_field`     | data  | Add fields to existing entity        |
+| `add_relation`  | data  | Create relationship between entities |
+| `add_endpoint`  | api   | Create REST API endpoint             |
+| `add_component` | ui    | Create UI component (future)         |
 
 ## 🔧 Configuration
 
@@ -225,7 +230,7 @@ paths:
 ## Workflow
 
 1. **Write Intent** - Create `intent.yaml` file describing what you want
-2. **Apply Intent** - Provide the intent file in your prompt and say "apply this intent" 
+2. **Apply Intent** - Provide the intent file in your prompt and say "apply this intent"
 3. **Review Changes** - Check generated code and output summary
 4. **Commit** - Include intent, summary, and generated code
 
@@ -241,17 +246,17 @@ We welcome contributions! Areas to contribute:
    - Update compatibility matrix
    - Add template metadata
 
-2. **Template Versions**
+3. **Template Versions**
    - Support new package versions
    - Update existing templates
    - Add breaking change documentation
 
-3. **CLI Enhancements**
+4. **CLI Enhancements**
    - New commands and features
    - Better error messages
    - Improved UX
 
-4. **Documentation**
+5. **Documentation**
    - Examples and tutorials
    - Framework-specific guides
    - Best practices

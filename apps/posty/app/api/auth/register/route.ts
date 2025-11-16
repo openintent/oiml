@@ -11,20 +11,20 @@ export async function POST(request: Request) {
     if (!email || !password) {
       const errorResponse: ErrorResponse = {
         success: false,
-        error: "Email and password are required",
+        error: "Email and password are required"
       };
       return NextResponse.json(errorResponse, { status: 400 });
     }
 
     // Check if user already exists
     const existingUser = await prisma.user.findUnique({
-      where: { email },
+      where: { email }
     });
 
     if (existingUser) {
       const errorResponse: ErrorResponse = {
         success: false,
-        error: "User with this email already exists",
+        error: "User with this email already exists"
       };
       return NextResponse.json(errorResponse, { status: 409 });
     }
@@ -38,14 +38,14 @@ export async function POST(request: Request) {
         email,
         password: hashedPassword,
         first_name: first_name || null,
-        last_name: last_name || null,
+        last_name: last_name || null
       },
       select: {
         id: true,
         email: true,
         first_name: true,
-        last_name: true,
-      },
+        last_name: true
+      }
     });
 
     return NextResponse.json({ data: user }, { status: 201 });
@@ -53,9 +53,8 @@ export async function POST(request: Request) {
     console.error("Error registering user:", error);
     const errorResponse: ErrorResponse = {
       success: false,
-      error: error instanceof Error ? error.message : "Failed to register user",
+      error: error instanceof Error ? error.message : "Failed to register user"
     };
     return NextResponse.json(errorResponse, { status: 500 });
   }
 }
-

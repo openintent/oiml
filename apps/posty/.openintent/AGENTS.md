@@ -41,11 +41,13 @@ OIML (Open Intent Modeling Language) is a global standard for AI-driven developm
 ```
 
 **File Naming Standards:**
+
 - `intent.yaml` - The intent specification (validated against OIML schema)
 - `plan.yaml` - Optional execution plan breaking down steps
 - `summary.yaml` - Output summary documenting what was changed
 
 **Additional Optional Files:**
+
 - `rollback.yaml` - Rollback instructions for reverting changes
 - `review.md` - Code review comments and feedback
 - `test-results.json` - Test execution results
@@ -54,12 +56,14 @@ OIML (Open Intent Modeling Language) is a global standard for AI-driven developm
 ## Intent File Schema
 
 All intent file schemas are defined in the [`@oiml/schema`](https://www.npmjs.com/package/@oiml/schema) package. Refer to the schema package for:
+
 - Complete intent structure definitions
 - Field validation rules
 - Required vs optional fields
 - Supported values and enums
 
 **Basic Structure:**
+
 - `version`: Semantic version (required)
 - `provenance`: Optional metadata about intent creation
 - `intents`: Array of intent specifications
@@ -91,15 +95,18 @@ The framework-specific guides contain all the details needed for implementation.
 OpenIntent supports the following intent types. For complete schema definitions, see [`@oiml/schema`](https://www.npmjs.com/package/@oiml/schema).
 
 #### Data Intents (scope: data)
+
 - **`add_entity`**: Create new database models/entities
 - **`add_field`**: Add fields to existing entities
 - **`add_relation`** (scope: data): Add relationships between entities
 - **`remove_field`**: Remove fields from entities
 
 #### API Intents (scope: api)
+
 - **`add_endpoint`**: Create REST API endpoints
 
 #### UI Intents (scope: ui)
+
 - **`add_component`**: Create UI components (future support)
 
 ### Implementation Workflow
@@ -109,62 +116,64 @@ For each intent type:
 1. **Validate the intent** using the schema from `@oiml/schema`
 2. **Read `project.yaml`** to determine frameworks
 3. **Check framework and OIML version compatibility**:
-   
+
    Before executing any code changes, verify that a compatible template guide exists:
 
    a. **Extract versions**:
-      - Read `intent.yaml` to get OIML version (e.g., `version: "0.1.0"`)
-      - Read `package.json` to get framework version(s):
-        - For database intents: Check `prisma` or relevant database package version
-        - For API intents: Check `next`, `express`, or relevant API framework version
-        - For UI intents: Check `react`, `vue`, or relevant UI framework version
+   - Read `intent.yaml` to get OIML version (e.g., `version: "0.1.0"`)
+   - Read `package.json` to get framework version(s):
+     - For database intents: Check `prisma` or relevant database package version
+     - For API intents: Check `next`, `express`, or relevant API framework version
+     - For UI intents: Check `react`, `vue`, or relevant UI framework version
 
    b. **Locate template manifest**:
-      - Templates are organized as: `@oiml/schema/templates/{category}/{framework}/{version}/manifest.json`
-      - Categories: `database`, `api`, `ui`
-      - Example: `@oiml/schema/templates/database/prisma/1.0.0/manifest.json`
+   - Templates are organized as: `@oiml/schema/templates/{category}/{framework}/{version}/manifest.json`
+   - Categories: `database`, `api`, `ui`
+   - Example: `@oiml/schema/templates/database/prisma/1.0.0/manifest.json`
 
    c. **Validate compatibility**:
-      - Read the template's `manifest.json` file
-      - Check `compatible_oiml_versions` array (e.g., `["0.1.x"]`)
-      - Check `compatible_package_versions` object (e.g., `{ "prisma": ["6.x.x"] }`)
-      - Verify installed versions fall within compatible ranges
-      - Consider `minimum_versions` and `maximum_versions` constraints
+   - Read the template's `manifest.json` file
+   - Check `compatible_oiml_versions` array (e.g., `["0.1.x"]`)
+   - Check `compatible_package_versions` object (e.g., `{ "prisma": ["6.x.x"] }`)
+   - Verify installed versions fall within compatible ranges
+   - Consider `minimum_versions` and `maximum_versions` constraints
 
    d. **Use MCP resolve_template tool** (if available):
-      ```typescript
-      const template = await mcp_oiml_resolve_template({
-        intent_schema_version: "0.1.0",     // From intent.yaml
-        framework: "prisma",                 // From project.yaml
-        framework_version: "6.19.0"          // From package.json
-      });
-      
-      // If compatible, template.template_pack contains the guide URI
-      // If incompatible, tool returns error or empty result
-      ```
+
+   ```typescript
+   const template = await mcp_oiml_resolve_template({
+     intent_schema_version: "0.1.0", // From intent.yaml
+     framework: "prisma", // From project.yaml
+     framework_version: "6.19.0" // From package.json
+   });
+
+   // If compatible, template.template_pack contains the guide URI
+   // If incompatible, tool returns error or empty result
+   ```
 
    e. **Halt if incompatible**:
-      - **If no compatible template is found, STOP immediately**
-      - Do NOT execute any code changes
-      - Report error to user with details:
-        - Framework name and installed version
-        - OIML version from intent file
-        - Available template versions
-        - Compatibility requirements
-      - Example error message:
-        ```
-        Error: No compatible template found for Prisma 6.19.0 with OIML 0.1.0
-        
-        Installed versions:
-        - Prisma: 6.19.0
-        - OIML: 0.1.0
-        
-        Available templates:
-        - @oiml/schema/templates/database/prisma/1.0.0
-          Compatible with: OIML 0.1.x, Prisma 6.x.x
-        
-        Please ensure your framework version is compatible with available templates.
-        ```
+   - **If no compatible template is found, STOP immediately**
+   - Do NOT execute any code changes
+   - Report error to user with details:
+     - Framework name and installed version
+     - OIML version from intent file
+     - Available template versions
+     - Compatibility requirements
+   - Example error message:
+
+     ```
+     Error: No compatible template found for Prisma 6.19.0 with OIML 0.1.0
+
+     Installed versions:
+     - Prisma: 6.19.0
+     - OIML: 0.1.0
+
+     Available templates:
+     - @oiml/schema/templates/database/prisma/1.0.0
+       Compatible with: OIML 0.1.x, Prisma 6.x.x
+
+     Please ensure your framework version is compatible with available templates.
+     ```
 
 4. **Consult the compatible framework guide**:
 
@@ -247,12 +256,14 @@ ui:
 When processing an intent file, follow these steps:
 
 ### 1. Validate Intent File
+
 - Use OpenIntent MCP server: `mcp_oiml_validate_intent(filePath)` if available
 - Verify file exists and is valid YAML
 - Validate against schema from `@oiml/schema`
 - **Stop immediately if validation fails** - do not apply any code changes
 
 ### 2. Read Project Configuration
+
 - Read `.openintent/project.yaml`
 - Extract framework configurations:
   - `database.framework` - for data intents
@@ -261,6 +272,7 @@ When processing an intent file, follow these steps:
 - Note configured paths (`paths.api`, `paths.types`, etc.)
 
 ### 3. Check Framework and OIML Version Compatibility
+
 Before processing any intents, verify compatibility:
 
 1. **Extract versions**:
@@ -268,6 +280,7 @@ Before processing any intents, verify compatibility:
    - Read `package.json` to get installed framework versions
 
 2. **Resolve template** using MCP tool (if available):
+
    ```typescript
    const template = await mcp_oiml_resolve_template({
      intent_schema_version: intentVersion,
@@ -287,6 +300,7 @@ Before processing any intents, verify compatibility:
    - Do NOT proceed with any code generation
 
 ### 4. Process Each Intent
+
 For each intent in the `intents` array:
 
 1. **Identify the intent type** (`kind`)
@@ -294,13 +308,14 @@ For each intent in the `intents` array:
    - Data intents → Use `@oiml/schema/templates/database/{framework}/{version}/AGENTS.md`
    - API intents → Use `@oiml/schema/templates/api/{framework}/{version}/AGENTS.md`
    - UI intents → Use `@oiml/schema/templates/ui/{framework}/{version}/AGENTS.md`
-   
+
    The specific version was validated for compatibility in step 3.
 
 3. **Follow the framework guide** for detailed implementation steps
 4. **Generate code** according to the guide's instructions
 
 ### 5. Verify and Complete
+
 - Check for linting errors
 - Verify file paths match `project.yaml` configuration
 - Ensure all imports are correct
@@ -404,10 +419,11 @@ After successfully applying intents, create an output summary file:
    - Co-located with the intent file for easy traceability
 
 2. **Structure**: Document all changes made (see `@oiml/schema` for output schema)
+
    ```yaml
    version: 0.1.0
    applied_at: 2025-11-08T12:34:56Z
-   status: success  # "success" | "partial" | "failed"
+   status: success # "success" | "partial" | "failed"
    intents_processed: 6
    model: claude-sonnet-4.5
    template_used:
@@ -417,8 +433,8 @@ After successfully applying intents, create an output summary file:
      version: 1.0.0
      digest: sha256-444a55ffe875c6269eee613cdee0aeb5015853aeb4e9466c24f08e0388683661
      compat:
-       oiml: '>=0.1.0 <0.2.0'
-       prisma: '>=6.0.0 <7.0.0'
+       oiml: ">=0.1.0 <0.2.0"
+       prisma: ">=6.0.0 <7.0.0"
    changes:
      - file: prisma/schema.prisma
        action: modified
@@ -432,7 +448,7 @@ After successfully applying intents, create an output summary file:
      - file: prisma/migrations/20251105223004_add_blog_entities/migration.sql
        action: created
        description: Generated Prisma migration for new entities
-   errors: []  # Array of any errors encountered
+   errors: [] # Array of any errors encountered
    ```
 
 3. **Key Fields**:
@@ -452,14 +468,15 @@ After successfully applying intents, create an output summary file:
    - `errors[]`: Any errors encountered during execution
 
 4. **Template Resolution**: Use the MCP `resolve_template` tool to determine which template pack to use:
+
    ```typescript
    // Example: Resolve template for Prisma
    const template = await mcp.resolve_template({
-     intent_schema_version: "0.1.0",  // From intent file
-     framework: "prisma",              // From project.yaml
-     framework_version: "6.19.0"       // From package.json
+     intent_schema_version: "0.1.0", // From intent file
+     framework: "prisma", // From project.yaml
+     framework_version: "6.19.0" // From package.json
    });
-   
+
    // Use template.template_pack for implementation guidance
    // Include template info in summary.yaml
    ```

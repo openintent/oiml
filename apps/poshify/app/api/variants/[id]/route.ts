@@ -1,11 +1,8 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import type { ProductVariantInterface, ProductVariantResponse, ErrorResponse } from '@/packages/types';
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import type { ProductVariantInterface, ProductVariantResponse, ErrorResponse } from "@/packages/types";
 
-export async function PUT(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
 
   try {
@@ -18,35 +15,32 @@ export async function PUT(
     if (!existing) {
       const errorResponse: ErrorResponse = {
         success: false,
-        error: 'Product variant not found'
+        error: "Product variant not found"
       };
       return NextResponse.json(errorResponse, { status: 404 });
     }
 
     const variant = await prisma.productVariant.update({
       where: { id: resolvedParams.id },
-      data: body,
+      data: body
     });
 
     const response: ProductVariantResponse = {
-      data: variant,
+      data: variant
     };
 
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
-    console.error('Error updating product variant:', error);
+    console.error("Error updating product variant:", error);
     const errorResponse: ErrorResponse = {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to update variant'
+      error: error instanceof Error ? error.message : "Failed to update variant"
     };
     return NextResponse.json(errorResponse, { status: 500 });
   }
 }
 
-export async function DELETE(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
 
   try {
@@ -57,7 +51,7 @@ export async function DELETE(
     if (!existing) {
       const errorResponse: ErrorResponse = {
         success: false,
-        error: 'Product variant not found'
+        error: "Product variant not found"
       };
       return NextResponse.json(errorResponse, { status: 404 });
     }
@@ -66,19 +60,13 @@ export async function DELETE(
       where: { id: resolvedParams.id }
     });
 
-    return NextResponse.json(
-      { success: true, message: 'Product variant deleted successfully' },
-      { status: 200 }
-    );
+    return NextResponse.json({ success: true, message: "Product variant deleted successfully" }, { status: 200 });
   } catch (error) {
-    console.error('Error deleting product variant:', error);
+    console.error("Error deleting product variant:", error);
     const errorResponse: ErrorResponse = {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to delete variant'
+      error: error instanceof Error ? error.message : "Failed to delete variant"
     };
     return NextResponse.json(errorResponse, { status: 500 });
   }
 }
-
-
-

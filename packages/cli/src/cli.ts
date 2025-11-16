@@ -6,16 +6,13 @@ import { createCommand } from "./commands/create.js";
 
 const program = new Command();
 
-program
-  .name("openintent")
-  .description("OpenIntent CLI for managing OpenIntent projects")
-  .version("0.1.0");
+program.name("openintent").description("OpenIntent CLI for managing OpenIntent projects").version("0.1.0");
 
 program
   .command("init")
   .description("Initialize a new OpenIntent project in the current directory")
   .option("-y, --yes", "Skip prompts and use defaults")
-  .action(async (options) => {
+  .action(async options => {
     await initCommand(options);
   });
 
@@ -23,7 +20,7 @@ program
   .command("create")
   .description("Create a new intent file in .openintent/intents/")
   .argument("[name]", "Name of the intent (e.g. 'INT-1')")
-  .action(async (name) => {
+  .action(async name => {
     await createCommand(name);
   });
 

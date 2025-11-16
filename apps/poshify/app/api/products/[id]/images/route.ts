@@ -1,38 +1,32 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import type { ProductImageInterface, ProductImageResponse, ErrorResponse } from '@/packages/types';
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import type { ProductImageInterface, ProductImageResponse, ErrorResponse } from "@/packages/types";
 
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
 
   try {
     const images = await prisma.productImage.findMany({
       where: { product_id: resolvedParams.id },
-      orderBy: { position: 'asc' },
+      orderBy: { position: "asc" }
     });
 
     const response: ProductImageResponse = {
-      data: images,
+      data: images
     };
 
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
-    console.error('Error fetching product images:', error);
+    console.error("Error fetching product images:", error);
     const errorResponse: ErrorResponse = {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to fetch images'
+      error: error instanceof Error ? error.message : "Failed to fetch images"
     };
     return NextResponse.json(errorResponse, { status: 500 });
   }
 }
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
 
   try {
@@ -41,7 +35,7 @@ export async function POST(
     if (!body.url) {
       const errorResponse: ErrorResponse = {
         success: false,
-        error: 'Missing required field: url'
+        error: "Missing required field: url"
       };
       return NextResponse.json(errorResponse, { status: 400 });
     }
@@ -51,24 +45,21 @@ export async function POST(
         product_id: resolvedParams.id,
         url: body.url,
         alt_text: body.alt_text || null,
-        position: body.position || 0,
-      },
+        position: body.position || 0
+      }
     });
 
     const response: ProductImageResponse = {
-      data: image,
+      data: image
     };
 
     return NextResponse.json(response, { status: 201 });
   } catch (error) {
-    console.error('Error adding product image:', error);
+    console.error("Error adding product image:", error);
     const errorResponse: ErrorResponse = {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to add image'
+      error: error instanceof Error ? error.message : "Failed to add image"
     };
     return NextResponse.json(errorResponse, { status: 500 });
   }
 }
-
-
-

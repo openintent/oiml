@@ -27,4 +27,3 @@ declare module "next-auth/jwt" {
     last_name?: string | null;
   }
 }
-

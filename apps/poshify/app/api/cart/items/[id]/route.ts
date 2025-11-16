@@ -1,11 +1,8 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import type { CartItemInterface, CartItemResponse, ErrorResponse } from '@/packages/types';
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import type { CartItemInterface, CartItemResponse, ErrorResponse } from "@/packages/types";
 
-export async function PUT(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
 
   try {
@@ -18,7 +15,7 @@ export async function PUT(
     if (!existing) {
       const errorResponse: ErrorResponse = {
         success: false,
-        error: 'Cart item not found'
+        error: "Cart item not found"
       };
       return NextResponse.json(errorResponse, { status: 404 });
     }
@@ -29,31 +26,28 @@ export async function PUT(
       include: {
         product_variant: {
           include: {
-            product: true,
-          },
-        },
-      },
+            product: true
+          }
+        }
+      }
     });
 
     const response: CartItemResponse = {
-      data: cartItem,
+      data: cartItem
     };
 
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
-    console.error('Error updating cart item:', error);
+    console.error("Error updating cart item:", error);
     const errorResponse: ErrorResponse = {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to update cart item'
+      error: error instanceof Error ? error.message : "Failed to update cart item"
     };
     return NextResponse.json(errorResponse, { status: 500 });
   }
 }
 
-export async function DELETE(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
 
   try {
@@ -64,7 +58,7 @@ export async function DELETE(
     if (!existing) {
       const errorResponse: ErrorResponse = {
         success: false,
-        error: 'Cart item not found'
+        error: "Cart item not found"
       };
       return NextResponse.json(errorResponse, { status: 404 });
     }
@@ -73,19 +67,13 @@ export async function DELETE(
       where: { id: resolvedParams.id }
     });
 
-    return NextResponse.json(
-      { success: true, message: 'Cart item removed successfully' },
-      { status: 200 }
-    );
+    return NextResponse.json({ success: true, message: "Cart item removed successfully" }, { status: 200 });
   } catch (error) {
-    console.error('Error removing cart item:', error);
+    console.error("Error removing cart item:", error);
     const errorResponse: ErrorResponse = {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to remove cart item'
+      error: error instanceof Error ? error.message : "Failed to remove cart item"
     };
     return NextResponse.json(errorResponse, { status: 500 });
   }
 }
-
-
-

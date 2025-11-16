@@ -1,23 +1,23 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import type { PostInterface, PostResponse, ErrorResponse } from '@/packages/types';
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import type { PostInterface, PostResponse, ErrorResponse } from "@/packages/types";
 
 export async function GET() {
   try {
     const posts = await prisma.post.findMany({
-      orderBy: { created_at: 'desc' }
+      orderBy: { created_at: "desc" }
     });
 
     const response: PostResponse = {
-      data: posts,
+      data: posts
     };
 
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
-    console.error('Error fetching posts:', error);
+    console.error("Error fetching posts:", error);
     const errorResponse: ErrorResponse = {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to fetch posts'
+      error: error instanceof Error ? error.message : "Failed to fetch posts"
     };
     return NextResponse.json(errorResponse, { status: 500 });
   }
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     if (!body.title || !body.author_id) {
       const errorResponse: ErrorResponse = {
         success: false,
-        error: 'Missing required fields: title, author_id'
+        error: "Missing required fields: title, author_id"
       };
       return NextResponse.json(errorResponse, { status: 400 });
     }
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     if (!author) {
       const errorResponse: ErrorResponse = {
         success: false,
-        error: 'Author not found'
+        error: "Author not found"
       };
       return NextResponse.json(errorResponse, { status: 404 });
     }
@@ -53,22 +53,21 @@ export async function POST(request: Request) {
         title: body.title,
         content: body.content ?? null,
         published: body.published ?? false,
-        author_id: body.author_id,
+        author_id: body.author_id
       }
     });
 
     const response: PostResponse = {
-      data: post,
+      data: post
     };
 
     return NextResponse.json(response, { status: 201 });
   } catch (error) {
-    console.error('Error creating post:', error);
+    console.error("Error creating post:", error);
     const errorResponse: ErrorResponse = {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to create post'
+      error: error instanceof Error ? error.message : "Failed to create post"
     };
     return NextResponse.json(errorResponse, { status: 500 });
   }
 }
-

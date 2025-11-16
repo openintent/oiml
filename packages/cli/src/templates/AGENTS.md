@@ -41,11 +41,13 @@ OIML (Open Intent Modeling Language) is a global standard for AI-driven developm
 ```
 
 **File Naming Standards:**
+
 - `intent.yaml` - The intent specification (validated against OIML schema)
 - `plan.yaml` - Optional execution plan breaking down steps
 - `summary.yaml` - Output summary documenting what was changed
 
 **Additional Optional Files:**
+
 - `rollback.yaml` - Rollback instructions for reverting changes
 - `review.md` - Code review comments and feedback
 - `test-results.json` - Test execution results
@@ -54,12 +56,14 @@ OIML (Open Intent Modeling Language) is a global standard for AI-driven developm
 ## Intent File Schema
 
 All intent file schemas are defined in the [`@oiml/schema`](https://www.npmjs.com/package/@oiml/schema) package. Refer to the schema package for:
+
 - Complete intent structure definitions
 - Field validation rules
 - Required vs optional fields
 - Supported values and enums
 
 **Basic Structure:**
+
 - `version`: Semantic version (required)
 - `provenance`: Optional metadata about intent creation
 - `intents`: Array of intent specifications
@@ -91,6 +95,7 @@ The framework-specific guides contain all the details needed for implementation.
 OpenIntent supports the following intent types. For complete schema definitions, see [`@oiml/schema`](https://www.npmjs.com/package/@oiml/schema).
 
 #### Data Intents (scope: data)
+
 - **`add_entity`**: Create new database models/entities
 - **`add_field`**: Add fields to existing entities
 - **`add_relation`**: Add relationships between entities
@@ -100,13 +105,16 @@ OpenIntent supports the following intent types. For complete schema definitions,
 - **`rename_field`**: Rename a field in an entity
 
 #### API Intents (scope: api)
+
 - **`add_endpoint`**: Create REST API endpoints
 - **`update_endpoint`**: Modify existing API endpoints to include additional fields in responses
 
 #### Capability Intents (scope: capability)
+
 - **`add_capability`**: Add capability modules for common services (auth, file upload, file streaming, SSE, websockets)
 
 #### UI Intents (scope: ui)
+
 - **`add_component`**: Create UI components (future support)
 
 ### Implementation Workflow
@@ -116,65 +124,67 @@ For each intent type:
 1. **Validate the intent** using the schema from `@oiml/schema`
 2. **Read `project.yaml`** to determine frameworks
 3. **Check framework and OIML version compatibility**:
-   
+
    Before executing any code changes, verify that a compatible template guide exists:
 
    a. **Extract versions**:
-      - Read `intent.yaml` to get OIML version (e.g., `version: "0.1.0"`)
-      - Read `package.json` to get framework version(s):
-        - For database intents: Check `prisma` or relevant database package version
-        - For API intents: Check `next`, `express`, or relevant API framework version
-        - For capability intents: Extract `framework` from intent (e.g., `gin`, `next`, `express`) and check corresponding package version
-        - For UI intents: Check `react`, `vue`, or relevant UI framework version
+   - Read `intent.yaml` to get OIML version (e.g., `version: "0.1.0"`)
+   - Read `package.json` to get framework version(s):
+     - For database intents: Check `prisma` or relevant database package version
+     - For API intents: Check `next`, `express`, or relevant API framework version
+     - For capability intents: Extract `framework` from intent (e.g., `gin`, `next`, `express`) and check corresponding package version
+     - For UI intents: Check `react`, `vue`, or relevant UI framework version
 
    b. **Locate template manifest**:
-      - Templates are organized as: `@oiml/schema/templates/{category}/{framework}/{version}/manifest.json`
-      - For capability intents: `@oiml/schema/templates/capability/{capability_type}/{framework}/{version}/manifest.json`
-      - Categories: `database`, `api`, `capability`, `ui`
-      - Example: `@oiml/schema/templates/database/prisma/1.0.0/manifest.json`
-      - Example (capability): `@oiml/schema/templates/capability/auth/gin/1.0.0/manifest.json`
+   - Templates are organized as: `@oiml/schema/templates/{category}/{framework}/{version}/manifest.json`
+   - For capability intents: `@oiml/schema/templates/capability/{capability_type}/{framework}/{version}/manifest.json`
+   - Categories: `database`, `api`, `capability`, `ui`
+   - Example: `@oiml/schema/templates/database/prisma/1.0.0/manifest.json`
+   - Example (capability): `@oiml/schema/templates/capability/auth/gin/1.0.0/manifest.json`
 
    c. **Validate compatibility**:
-      - Read the template's `manifest.json` file
-      - Check `compatible_oiml_versions` array (e.g., `["0.1.x"]`)
-      - Check `compatible_package_versions` object (e.g., `{ "prisma": ["6.x.x"] }`)
-      - Verify installed versions fall within compatible ranges
-      - Consider `minimum_versions` and `maximum_versions` constraints
+   - Read the template's `manifest.json` file
+   - Check `compatible_oiml_versions` array (e.g., `["0.1.x"]`)
+   - Check `compatible_package_versions` object (e.g., `{ "prisma": ["6.x.x"] }`)
+   - Verify installed versions fall within compatible ranges
+   - Consider `minimum_versions` and `maximum_versions` constraints
 
    d. **Use MCP resolve_template tool** (if available):
-      ```typescript
-      const template = await mcp_oiml_resolve_template({
-        intent_schema_version: "0.1.0",     // From intent.yaml
-        framework: "prisma",                 // From project.yaml
-        framework_version: "6.19.0"          // From package.json
-      });
-      
-      // If compatible, template.template_pack contains the guide URI
-      // If incompatible, tool returns error or empty result
-      ```
+
+   ```typescript
+   const template = await mcp_oiml_resolve_template({
+     intent_schema_version: "0.1.0", // From intent.yaml
+     framework: "prisma", // From project.yaml
+     framework_version: "6.19.0" // From package.json
+   });
+
+   // If compatible, template.template_pack contains the guide URI
+   // If incompatible, tool returns error or empty result
+   ```
 
    e. **Halt if incompatible**:
-      - **If no compatible template is found, STOP immediately**
-      - Do NOT execute any code changes
-      - Report error to user with details:
-        - Framework name and installed version
-        - OIML version from intent file
-        - Available template versions
-        - Compatibility requirements
-      - Example error message:
-        ```
-        Error: No compatible template found for Prisma 6.19.0 with OIML 0.1.0
-        
-        Installed versions:
-        - Prisma: 6.19.0
-        - OIML: 0.1.0
-        
-        Available templates:
-        - @oiml/schema/templates/database/prisma/1.0.0
-          Compatible with: OIML 0.1.x, Prisma 6.x.x
-        
-        Please ensure your framework version is compatible with available templates.
-        ```
+   - **If no compatible template is found, STOP immediately**
+   - Do NOT execute any code changes
+   - Report error to user with details:
+     - Framework name and installed version
+     - OIML version from intent file
+     - Available template versions
+     - Compatibility requirements
+   - Example error message:
+
+     ```
+     Error: No compatible template found for Prisma 6.19.0 with OIML 0.1.0
+
+     Installed versions:
+     - Prisma: 6.19.0
+     - OIML: 0.1.0
+
+     Available templates:
+     - @oiml/schema/templates/database/prisma/1.0.0
+       Compatible with: OIML 0.1.x, Prisma 6.x.x
+
+     Please ensure your framework version is compatible with available templates.
+     ```
 
 4. **Consult the compatible framework guide**:
 
@@ -241,6 +251,7 @@ database:
   framework: prisma # Database framework: prisma, mongoose, sqlalchemy, etc.
   schema: prisma/schema.prisma # Schema file path
   connection: env:DATABASE_URL # Connection string (env variable)
+  autorun_migrations: true # Whether to automatically run migrations (optional, defaults to false)
 ```
 
 **UI Configuration:**
@@ -262,6 +273,7 @@ ui:
 When processing an intent file, follow these steps:
 
 ### 1. Validate Intent File
+
 - **CRITICAL:** Use OpenIntent MCP server: `mcp_oiml_validate_intent(filePath)` if available
 - Verify file exists and is valid YAML
 - Validate against schema from `@oiml/schema`
@@ -270,6 +282,7 @@ When processing an intent file, follow these steps:
 - **Check for empty intents array**: Ensure at least one intent is specified
 
 ### 2. Read Project Configuration
+
 - **CRITICAL:** Read `.openintent/project.yaml` - this file is required for all implementations
 - **Verify file exists**: If `project.yaml` is missing, STOP and report error to user
 - Extract framework configurations:
@@ -280,8 +293,10 @@ When processing an intent file, follow these steps:
 - **Verify paths exist**: Check that configured directories exist or can be created
 - For capability intents: Extract `framework` and `capability` fields from the intent itself
 - **Read `api.response` configuration**: Note success/error response structure for API endpoints
+- **Read `database.autorun_migrations`**: Check if migrations should be executed automatically (defaults to `false` if not set)
 
 ### 3. Check Framework and OIML Version Compatibility
+
 Before processing any intents, verify compatibility:
 
 1. **Extract versions**:
@@ -290,14 +305,15 @@ Before processing any intents, verify compatibility:
    - For capability intents: Extract `capability` and `framework` fields from the intent to determine the template path
 
 2. **Resolve template** using MCP tool (if available):
+
    ```typescript
    const template = await mcp_oiml_resolve_template({
-     intent_schema_version: intentVersion,  // From intent.yaml version field
-     framework: frameworkName,              // From project.yaml or intent
-     framework_version: installedVersion   // From package.json
+     intent_schema_version: intentVersion, // From intent.yaml version field
+     framework: frameworkName, // From project.yaml or intent
+     framework_version: installedVersion // From package.json
    });
    ```
-   
+
    **If MCP tool is not available**, manually locate template manifest:
    - For data intents: `@oiml/schema/templates/database/{framework}/{version}/manifest.json`
    - For API intents: `@oiml/schema/templates/api/{framework}/{version}/manifest.json`
@@ -317,6 +333,7 @@ Before processing any intents, verify compatibility:
    - Do NOT proceed with any code generation
 
 ### 4. Process Each Intent
+
 For each intent in the `intents` array:
 
 1. **Identify the intent type** (`kind`)
@@ -327,7 +344,7 @@ For each intent in the `intents` array:
      - Extract `capability_type` from intent (e.g., `auth`, `file_upload`, `file_stream`, `sse`, `websocket`)
      - Extract `framework` from intent (e.g., `gin`, `next`, `express`)
    - UI intents → Use `@oiml/schema/templates/ui/{framework}/{version}/AGENTS.md`
-   
+
    The specific version was validated for compatibility in step 3.
 
 3. **Follow the framework guide** for detailed implementation steps
@@ -337,13 +354,16 @@ For each intent in the `intents` array:
 4. **Generate code** according to the guide's instructions
 
 ### 5. Verify and Complete
+
 - **Check for linting errors**: Run linter on all modified files
 - **Verify file paths match `project.yaml` configuration**: Ensure files are created in correct directories
 - **Ensure all imports are correct**: Verify import paths match project structure
 - **Test generated code follows project patterns**: Check code style matches existing codebase
 - **Verify response formats**: Ensure API responses match `api.response` configuration from `project.yaml`
 - **Check TypeScript types**: Ensure all types compile without errors
-- **Verify database migrations**: For data intents, ensure migrations were created and applied
+- **Verify database migrations**: For data intents, check `database.autorun_migrations`:
+  - If `true`: Ensure migrations were created and applied
+  - If `false` or not set: Ensure migration files were created (note in summary that manual migration application is required)
 - **Test critical paths**: Verify generated endpoints/handlers can be imported and used
 
 **Important**: All detailed implementation steps, code examples, and type mappings are in the framework-specific guides. This document only provides high-level orchestration.
@@ -397,11 +417,14 @@ All framework-specific code generation patterns, examples, and best practices ar
    - Follow framework-specific patterns for queries and mutations
    - Always handle database errors appropriately
 
-5. **Migration Safety**: For data intents, always create and apply migrations
-   - Run migrations immediately after schema changes
-   - Regenerate database client after migrations
+5. **Migration Safety**: For data intents, migrations are **always created**, but only **automatically applied** if `database.autorun_migrations: true` in `project.yaml`
+   - **CRITICAL:** Migrations are always created (migration files are generated), but only automatically applied if `database.autorun_migrations: true`:
+     - If `database.autorun_migrations: true`: Migrations are created and applied automatically after schema changes
+     - If `database.autorun_migrations: false` or not set: Migration files are created but not applied (migrations can be run manually later)
+   - Regenerate database client after migrations (only if `autorun_migrations: true` and migrations were applied)
    - Update TypeScript types after schema changes
    - Update API endpoints when fields are added/modified
+   - **Note:** Framework-specific guides contain detailed migration instructions that respect the `autorun_migrations` setting
 
 **For complete code examples and templates, refer to the framework-specific implementation guides.**
 
@@ -424,7 +447,9 @@ if (!validation.valid) {
 3. **Type safety**: Always use TypeScript types, never `any`
 4. **Error handling**: Include comprehensive error handling
 5. **Code organization**: Respect project.yaml paths and structure
-6. **Migration safety**: Always create migrations for schema changes
+6. **Migration safety**: Migrations are always created, but only automatically applied if `database.autorun_migrations: true`:
+   - If `true`: Migrations are created and applied automatically
+   - If `false` or not set: Migration files are created but not applied (run manually later)
 7. **Documentation**: Add comments for complex logic
 8. **Testing**: Generate test-friendly code structures
 
@@ -436,10 +461,12 @@ if (!validation.valid) {
 
 1. ✅ **Validate** intent file against schema
 2. ✅ **Read** `.openintent/project.yaml`
+   - Check `database.autorun_migrations` setting
 3. ✅ **Process** `add_entity` intent:
    - Consult database framework guide (e.g., Prisma guide)
    - Add model to schema
-   - Create migration
+   - Create migration files (always)
+   - Apply migrations (only if `database.autorun_migrations: true`)
    - Update TypeScript types
 4. ✅ **Process** `add_endpoint` intent:
    - Consult API framework guide (e.g., Next.js guide)
@@ -460,10 +487,11 @@ After successfully applying intents, create an output summary file:
    - Co-located with the intent file for easy traceability
 
 2. **Structure**: Document all changes made (see `@oiml/schema` for output schema)
+
    ```yaml
    version: 0.1.0
    applied_at: 2025-11-08T12:34:56Z
-   status: success  # "success" | "partial" | "failed"
+   status: success # "success" | "partial" | "failed"
    intents_processed: 6
    model: claude-sonnet-4.5
    template_used:
@@ -473,8 +501,8 @@ After successfully applying intents, create an output summary file:
      version: 1.0.0
      digest: sha256-444a55ffe875c6269eee613cdee0aeb5015853aeb4e9466c24f08e0388683661
      compat:
-       oiml: '>=0.1.0 <0.2.0'
-       prisma: '>=6.0.0 <7.0.0'
+       oiml: ">=0.1.0 <0.2.0"
+       prisma: ">=6.0.0 <7.0.0"
    changes:
      - file: prisma/schema.prisma
        action: modified
@@ -488,7 +516,7 @@ After successfully applying intents, create an output summary file:
      - file: prisma/migrations/20251105223004_add_blog_entities/migration.sql
        action: created
        description: Generated Prisma migration for new entities
-   errors: []  # Array of any errors encountered
+   errors: [] # Array of any errors encountered
    ```
 
 3. **Key Fields**:
@@ -508,14 +536,15 @@ After successfully applying intents, create an output summary file:
    - `errors[]`: Any errors encountered during execution
 
 4. **Template Resolution**: Use the MCP `resolve_template` tool to determine which template pack to use:
+
    ```typescript
    // Example: Resolve template for Prisma
    const template = await mcp.resolve_template({
-     intent_schema_version: "0.1.0",  // From intent file
-     framework: "prisma",              // From project.yaml
-     framework_version: "6.19.0"       // From package.json
+     intent_schema_version: "0.1.0", // From intent file
+     framework: "prisma", // From project.yaml
+     framework_version: "6.19.0" // From package.json
    });
-   
+
    // Use template.template_pack for implementation guidance
    // Include template info in summary.yaml
    ```

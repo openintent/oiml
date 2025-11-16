@@ -11,26 +11,8 @@ const __dirname = dirname(__filename);
 
 // Map API languages to their frameworks
 const API_FRAMEWORKS_BY_LANGUAGE: Record<string, string[]> = {
-  typescript: [
-    "next",
-    "express",
-    "fastify",
-    "koa",
-    "nestjs",
-    "remix",
-    "sveltekit",
-    "astro",
-  ],
-  javascript: [
-    "next",
-    "express",
-    "fastify",
-    "koa",
-    "nestjs",
-    "remix",
-    "sveltekit",
-    "astro",
-  ],
+  typescript: ["next", "express", "fastify", "koa", "nestjs", "remix", "sveltekit", "astro"],
+  javascript: ["next", "express", "fastify", "koa", "nestjs", "remix", "sveltekit", "astro"],
   python: ["django", "flask", "fastapi", "tornado", "bottle"],
   go: ["gin", "echo", "fiber", "chi", "gorilla"],
   rust: ["axum", "actix-web", "rocket", "warp"],
@@ -42,13 +24,13 @@ const API_FRAMEWORKS_BY_LANGUAGE: Record<string, string[]> = {
   kotlin: [],
   elixir: [],
   dart: [],
-  scala: [],
+  scala: []
 };
 
 // Map UI languages to their frameworks (most work with both TS/JS)
 const UI_FRAMEWORKS_BY_LANGUAGE: Record<string, string[]> = {
   typescript: ["react", "vue", "sveltekit", "astro", "next", "vite", "nuxt"],
-  javascript: ["react", "vue", "sveltekit", "astro", "next", "vite", "nuxt"],
+  javascript: ["react", "vue", "sveltekit", "astro", "next", "vite", "nuxt"]
 };
 
 // Get framework choices for a given language
@@ -87,7 +69,7 @@ function getApiFrameworkChoices(language: string | undefined): string[] {
       "sveltekit",
       "astro",
       "other",
-      "none",
+      "none"
     ];
   }
 
@@ -97,17 +79,7 @@ function getApiFrameworkChoices(language: string | undefined): string[] {
 
 function getUiFrameworkChoices(language: string | undefined): string[] {
   if (!language) {
-    return [
-      "react",
-      "vue",
-      "sveltekit",
-      "astro",
-      "next",
-      "vite",
-      "nuxt",
-      "other",
-      "none",
-    ];
+    return ["react", "vue", "sveltekit", "astro", "next", "vite", "nuxt", "other", "none"];
   }
 
   const frameworks = UI_FRAMEWORKS_BY_LANGUAGE[language] || [];
@@ -212,15 +184,9 @@ async function detectProjectType(): Promise<Partial<ProjectConfig>> {
         existsSync(resolve(process.cwd(), "vite.config.ts"))
       ) {
         uiFramework = "vite";
-      } else if (
-        packageJson.dependencies?.react ||
-        packageJson.devDependencies?.react
-      ) {
+      } else if (packageJson.dependencies?.react || packageJson.devDependencies?.react) {
         uiFramework = "react";
-      } else if (
-        packageJson.dependencies?.vue ||
-        packageJson.devDependencies?.vue
-      ) {
+      } else if (packageJson.dependencies?.vue || packageJson.devDependencies?.vue) {
         uiFramework = "vue";
       }
 
@@ -233,25 +199,13 @@ async function detectProjectType(): Promise<Partial<ProjectConfig>> {
           existsSync(resolve(process.cwd(), "remix.config.ts"))
         ) {
           apiFramework = "remix";
-        } else if (
-          packageJson.dependencies?.express ||
-          packageJson.devDependencies?.express
-        ) {
+        } else if (packageJson.dependencies?.express || packageJson.devDependencies?.express) {
           apiFramework = "express";
-        } else if (
-          packageJson.dependencies?.fastify ||
-          packageJson.devDependencies?.fastify
-        ) {
+        } else if (packageJson.dependencies?.fastify || packageJson.devDependencies?.fastify) {
           apiFramework = "fastify";
-        } else if (
-          packageJson.dependencies?.koa ||
-          packageJson.devDependencies?.koa
-        ) {
+        } else if (packageJson.dependencies?.koa || packageJson.devDependencies?.koa) {
           apiFramework = "koa";
-        } else if (
-          packageJson.dependencies?.["@nestjs/core"] ||
-          packageJson.devDependencies?.["@nestjs/core"]
-        ) {
+        } else if (packageJson.dependencies?.["@nestjs/core"] || packageJson.devDependencies?.["@nestjs/core"]) {
           apiFramework = "nestjs";
         }
       }
@@ -266,16 +220,13 @@ async function detectProjectType(): Promise<Partial<ProjectConfig>> {
       }
 
       // Detect database
-      if (
-        packageJson.dependencies?.prisma ||
-        packageJson.devDependencies?.prisma
-      ) {
+      if (packageJson.dependencies?.prisma || packageJson.devDependencies?.prisma) {
         if (existsSync(resolve(process.cwd(), "prisma", "schema.prisma"))) {
           database = {
             type: "postgres",
             framework: "prisma",
             schema: "prisma/schema.prisma",
-            connection: "env:DATABASE_URL",
+            connection: "env:DATABASE_URL"
           };
         }
       }
@@ -287,18 +238,15 @@ async function detectProjectType(): Promise<Partial<ProjectConfig>> {
   return {
     ui: uiFramework ? { framework: uiFramework, language } : undefined,
     api: apiFramework ? { framework: apiFramework, language } : undefined,
-    database,
+    database
   };
 }
 
-async function promptForProjectDetails(
-  detected: Partial<ProjectConfig>,
-  skipPrompts: boolean,
-): Promise<ProjectConfig> {
+async function promptForProjectDetails(detected: Partial<ProjectConfig>, skipPrompts: boolean): Promise<ProjectConfig> {
   const packageJsonPath = resolve(process.cwd(), "package.json");
   let defaultName = "MyProject";
   let defaultDescription = "";
-  const oimlVersion = '0.1.0';
+  const oimlVersion = "0.1.0";
 
   if (existsSync(packageJsonPath)) {
     try {
@@ -319,8 +267,8 @@ async function promptForProjectDetails(
       api: detected.api || { framework: "express", language: "typescript" },
       database: detected.database,
       intents: {
-        directory: ".openintent/intents",
-      },
+        directory: ".openintent/intents"
+      }
     };
   }
 
@@ -329,31 +277,21 @@ async function promptForProjectDetails(
       type: "input",
       name: "name",
       message: "Project name:",
-      default: defaultName,
+      default: defaultName
     },
     {
       type: "input",
       name: "description",
       message: "Project description:",
-      default: defaultDescription,
+      default: defaultDescription
     },
     // UI: Ask if they want UI first (framework with "none" option)
     {
       type: "list",
       name: "uiFramework",
       message: "UI Framework:",
-      choices: [
-        "react",
-        "vue",
-        "sveltekit",
-        "astro",
-        "next",
-        "vite",
-        "nuxt",
-        "other",
-        "none",
-      ],
-      default: detected.ui?.framework || "react",
+      choices: ["react", "vue", "sveltekit", "astro", "next", "vite", "nuxt", "other", "none"],
+      default: detected.ui?.framework || "react"
     },
     {
       type: "list",
@@ -362,7 +300,7 @@ async function promptForProjectDetails(
       choices: ["typescript", "javascript"],
       default: detected.ui?.language || "typescript",
       // Always ask language so we can create object even if framework is "none"
-      when: () => true,
+      when: () => true
     },
     {
       type: "list",
@@ -370,8 +308,7 @@ async function promptForProjectDetails(
       message: "UI Components Library:",
       choices: ["shadcn/ui", "tailwindcss", "other"],
       default: "shadcn/ui",
-      when: (answers: any) =>
-        answers.uiFramework && answers.uiFramework !== "none",
+      when: (answers: any) => answers.uiFramework && answers.uiFramework !== "none"
     },
     // API: Ask language first, then framework filtered by language
     {
@@ -392,9 +329,9 @@ async function promptForProjectDetails(
         "kotlin",
         "elixir",
         "dart",
-        "scala",
+        "scala"
       ],
-      default: detected.api?.language || "typescript",
+      default: detected.api?.language || "typescript"
     },
     {
       type: "list",
@@ -409,43 +346,23 @@ async function promptForProjectDetails(
         }
         // If detected framework not in choices, return first non-"none" option or "none"
         return choices.find((f: string) => f !== "none") || "none";
-      },
+      }
     },
     {
       type: "list",
       name: "databaseType",
       message: "Database Type:",
-      choices: [
-        "postgres",
-        "mysql",
-        "sqlite",
-        "mongodb",
-        "cockroachdb",
-        "mariadb",
-        "mssql",
-        "other",
-        "none",
-      ],
-      default: detected.database?.type || "postgres",
+      choices: ["postgres", "mysql", "sqlite", "mongodb", "cockroachdb", "mariadb", "mssql", "other", "none"],
+      default: detected.database?.type || "postgres"
     },
     {
       type: "list",
       name: "databaseFramework",
       message: "Database Framework:",
-      choices: [
-        "prisma",
-        "drizzle",
-        "sqlalchemy",
-        "ent",
-        "gorm",
-        "sqlx",
-        "raw",
-        "other",
-      ],
+      choices: ["prisma", "drizzle", "sqlalchemy", "ent", "gorm", "sqlx", "raw", "other"],
       default: detected.database?.framework || "prisma",
-      when: (answers: any) =>
-        answers.databaseType !== "other" && answers.databaseType !== "none",
-    },
+      when: (answers: any) => answers.databaseType !== "other" && answers.databaseType !== "none"
+    }
   ]);
 
   const config: ProjectConfig = {
@@ -453,8 +370,8 @@ async function promptForProjectDetails(
     description: answers.description,
     oiml_version: oimlVersion,
     intents: {
-      directory: ".openintent/intents",
-    },
+      directory: ".openintent/intents"
+    }
   };
 
   // Add UI if framework is not "none", or if language is selected (even with "none" framework)
@@ -462,12 +379,12 @@ async function promptForProjectDetails(
     config.ui = {
       framework: answers.uiFramework,
       components: answers.uiComponents,
-      language: answers.uiLanguage || "typescript",
+      language: answers.uiLanguage || "typescript"
     };
   } else if (answers.uiLanguage) {
     // Language was selected but framework is "none" - create object without framework field
     config.ui = {
-      language: answers.uiLanguage,
+      language: answers.uiLanguage
     };
   }
 
@@ -475,7 +392,7 @@ async function promptForProjectDetails(
   // If framework is "none", omit the framework field
   if (answers.apiLanguage) {
     const apiConfig: any = {
-      language: answers.apiLanguage,
+      language: answers.apiLanguage
     };
     if (answers.apiFramework && answers.apiFramework !== "none") {
       apiConfig.framework = answers.apiFramework;
@@ -489,11 +406,10 @@ async function promptForProjectDetails(
       type: answers.databaseType,
       framework: answers.databaseFramework,
       schema:
-        answers.databaseType === "postgres" &&
-        answers.databaseFramework === "prisma"
+        answers.databaseType === "postgres" && answers.databaseFramework === "prisma"
           ? "prisma/schema.prisma"
           : undefined,
-      connection: "env:DATABASE_URL",
+      connection: "env:DATABASE_URL"
     };
   }
 
@@ -508,7 +424,7 @@ function generateProjectYaml(config: ProjectConfig): string {
   const yamlObj: any = {
     name: config.name,
     description: config.description,
-    oiml_version: config.oiml_version,
+    oiml_version: config.oiml_version
   };
 
   // Include API if it exists (even if framework is "none")
@@ -563,8 +479,8 @@ export async function initCommand(options: { yes?: boolean }) {
         type: "confirm",
         name: "overwrite",
         message: "Do you want to overwrite the existing project.yaml?",
-        default: false,
-      },
+        default: false
+      }
     ]);
 
     if (!overwrite) {
@@ -583,7 +499,7 @@ export async function initCommand(options: { yes?: boolean }) {
     [
       detected.ui?.framework && `UI: ${detected.ui.framework}`,
       detected.api?.framework && `API: ${detected.api.framework}`,
-      detected.database?.type && `DB: ${detected.database.type}`,
+      detected.database?.type && `DB: ${detected.database.type}`
     ]
       .filter(Boolean)
       .join(", ") || "unknown";
@@ -615,13 +531,10 @@ export async function initCommand(options: { yes?: boolean }) {
     join(__dirname, "../../src/templates/AGENTS.md"), // dist/commands/../../src/templates/AGENTS.md
     // npm package locations
     join(process.cwd(), "node_modules/@oiml/cli/dist/templates/AGENTS.md"), // Published package
-    join(
-      process.cwd(),
-      "node_modules/@openintent/cli/dist/templates/AGENTS.md",
-    ), // Legacy package name
+    join(process.cwd(), "node_modules/@openintent/cli/dist/templates/AGENTS.md"), // Legacy package name
     // Workspace package location
     resolve(process.cwd(), "../../packages/cli/src/templates/AGENTS.md"), // Workspace source
-    resolve(process.cwd(), "../../packages/cli/dist/templates/AGENTS.md"), // Workspace built
+    resolve(process.cwd(), "../../packages/cli/dist/templates/AGENTS.md") // Workspace built
   ];
 
   let templatePath: string | null = null;
