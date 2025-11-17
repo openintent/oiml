@@ -103,6 +103,11 @@
         "connection": {
           "type": "string",
           "description": "Database connection string (can use env:VAR_NAME format)"
+        },
+        "autorun_migrations": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether to automatically run migrations"
         }
       },
       "required": ["type"],
