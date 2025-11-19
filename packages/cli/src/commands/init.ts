@@ -5,6 +5,7 @@ import { dirname } from "path";
 import chalk from "chalk";
 import inquirer from "inquirer";
 import * as YAML from "yaml";
+import { generateIntentTemplate } from "./create.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -519,6 +520,16 @@ export async function initCommand(options: { yes?: boolean }) {
     // Create .gitkeep to ensure the directory is tracked
     writeFileSync(join(intentsDir, ".gitkeep"), "", "utf-8");
     console.log(chalk.green("✓ Created intents directory"));
+  }
+
+  // Create _init folder with intent.yaml
+  const initIntentDir = join(intentsDir, "_init");
+  if (!existsSync(initIntentDir)) {
+    mkdirSync(initIntentDir, { recursive: true });
+    const initIntentPath = join(initIntentDir, "intent.yaml");
+    const initIntentContent = generateIntentTemplate("_init", config.oiml_version);
+    writeFileSync(initIntentPath, initIntentContent, "utf-8");
+    console.log(chalk.green("✓ Created _init/intent.yaml"));
   }
 
   // Copy AGENTS.md template if it exists

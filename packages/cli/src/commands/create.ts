@@ -55,7 +55,7 @@ async function validateProjectYaml(
   }
 }
 
-function generateIntentTemplate(name: string, version: string): string {
+export function generateIntentTemplate(name: string, version: string): string {
   const yamlObj = {
     version: version,
     type: "oiml.intent",
