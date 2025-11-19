@@ -1,6 +1,6 @@
 # OIML - Open Intent Modeling Language
 
-**OIML (Open Intent Modeling Language)** is a standard for AI-driven development that enables declarative code generation through structured intents.
+**OIML (Open Intent Modeling Language)** is an open standard for AI-driven development that enables declarative code generation through structured intents.
 
 ## What is OIML?
 
@@ -14,6 +14,7 @@ OIML allows developers to describe _what_ they want instead of _how_ to build it
 - **Agent-Friendly** - IDEs and AI agents can easily understand intents
 - **Framework Agnostic** - Support for any database, API, or UI framework
 - **LLM & IDE Agnostic** - Not tied to any particular LLM or coding IDE
+- **Open Source** - 100% free forever under Apache 2.0 license
 
 ## Quick Start
 
