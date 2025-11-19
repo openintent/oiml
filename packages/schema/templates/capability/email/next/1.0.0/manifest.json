@@ -1,0 +1,41 @@
+{
+  "name": "oiml-email-resend-next",
+  "version": "1.0.0",
+  "framework": "next",
+  "category": "capability",
+  "capability_type": "email",
+  "provider": "resend",
+  "created_at": "2025-11-18T00:00:00Z",
+  "last_updated": "2025-11-18T00:00:00Z",
+  "compatible_oiml_versions": ["0.1.x"],
+  "compatible_package_versions": {
+    "next": ["14.x.x", "15.x.x", "16.x.x"],
+    "resend": ["3.x.x", "4.x.x"]
+  },
+  "minimum_versions": {
+    "next": "14.0.0",
+    "resend": "3.0.0"
+  },
+  "maximum_versions": {
+    "next": "16.99.99",
+    "resend": "4.99.99"
+  },
+  "breaking_changes": [],
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2025-11-18",
+      "changes": [
+        "Initial template version",
+        "Support for Resend API integration",
+        "Transactional email support",
+        "React Email template support",
+        "Batch email sending",
+        "Email scheduling",
+        "Complete type safety with TypeScript"
+      ]
+    }
+  ],
+  "authors": ["OpenIntent Team"],
+  "license": "Apache-2.0"
+}

@@ -1,0 +1,42 @@
+{
+  "name": "oiml-storage-supabase-next",
+  "version": "1.0.0",
+  "framework": "next",
+  "category": "capability",
+  "capability_type": "storage",
+  "provider": "supabase",
+  "created_at": "2025-11-18T00:00:00Z",
+  "last_updated": "2025-11-18T00:00:00Z",
+  "compatible_oiml_versions": ["0.1.x"],
+  "compatible_package_versions": {
+    "next": ["14.x.x", "15.x.x", "16.x.x"],
+    "@supabase/supabase-js": ["2.x.x"]
+  },
+  "minimum_versions": {
+    "next": "14.0.0",
+    "@supabase/supabase-js": "2.0.0"
+  },
+  "maximum_versions": {
+    "next": "16.99.99",
+    "@supabase/supabase-js": "2.99.99"
+  },
+  "breaking_changes": [],
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2025-11-18",
+      "changes": [
+        "Initial template version",
+        "Support for Supabase Storage integration",
+        "File upload (standard and resumable)",
+        "File download and serving",
+        "Image transformations",
+        "Public and private buckets",
+        "Access control with RLS",
+        "Complete type safety with TypeScript"
+      ]
+    }
+  ],
+  "authors": ["OpenIntent Team"],
+  "license": "Apache-2.0"
+}
