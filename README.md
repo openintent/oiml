@@ -228,7 +228,7 @@ database:
 paths:
   api: app/api
   components: app/components
-  types: packages/types
+  types: types
 ```
 
 ## Workflow
