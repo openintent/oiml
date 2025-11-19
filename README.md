@@ -32,6 +32,7 @@ pnpm add -g @oiml/cli
 ```bash
 # Initialize OIML in your project
 oiml init
+```
 
 ## Project Structure
 
@@ -51,6 +52,7 @@ oiml init
 ```
 
 # Create your first intent
+```bash
 oiml create FEAT-1
 ```
 
