@@ -9,10 +9,11 @@ OIML allows developers to describe _what_ they want instead of _how_ to build it
 **Key Features:**
 
 - **Declarative Development** - Describe features, not implementation
-- **Version Locking** - Deterministic code generation with versioned schemas and framework guides
+- **Versioning** - Deterministic code generation with versioned schemas and framework guides
 - **Standardized Schema** - Consistent intent structure across projects
 - **Agent-Friendly** - IDEs and AI agents can easily understand intents
 - **Framework Agnostic** - Support for any database, API, or UI framework
+- **LLM & IDE Agnostic** - Not tied to any particular LLM or coding IDE
 
 ## Quick Start
 
@@ -31,6 +32,23 @@ pnpm add -g @oiml/cli
 ```bash
 # Initialize OIML in your project
 oiml init
+
+## Project Structure
+
+```
+.oiml/
+├── project.yaml              # Project configuration
+├── AGENTS.md                 # AI implementation guide
+│
+└── intents/                  # All intents (organized by ticket/issue ID)
+    ├── FEAT-1/               # One folder per intent
+    │   ├── intent.yaml       # Declarative specification
+    │   └── summary.yaml      # Output summary
+    │
+    └── FEAT-2/               # Another intent
+        ├── intent.yaml
+        └── summary.yaml
+```
 
 # Create your first intent
 oiml create FEAT-1
@@ -64,23 +82,6 @@ intents:
     path: /api/users
     entity: User
     description: Create a new user
-```
-
-## Project Structure
-
-```
-.oiml/
-├── project.yaml              # Project configuration
-├── AGENTS.md                 # AI implementation guide
-│
-└── intents/                  # All intents (organized by ticket/issue ID)
-    ├── FEAT-1/               # One folder per intent
-    │   ├── intent.yaml       # Declarative specification
-    │   └── summary.yaml      # Output summary
-    │
-    └── FEAT-2/               # Another intent
-        ├── intent.yaml
-        └── summary.yaml
 ```
 
 ## Supported Frameworks
@@ -131,7 +132,7 @@ intents:
 ### Project Management
 
 ```bash
-oiml init              # Initialize OIML project
+oiml init              # Initialize project
 oiml create [name]     # Create new intent file
 ```
 
@@ -196,13 +197,14 @@ intents:
 
 ## Intent Types
 
-| Intent Type     | Scope | Description                          |
-| --------------- | ----- | ------------------------------------ |
-| `add_entity`    | data  | Create database entity/model         |
-| `add_field`     | data  | Add fields to existing entity        |
-| `add_relation`  | data  | Create relationship between entities |
-| `add_endpoint`  | api   | Create REST API endpoint             |
-| `add_component` | ui    | Create UI component (future)         |
+| Intent Type      | Scope      | Description                          |
+| -----------------| -----------| ------------------------------------ |
+| `add_entity`     | data       | Create database entity/model         |
+| `add_field`      | data       | Add fields to existing entity        |
+| `add_relation`   | data       | Create relationship between entities |
+| `add_endpoint`   | api        | Create REST API endpoint             |
+| `add_capability` | capability | Create capability (e.g. integration) |
+| `add_component`  | ui         | Create UI component (future)         |
 
 ## 🔧 Configuration
 
