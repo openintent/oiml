@@ -262,7 +262,6 @@ We welcome contributions! Areas to contribute:
 
 2. **New Framework Support**
    - Add implementation guides for new frameworks
-   - Update compatibility matrix
    - Add template metadata
 
 3. **Template Versions**
@@ -280,7 +279,7 @@ We welcome contributions! Areas to contribute:
    - Framework-specific guides
    - Best practices
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+E-mail [admin@oiml.dev](mailto:admin@oiml.dev) if interested.
 
 ## Learn More
 
