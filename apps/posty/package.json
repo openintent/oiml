@@ -17,7 +17,6 @@
     "bcryptjs": "^2",
     "class-variance-authority": "^0",
     "clsx": "^2",
-    "dotenv": "^17",
     "lucide-react": "^0",
     "next": "^16",
     "prisma": "^6",
