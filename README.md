@@ -1,10 +1,10 @@
 # OIML - Open Intent Modeling Language
 
-**OIML (Open Intent Modeling Language)** is a standard for AI-driven development that enables declarative code generation through structured intents.
+**OIML (Open Intent Modeling Language)** is an open standard for AI-driven development that enables declarative code generation through structured intents.
 
 ## What is OIML?
 
-OIML allows developers to describe _what_ they want instead of _how_ to build it. AI agents read intent files and generate code using framework-specific implementation guides.
+OIML allows developers to describe _what_ they want instead of _how_ to build it. AI agents read intent files and generate code using framework-specific implementation guides called "packs".
 
 **Key Features:**
 
@@ -14,6 +14,7 @@ OIML allows developers to describe _what_ they want instead of _how_ to build it
 - **Agent-Friendly** - IDEs and AI agents can easily understand intents
 - **Framework Agnostic** - Support for any database, API, or UI framework
 - **LLM & IDE Agnostic** - Not tied to any particular LLM or coding IDE
+- **Open Source** - 100% free forever under Apache 2.0 license
 
 ## Quick Start
 
@@ -232,12 +233,26 @@ paths:
   types: types
 ```
 
+**MCP Server:**
+
+```json
+{
+  "mcpServers": {
+    "oiml": {
+      "type": "sse",
+      "url": "https://mcp.oiml.dev/mcp"
+    }
+  }
+}
+```
+
 ## Workflow
 
-1. **Write Intent** - Create `intent.yaml` file describing what you want
-2. **Apply Intent** - Provide the intent file in your prompt and say "apply this intent"
-3. **Review Changes** - Check generated code and output summary
-4. **Commit** - Include intent, summary, and generated code
+1. **Add MCP Server** - Used to validate intents and issue proper schema for agents to follow
+2. **Write Intent** - Create `intent.yaml` file describing what you want, adhering to OIML schema
+3. **Apply Intent** - Provide the intent file in your prompt and say "apply this intent"
+4. **Review Changes** - Check generated code and output summary
+5. **Commit** - Include intent, summary, and generated code
 
 ## Contributing
 
@@ -248,7 +263,6 @@ We welcome contributions! Areas to contribute:
 
 2. **New Framework Support**
    - Add implementation guides for new frameworks
-   - Update compatibility matrix
    - Add template metadata
 
 3. **Template Versions**
@@ -266,7 +280,7 @@ We welcome contributions! Areas to contribute:
    - Framework-specific guides
    - Best practices
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+E-mail [admin@oiml.dev](mailto:admin@oiml.dev) if interested.
 
 ## Learn More
 
