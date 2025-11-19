@@ -113,7 +113,7 @@ async function main() {
     sourcemap: !production,
     sourcesContent: false,
     platform: "node",
-    outfile: "dist/extension.js",
+    outfile: path.resolve(__dirname, "dist/extension.js"),
     external: ["vscode"],
     logLevel: "info",
     metafile: true,
