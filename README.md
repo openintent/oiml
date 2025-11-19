@@ -232,12 +232,26 @@ paths:
   types: types
 ```
 
+## MCP server
+
+```json
+{
+  "mcpServers": {
+    "oiml": {
+      "type": "sse",
+      "url": "https://mcp.oiml.dev/mcp"
+    }
+  }
+}
+```
+
 ## Workflow
 
-1. **Write Intent** - Create `intent.yaml` file describing what you want
-2. **Apply Intent** - Provide the intent file in your prompt and say "apply this intent"
-3. **Review Changes** - Check generated code and output summary
-4. **Commit** - Include intent, summary, and generated code
+1. **Add MCP Server** - Used to validate intents and issue proper schema for IDE
+2. **Write Intent** - Create `intent.yaml` file describing what you want
+3. **Apply Intent** - Provide the intent file in your prompt and say "apply this intent"
+4. **Review Changes** - Check generated code and output summary
+5. **Commit** - Include intent, summary, and generated code
 
 ## Contributing
 
