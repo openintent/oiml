@@ -24,34 +24,19 @@ OIML (Open Intent Modeling Language) is a global standard for AI-driven developm
 ├── AGENTS.md                 # Implementation guide for AI agents
 │
 └── intents/                  # All intents organized by ticket/issue ID
-    ├── POS-1/                # One folder per intent (maps to JIRA/Linear ticket)
+    ├── FEAT-1/                # One folder per intent (maps to JIRA/Linear ticket)
     │   ├── intent.yaml       # The declarative specification
-    │   ├── plan.yaml         # Execution plan (optional)
     │   └── summary.yaml      # Output summary after execution
     │
-    ├── POS-2/
-    │   ├── intent.yaml
-    │   ├── plan.yaml
-    │   └── summary.yaml
-    │
-    └── FEAT-123/
+    └── FEAT-2/
         ├── intent.yaml
-        ├── plan.yaml
         └── summary.yaml
 ```
 
 **File Naming Standards:**
 
 - `intent.yaml` - The intent specification (validated against OIML schema)
-- `plan.yaml` - Optional execution plan breaking down steps
 - `summary.yaml` - Output summary documenting what was changed
-
-**Additional Optional Files:**
-
-- `rollback.yaml` - Rollback instructions for reverting changes
-- `review.md` - Code review comments and feedback
-- `test-results.json` - Test execution results
-- `migrations.log` - Database migration logs
 
 ## Intent File Schema
 
@@ -104,8 +89,11 @@ OpenIntent supports the following intent types. For complete schema definitions,
 
 - **`add_entity`**: Create new database models/entities
 - **`add_field`**: Add fields to existing entities
-- **`add_relation`** (scope: data): Add relationships between entities
+- **`add_relation`**: Add relationships between entities
+- **`remove_entity`**: Remove existing database models/entities
 - **`remove_field`**: Remove fields from entities
+- **`rename_entity`**: Rename an existing entity/model
+- **`rename_field`**: Rename a field in an entity
 
 #### API Intents (scope: api)
 
@@ -254,6 +242,7 @@ database:
   framework: prisma # Database framework: prisma, mongoose, sqlalchemy, etc.
   schema: prisma/schema.prisma # Schema file path
   connection: env:DATABASE_URL # Connection string (env variable)
+  autorun_migrations: true # Whether to automatically run migrations (optional, defaults to false)
 ```
 
 **UI Configuration:**
@@ -276,20 +265,26 @@ When processing an intent file, follow these steps:
 
 ### 1. Validate Intent File
 
-- Use OpenIntent MCP server: `mcp_oiml_validate_intent(filePath)` if available
+- **CRITICAL:** Use OpenIntent MCP server: `mcp_oiml_validate_intent(filePath)` if available
 - Verify file exists and is valid YAML
 - Validate against schema from `@oiml/schema`
 - **Stop immediately if validation fails** - do not apply any code changes
+- **Verify intent structure**: Check that `version`, `type`, and `intents` array are present and valid
+- **Check for empty intents array**: Ensure at least one intent is specified
 
 ### 2. Read Project Configuration
 
-- Read `.openintent/project.yaml`
+- **CRITICAL:** Read `.openintent/project.yaml` - this file is required for all implementations
+- **Verify file exists**: If `project.yaml` is missing, STOP and report error to user
 - Extract framework configurations:
-  - `database.framework` - for data intents
-  - `api.framework` - for API intents (also used for capability intents)
-  - `ui.framework` - for UI intents
-- Note configured paths (`paths.api`, `paths.types`, etc.)
+  - `database.framework` - for data intents (e.g., `"prisma"`, `"ent"`)
+  - `api.framework` - for API intents (e.g., `"next"`, `"gin"`, `"express"`) - also used for capability intents
+  - `ui.framework` - for UI intents (e.g., `"next"`, `"react"`)
+- Note configured paths (`paths.api`, `paths.types`, `paths.components`, etc.)
+- **Verify paths exist**: Check that configured directories exist or can be created
 - For capability intents: Extract `framework` and `capability` fields from the intent itself
+- **Read `api.response` configuration**: Note success/error response structure for API endpoints
+- **Read `database.autorun_migrations`**: Check if migrations should be executed automatically (defaults to `false` if not set)
 
 ### 3. Check Framework and OIML Version Compatibility
 
@@ -304,11 +299,17 @@ Before processing any intents, verify compatibility:
 
    ```typescript
    const template = await mcp_oiml_resolve_template({
-     intent_schema_version: intentVersion,
-     framework: frameworkName,
-     framework_version: installedVersion
+     intent_schema_version: intentVersion, // From intent.yaml version field
+     framework: frameworkName, // From project.yaml or intent
+     framework_version: installedVersion // From package.json
    });
    ```
+
+   **If MCP tool is not available**, manually locate template manifest:
+   - For data intents: `@oiml/schema/templates/database/{framework}/{version}/manifest.json`
+   - For API intents: `@oiml/schema/templates/api/{framework}/{version}/manifest.json`
+   - For capability intents: `@oiml/schema/templates/capability/{capability_type}/{framework}/{version}/manifest.json`
+   - Read `manifest.json` to verify compatibility
 
 3. **Validate compatibility**:
    - Locate template manifest:
@@ -431,10 +432,16 @@ For each IR object in the transformation result:
 
 ### 6. Verify and Complete
 
-- Check for linting errors
-- Verify file paths match `project.yaml` configuration
-- Ensure all imports are correct
-- Test generated code follows project patterns
+- **Check for linting errors**: Run linter on all modified files
+- **Verify file paths match `project.yaml` configuration**: Ensure files are created in correct directories
+- **Ensure all imports are correct**: Verify import paths match project structure
+- **Test generated code follows project patterns**: Check code style matches existing codebase
+- **Verify response formats**: Ensure API responses match `api.response` configuration from `project.yaml`
+- **Check TypeScript types**: Ensure all types compile without errors
+- **Verify database migrations**: For data intents, check `database.autorun_migrations`:
+  - If `true`: Ensure migrations were created and applied
+  - If `false` or not set: Ensure migration files were created (note in summary that manual migration application is required)
+- **Test critical paths**: Verify generated endpoints/handlers can be imported and used
 
 **Important**: All detailed implementation steps, code examples, and type mappings are in the framework-specific guides. This document only provides high-level orchestration.
 
@@ -470,12 +477,31 @@ All framework-specific code generation patterns, examples, and best practices ar
 1. **Response Structure**: Always follow `api.response` configuration from `project.yaml`
    - Success responses use `api.response.success.object` field (e.g., `data`)
    - Error responses use `api.response.error.object` field (e.g., `error`)
+   - **CRITICAL:** If `api.response` is not configured, use default structure: `{ data: ... }` for success, `{ success: false, error: "..." }` for errors
 
 2. **Type Safety**: Generate proper types for all entities and responses
+   - **Always update** `packages/types/index.ts` after database schema changes
+   - Use correct nullable types: `string | null` (not `string?`) for Prisma nullable fields
+   - Ensure types match database framework return types
 
 3. **Error Handling**: Include comprehensive error handling with appropriate HTTP status codes
+   - Always catch and handle errors gracefully
+   - Return proper error responses following `api.response.error` format
+   - Log errors for debugging but don't expose sensitive details to clients
 
 4. **Database Integration**: Use the database client specified in `database.framework`
+   - Import client from correct location (e.g., `@/lib/prisma` for Prisma)
+   - Follow framework-specific patterns for queries and mutations
+   - Always handle database errors appropriately
+
+5. **Migration Safety**: For data intents, migrations are **always created**, but only **automatically applied** if `database.autorun_migrations: true` in `project.yaml`
+   - **CRITICAL:** Migrations are always created (migration files are generated), but only automatically applied if `database.autorun_migrations: true`:
+     - If `database.autorun_migrations: true`: Migrations are created and applied automatically after schema changes
+     - If `database.autorun_migrations: false` or not set: Migration files are created but not applied (migrations can be run manually later)
+   - Regenerate database client after migrations (only if `autorun_migrations: true` and migrations were applied)
+   - Update TypeScript types after schema changes
+   - Update API endpoints when fields are added/modified
+   - **Note:** Framework-specific guides contain detailed migration instructions that respect the `autorun_migrations` setting
 
 **For complete code examples and templates, refer to the framework-specific implementation guides.**
 
@@ -519,7 +545,9 @@ for (const ir of irObjects) {
 5. **Type safety**: Always use TypeScript types, never `any`
 6. **Error handling**: Include comprehensive error handling
 7. **Code organization**: Respect project.yaml paths and structure
-8. **Migration safety**: Always create migrations for schema changes
+8. **Migration safety**: Migrations are always created, but only automatically applied if `database.autorun_migrations: true`:
+   - If `true`: Migrations are created and applied automatically
+   - If `false` or not set: Migration files are created but not applied (run manually later)
 9. **Documentation**: Add comments for complex logic
 10. **Testing**: Generate test-friendly code structures
 
@@ -531,6 +559,7 @@ for (const ir of irObjects) {
 
 1. ✅ **Validate** intent file against schema
 2. ✅ **Read** `.openintent/project.yaml`
+   - Check `database.autorun_migrations` setting
 3. ✅ **Check** framework compatibility and resolve template versions
 4. ✅ **Transform** intent file to IR using `mcp_oiml_transform_to_ir`
    - Get fully resolved field types
@@ -540,7 +569,8 @@ for (const ir of irObjects) {
    - Consult database framework guide (e.g., Prisma guide)
    - Use IR object (not raw intent) for code generation
    - Add model to schema
-   - Create migration
+   - Create migration files (always)
+   - Apply migrations (only if `database.autorun_migrations: true`)
    - Update TypeScript types
 6. ✅ **Process** `add_endpoint` IR:
    - Consult API framework guide (e.g., Next.js guide)
@@ -558,7 +588,7 @@ for (const ir of irObjects) {
 After successfully applying intents, create an output summary file:
 
 1. **Location**: `.openintent/intents/{INTENT-ID}/summary.yaml`
-   - Example: `intents/POS-1/intent.yaml` → `intents/POS-1/summary.yaml`
+   - Example: `intents/FEAT-1/intent.yaml` → `intents/FEAT-1/summary.yaml`
    - Co-located with the intent file for easy traceability
 
 2. **Structure**: Document all changes made (see `@oiml/schema` for output schema)

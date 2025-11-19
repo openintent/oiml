@@ -24,34 +24,19 @@ OIML (Open Intent Modeling Language) is a global standard for AI-driven developm
 ├── AGENTS.md                 # Implementation guide for AI agents
 │
 └── intents/                  # All intents organized by ticket/issue ID
-    ├── POS-1/                # One folder per intent (maps to JIRA/Linear ticket)
+    ├── FEAT-1/                # One folder per intent (maps to JIRA/Linear ticket)
     │   ├── intent.yaml       # The declarative specification
-    │   ├── plan.yaml         # Execution plan (optional)
     │   └── summary.yaml      # Output summary after execution
     │
-    ├── POS-2/
-    │   ├── intent.yaml
-    │   ├── plan.yaml
-    │   └── summary.yaml
-    │
-    └── FEAT-123/
+    └── FEAT-2/
         ├── intent.yaml
-        ├── plan.yaml
         └── summary.yaml
 ```
 
 **File Naming Standards:**
 
 - `intent.yaml` - The intent specification (validated against OIML schema)
-- `plan.yaml` - Optional execution plan breaking down steps
 - `summary.yaml` - Output summary documenting what was changed
-
-**Additional Optional Files:**
-
-- `rollback.yaml` - Rollback instructions for reverting changes
-- `review.md` - Code review comments and feedback
-- `test-results.json` - Test execution results
-- `migrations.log` - Database migration logs
 
 ## Intent File Schema
 
@@ -76,19 +61,25 @@ All intent file schemas are defined in the [`@oiml/schema`](https://www.npmjs.co
 
 **IMPORTANT:** Before generating database schema code for any data intent (`add_entity`, `add_field`, `add_relation`, `remove_field`), you MUST:
 
-1. **Read `project.yaml`** to determine the database configuration
-2. **Check the `database.framework` field** to identify the framework (e.g., `"prisma"`, `"sqlalchemy"`, etc.)
+1. **Validate and transform the intent to IR** using `mcp_oiml_transform_to_ir`
+   - This converts human-authored intents to a deterministic, framework-agnostic representation
+   - All field types are fully resolved (e.g., `"string"` → `{ kind: "Scalar", scalar: "String" }`)
+   - All defaults are explicitly stated (table names, primary keys, nullable fields)
+   - All validations are normalized (max_length, unique constraints, etc.)
+2. **Read `project.yaml`** to determine the database configuration
+3. **Check the `database.framework` field** to identify the framework (e.g., `"prisma"`, `"sqlalchemy"`, etc.)
    - This framework name will be used in the compatibility check (see "Implementation Workflow" section below) to resolve the compatible versioned guide
    - Do NOT use hardcoded guide URLs - the specific guide version will be determined through compatibility checking
-3. **Check framework and OIML version compatibility** (see "Implementation Workflow" → step 3) to resolve the compatible versioned guide
-4. **Consult the compatible framework guide** (resolved through compatibility checking) for:
+4. **Check framework and OIML version compatibility** (see "Implementation Workflow" → step 3) to resolve the compatible versioned guide
+5. **Consult the compatible framework guide** (resolved through compatibility checking) for:
    - Complete field type mappings
    - Implementation steps for each intent type
    - Code examples and templates
    - Migration handling
    - Best practices
+6. **Use the IR object** (not the raw intent) as the source for all code generation
 
-The framework-specific guides contain all the details needed for implementation. This document provides high-level intent structure only.
+The framework-specific guides contain all the details needed for implementation. This document provides high-level orchestration, and the IR provides the normalized data for code generation.
 
 ### Supported Intent Types
 
@@ -332,12 +323,94 @@ Before processing any intents, verify compatibility:
    - Report detailed error to user with version information
    - Do NOT proceed with any code generation
 
-### 4. Process Each Intent
+### 4. Transform Intent to Intermediate Representation (IR)
 
-For each intent in the `intents` array:
+Before generating any code, transform the human-authored intent file to its Intermediate Representation (IR):
 
-1. **Identify the intent type** (`kind`)
-2. **Use the compatible framework guide** determined in step 3:
+1. **Call the transform_to_ir MCP tool**:
+
+   ```typescript
+   const result = await mcp_oiml_transform_to_ir({
+     content: intentFileContent, // Raw YAML/JSON content
+     format: "yaml", // or "json"
+     intentId: "FEAT-123", // Optional: Intent ID for provenance
+     projectId: "my-project" // Optional: Project ID for provenance
+   });
+   ```
+
+2. **Extract the IR**:
+   - The tool returns a structured IR object with:
+     - `success`: boolean indicating transformation success
+     - `ir`: Array of IR objects (one per intent in the file)
+     - `metadata`: Metadata about the transformation
+   - Each IR object contains:
+     - Fully resolved field types (e.g., `"string"` → `{ kind: "Scalar", scalar: "String" }`)
+     - Inferred defaults (table names, primary keys, nullable fields, etc.)
+     - Storage configuration (table name, primary key strategy)
+     - Validation rules (max length, unique constraints, etc.)
+     - Provenance information (intent ID, project ID, timestamps)
+     - Diagnostics (warnings, info messages about inferences)
+
+3. **Use IR for code generation**:
+   - **IMPORTANT**: Use the IR objects (not the original intent.yaml) as the source for all code generation
+   - The IR is a deterministic, normalized, framework-agnostic representation
+   - Benefits of using IR:
+     - No ambiguity - all types are fully resolved
+     - No guessing - all defaults are explicitly stated
+     - Consistent output - same IR always produces same code
+     - Framework-agnostic - IR is independent of implementation details
+
+4. **Handle transformation errors**:
+   - If `success` is false or IR is missing, halt immediately
+   - Report any validation or transformation errors to user
+   - Do NOT proceed with code generation if IR transformation fails
+
+**Example IR Structure** (for reference):
+
+```json
+{
+  "kind": "AddEntity",
+  "irVersion": "1.0.0",
+  "provenance": {
+    "intentId": "FEAT-123",
+    "projectId": "my-project",
+    "generatedAt": "2025-11-17T22:57:46.998Z",
+    "sourceIntentVersion": "0.1.0"
+  },
+  "entity": {
+    "name": "User",
+    "storage": {
+      "kind": "RelationalTable",
+      "tableName": "users",
+      "primaryKey": { "kind": "Single", "field": "id" }
+    },
+    "fields": [
+      {
+        "name": "id",
+        "type": { "kind": "Scalar", "scalar": "UUID" },
+        "nullable": false,
+        "isPrimary": true,
+        "generated": { "strategy": "UUID" }
+      },
+      {
+        "name": "email",
+        "type": { "kind": "Scalar", "scalar": "String" },
+        "nullable": false,
+        "validations": [{ "kind": "MaxLength", "max": 255 }]
+      }
+    ]
+  },
+  "diagnostics": [{ "level": "Info", "code": "IR002", "message": "Inferred table name 'users'" }]
+}
+```
+
+### 5. Process Each Intent IR
+
+For each IR object in the transformation result:
+
+1. **Identify the intent type** (`kind` field in IR)
+2. **Use the IR object** (not the original intent) for code generation
+3. **Use the compatible framework guide** determined in step 3:
    - Data intents → Use `@oiml/schema/templates/database/{framework}/{version}/AGENTS.md`
    - API intents (`add_endpoint`, `update_endpoint`) → Use `@oiml/schema/templates/api/{framework}/{version}/AGENTS.md`
    - Capability intents (`add_capability`) → Use `@oiml/schema/templates/capability/{capability_type}/{framework}/{version}/AGENTS.md`
@@ -347,13 +420,17 @@ For each intent in the `intents` array:
 
    The specific version was validated for compatibility in step 3.
 
-3. **Follow the framework guide** for detailed implementation steps
-   - For data intents: Consult the database framework guide for specific implementation patterns
-   - For `rename_entity` and `rename_field`: Follow renaming best practices to maintain referential integrity
-   - For `remove_entity`: Ensure cascade delete rules are properly handled if specified
-4. **Generate code** according to the guide's instructions
+4. **Follow the framework guide** for detailed implementation steps
+5. **Generate code** according to the guide's instructions, using the IR object as the source
 
-### 5. Verify and Complete
+**Key Benefits of Using IR**:
+
+- Framework guides can rely on fully resolved types and configurations
+- No need for type inference in code generators
+- Consistent code generation across all tools and agents
+- Better error messages and diagnostics
+
+### 6. Verify and Complete
 
 - **Check for linting errors**: Run linter on all modified files
 - **Verify file paths match `project.yaml` configuration**: Ensure files are created in correct directories
@@ -430,28 +507,49 @@ All framework-specific code generation patterns, examples, and best practices ar
 
 ## MCP Server Integration
 
-If available, use the OpenIntent MCP server for validation:
+If available, use the OpenIntent MCP server for validation and transformation:
 
 ```javascript
-// Validate intent file
+// 1. Validate intent file
 const validation = await mcp_oiml_validate_intent(filePath);
 if (!validation.valid) {
   throw new Error(`Invalid intent: ${validation.message}`);
+}
+
+// 2. Transform intent to IR
+const irResult = await mcp_oiml_transform_to_ir({
+  content: intentFileContent,
+  format: "yaml",
+  intentId: "FEAT-123",
+  projectId: "my-project"
+});
+
+if (!irResult.success) {
+  throw new Error("Failed to transform intent to IR");
+}
+
+// 3. Use IR for code generation
+const irObjects = irResult.ir;
+for (const ir of irObjects) {
+  // Generate code using the IR object
+  // All types are resolved, defaults are explicit
 }
 ```
 
 ## Best Practices
 
 1. **Always validate**: Use MCP server validation when available
-2. **Follow conventions**: Match existing code patterns in the project
-3. **Type safety**: Always use TypeScript types, never `any`
-4. **Error handling**: Include comprehensive error handling
-5. **Code organization**: Respect project.yaml paths and structure
-6. **Migration safety**: Migrations are always created, but only automatically applied if `database.autorun_migrations: true`:
+2. **Always transform to IR**: Use `mcp_oiml_transform_to_ir` to convert intents to IR before generating code
+3. **Use IR for code generation**: Never use the raw intent.yaml for code generation - always use the transformed IR
+4. **Follow conventions**: Match existing code patterns in the project
+5. **Type safety**: Always use TypeScript types, never `any`
+6. **Error handling**: Include comprehensive error handling
+7. **Code organization**: Respect project.yaml paths and structure
+8. **Migration safety**: Migrations are always created, but only automatically applied if `database.autorun_migrations: true`:
    - If `true`: Migrations are created and applied automatically
    - If `false` or not set: Migration files are created but not applied (run manually later)
-7. **Documentation**: Add comments for complex logic
-8. **Testing**: Generate test-friendly code structures
+9. **Documentation**: Add comments for complex logic
+10. **Testing**: Generate test-friendly code structures
 
 ## Example: Processing an Intent File
 
@@ -462,19 +560,26 @@ if (!validation.valid) {
 1. ✅ **Validate** intent file against schema
 2. ✅ **Read** `.openintent/project.yaml`
    - Check `database.autorun_migrations` setting
-3. ✅ **Process** `add_entity` intent:
+3. ✅ **Check** framework compatibility and resolve template versions
+4. ✅ **Transform** intent file to IR using `mcp_oiml_transform_to_ir`
+   - Get fully resolved field types
+   - Get inferred defaults (table names, primary keys, etc.)
+   - Get validation rules and storage configuration
+5. ✅ **Process** `add_entity` IR:
    - Consult database framework guide (e.g., Prisma guide)
+   - Use IR object (not raw intent) for code generation
    - Add model to schema
    - Create migration files (always)
    - Apply migrations (only if `database.autorun_migrations: true`)
    - Update TypeScript types
-4. ✅ **Process** `add_endpoint` intent:
+6. ✅ **Process** `add_endpoint` IR:
    - Consult API framework guide (e.g., Next.js guide)
+   - Use IR object (not raw intent) for code generation
    - Create route handler file
    - Implement HTTP method
    - Add response types
-5. ✅ **Verify** all generated code
-6. ✅ **Create** output summary file
+7. ✅ **Verify** all generated code
+8. ✅ **Create** output summary file
 
 ---
 
@@ -483,7 +588,7 @@ if (!validation.valid) {
 After successfully applying intents, create an output summary file:
 
 1. **Location**: `.openintent/intents/{INTENT-ID}/summary.yaml`
-   - Example: `intents/POS-1/intent.yaml` → `intents/POS-1/summary.yaml`
+   - Example: `intents/FEAT-1/intent.yaml` → `intents/FEAT-1/summary.yaml`
    - Co-located with the intent file for easy traceability
 
 2. **Structure**: Document all changes made (see `@oiml/schema` for output schema)

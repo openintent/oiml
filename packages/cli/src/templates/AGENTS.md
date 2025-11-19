@@ -24,11 +24,11 @@ OIML (Open Intent Modeling Language) is a global standard for AI-driven developm
 ├── AGENTS.md                 # Implementation guide for AI agents
 │
 └── intents/                  # All intents organized by ticket/issue ID
-    ├── POS-1/                # One folder per intent (maps to JIRA/Linear ticket)
+    ├── FEAT-1/                # One folder per intent (maps to JIRA/Linear ticket)
     │   ├── intent.yaml       # The declarative specification
     │   └── summary.yaml      # Output summary after execution
     │
-    └── POS-2/
+    └── FEAT-2/
         ├── intent.yaml
         └── summary.yaml
 ```
@@ -588,7 +588,7 @@ for (const ir of irObjects) {
 After successfully applying intents, create an output summary file:
 
 1. **Location**: `.openintent/intents/{INTENT-ID}/summary.yaml`
-   - Example: `intents/POS-1/intent.yaml` → `intents/POS-1/summary.yaml`
+   - Example: `intents/FEAT-1/intent.yaml` → `intents/FEAT-1/summary.yaml`
    - Co-located with the intent file for easy traceability
 
 2. **Structure**: Document all changes made (see `@oiml/schema` for output schema)

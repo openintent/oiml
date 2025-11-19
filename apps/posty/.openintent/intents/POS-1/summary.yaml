@@ -60,7 +60,7 @@ changes:
 errors: []
 
 summary: |
-  Successfully applied all 9 intents from POS-1/intent.yaml:
+  Successfully applied all 9 intents from FEAT-1/intent.yaml:
   - Added 3 database entities (User, Post, Profile) to Prisma schema
   - Configured 2 relations (Post->User many-to-one, Profile->User one-to-one)
   - Created and applied Prisma migration
