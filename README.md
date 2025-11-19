@@ -88,7 +88,7 @@ intents:
 
 ## Supported Frameworks
 
-### Database
+### Database/ORM
 
 - ✅ Prisma
 - ✅ Ent
