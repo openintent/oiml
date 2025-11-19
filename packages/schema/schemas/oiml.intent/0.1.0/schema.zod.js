@@ -386,7 +386,7 @@ export const AddCapability = z
     kind: z.literal("add_capability"),
     scope: z.literal("capability"),
     capability: z
-      .enum(["auth", "file_upload", "file_stream", "sse", "websocket"])
+      .enum(["auth", "email", "storage", "file_stream", "sse", "websocket"])
       .describe("Type of capability to add"),
     framework: z.string().min(1).describe("Target framework (e.g., 'gin', 'next', 'express')"),
     provider: z.string().min(1).optional().describe("Provider/library name (e.g., 'jwt', 'next-auth', 'passport')"),

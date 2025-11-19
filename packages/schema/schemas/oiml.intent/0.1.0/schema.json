@@ -1190,7 +1190,7 @@
               },
               "capability": {
                 "type": "string",
-                "enum": ["auth", "file_upload", "file_stream", "sse", "websocket"],
+                "enum": ["auth", "email", "storage", "file_stream", "sse", "websocket"],
                 "description": "Type of capability to add"
               },
               "framework": {
