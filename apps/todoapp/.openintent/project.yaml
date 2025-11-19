@@ -3,7 +3,7 @@ name: TodoApp
 description: >
   A simple todo application built on the OpenIntent framework. It manages tasks
   with a clean API and modern UI.
-oiml_version: 0.1.0
+version: 0.1.0
 
 api:
   framework: next

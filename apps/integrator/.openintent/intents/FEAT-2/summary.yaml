@@ -247,7 +247,7 @@ template_info:
 compatibility:
   next_version: 16.0.1
   supabase_js_version: 2.83.0
-  oiml_version: 0.1.0
+  version: 0.1.0
 
 notes: |
   - Supabase Storage includes a global CDN with 285+ cities for fast file delivery

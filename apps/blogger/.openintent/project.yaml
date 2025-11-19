@@ -1,7 +1,7 @@
 # Schema reference: https://github.com/openintent/oiml/blob/main/packages/schema/project/index.ts
 name: blogger
 description: ""
-oiml_version: 0.1.0
+version: 0.1.0
 api:
   language: typescript
   framework: next

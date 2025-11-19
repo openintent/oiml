@@ -210,7 +210,7 @@ template_info:
 compatibility:
   next_version: 16.0.1
   resend_version: 6.5.0
-  oiml_version: 0.1.0
+  version: 0.1.0
 
 notes: |
   - Resend requires domain verification for production email sending

@@ -210,7 +210,7 @@ intents:
 
 ```yaml
 name: My App
-oiml_version: 0.1.x
+version: 0.1.x
 
 api:
   framework: next

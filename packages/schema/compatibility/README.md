@@ -97,7 +97,7 @@ When you update a template to support new package versions:
 
 **Given:**
 
-- project.yaml: `oiml_version: "0.1.0"`
+- project.yaml: `version: "0.1.0"`
 - package.json: `"prisma": "6.19.0"`
 
 **Resolution:**

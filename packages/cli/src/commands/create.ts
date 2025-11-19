@@ -110,7 +110,7 @@ export async function createCommand(name?: string) {
     console.log(chalk.red("❌ Error: project.yaml validation failed"));
     if (!projectValidation.version) {
       console.log(chalk.gray("Please add an oiml_version field to .openintent/project.yaml"));
-      console.log(chalk.gray("Example: oiml_version: 0.1.0"));
+      console.log(chalk.gray("Example: version: 0.1.0"));
     }
     process.exit(1);
   }

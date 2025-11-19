@@ -90,7 +90,7 @@ function getUiFrameworkChoices(language: string | undefined): string[] {
 interface ProjectConfig {
   name: string;
   description: string;
-  oiml_version: string;
+  version: string;
   api?: {
     framework?: string;
     language?: string;
@@ -263,7 +263,7 @@ async function promptForProjectDetails(detected: Partial<ProjectConfig>, skipPro
     return {
       name: defaultName,
       description: defaultDescription,
-      oiml_version: oimlVersion,
+      version: oimlVersion,
       ui: detected.ui || { framework: "react", language: "typescript" },
       api: detected.api || { framework: "express", language: "typescript" },
       database: detected.database,
@@ -369,7 +369,7 @@ async function promptForProjectDetails(detected: Partial<ProjectConfig>, skipPro
   const config: ProjectConfig = {
     name: answers.name,
     description: answers.description,
-    oiml_version: oimlVersion,
+    version: oimlVersion,
     intents: {
       directory: ".openintent/intents"
     }
@@ -425,7 +425,7 @@ function generateProjectYaml(config: ProjectConfig): string {
   const yamlObj: any = {
     name: config.name,
     description: config.description,
-    oiml_version: config.oiml_version
+    version: config.version
   };
 
   // Include API if it exists (even if framework is "none")
