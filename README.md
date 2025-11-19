@@ -247,7 +247,7 @@ paths:
 
 ## Workflow
 
-1. **Add MCP Server** - Used to validate intents and issue proper schema for IDE
+1. **Add MCP Server** - Used to validate intents and issue proper schema for agents to follow during patch generation
 2. **Write Intent** - Create `intent.yaml` file describing what you want
 3. **Apply Intent** - Provide the intent file in your prompt and say "apply this intent"
 4. **Review Changes** - Check generated code and output summary
