@@ -52,6 +52,7 @@ oiml init
 ```
 
 # Create your first intent
+
 ```bash
 oiml create FEAT-1
 ```
@@ -200,7 +201,7 @@ intents:
 ## Intent Types
 
 | Intent Type      | Scope      | Description                          |
-| -----------------| -----------| ------------------------------------ |
+| ---------------- | ---------- | ------------------------------------ |
 | `add_entity`     | data       | Create database entity/model         |
 | `add_field`      | data       | Add fields to existing entity        |
 | `add_relation`   | data       | Create relationship between entities |

@@ -121,4 +121,3 @@ docker cp temp:/schema.zod.js ./schema.zod.js
 docker cp temp:/metadata.json ./metadata.json
 docker rm temp
 ```
-

@@ -37,4 +37,3 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
     return NextResponse.json(errorResponse, { status: 500 });
   }
 }
-

@@ -37,31 +37,31 @@ project/
 
 ### OIML Type → Ent Type
 
-| OIML Type | Ent Type    | Ent Method        | Notes                |
-| --------------- | ----------- | ----------------- | -------------------- |
-| `string`        | `string`    | `field.String()`  | Text field           |
-| `text`          | `string`    | `field.String()`  | Long text content    |
-| `integer`       | `int`       | `field.Int()`     | 32-bit integer       |
-| `bigint`        | `int64`     | `field.Int64()`   | 64-bit integer       |
-| `float`         | `float64`   | `field.Float64()` | Floating point       |
-| `boolean`       | `bool`      | `field.Bool()`    | True/false value     |
-| `datetime`      | `time.Time` | `field.Time()`    | Date and time        |
-| `date`          | `time.Time` | `field.Time()`    | Date only            |
-| `uuid`          | `string`    | `field.UUID()`    | UUID string          |
-| `json`          | `any`       | `field.JSON()`    | JSON data            |
-| `enum`          | Custom type | `field.Enum()`    | Requires enum values |
-| `array`         | `[]Type`    | `field.Strings()` | Array of strings     |
-| `bytes`         | `[]byte`    | `field.Bytes()`   | Binary data          |
+| OIML Type  | Ent Type    | Ent Method        | Notes                |
+| ---------- | ----------- | ----------------- | -------------------- |
+| `string`   | `string`    | `field.String()`  | Text field           |
+| `text`     | `string`    | `field.String()`  | Long text content    |
+| `integer`  | `int`       | `field.Int()`     | 32-bit integer       |
+| `bigint`   | `int64`     | `field.Int64()`   | 64-bit integer       |
+| `float`    | `float64`   | `field.Float64()` | Floating point       |
+| `boolean`  | `bool`      | `field.Bool()`    | True/false value     |
+| `datetime` | `time.Time` | `field.Time()`    | Date and time        |
+| `date`     | `time.Time` | `field.Time()`    | Date only            |
+| `uuid`     | `string`    | `field.UUID()`    | UUID string          |
+| `json`     | `any`       | `field.JSON()`    | JSON data            |
+| `enum`     | Custom type | `field.Enum()`    | Requires enum values |
+| `array`    | `[]Type`    | `field.Strings()` | Array of strings     |
+| `bytes`    | `[]byte`    | `field.Bytes()`   | Binary data          |
 
 ### Field Attributes
 
-| OIML Attribute | Ent Implementation                             | Database Impact                           |
-| -------------------- | ---------------------------------------------- | ----------------------------------------- |
-| `required: true`     | No `.Optional()` call                          | NOT NULL constraint                       |
-| `required: false`    | Add `.Optional()`                              | NULL allowed                              |
-| `unique: true`       | Add `.Unique()`                                | **Creates UNIQUE constraint in database** |
-| `default: value`     | Add `.Default(value)`                          | DEFAULT value in database                 |
-| `max_length: N`      | Add `.MaxLen(N)` for strings + `.SchemaType()` | **VARCHAR(N) constraint in database**     |
+| OIML Attribute    | Ent Implementation                             | Database Impact                           |
+| ----------------- | ---------------------------------------------- | ----------------------------------------- |
+| `required: true`  | No `.Optional()` call                          | NOT NULL constraint                       |
+| `required: false` | Add `.Optional()`                              | NULL allowed                              |
+| `unique: true`    | Add `.Unique()`                                | **Creates UNIQUE constraint in database** |
+| `default: value`  | Add `.Default(value)`                          | DEFAULT value in database                 |
+| `max_length: N`   | Add `.MaxLen(N)` for strings + `.SchemaType()` | **VARCHAR(N) constraint in database**     |
 
 **Important**:
 
@@ -460,12 +460,12 @@ func (Customer) Fields() []ent.Field {
 
 ### Relation Types
 
-| OIML Relation | Ent Implementation                                  |
-| ------------------- | --------------------------------------------------- |
-| `one_to_one`        | `edge.To()` on one side, `edge.From()` on other     |
-| `one_to_many`       | `edge.To()` on many side, `edge.From()` on one side |
-| `many_to_one`       | `edge.To()` on many side, `edge.From()` on one side |
-| `many_to_many`      | `edge.To()` on both sides with `edge.From()`        |
+| OIML Relation  | Ent Implementation                                  |
+| -------------- | --------------------------------------------------- |
+| `one_to_one`   | `edge.To()` on one side, `edge.From()` on other     |
+| `one_to_many`  | `edge.To()` on many side, `edge.From()` on one side |
+| `many_to_one`  | `edge.To()` on many side, `edge.From()` on one side |
+| `many_to_many` | `edge.To()` on both sides with `edge.From()`        |
 
 ### Steps for `many_to_one` Relation
 

@@ -5,7 +5,7 @@
 > **Compatible Next.js Versions:** 14.x.x, 15.x.x, 16.x.x  
 > **Compatible Supabase JS Versions:** 2.x.x  
 > **Last Updated:** 2025-11-19
-> 
+>
 > **⚠️ Next.js 16 Breaking Changes:** Route handler `params` are now async. See implementation notes below.
 
 This guide provides complete implementation instructions for adding storage capabilities to Next.js applications using [Supabase Storage](https://supabase.com/docs/guides/storage) with the `add_capability` intent.

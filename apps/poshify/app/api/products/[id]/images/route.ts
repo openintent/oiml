@@ -63,4 +63,3 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json(errorResponse, { status: 500 });
   }
 }
-

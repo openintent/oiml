@@ -14,33 +14,33 @@ Use this guide when `database.framework` in `project.yaml` is set to `"prisma"`.
 
 ### OIML Type → Prisma Type
 
-| OIML Type | Prisma Type | Prisma Modifier    | Notes                                   |
-| --------------- | ----------- | ------------------ | --------------------------------------- |
-| `string`        | `String`    | `@db.VarChar(255)` | Use `max_length` attribute if specified |
-| `text`          | `String`    | `@db.Text`         | For long text content                   |
-| `integer`       | `Int`       | -                  | 32-bit integer                          |
-| `bigint`        | `BigInt`    | -                  | 64-bit integer                          |
-| `float`         | `Float`     | -                  | Floating point number                   |
-| `decimal`       | `Decimal`   | -                  | Precise decimal number                  |
-| `boolean`       | `Boolean`   | -                  | True/false value                        |
-| `datetime`      | `DateTime`  | -                  | Date and time                           |
-| `date`          | `DateTime`  | `@db.Date`         | Date only                               |
-| `time`          | `DateTime`  | `@db.Time`         | Time only                               |
-| `uuid`          | `String`    | `@db.Uuid`         | UUID string                             |
-| `json`          | `Json`      | -                  | JSON data                               |
-| `enum`          | `EnumName`  | -                  | Requires enum definition                |
-| `array`         | `Type[]`    | -                  | Array of specified type                 |
-| `bytes`         | `Bytes`     | -                  | Binary data                             |
+| OIML Type  | Prisma Type | Prisma Modifier    | Notes                                   |
+| ---------- | ----------- | ------------------ | --------------------------------------- |
+| `string`   | `String`    | `@db.VarChar(255)` | Use `max_length` attribute if specified |
+| `text`     | `String`    | `@db.Text`         | For long text content                   |
+| `integer`  | `Int`       | -                  | 32-bit integer                          |
+| `bigint`   | `BigInt`    | -                  | 64-bit integer                          |
+| `float`    | `Float`     | -                  | Floating point number                   |
+| `decimal`  | `Decimal`   | -                  | Precise decimal number                  |
+| `boolean`  | `Boolean`   | -                  | True/false value                        |
+| `datetime` | `DateTime`  | -                  | Date and time                           |
+| `date`     | `DateTime`  | `@db.Date`         | Date only                               |
+| `time`     | `DateTime`  | `@db.Time`         | Time only                               |
+| `uuid`     | `String`    | `@db.Uuid`         | UUID string                             |
+| `json`     | `Json`      | -                  | JSON data                               |
+| `enum`     | `EnumName`  | -                  | Requires enum definition                |
+| `array`    | `Type[]`    | -                  | Array of specified type                 |
+| `bytes`    | `Bytes`     | -                  | Binary data                             |
 
 ### Field Attributes
 
-| OIML Attribute | Prisma Implementation                |
-| -------------------- | ------------------------------------ |
-| `required: true`     | No `?` after type (e.g., `String`)   |
-| `required: false`    | Add `?` after type (e.g., `String?`) |
-| `unique: true`       | Add `@unique` attribute              |
-| `default: value`     | Add `@default(value)` attribute      |
-| `max_length: N`      | Use `@db.VarChar(N)` for strings     |
+| OIML Attribute    | Prisma Implementation                |
+| ----------------- | ------------------------------------ |
+| `required: true`  | No `?` after type (e.g., `String`)   |
+| `required: false` | Add `?` after type (e.g., `String?`) |
+| `unique: true`    | Add `@unique` attribute              |
+| `default: value`  | Add `@default(value)` attribute      |
+| `max_length: N`   | Use `@db.VarChar(N)` for strings     |
 
 ### Special Default Values
 
@@ -291,12 +291,12 @@ export interface CustomerInterface {
 
 ### Relation Types
 
-| OIML Relation | Prisma Implementation                                          |
-| ------------------- | -------------------------------------------------------------- |
-| `one_to_one`        | Foreign key field + `@unique`, relation field with `@relation` |
-| `one_to_many`       | Reverse: array field on target entity                          |
-| `many_to_one`       | Foreign key field, relation field with `@relation`             |
-| `many_to_many`      | Array fields on both sides, Prisma creates join table          |
+| OIML Relation  | Prisma Implementation                                          |
+| -------------- | -------------------------------------------------------------- |
+| `one_to_one`   | Foreign key field + `@unique`, relation field with `@relation` |
+| `one_to_many`  | Reverse: array field on target entity                          |
+| `many_to_one`  | Foreign key field, relation field with `@relation`             |
+| `many_to_many` | Array fields on both sides, Prisma creates join table          |
 
 ### Steps for `many_to_one` Relation
 
