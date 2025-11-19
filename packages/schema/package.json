@@ -29,5 +29,8 @@
   },
   "dependencies": {
     "zod": "^3"
+  },
+  "devDependencies": {
+    "zod-to-json-schema": "^3"
   }
 }
