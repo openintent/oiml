@@ -11,10 +11,34 @@ datasource db {
 }
 
 model User {
-  id         String   @id @default(uuid()) @db.Uuid
-  email      String   @unique @db.VarChar(255)
-  first_name String   @db.VarChar(255)
-  last_name  String   @db.VarChar(255)
+  id         String    @id @default(uuid()) @db.Uuid
+  email      String    @unique @db.VarChar(255)
+  first_name String    @db.VarChar(255)
+  last_name  String    @db.VarChar(255)
+  comments   Comment[]
 
   @@map("users")
+}
+
+model Post {
+  id         String    @id @default(uuid()) @db.Uuid
+  title      String    @db.VarChar(255)
+  content    String?   @db.Text
+  published  Boolean   @default(false)
+  created_at DateTime  @default(now())
+  comments   Comment[]
+
+  @@map("posts")
+}
+
+model Comment {
+  id         String   @id @default(uuid()) @db.Uuid
+  content    String
+  created_at DateTime @default(now())
+  post_id    String   @db.Uuid
+  user_id    String   @db.Uuid
+  post       Post     @relation(fields: [post_id], references: [id])
+  user       User     @relation(fields: [user_id], references: [id])
+
+  @@map("comments")
 }

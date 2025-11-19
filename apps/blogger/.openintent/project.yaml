@@ -10,6 +10,7 @@ database:
   framework: prisma
   schema: prisma/schema.prisma
   connection: env:DATABASE_URL
+  autorun_migrations: true
 ui:
   framework: next
   components: shadcn/ui

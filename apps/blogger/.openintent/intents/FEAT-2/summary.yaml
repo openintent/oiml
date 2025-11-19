@@ -1,0 +1,29 @@
+version: 0.1.0
+applied_at: 2025-11-17T23:55:16Z
+status: success
+intents_processed: 3
+model: claude-sonnet-4.5
+template_used:
+  framework: prisma
+  category: database
+  pack: oiml://compat/oiml-prisma/1.0.0
+  version: 1.0.0
+  digest: sha256-444a55ffe875c6269eee613cdee0aeb5015853aeb4e9466c24f08e0388683661
+  compat:
+    oiml: ">=0.1.0 <0.2.0"
+    prisma: ">=6.0.0 <7.0.0"
+changes:
+  - file: prisma/schema.prisma
+    action: modified
+    description: Added Comment model with id, content, created_at, post_id, and user_id fields
+  - file: prisma/schema.prisma
+    action: modified
+    description: Added many-to-one relation from Comment to Post with reverse one-to-many relation (comments field on Post)
+  - file: prisma/schema.prisma
+    action: modified
+    description: Added many-to-one relation from Comment to User with reverse one-to-many relation (comments field on User)
+  - file: prisma/migrations/20251117235516_add_comment_entity_and_relations/migration.sql
+    action: created
+    description: Generated Prisma migration creating comments table with foreign keys to posts and users
+errors: []
+

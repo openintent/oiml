@@ -1,0 +1,28 @@
+version: 0.1.0
+applied_at: 2025-11-17T23:22:27Z
+status: success
+intents_processed: 1
+model: claude-sonnet-4.5
+template_used:
+  framework: prisma
+  category: database
+  pack: oiml://templates/database/prisma/1.0.0
+  version: 1.0.0
+  compat:
+    oiml: ">=0.1.0 <0.2.0"
+    prisma: ">=6.0.0 <7.0.0"
+changes:
+  - file: prisma/schema.prisma
+    action: modified
+    description: Added Post model with fields id, title, content, published, created_at
+  - file: prisma/migrations/20251117232227_add_post_entity/migration.sql
+    action: created
+    description: Generated Prisma migration for Post entity (not applied - requires manual application)
+  - file: node_modules/@prisma/client
+    action: regenerated
+    description: Regenerated Prisma client to include Post model
+errors: []
+notes:
+  - Migration file created but not applied. Apply manually when ready using 'npx prisma migrate dev' or 'npx prisma migrate deploy'
+  - Prisma client regenerated successfully and includes the new Post model
+
