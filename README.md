@@ -232,7 +232,7 @@ paths:
   types: types
 ```
 
-## MCP server
+**MCP Server:**
 
 ```json
 {
