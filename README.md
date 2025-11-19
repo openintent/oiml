@@ -4,7 +4,7 @@
 
 ## What is OIML?
 
-OIML allows developers to describe _what_ they want instead of _how_ to build it. AI agents read intent files and generate code using framework-specific implementation guides.
+OIML allows developers to describe _what_ they want instead of _how_ to build it. AI agents read intent files and generate code using framework-specific implementation guides called "packs".
 
 **Key Features:**
 
