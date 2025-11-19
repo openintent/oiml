@@ -60,7 +60,7 @@ oiml create FEAT-1
 
 ```yaml
 # .oiml/intents/FEAT-1/intent.yaml
-version: 0.1.x
+version: x.x.x
 type: oiml.intent
 intents:
   - kind: add_entity
@@ -143,7 +143,7 @@ oiml create [name]     # Create new intent file
 ### Example 1: Adding a Blog Entity
 
 ```yaml
-version: 0.1.x
+version: x.x.x
 type: oiml.intent
 intents:
   - kind: add_entity
@@ -168,7 +168,7 @@ intents:
 ### Example 2: Adding User-Post Relation
 
 ```yaml
-version: 0.1.x
+version: x.x.x
 type: oiml.intent
 intents:
   - kind: add_relation
@@ -186,7 +186,7 @@ intents:
 ### Example 3: Adding API Endpoint
 
 ```yaml
-version: 0.1.x
+version: x.x.x
 type: oiml.intent
 intents:
   - kind: add_endpoint
@@ -214,7 +214,7 @@ intents:
 
 ```yaml
 name: My App
-version: 0.1.x
+version: x.x.x
 
 api:
   framework: next
