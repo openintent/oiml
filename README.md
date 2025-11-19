@@ -266,7 +266,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 ## Learn More
 
 - **Website**: [oiml.dev](https://oiml.dev)
-- **Discord**: [https://discord.gg/QnvqZ2Pj](https://discord.gg/QnvqZ2Pj)
+- **Discord**: [https://discord.gg/QnvqZ2Pj](https://discord.gg/S9XuvCYa)
 
 ## Support
 
