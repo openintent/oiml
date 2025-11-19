@@ -6,7 +6,10 @@ import { deleteFiles } from "@/lib/storage";
  *
  * Delete file(s) from Supabase Storage
  */
-export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  // Resolve params (Next.js 16+ passes params as a Promise)
+  const resolvedParams = await params;
+
   try {
     const body = await request.json();
     const { bucket, paths } = body;

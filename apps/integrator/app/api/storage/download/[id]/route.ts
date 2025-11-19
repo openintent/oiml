@@ -6,7 +6,10 @@ import { downloadFile } from "@/lib/storage";
  *
  * Download a file from Supabase Storage
  */
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  // Resolve params (Next.js 16+ passes params as a Promise)
+  const resolvedParams = await params;
+
   try {
     const { searchParams } = new URL(request.url);
     const bucket = searchParams.get("bucket");

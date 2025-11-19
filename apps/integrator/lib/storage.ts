@@ -59,7 +59,7 @@ export interface GetPublicUrlOptions {
     height?: number;
     resize?: "cover" | "contain" | "fill";
     quality?: number;
-    format?: "origin" | "webp" | "avif";
+    format?: "origin";
   };
 }
 

@@ -9,30 +9,29 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@oiml/schema": "workspace:*",
-    "@prisma/client": "^6.19.0",
+    "@prisma/client": "^6",
     "next-auth": "^5.0.0-beta.25",
-    "@auth/prisma-adapter": "^2.7.0",
-    "@radix-ui/react-label": "^2.1.1",
-    "@radix-ui/react-slot": "^1.1.1",
-    "bcryptjs": "^2.4.3",
-    "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
-    "dotenv": "^17.2.3",
-    "lucide-react": "^0.469.0",
-    "next": "16.0.1",
-    "prisma": "^6.19.0",
-    "react": "19.2.0",
-    "react-dom": "19.2.0",
-    "tailwind-merge": "^2.5.5"
+    "@auth/prisma-adapter": "^2",
+    "@radix-ui/react-label": "^2",
+    "@radix-ui/react-slot": "^1",
+    "bcryptjs": "^2",
+    "class-variance-authority": "^0",
+    "clsx": "^2",
+    "dotenv": "^17",
+    "lucide-react": "^0",
+    "next": "^16",
+    "prisma": "^6",
+    "react": "^19",
+    "react-dom": "^19",
+    "tailwind-merge": "^2"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "@types/bcryptjs": "^2.4.6",
+    "@types/bcryptjs": "^2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.0.1",
+    "eslint-config-next": "^16",
     "tailwindcss": "^4"
   }
 }

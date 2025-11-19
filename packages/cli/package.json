@@ -26,9 +26,7 @@
     "postbuild": "chmod +x dist/cli.js 2>/dev/null || true",
     "dev": "tsc --watch",
     "prepublishOnly": "pnpm build || echo 'Build skipped - dist files already exist'",
-    "publish:npm": "pnpm build && pnpm publish --access public",
-    "format": "prettier --write \"**/*.{ts,js,json,md}\"",
-    "format:check": "prettier --check \"**/*.{ts,js,json,md}\""
+    "publish:npm": "pnpm build && pnpm publish --access public"
   },
   "dependencies": {
     "commander": "^12.1.0",
@@ -37,9 +35,6 @@
     "inquirer": "^10.2.2"
   },
   "devDependencies": {
-    "@types/inquirer": "^9.0.7",
-    "@types/node": "^20",
-    "typescript": "^5",
-    "prettier": "^3.3.3"
+    "@types/inquirer": "^9.0.7"
   }
 }

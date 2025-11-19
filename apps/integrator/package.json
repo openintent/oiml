@@ -9,21 +9,20 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@oiml/schema": "workspace:*",
-    "@prisma/client": "^6.19.0",
-    "@supabase/supabase-js": "^2.83.0",
-    "next": "16.0.1",
-    "prisma": "^6.19.0",
-    "react": "19.2.0",
-    "react-dom": "19.2.0",
-    "resend": "^6.5.0"
+    "@prisma/client": "^6",
+    "@supabase/supabase-js": "^2",
+    "next": "^16",
+    "prisma": "^6",
+    "react": "^19",
+    "react-dom": "^19",
+    "resend": "^6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.0.1",
+    "eslint-config-next": "^16",
     "tailwindcss": "^4"
   }
 }

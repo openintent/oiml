@@ -4,7 +4,9 @@
 > **Compatible OIML Versions:** 0.1.x  
 > **Compatible Next.js Versions:** 14.x.x, 15.x.x, 16.x.x  
 > **Compatible Supabase JS Versions:** 2.x.x  
-> **Last Updated:** 2025-11-18
+> **Last Updated:** 2025-11-19
+> 
+> **⚠️ Next.js 16 Breaking Changes:** Route handler `params` are now async. See implementation notes below.
 
 This guide provides complete implementation instructions for adding storage capabilities to Next.js applications using [Supabase Storage](https://supabase.com/docs/guides/storage) with the `add_capability` intent.
 
@@ -309,7 +311,7 @@ export interface GetPublicUrlOptions {
     height?: number;
     resize?: "cover" | "contain" | "fill";
     quality?: number;
-    format?: "origin" | "webp" | "avif";
+    format?: "origin"; // Note: Supabase now only accepts "origin"
   };
 }
 
@@ -796,7 +798,10 @@ import { downloadFile } from "@/lib/storage";
  *
  * Response: File blob with appropriate content type
  */
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  // Resolve params (Next.js 16+ passes params as a Promise)
+  const resolvedParams = await params;
+
   try {
     const { searchParams } = new URL(request.url);
     const bucket = searchParams.get("bucket");
@@ -869,7 +874,10 @@ import { deleteFiles } from "@/lib/storage";
  *   }
  * }
  */
-export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  // Resolve params (Next.js 16+ passes params as a Promise)
+  const resolvedParams = await params;
+
   try {
     const body = await request.json();
     const { bucket, paths } = body;
@@ -1099,7 +1107,7 @@ export interface ImageTransformOptions {
   height?: number;
   resize?: "cover" | "contain" | "fill";
   quality?: number;
-  format?: "origin" | "webp" | "avif";
+  format?: "origin"; // Note: Supabase now only accepts "origin"
 }
 
 export interface BucketConfig {
@@ -1573,6 +1581,37 @@ curl -X DELETE http://localhost:3000/api/storage/delete/123 \
 - Verify bucket exists and file path is correct
 - Ensure file exists in storage
 - Check if RLS policies are preventing access
+
+### Next.js 16 Type Errors with Route Params
+
+If you see TypeScript errors like `Type 'Promise<{ id: string }>' is not assignable to type '{ id: string }'`:
+
+- **Cause**: Next.js 16 changed route handler params to be async (Promise-based)
+- **Solution**: Update your route handlers to use `params: Promise<{ id: string }>` and await the params at the start of the function:
+
+```typescript
+// ❌ Old (Next.js 14-15)
+export async function GET(request: Request, { params }: { params: { id: string } }) {
+  const id = params.id;
+  // ...
+}
+
+// ✅ New (Next.js 16+)
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = await params;
+  const id = resolvedParams.id;
+  // ...
+}
+```
+
+### Supabase Transform Format Type Error
+
+If you see TypeScript errors like `Type '"webp"' is not assignable to type '"origin"'`:
+
+- **Cause**: Supabase Storage API has changed the `transform.format` option to only accept `"origin"`
+- **Solution**: Update your `GetPublicUrlOptions` interface to only allow `format?: "origin"`
+- **Note**: This may be a temporary API change or deprecation. Check Supabase documentation for the latest image transformation options
+- **Workaround**: For image format conversion, consider using Supabase's image transformation API directly or a third-party image CDN
 
 ## Security Considerations
 
