@@ -10,6 +10,9 @@
     "format:check": "prettier --check \"**/*.{ts,js,json,md}\""
   },
   "devDependencies": {
-    "prettier": "^3.6.2"
+    "@types/node": "^24",
+    "prettier": "^3",
+    "tsx": "^4",
+    "typescript": "^5"
   }
 }
