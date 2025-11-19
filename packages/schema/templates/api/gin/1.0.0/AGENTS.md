@@ -5,7 +5,7 @@
 > **Compatible Gin Versions:** 1.9.x, 1.10.x, 1.11.x  
 > **Last Updated:** 2025-01-27
 
-This guide provides complete implementation instructions for applying OpenIntent API intents when using Gin as the API framework.
+This guide provides complete implementation instructions for applying OIML API intents when using Gin as the API framework.
 
 ## When to Use This Guide
 

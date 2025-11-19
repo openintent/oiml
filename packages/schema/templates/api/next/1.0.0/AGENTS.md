@@ -5,7 +5,7 @@
 > **Compatible Next.js Versions:** 14.x.x, 15.x.x, 16.x.x  
 > **Last Updated:** 2025-11-06
 
-This guide provides complete implementation instructions for applying OpenIntent API intents when using Next.js as the API framework.
+This guide provides complete implementation instructions for applying OIML API intents when using Next.js as the API framework.
 
 ## When to Use This Guide
 

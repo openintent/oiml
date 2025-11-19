@@ -2,9 +2,9 @@
 
 **OIML (Open Intent Modeling Language)** is a standard for AI-driven development that enables declarative code generation through structured intents.
 
-## What is OpenIntent?
+## What is OIML?
 
-OpenIntent allows developers to describe _what_ they want instead of _how_ to build it. AI agents read intent files and generate code using framework-specific implementation guides.
+OIML allows developers to describe _what_ they want instead of _how_ to build it. AI agents read intent files and generate code using framework-specific implementation guides.
 
 **Key Features:**
 
@@ -29,7 +29,7 @@ pnpm add -g @oiml/cli
 ### Initialize a Project
 
 ```bash
-# Initialize OpenIntent in your project
+# Initialize OIML in your project
 oiml init
 
 # Create your first intent
@@ -39,7 +39,7 @@ oiml create FEAT-1
 ### Example Intent File
 
 ```yaml
-# .openintent/intents/FEAT-1/intent.yaml
+# .oiml/intents/FEAT-1/intent.yaml
 version: 0.1.x
 type: oiml.intent
 intents:
@@ -69,7 +69,7 @@ intents:
 ## Project Structure
 
 ```
-.openintent/
+.oiml/
 ├── project.yaml              # Project configuration
 ├── AGENTS.md                 # AI implementation guide
 │
@@ -131,7 +131,7 @@ intents:
 ### Project Management
 
 ```bash
-oiml init              # Initialize OpenIntent project
+oiml init              # Initialize OIML project
 oiml create [name]     # Create new intent file
 ```
 

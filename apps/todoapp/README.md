@@ -1,6 +1,6 @@
 # Todo App
 
-A simple todo application built with Next.js and Prisma, managed through OpenIntent.
+A simple todo application built with Next.js and Prisma, managed through OIML.
 
 ## Getting Started
 
@@ -35,10 +35,10 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 - `app/` - Next.js app directory
 - `prisma/` - Prisma schema and migrations
-- `.openintent/` - OpenIntent configuration and intents
+- `.oiml/` - OIML configuration and intents
 - `packages/types/` - Shared TypeScript types
 - `lib/` - Utility libraries (Prisma client, etc.)
 
-## OpenIntent
+## OIML
 
-This project uses OpenIntent for declarative code generation. See `.openintent/project.yaml` for configuration and `.openintent/intents/` for intent files.
+This project uses OIML for declarative code generation. See `.oiml/project.yaml` for configuration and `.oiml/intents/` for intent files.

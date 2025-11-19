@@ -1,6 +1,6 @@
 # Template Compatibility Matrix
 
-This directory contains version compatibility information for OpenIntent templates.
+This directory contains version compatibility information for OIML templates.
 
 ## Purpose
 

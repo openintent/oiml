@@ -376,7 +376,7 @@
       "properties": {
         "directory": {
           "type": "string",
-          "default": ".openintent/intents",
+          "default": ".oiml/intents",
           "description": "Directory containing intent files"
         }
       },

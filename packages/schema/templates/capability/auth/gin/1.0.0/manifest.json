@@ -1,7 +1,7 @@
 {
   "name": "oiml-gin-auth",
   "version": "1.0.0",
-  "description": "Gin authentication adapter template for OpenIntent",
+  "description": "Gin authentication adapter template for OIML",
   "category": "adapter",
   "framework": "gin",
   "adapter_type": "auth",

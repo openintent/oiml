@@ -70,3 +70,4 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     return NextResponse.json(errorResponse, { status: 500 });
   }
 }
+

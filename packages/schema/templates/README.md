@@ -1,6 +1,6 @@
-# OpenIntent Implementation Templates
+# OIML Implementation Templates
 
-This directory contains framework-specific implementation guides for applying OpenIntent intents. These templates provide detailed instructions, code examples, and best practices for AI agents and developers implementing OpenIntent-based code generation.
+This directory contains framework-specific implementation guides for applying OIML intents. These templates provide detailed instructions, code examples, and best practices for AI agents and developers implementing OIML-based code generation.
 
 ## Directory Structure
 
@@ -36,9 +36,9 @@ templates/
 
 ### For AI Agents
 
-When processing OpenIntent files (`intent.yaml`):
+When processing OIML files (`intent.yaml`):
 
-1. Read the project's `.openintent/project.yaml` configuration
+1. Read the project's `.oiml/project.yaml` configuration
 2. Identify the relevant frameworks:
    - `database.framework` (e.g., "prisma")
    - `api.framework` (e.g., "next")
@@ -60,13 +60,13 @@ These guides can be used to:
 ### Database Frameworks
 
 - **[Prisma](./database/prisma/1.0.0/AGENTS.md)** - Complete Prisma implementation guide
-  - Field type mappings (OpenIntent → Prisma)
+  - Field type mappings (OIML → Prisma)
   - Implementation steps for all data intents
   - Migration handling and patterns
   - TypeScript type generation
 
 - **[Ent](./database/ent/1.0.0/AGENTS.md)** - Complete Ent ORM implementation guide
-  - Field type mappings (OpenIntent → Ent)
+  - Field type mappings (OIML → Ent)
   - Schema definition patterns
   - Code generation and auto-migration
   - Go type generation and client usage
@@ -101,7 +101,7 @@ To add support for a new framework:
 3. Follow the existing template structure:
    - **When to Use This Guide** - Condition for using this guide
    - **Prerequisites** - Required setup
-   - **Type Mappings** - OpenIntent to framework type mappings
+   - **Type Mappings** - OIML to framework type mappings
    - **Intent Implementation** - Step-by-step instructions for each intent type
    - **Examples** - Complete code examples
    - **Best Practices** - Framework-specific recommendations
@@ -178,7 +178,7 @@ https://github.com/openintent/oiml/blob/main/packages/schema/templates/{category
 
 Templates should be validated to ensure:
 
-- All OpenIntent field types are covered
+- All OIML field types are covered
 - All intent types are documented
 - Code examples are syntactically correct
 - Examples match the latest framework versions
@@ -186,9 +186,9 @@ Templates should be validated to ensure:
 
 ## Related Documentation
 
-- [OpenIntent Schema](../README.md) - Intent file schema definitions
+- [OIML Schema](../README.md) - Intent file schema definitions
 - [AGENTS.md](../../cli/src/templates/AGENTS.md) - Master workflow orchestration guide
-- [OpenIntent Specification](https://github.com/openintent/oiml) - Complete OIML specification
+- [OIML Specification](https://github.com/openintent/oiml) - Complete OIML specification
 
 ## Support
 
@@ -200,4 +200,4 @@ For questions or issues with implementation guides:
 
 ## License
 
-These templates are part of the OpenIntent project and are licensed under the [Mozilla Public License 2.0](../../../LICENSE).
+These templates are part of the OIML project and are licensed under the [Mozilla Public License 2.0](../../../LICENSE).

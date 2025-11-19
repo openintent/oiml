@@ -175,3 +175,4 @@ cosign verify ghcr.io/openintent/schemas/oiml.intent:0.1.0
 ## License
 
 All schemas are licensed under Apache 2.0.
+

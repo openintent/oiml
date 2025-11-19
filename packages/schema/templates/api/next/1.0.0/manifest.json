@@ -23,6 +23,6 @@
       "changes": ["Initial template version", "Support for Next.js 14, 15, 16"]
     }
   ],
-  "authors": ["OpenIntent Team"],
+  "authors": ["OIML Team"],
   "license": "Apache-2.0"
 }

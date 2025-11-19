@@ -1,4 +1,4 @@
-This guide provides complete implementation instructions for applying OpenIntent data intents when using Prisma as the database framework.
+This guide provides complete implementation instructions for applying OIML data intents when using Prisma as the database framework.
 
 ## When to Use This Guide
 
@@ -12,9 +12,9 @@ Use this guide when `database.framework` in `project.yaml` is set to `"prisma"`.
 
 ## Field Type Mappings
 
-### OpenIntent Type → Prisma Type
+### OIML Type → Prisma Type
 
-| OpenIntent Type | Prisma Type | Prisma Modifier    | Notes                                   |
+| OIML Type | Prisma Type | Prisma Modifier    | Notes                                   |
 | --------------- | ----------- | ------------------ | --------------------------------------- |
 | `string`        | `String`    | `@db.VarChar(255)` | Use `max_length` attribute if specified |
 | `text`          | `String`    | `@db.Text`         | For long text content                   |
@@ -34,7 +34,7 @@ Use this guide when `database.framework` in `project.yaml` is set to `"prisma"`.
 
 ### Field Attributes
 
-| OpenIntent Attribute | Prisma Implementation                |
+| OIML Attribute | Prisma Implementation                |
 | -------------------- | ------------------------------------ |
 | `required: true`     | No `?` after type (e.g., `String`)   |
 | `required: false`    | Add `?` after type (e.g., `String?`) |
@@ -291,7 +291,7 @@ export interface CustomerInterface {
 
 ### Relation Types
 
-| OpenIntent Relation | Prisma Implementation                                          |
+| OIML Relation | Prisma Implementation                                          |
 | ------------------- | -------------------------------------------------------------- |
 | `one_to_one`        | Foreign key field + `@unique`, relation field with `@relation` |
 | `one_to_many`       | Reverse: array field on target entity                          |

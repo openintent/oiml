@@ -1,6 +1,6 @@
 # OIML Intent Validator
 
-A Visual Studio Code extension that validates OpenIntent Modeling Language (OIML) `intent.yaml` files in real-time.
+A Visual Studio Code extension that validates Open Intent Modeling Language (OIML) `intent.yaml` files in real-time.
 
 ## Features
 

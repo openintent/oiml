@@ -2,7 +2,7 @@
   "name": "@oiml/schema",
   "version": "0.1.10",
   "description": "OIML schema definitions",
-  "author": "OpenIntent",
+  "author": "OIML",
   "license": "Apache-2.0",
   "type": "module",
   "homepage": "https://github.com/openintent/oiml#readme",

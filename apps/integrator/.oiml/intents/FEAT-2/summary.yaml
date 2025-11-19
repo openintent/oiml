@@ -1,0 +1,268 @@
+version: 0.1.0
+type: oiml.summary
+intent_id: FEAT-2
+intent_file: .oiml/intents/FEAT-2/intent.yaml
+applied_at: "2025-11-18T22:30:00Z"
+status: success
+
+summary: |
+  Successfully applied storage capability using Supabase Storage to the Next.js application.
+  Added complete file storage infrastructure including API endpoints, utilities, type definitions,
+  and support for upload, download, delete, and list operations.
+
+intents_applied:
+  - kind: add_capability
+    scope: capability
+    capability: storage
+    framework: next
+    provider: supabase
+    status: success
+    description: Integrated Supabase Storage with file upload, download, delete, and list capabilities
+
+changes:
+  files_created:
+    - path: lib/storage.ts
+      description: |
+        Supabase Storage client configuration and utility functions including:
+        - uploadFile() for uploading files to Supabase Storage
+        - downloadFile() for downloading files as blobs
+        - deleteFiles() for removing single or multiple files
+        - listFiles() with sorting and pagination support
+        - getPublicUrl() for public bucket files with image transformation
+        - getSignedUrl() for temporary access to private files
+        - validateFileType() and validateFileSize() helper functions
+        - generateFilePath() for unique file path generation
+      lines_added: 264
+
+    - path: app/api/storage/upload/route.ts
+      description: |
+        POST /api/storage/upload endpoint for uploading files to Supabase Storage.
+        Supports multipart/form-data, file validation (type and size), and bucket-based configuration.
+      lines_added: 110
+
+    - path: app/api/storage/download/[id]/route.ts
+      description: |
+        GET /api/storage/download/[id] endpoint for downloading files from Supabase Storage.
+        Returns file blob with appropriate content-type and content-disposition headers.
+      lines_added: 51
+
+    - path: app/api/storage/delete/[id]/route.ts
+      description: |
+        DELETE /api/storage/delete/[id] endpoint for deleting files from Supabase Storage.
+        Supports batch deletion of multiple files.
+      lines_added: 66
+
+    - path: app/api/storage/list/route.ts
+      description: |
+        GET /api/storage/list endpoint for listing files in a bucket.
+        Supports filtering by path, pagination (limit/offset), and sorting.
+      lines_added: 60
+
+    - path: types/storage.ts
+      description: |
+        Type definitions for storage operations including:
+        - Request/response interfaces for all endpoints
+        - FileObject and FileMetadata interfaces
+        - ImageTransformOptions for image transformations
+        - BucketConfig for bucket configuration
+        - MIME_TYPES constants for validation
+        - FILE_SIZE_LIMITS constants for size validation
+      lines_added: 155
+
+  files_modified: []
+
+  dependencies:
+    installed:
+      - name: "@supabase/supabase-js"
+        version: "^2.83.0"
+        description: Supabase JavaScript client for Storage API
+
+configuration:
+  environment_variables:
+    required:
+      - name: NEXT_PUBLIC_SUPABASE_URL
+        description: Supabase project URL (safe to expose in browser)
+        example: "https://your-project.supabase.co"
+        docs: "https://supabase.com/dashboard/project/_/settings/api"
+
+      - name: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        description: Supabase anonymous key for client-side operations (safe to expose in browser)
+        example: "your-anon-key-here"
+        docs: "https://supabase.com/dashboard/project/_/settings/api"
+
+    optional:
+      - name: SUPABASE_SERVICE_ROLE_KEY
+        description: Supabase service role key for server-side admin operations (NEVER expose to browser)
+        example: "your-service-role-key-here"
+        docs: "https://supabase.com/dashboard/project/_/settings/api"
+
+  supabase_setup:
+    - step: 1
+      action: "Go to Supabase Dashboard at https://supabase.com/dashboard"
+    - step: 2
+      action: "Select your project (or create a new one)"
+    - step: 3
+      action: "Go to Settings → API and copy your Project URL and anon key"
+    - step: 4
+      action: "Add credentials to .env.local as NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY"
+    - step: 5
+      action: "Go to Storage in dashboard and create buckets (e.g., 'avatars', 'documents')"
+      details: "Configure bucket as public or private, set file size limits and allowed MIME types"
+    - step: 6
+      action: "(Optional) Configure Row Level Security (RLS) policies for private buckets"
+      details: "See guide for example RLS policies"
+
+api_endpoints:
+  - method: POST
+    path: /api/storage/upload
+    description: Upload a file to Supabase Storage
+    request_body:
+      file: File (multipart/form-data)
+      bucket: string
+      folder?: string
+      userId?: string
+    response:
+      success: true
+      data:
+        path: string
+        publicUrl: string
+        message: string
+
+  - method: GET
+    path: /api/storage/download/[id]
+    description: Download a file from Supabase Storage
+    query_params:
+      bucket: string
+      path: string
+    response: File blob with Content-Type and Content-Disposition headers
+
+  - method: DELETE
+    path: /api/storage/delete/[id]
+    description: Delete file(s) from Supabase Storage
+    request_body:
+      bucket: string
+      paths: string[]
+    response:
+      success: true
+      data:
+        deletedFiles: FileObject[]
+        message: string
+
+  - method: GET
+    path: /api/storage/list
+    description: List files in a bucket
+    query_params:
+      bucket: string
+      path?: string
+      limit?: number (default: 100)
+      offset?: number (default: 0)
+      sortBy?: "name" | "created_at" | "updated_at"
+      sortOrder?: "asc" | "desc"
+    response:
+      success: true
+      data:
+        files: FileObject[]
+        message: string
+
+features:
+  - File uploads with multipart/form-data support
+  - File downloads with blob responses
+  - Batch file deletion
+  - File listing with pagination and sorting
+  - Image transformations (resize, compress, format conversion)
+  - Public and private buckets with RLS support
+  - Signed URLs for temporary access to private files
+  - File type and size validation
+  - Global CDN for file delivery (285+ cities)
+  - Type-safe operations with TypeScript
+
+usage_examples:
+  - name: Upload a file
+    code: |
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("bucket", "avatars");
+      formData.append("userId", userId);
+      
+      const response = await fetch("/api/storage/upload", {
+        method: "POST",
+        body: formData
+      });
+
+  - name: Download a file
+    code: |
+      const response = await fetch(
+        `/api/storage/download/123?bucket=documents&path=reports/annual-2024.pdf`
+      );
+      const blob = await response.blob();
+
+  - name: List files
+    code: |
+      const response = await fetch(
+        `/api/storage/list?bucket=documents&path=reports&limit=50&sortBy=created_at&sortOrder=desc`
+      );
+      const result = await response.json();
+
+  - name: Delete files
+    code: |
+      const response = await fetch("/api/storage/delete/123", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bucket: "documents",
+          paths: ["reports/old-report.pdf"]
+        })
+      });
+
+  - name: Get transformed image URL
+    code: |
+      import { getPublicUrl } from "@/lib/storage";
+      
+      const url = getPublicUrl({
+        bucket: "avatars",
+        path: "user123/profile.jpg",
+        transform: {
+          width: 400,
+          height: 400,
+          resize: "cover",
+          quality: 80,
+          format: "webp"
+        }
+      });
+
+next_steps:
+  - Configure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local
+  - Create storage buckets in Supabase Dashboard (e.g., "avatars", "documents")
+  - Configure bucket settings (public/private, file size limits, allowed MIME types)
+  - (Optional) Set up Row Level Security (RLS) policies for private buckets
+  - (Optional) Configure CORS if uploading from different domains
+  - Test file upload using the /api/storage/upload endpoint
+  - (Optional) Install @uppy/core and @uppy/tus for resumable uploads of large files
+
+template_info:
+  template_pack: oiml-storage-supabase-next
+  version: 1.0.0
+  guide: packages/schema/templates/capability/storage/next/1.0.0/AGENTS.md
+
+compatibility:
+  next_version: 16.0.1
+  supabase_js_version: 2.83.0
+  version: 0.1.0
+
+notes: |
+  - Supabase Storage includes a global CDN with 285+ cities for fast file delivery
+  - Image transformations work only on public buckets
+  - Private buckets require Row Level Security (RLS) policies for access control
+  - Service role key bypasses RLS and should never be exposed to the browser
+  - All storage operations are fully typed with TypeScript for type safety
+  - Resumable uploads with TUS protocol are supported for large files (requires @uppy/tus)
+  - Files are organized by user ID and folder for easy management
+
+references:
+  - https://supabase.com/docs/guides/storage
+  - https://supabase.com/docs/reference/javascript/storage-from
+  - https://supabase.com/docs/guides/storage/cdn/fundamentals
+  - https://supabase.com/docs/guides/storage/serving/image-transformations
+  - https://supabase.com/docs/guides/storage/uploads/resumable-uploads
+  - https://supabase.com/docs/guides/auth/row-level-security
+

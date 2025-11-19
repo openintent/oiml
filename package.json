@@ -1,7 +1,7 @@
 {
   "name": "oiml",
-  "description": "OpenIntent is a global standard for AI-driven development that enables declarative development, standardized schema, project metadata, deterministic generation, and agent integration.",
-  "author": "OpenIntent",
+  "description": "OIML is a global standard for AI-driven development that enables declarative development, standardized schema, project metadata, deterministic generation, and agent integration.",
+  "author": "OIML",
   "license": "Apache-2.0",
   "homepage": "https://github.com/openintent/oiml#readme",
   "packageManager": "pnpm@10.20.0",

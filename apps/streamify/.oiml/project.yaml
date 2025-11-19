@@ -1,0 +1,18 @@
+# Schema reference: https://github.com/openintent/oiml/blob/main/packages/schema/project/index.ts
+name: vite
+description: ""
+version: 0.1.0
+api:
+  language: go
+  framework: gin
+database:
+  type: postgres
+  framework: ent
+ui:
+  framework: vite
+  language: typescript
+intents:
+  directory: .oiml/intents
+paths:
+  api: api/*
+  database: api/db/*

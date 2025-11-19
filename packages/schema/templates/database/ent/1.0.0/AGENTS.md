@@ -5,7 +5,7 @@
 > **Compatible Ent Versions:** 0.12.x, 0.13.x, 0.14.x  
 > **Last Updated:** 2025-01-27
 
-This guide provides complete implementation instructions for applying OpenIntent data intents when using Ent as the database ORM framework.
+This guide provides complete implementation instructions for applying OIML data intents when using Ent as the database ORM framework.
 
 ## When to Use This Guide
 
@@ -35,9 +35,9 @@ project/
 
 ## Field Type Mappings
 
-### OpenIntent Type → Ent Type
+### OIML Type → Ent Type
 
-| OpenIntent Type | Ent Type    | Ent Method        | Notes                |
+| OIML Type | Ent Type    | Ent Method        | Notes                |
 | --------------- | ----------- | ----------------- | -------------------- |
 | `string`        | `string`    | `field.String()`  | Text field           |
 | `text`          | `string`    | `field.String()`  | Long text content    |
@@ -55,7 +55,7 @@ project/
 
 ### Field Attributes
 
-| OpenIntent Attribute | Ent Implementation                             | Database Impact                           |
+| OIML Attribute | Ent Implementation                             | Database Impact                           |
 | -------------------- | ---------------------------------------------- | ----------------------------------------- |
 | `required: true`     | No `.Optional()` call                          | NOT NULL constraint                       |
 | `required: false`    | Add `.Optional()`                              | NULL allowed                              |
@@ -460,7 +460,7 @@ func (Customer) Fields() []ent.Field {
 
 ### Relation Types
 
-| OpenIntent Relation | Ent Implementation                                  |
+| OIML Relation | Ent Implementation                                  |
 | ------------------- | --------------------------------------------------- |
 | `one_to_one`        | `edge.To()` on one side, `edge.From()` on other     |
 | `one_to_many`       | `edge.To()` on many side, `edge.From()` on one side |

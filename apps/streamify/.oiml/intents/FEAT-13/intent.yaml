@@ -1,0 +1,21 @@
+version: 0.1.0
+type: oiml.intent
+ai_context:
+  purpose: Conform to project frameworks, style, and conventions.
+  instructions: |
+    - Read .oiml/AGENTS.md and apply the instructions to the intent.
+  references:
+    - kind: file
+      path: .oiml/AGENTS.md
+provenance:
+  created_by:
+    type: human
+    name: ""
+  created_at: 2025-11-10T21:27:50Z
+intents: 
+  - kind: add_endpoint
+    scope: api
+    method: GET
+    path: /api/v1/artists/{id}
+    entity: Artist
+    description: Get an artist by id

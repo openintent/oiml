@@ -1,6 +1,6 @@
 # @oiml/cli
 
-OpenIntent CLI for initializing and managing OpenIntent projects.
+OIML CLI for initializing and managing OIML projects.
 
 ## Installation
 
@@ -16,10 +16,10 @@ npx @oiml/cli init
 
 ## Usage
 
-### Initialize a new OpenIntent project
+### Initialize a new OIML project
 
 ```bash
-openintent init
+oiml init
 ```
 
 Or with npx:
@@ -31,7 +31,7 @@ npx @oiml/cli init
 This command will:
 
 - Detect your project type (Next.js, Express, etc.)
-- Create a `.openintent` directory
+- Create a `.oiml` directory
 - Generate a `project.yaml` configuration file
 - Create an `intents` directory
 - Copy the `AGENTS.md` master prompt template
@@ -43,12 +43,12 @@ This command will:
 ### Create a new intent
 
 ```bash
-openintent create INT-123
+oiml create INT-123
 ```
 
 This command will:
 
-- Create a folder `.openintent/intents/INT-123/`
+- Create a folder `.oiml/intents/INT-123/`
 - Generate an `intent.yaml` file inside the folder
 - Include default OIML structure with ai_context and provenance
 

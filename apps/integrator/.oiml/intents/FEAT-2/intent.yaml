@@ -1,0 +1,37 @@
+version: 0.1.0
+type: oiml.intent
+ai_context:
+  purpose: Conform to project frameworks, style, and conventions.
+  instructions: |
+    - Read .oiml/AGENTS.md and apply the instructions to the intent.
+  references:
+    - kind: file
+      path: .oiml/AGENTS.md
+provenance:
+  created_by:
+    type: human
+    name: ""
+  created_at: 2025-11-18T22:20:05Z
+intents: 
+  - kind: add_capability
+    scope: capability
+    capability: storage
+    framework: next
+    provider: supabase
+    config:
+      supabase_url: env:NEXT_PUBLIC_SUPABASE_URL
+      supabase_anon_key: env:NEXT_PUBLIC_SUPABASE_ANON_KEY
+      supabase_service_role_key: env:SUPABASE_SERVICE_ROLE_KEY
+    endpoints:
+      - method: POST
+        path: /api/storage/upload
+        description: Upload a file to the storage
+      - method: GET
+        path: /api/storage/download/[id]
+        description: Download a file from the storage
+      - method: DELETE
+        path: /api/storage/delete/[id]
+        description: Delete a file from the storage
+      - method: GET
+        path: /api/storage/list
+        description: List files in the storage

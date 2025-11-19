@@ -5,9 +5,9 @@ import inquirer from "inquirer";
 import * as YAML from "yaml";
 
 async function validateProjectYaml(
-  openintentDir: string
+  oimlDir: string
 ): Promise<{ valid: boolean; content: string; version: string | null }> {
-  const projectYamlPath = join(openintentDir, "project.yaml");
+  const projectYamlPath = join(oimlDir, "project.yaml");
 
   if (!existsSync(projectYamlPath)) {
     console.log(chalk.red("❌ Error: project.yaml not found"));
@@ -61,11 +61,11 @@ export function generateIntentTemplate(name: string, version: string): string {
     type: "oiml.intent",
     ai_context: {
       purpose: "Conform to project frameworks, style, and conventions.",
-      instructions: "- Read .openintent/AGENTS.md and apply the instructions to the intent.\n",
+      instructions: "- Read .oiml/AGENTS.md and apply the instructions to the intent.\n",
       references: [
         {
           kind: "file",
-          path: ".openintent/AGENTS.md"
+          path: ".oiml/AGENTS.md"
         }
       ]
     },
@@ -93,23 +93,23 @@ function sanitizeFileName(name: string): string {
 
 export async function createCommand(name?: string) {
   const cwd = process.cwd();
-  const openintentDir = join(cwd, ".openintent");
-  const intentsDir = join(openintentDir, "intents");
+  const oimlDir = join(cwd, ".oiml");
+  const intentsDir = join(oimlDir, "intents");
 
-  // Check if .openintent directory exists
-  if (!existsSync(openintentDir)) {
-    console.log(chalk.red("❌ Error: .openintent directory not found."));
+  // Check if .oiml directory exists
+  if (!existsSync(oimlDir)) {
+    console.log(chalk.red("❌ Error: .oiml directory not found."));
     console.log(chalk.gray('Run "openintent init" first to initialize a project.'));
     process.exit(1);
   }
 
   // Validate project.yaml before creating intent
-  const projectValidation = await validateProjectYaml(openintentDir);
+  const projectValidation = await validateProjectYaml(oimlDir);
 
   if (!projectValidation.valid || !projectValidation.version) {
     console.log(chalk.red("❌ Error: project.yaml validation failed"));
     if (!projectValidation.version) {
-      console.log(chalk.gray("Please add an oiml_version field to .openintent/project.yaml"));
+      console.log(chalk.gray("Please add an oiml_version field to .oiml/project.yaml"));
       console.log(chalk.gray("Example: version: 0.1.0"));
     }
     process.exit(1);

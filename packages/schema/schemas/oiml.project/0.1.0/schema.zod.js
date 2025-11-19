@@ -231,7 +231,7 @@ export const Project = z
 
     intents: z
       .object({
-        directory: z.string().default(".openintent/intents").describe("Directory containing intent files")
+        directory: z.string().default(".oiml/intents").describe("Directory containing intent files")
       })
       .optional()
       .describe("Intent configuration"),

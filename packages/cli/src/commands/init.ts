@@ -268,7 +268,7 @@ async function promptForProjectDetails(detected: Partial<ProjectConfig>, skipPro
       api: detected.api || { framework: "express", language: "typescript" },
       database: detected.database,
       intents: {
-        directory: ".openintent/intents"
+        directory: ".oiml/intents"
       }
     };
   }
@@ -371,7 +371,7 @@ async function promptForProjectDetails(detected: Partial<ProjectConfig>, skipPro
     description: answers.description,
     version: oimlVersion,
     intents: {
-      directory: ".openintent/intents"
+      directory: ".oiml/intents"
     }
   };
 
@@ -468,13 +468,13 @@ function generateProjectYaml(config: ProjectConfig): string {
 
 export async function initCommand(options: { yes?: boolean }) {
   const cwd = process.cwd();
-  const openintentDir = join(cwd, ".openintent");
+  const openintentDir = join(cwd, ".oiml");
   const intentsDir = join(openintentDir, "intents");
   const projectYamlPath = join(openintentDir, "project.yaml");
 
-  // Check if .openintent already exists
+  // Check if .oiml already exists
   if (existsSync(openintentDir)) {
-    console.log(chalk.yellow("⚠️  .openintent directory already exists"));
+    console.log(chalk.yellow("⚠️  .oiml directory already exists"));
     const { overwrite } = await inquirer.prompt([
       {
         type: "confirm",
@@ -489,9 +489,9 @@ export async function initCommand(options: { yes?: boolean }) {
       process.exit(0);
     }
   } else {
-    // Create .openintent directory
+    // Create .oiml directory
     mkdirSync(openintentDir, { recursive: true });
-    console.log(chalk.green("✓ Created .openintent directory"));
+    console.log(chalk.green("✓ Created .oiml directory"));
   }
 
   // Detect project type
@@ -527,7 +527,7 @@ export async function initCommand(options: { yes?: boolean }) {
   if (!existsSync(initIntentDir)) {
     mkdirSync(initIntentDir, { recursive: true });
     const initIntentPath = join(initIntentDir, "intent.yaml");
-    const initIntentContent = generateIntentTemplate("_init", config.oiml_version);
+    const initIntentContent = generateIntentTemplate("_init", config.version);
     writeFileSync(initIntentPath, initIntentContent, "utf-8");
     console.log(chalk.green("✓ Created _init/intent.yaml"));
   }
@@ -565,8 +565,8 @@ export async function initCommand(options: { yes?: boolean }) {
     console.log(chalk.yellow("⚠️  AGENTS.md template not found, skipping..."));
   }
 
-  console.log(chalk.green("\n✨ OpenIntent project initialized successfully!"));
+  console.log(chalk.green("\n✨ OIML project initialized successfully!"));
   console.log(chalk.gray("\nNext steps:"));
-  console.log(chalk.gray("  - Create intent files in .openintent/intents/"));
-  console.log(chalk.gray("  - Customize .openintent/project.yaml"));
+  console.log(chalk.gray("  - Create intent files in .oiml/intents/"));
+  console.log(chalk.gray("  - Customize .oiml/project.yaml"));
 }

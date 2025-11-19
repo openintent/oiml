@@ -1,7 +1,7 @@
 {
   "name": "oiml-intent-validator",
   "displayName": "OIML - Intent Validator",
-  "description": "Validates OpenIntent Modeling Language (OIML) intent.yaml files",
+  "description": "Validates Open Intent Modeling Language (OIML) intent.yaml files",
   "version": "0.1.6",
   "publisher": "openintent",
   "license": "Apache-2.0",

@@ -1,7 +1,7 @@
 {
   "name": "oiml-next-auth",
   "version": "1.0.0",
-  "description": "NextAuth authentication adapter template for OpenIntent",
+  "description": "NextAuth authentication adapter template for OIML",
   "category": "adapter",
   "framework": "next",
   "adapter_type": "auth",
