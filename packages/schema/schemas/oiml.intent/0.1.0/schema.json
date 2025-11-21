@@ -2645,6 +2645,66 @@
       },
       "required": ["kind", "scope", "relation"],
       "additionalProperties": false
+    },
+    "AddCapability": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "add_capability"
+        },
+        "scope": {
+          "type": "string",
+          "const": "capability"
+        },
+        "capability": {
+          "type": "string",
+          "enum": ["auth", "email", "storage", "file_stream", "sse", "websocket"],
+          "description": "Type of capability to add"
+        },
+        "framework": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Target framework (e.g., 'gin', 'next', 'express')"
+        },
+        "provider": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Provider/library name (e.g., 'jwt', 'next-auth', 'passport')"
+        },
+        "config": {
+          "type": "object",
+          "additionalProperties": {},
+          "description": "Capability-specific configuration options"
+        },
+        "endpoints": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "method": {
+                "type": "string",
+                "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"]
+              },
+              "path": {
+                "type": "string",
+                "pattern": "^\\/"
+              },
+              "description": {
+                "type": "string"
+              },
+              "group": {
+                "type": "string",
+                "description": "Route group name (supports wildcard '*' to match all endpoints in a group, e.g., '/api/v1/*')"
+              }
+            },
+            "additionalProperties": false
+          },
+          "description": "Additional endpoints to create for this capability"
+        }
+      },
+      "required": ["kind", "scope", "capability", "framework"],
+      "additionalProperties": false
     }
   }
 }
