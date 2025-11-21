@@ -2,12 +2,13 @@
 # Script to manually publish a schema to GitHub Container Registry
 # Usage: ./publish-schema.sh <entity-type> <version>
 # Arguments:
-#   entity-type: "intent" or "project" (or full schema name like "oiml.intent")
+#   entity-type: "intent", "project", "plan" (or full schema name like "oiml.intent")
 #   version: Schema version (e.g., "0.1.0")
 # Examples:
 #   ./publish-schema.sh intent 0.1.0
 #   ./publish-schema.sh project 0.1.0
-#   ./publish-schema.sh oiml.intent 0.1.0  # Also works with full name
+#   ./publish-schema.sh plan 0.1.0
+#   ./publish-schema.sh oiml.plan 0.1.0  # Also works with full name
 
 set -e
 
@@ -22,13 +23,16 @@ case "$ENTITY_TYPE" in
   project)
     SCHEMA_NAME="oiml.project"
     ;;
+  plan)
+    SCHEMA_NAME="oiml.plan"
+    ;;
   oiml.*)
     # Already a full schema name
     SCHEMA_NAME="$ENTITY_TYPE"
     ;;
   *)
     echo "Error: Invalid entity type: $ENTITY_TYPE"
-    echo "Valid options: intent, project, or full schema name (oiml.*)"
+    echo "Valid options: intent, project, plan, or full schema name (oiml.*)"
     exit 1
     ;;
 esac

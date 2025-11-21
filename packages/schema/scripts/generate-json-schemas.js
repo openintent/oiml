@@ -38,7 +38,8 @@ const schemas = [
       "RemoveField",
       "AddEndpoint",
       "AddComponent",
-      "AddRelation"
+      "AddRelation",
+      "AddCapability"
     ]
   },
   {
@@ -50,6 +51,25 @@ const schemas = [
     description: "Schema for OIML project definitions",
     id: "https://oiml.dev/schemas/oiml.project/0.1.0/schema.json",
     definitions: [] // Project schema definitions will be auto-detected
+  },
+  {
+    name: "oiml.plan",
+    version: "0.1.0",
+    path: "../schemas/oiml.plan/0.1.0",
+    schemaName: "ImplementationPlan",
+    title: "Open Intent Modeling Language (OIML) Implementation Plan Schema",
+    description: "Schema for OIML implementation plan definitions - agent's intended changes before execution",
+    id: "https://oiml.dev/schemas/oiml.plan/0.1.0/schema.json",
+    definitions: [
+      "PlannedFileAction",
+      "PlannedChange",
+      "TemplatePack",
+      "IntentScope",
+      "IntentStep",
+      "RiskLevel",
+      "RiskAssessment",
+      "Prerequisites"
+    ]
   }
 ];
 

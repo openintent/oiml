@@ -12,6 +12,22 @@ Intent definitions for the Open Intent Modeling Language.
 
 - `0.1.0` - Initial release
 
+### oiml.project
+
+Project configuration for OIML projects.
+
+**Versions:**
+
+- `0.1.0` - Initial release
+
+### oiml.plan
+
+Implementation plan schema - agent's intended changes before execution.
+
+**Versions:**
+
+- `0.1.0` - Initial release
+
 ## Publishing to GitHub Container Registry
 
 Schemas are distributed as OCI artifacts (container images) via GitHub Container Registry.
