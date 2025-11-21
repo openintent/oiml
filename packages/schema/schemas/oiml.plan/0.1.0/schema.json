@@ -1,0 +1,472 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://oiml.dev/schemas/oiml.plan/0.1.0/schema.json",
+  "title": "Open Intent Modeling Language (OIML) Implementation Plan Schema",
+  "description": "Schema for OIML implementation plan definitions - agent's intended changes before execution",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "0.1.0",
+      "description": "Schema version"
+    },
+    "created_at": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{3})?Z$"
+        },
+        {
+          "type": "string",
+          "format": "date-time"
+        }
+      ],
+      "description": "Plan creation timestamp (ISO8601)"
+    },
+    "intent_id": {
+      "type": "string",
+      "description": "Intent file identifier"
+    },
+    "project_id": {
+      "type": "string",
+      "description": "Project identifier"
+    },
+    "model": {
+      "type": "string",
+      "description": "AI model generating the plan"
+    },
+    "intents_to_process": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Number of intents to process"
+    },
+    "template_used": {
+      "type": "object",
+      "properties": {
+        "framework": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Framework name (e.g., \"prisma\", \"next\")"
+        },
+        "category": {
+          "type": "string",
+          "enum": ["database", "api", "ui", "capability"],
+          "description": "Framework category"
+        },
+        "pack": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Template pack URI"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Template version"
+        },
+        "digest": {
+          "type": "string",
+          "description": "Content digest for verification"
+        },
+        "compat": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Compatibility constraints"
+        }
+      },
+      "required": ["framework", "category", "pack", "version"],
+      "additionalProperties": false,
+      "description": "Template pack information"
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Intent kind (e.g., \"add_entity\", \"add_endpoint\")"
+          },
+          "scope": {
+            "type": "string",
+            "enum": ["data", "api", "ui", "capability"],
+            "description": "Intent scope (e.g., \"data\", \"api\", \"ui\")"
+          },
+          "target": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Target entity/component/endpoint name"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Human-readable description of what this intent will accomplish"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "file": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "File path relative to project root"
+                },
+                "action": {
+                  "type": "string",
+                  "enum": ["create", "modify", "delete", "regenerate"],
+                  "description": "Action to perform on the file"
+                },
+                "description": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Human-readable description of the planned change"
+                },
+                "steps": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Detailed steps (optional)"
+                },
+                "dependencies": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Files that must exist or be changed first"
+                }
+              },
+              "required": ["file", "action", "description"],
+              "additionalProperties": false
+            },
+            "description": "Expected changes from processing this intent"
+          }
+        },
+        "required": ["kind", "scope", "target", "description", "changes"],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "description": "Ordered sequence of intent processing steps"
+    },
+    "planned_changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "string",
+            "minLength": 1,
+            "description": "File path relative to project root"
+          },
+          "action": {
+            "type": "string",
+            "enum": ["create", "modify", "delete", "regenerate"],
+            "description": "Action to perform on the file"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Human-readable description of the planned change"
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Detailed steps (optional)"
+          },
+          "dependencies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Files that must exist or be changed first"
+          }
+        },
+        "required": ["file", "action", "description"],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "description": "All planned file changes (aggregated from steps)"
+    },
+    "risk_assessment": {
+      "type": "object",
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": ["low", "medium", "high"],
+          "description": "Overall risk level"
+        },
+        "factors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Risk factors identified"
+        },
+        "mitigations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Mitigation strategies"
+        }
+      },
+      "required": ["level", "factors"],
+      "additionalProperties": false,
+      "description": "Risk assessment for the planned changes"
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Any warnings or important notes"
+    },
+    "prerequisites": {
+      "type": "object",
+      "properties": {
+        "config_checks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Required configuration checks"
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Required dependencies"
+        },
+        "required_files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Required files that must exist"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Prerequisites that must be satisfied before execution"
+    },
+    "estimated_duration": {
+      "type": "string",
+      "description": "Estimated execution time (e.g., '2-3 minutes')"
+    }
+  },
+  "required": ["version", "created_at", "intent_id", "intents_to_process", "template_used", "steps", "planned_changes"],
+  "additionalProperties": false,
+  "definitions": {
+    "PlannedFileAction": {
+      "type": "string",
+      "enum": ["create", "modify", "delete", "regenerate"]
+    },
+    "PlannedChange": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "type": "string",
+          "minLength": 1,
+          "description": "File path relative to project root"
+        },
+        "action": {
+          "type": "string",
+          "enum": ["create", "modify", "delete", "regenerate"],
+          "description": "Action to perform on the file"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable description of the planned change"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Detailed steps (optional)"
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Files that must exist or be changed first"
+        }
+      },
+      "required": ["file", "action", "description"],
+      "additionalProperties": false
+    },
+    "TemplatePack": {
+      "type": "object",
+      "properties": {
+        "framework": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Framework name (e.g., \"prisma\", \"next\")"
+        },
+        "category": {
+          "type": "string",
+          "enum": ["database", "api", "ui", "capability"],
+          "description": "Framework category"
+        },
+        "pack": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Template pack URI"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Template version"
+        },
+        "digest": {
+          "type": "string",
+          "description": "Content digest for verification"
+        },
+        "compat": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Compatibility constraints"
+        }
+      },
+      "required": ["framework", "category", "pack", "version"],
+      "additionalProperties": false
+    },
+    "IntentScope": {
+      "type": "string",
+      "enum": ["data", "api", "ui", "capability"]
+    },
+    "IntentStep": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Intent kind (e.g., \"add_entity\", \"add_endpoint\")"
+        },
+        "scope": {
+          "type": "string",
+          "enum": ["data", "api", "ui", "capability"],
+          "description": "Intent scope (e.g., \"data\", \"api\", \"ui\")"
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Target entity/component/endpoint name"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable description of what this intent will accomplish"
+        },
+        "changes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "file": {
+                "type": "string",
+                "minLength": 1,
+                "description": "File path relative to project root"
+              },
+              "action": {
+                "type": "string",
+                "enum": ["create", "modify", "delete", "regenerate"],
+                "description": "Action to perform on the file"
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Human-readable description of the planned change"
+              },
+              "steps": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Detailed steps (optional)"
+              },
+              "dependencies": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Files that must exist or be changed first"
+              }
+            },
+            "required": ["file", "action", "description"],
+            "additionalProperties": false
+          },
+          "description": "Expected changes from processing this intent"
+        }
+      },
+      "required": ["kind", "scope", "target", "description", "changes"],
+      "additionalProperties": false
+    },
+    "RiskLevel": {
+      "type": "string",
+      "enum": ["low", "medium", "high"]
+    },
+    "RiskAssessment": {
+      "type": "object",
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": ["low", "medium", "high"],
+          "description": "Overall risk level"
+        },
+        "factors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Risk factors identified"
+        },
+        "mitigations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Mitigation strategies"
+        }
+      },
+      "required": ["level", "factors"],
+      "additionalProperties": false
+    },
+    "Prerequisites": {
+      "type": "object",
+      "properties": {
+        "config_checks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Required configuration checks"
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Required dependencies"
+        },
+        "required_files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Required files that must exist"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
