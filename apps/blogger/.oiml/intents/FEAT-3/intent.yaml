@@ -1,0 +1,26 @@
+version: 0.1.0
+type: oiml.intent
+ai_context:
+  purpose: Conform to project frameworks, style, and conventions.
+  instructions: |
+    - Read .oiml/AGENTS.md and apply the instructions to the intent.
+  references:
+    - kind: file
+      path: .oiml/AGENTS.md
+provenance:
+  created_by:
+    type: human
+    name: ""
+  created_at: 2025-11-21T19:10:38Z
+intents: 
+  - kind: add_entity
+    scope: data
+    entity: Event
+    fields:
+      - name: id
+        type: uuid
+        required: true
+      - name: title
+        type: string
+        max_length: 255
+        required: true

@@ -1,0 +1,29 @@
+version: 0.1.0
+applied_at: 2025-11-21T19:30:45Z
+status: success
+intents_processed: 3
+model: claude-sonnet-4.5
+template_used:
+  framework: next
+  category: api
+  pack: oiml-next
+  version: 1.0.0
+  digest: sha256-555b66ffd986d7380fef724deef0beb6126964beb5f0577d35g09f0499794772
+  compat:
+    oiml: ">=0.1.0 <0.2.0"
+    next: ">=14.0.0 <17.0.0"
+changes:
+  - file: packages/types/index.ts
+    action: created
+    description: Created TypeScript types for Event entity with EventInterface and EventResponse types
+  - file: app/api/events/route.ts
+    action: created
+    description: Created API route with GET and POST handlers for listing and creating events
+  - file: app/api/events/[id]/route.ts
+    action: created
+    description: Created dynamic API route with GET handler for fetching individual event by ID
+errors: []
+
+
+
+

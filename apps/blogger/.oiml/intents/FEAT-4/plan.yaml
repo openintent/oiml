@@ -1,0 +1,98 @@
+version: 0.1.0
+created_at: 2025-11-21T19:29:00Z
+intent_id: FEAT-4
+project_id: blogger
+model: claude-sonnet-4.5
+intents_to_process: 3
+template_used:
+  framework: next
+  category: api
+  pack: oiml-next
+  version: 1.0.0
+  compat:
+    oiml: ">=0.1.0 <0.2.0"
+    next: ">=14.0.0 <17.0.0"
+steps:
+  - kind: add_endpoint
+    scope: api
+    target: POST /api/events
+    description: Create endpoint to create a new event
+    changes:
+      - file: app/api/events/route.ts
+        action: create
+        description: Create route handler with POST method for creating events
+        steps:
+          - Create app/api/events directory
+          - Create route.ts with POST handler
+          - Import NextResponse and Prisma client
+          - Add request body validation for title field
+          - Implement event creation with Prisma
+          - Return response in configured format with data wrapper
+          - Add comprehensive error handling
+  - kind: add_endpoint
+    scope: api
+    target: GET /api/events
+    description: Create endpoint to get all events
+    changes:
+      - file: app/api/events/route.ts
+        action: modify
+        description: Add GET method to existing route handler for fetching all events
+        steps:
+          - Add GET export to route.ts
+          - Implement findMany query with Prisma
+          - Return events array in configured format with data wrapper
+          - Add error handling
+  - kind: add_endpoint
+    scope: api
+    target: GET /api/events/{id}
+    description: Create endpoint to get an event by id
+    changes:
+      - file: app/api/events/[id]/route.ts
+        action: create
+        description: Create dynamic route handler with GET method for fetching event by ID
+        steps:
+          - Create app/api/events/[id] directory
+          - Create route.ts with GET handler
+          - Resolve params promise for id parameter
+          - Implement findUnique query with Prisma
+          - Handle 404 when event not found
+          - Return event in configured format with data wrapper
+          - Add comprehensive error handling
+planned_changes:
+  - file: app/api/events/route.ts
+    action: create
+    description: Create API route with POST and GET handlers for event creation and listing
+  - file: app/api/events/[id]/route.ts
+    action: create
+    description: Create dynamic API route with GET handler for fetching event by ID
+  - file: packages/types/index.ts
+    action: modify
+    description: Add EventInterface and response types for API endpoints
+risk_assessment:
+  level: low
+  factors:
+    - New API endpoints only, no modifications to existing code
+    - Event entity already exists in database from FEAT-3
+  mitigations:
+    - Using Next.js App Router standard patterns
+    - Following project response structure conventions
+    - Comprehensive error handling with proper status codes
+warnings:
+  - Ensure database connection is available for API testing
+  - Event entity must exist in database before endpoints can work
+prerequisites:
+  config_checks:
+    - Database connection configured in .env
+    - Prisma client available at lib/prisma
+    - Event model exists in Prisma schema
+  required_files:
+    - lib/prisma.ts
+    - prisma/schema.prisma
+  dependencies:
+    - next
+    - "@prisma/client"
+estimated_duration: 2-3 minutes
+
+
+
+

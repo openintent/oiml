@@ -42,3 +42,17 @@ model Comment {
 
   @@map("comments")
 }
+
+model Event {
+  id    String @id @default(uuid()) @db.Uuid
+  title String @db.VarChar(255)
+
+  @@map("events")
+}
+
+model Room {
+  id         String   @id @default(uuid()) @db.Uuid
+  created_at DateTime @default(now())
+
+  @@map("rooms")
+}

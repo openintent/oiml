@@ -1,0 +1,27 @@
+version: 0.1.0
+applied_at: 2025-11-21T19:13:25Z
+status: success
+intents_processed: 1
+model: claude-sonnet-4.5
+template_used:
+  framework: prisma
+  category: database
+  pack: oiml-prisma
+  version: 1.0.0
+  digest: sha256-444a55ffe875c6269eee613cdee0aeb5015853aeb4e9466c24f08e0388683661
+  compat:
+    oiml: ">=0.1.0 <0.2.0"
+    prisma: ">=6.0.0 <7.0.0"
+changes:
+  - file: prisma/schema.prisma
+    action: modified
+    description: Added Event model with id (UUID primary key) and title (String, max 255) fields
+  - file: prisma/migrations/20251121191325_add_event_entity/migration.sql
+    action: created
+    description: Created migration SQL for Event table with id and title columns
+  - file: node_modules/@prisma/client
+    action: regenerated
+    description: Regenerated Prisma Client to include Event model (v6.19.0)
+errors: []
+
+

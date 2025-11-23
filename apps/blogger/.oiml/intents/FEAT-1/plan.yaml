@@ -1,0 +1,98 @@
+version: 0.1.0
+created_at: 2025-11-21T19:45:00Z
+intent_id: FEAT-1
+project_id: blogger
+model: claude-sonnet-4.5
+intents_to_process: 1
+
+template_used:
+  framework: prisma
+  category: database
+  pack: oiml://templates/database/prisma/1.0.0
+  version: 1.0.0
+  compat:
+    oiml: ">=0.1.0 <0.2.0"
+    prisma: ">=6.0.0 <7.0.0"
+
+steps:
+  - kind: add_entity
+    scope: data
+    target: Post
+    description: Create Post entity with fields for a blog post (id, title, content, published, created_at)
+    changes:
+      - file: prisma/schema.prisma
+        action: modify
+        description: Add Post model with id, title, content, published, created_at fields
+        steps:
+          - Add Post model definition to schema
+          - Add id field as UUID primary key with auto-generation
+          - Add title field as String with max length 255 characters
+          - Add content field as Text (nullable for draft posts)
+          - Add published field as Boolean with default value false
+          - Add created_at field as DateTime with default value now()
+      
+      - file: prisma/migrations/20251121194500_add_post_entity/migration.sql
+        action: create
+        description: Generate migration SQL to create posts table
+        dependencies:
+          - prisma/schema.prisma
+        steps:
+          - Create posts table with all fields
+          - Set up primary key constraint on id
+          - Set up default values for published and created_at
+          - Create indexes as needed for query optimization
+      
+      - file: node_modules/@prisma/client
+        action: regenerate
+        description: Regenerate Prisma client to include Post model and types
+        dependencies:
+          - prisma/schema.prisma
+
+planned_changes:
+  - file: prisma/schema.prisma
+    action: modify
+    description: Add Post model with id, title, content, published, created_at fields
+  
+  - file: prisma/migrations/20251121194500_add_post_entity/migration.sql
+    action: create
+    description: Generate migration SQL to create posts table
+    dependencies:
+      - prisma/schema.prisma
+  
+  - file: node_modules/@prisma/client
+    action: regenerate
+    description: Regenerate Prisma client to include Post model and types
+    dependencies:
+      - prisma/schema.prisma
+
+risk_assessment:
+  level: low
+  factors:
+    - Database schema modification
+    - New table creation
+    - No existing data will be affected
+  mitigations:
+    - Migration can be rolled back if issues occur
+    - Changes are additive only (no deletions or modifications to existing tables)
+    - Database backup recommended before applying migration
+
+warnings:
+  - Migration file will be created but not automatically applied
+  - Run 'npx prisma migrate dev' to apply migration when ready
+  - Ensure DATABASE_URL is configured in .env before running migrations
+
+prerequisites:
+  config_checks:
+    - Database connection string configured in .env (DATABASE_URL)
+    - Prisma CLI is installed (check with 'npx prisma --version')
+  required_files:
+    - prisma/schema.prisma
+    - .env
+  dependencies:
+    - "@prisma/client"
+    - "prisma"
+
+estimated_duration: 2-3 minutes
+
+
+

@@ -1,0 +1,31 @@
+version: 0.1.0
+type: oiml.intent
+ai_context:
+  purpose: Conform to project frameworks, style, and conventions.
+  instructions: >
+    - CRITICAL: Call the MCP tool `get_agents_guide` FIRST before proceeding to retrieve 
+    the OIML Agents implementation guide and apply the instructions to the intent.
+  references:
+    - kind: mcp_tool
+      tool: get_agents_guide
+      description: >-
+        OIML Agents implementation guide containing workflow instructions,
+        framework-specific patterns, and best practices
+provenance:
+  created_by:
+    type: human
+    name: ''
+  created_at: '2025-11-22T19:14:04Z'
+intents:
+  - kind: add_entity
+    scope: data
+    entity: Room
+    fields:
+      - name: id
+        type: uuid
+        required: true
+        unique: true
+      - name: created_at
+        type: datetime
+        required: true
+        default: now

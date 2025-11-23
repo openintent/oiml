@@ -1,0 +1,109 @@
+version: 0.1.0
+created_at: 2025-11-22T19:24:54Z
+intent_id: FEAT-5
+project_id: blogger
+model: claude-sonnet-4.5
+intents_to_process: 1
+
+template_used:
+  framework: prisma
+  category: database
+  pack: oiml://compat/oiml-prisma/1.1.0
+  version: 1.1.0
+  digest: sha256-d531c39204d2e5b0335c67363472a381e12a24150f252cd42b80b328e13719a5
+  compat:
+    oiml: ">=0.1.0 <0.3.0"
+    prisma: ">=6.0.0 <8.0.0"
+    "@prisma/client": ">=6.0.0 <8.0.0"
+
+steps:
+  - kind: add_entity
+    scope: data
+    target: Room
+    description: Create Room entity with id (UUID) and created_at (DateTime) fields
+    changes:
+      - file: prisma/schema.prisma
+        action: modify
+        description: Add Room model with id (UUID primary key) and created_at (DateTime with default now)
+        steps:
+          - Add Room model definition to schema
+          - Add id field as UUID primary key with auto-generation (@default(uuid()))
+          - Add created_at field as DateTime with default value now()
+          - Add @@map("rooms") directive for table name mapping
+      
+      - file: prisma/migrations/*/migration.sql
+        action: create
+        description: Generate migration SQL to create rooms table
+        dependencies:
+          - prisma/schema.prisma
+        steps:
+          - Create rooms table with id and created_at columns
+          - Set up primary key constraint on id
+          - Set up default value for created_at
+      
+      - file: node_modules/@prisma/client
+        action: regenerate
+        description: Regenerate Prisma client to include Room model and types
+        dependencies:
+          - prisma/schema.prisma
+      
+      - file: packages/types/index.ts
+        action: modify
+        description: Add RoomInterface and RoomResponse types
+        dependencies:
+          - prisma/schema.prisma
+        steps:
+          - Add RoomInterface with id (string) and created_at (Date) fields
+          - Add RoomResponse type for API responses
+
+planned_changes:
+  - file: prisma/schema.prisma
+    action: modify
+    description: Add Room model with id (UUID primary key) and created_at (DateTime with default now)
+  
+  - file: prisma/migrations/*/migration.sql
+    action: create
+    description: Generate migration SQL to create rooms table
+    dependencies:
+      - prisma/schema.prisma
+  
+  - file: node_modules/@prisma/client
+    action: regenerate
+    description: Regenerate Prisma client to include Room model and types
+    dependencies:
+      - prisma/schema.prisma
+  
+  - file: packages/types/index.ts
+    action: modify
+    description: Add RoomInterface and RoomResponse types
+    dependencies:
+      - prisma/schema.prisma
+
+risk_assessment:
+  level: low
+  factors:
+    - Database schema modification
+    - New table creation
+    - No existing data will be affected
+  mitigations:
+    - Migration can be rolled back if issues occur
+    - Changes are additive only (no deletions or modifications to existing tables)
+    - Database backup recommended before applying migration
+
+warnings:
+  - Migration will be automatically applied (database.autorun_migrations: true)
+  - Ensure DATABASE_URL is configured in .env before running migrations
+
+prerequisites:
+  config_checks:
+    - Database connection string configured in .env (DATABASE_URL)
+    - Prisma CLI is installed (check with 'npx prisma --version')
+  required_files:
+    - prisma/schema.prisma
+    - .env
+  dependencies:
+    - "@prisma/client"
+    - "prisma"
+
+estimated_duration: 2-3 minutes
+

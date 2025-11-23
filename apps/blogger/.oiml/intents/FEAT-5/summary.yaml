@@ -1,0 +1,36 @@
+version: 0.1.0
+applied_at: 2025-11-22T19:25:14Z
+status: success
+intents_processed: 1
+model: claude-sonnet-4.5
+
+template_used:
+  framework: prisma
+  category: database
+  pack: oiml://compat/oiml-prisma/1.1.0
+  version: 1.1.0
+  digest: sha256-d531c39204d2e5b0335c67363472a381e12a24150f252cd42b80b328e13719a5
+  compat:
+    oiml: ">=0.1.0 <0.3.0"
+    prisma: ">=6.0.0 <8.0.0"
+    "@prisma/client": ">=6.0.0 <8.0.0"
+
+changes:
+  - file: prisma/schema.prisma
+    action: modified
+    description: Added Room model with id (UUID primary key) and created_at (DateTime with default now)
+  
+  - file: prisma/migrations/20251122192514_add_room_entity/migration.sql
+    action: created
+    description: Generated Prisma migration to create rooms table
+  
+  - file: node_modules/@prisma/client
+    action: regenerated
+    description: Regenerated Prisma client to include Room model and types
+  
+  - file: packages/types/index.ts
+    action: modified
+    description: Added RoomInterface and RoomResponse types
+
+errors: []
+

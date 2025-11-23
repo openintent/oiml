@@ -1,0 +1,70 @@
+version: 0.1.0
+created_at: 2025-11-21T19:12:10Z
+intent_id: FEAT-3
+project_id: blogger
+model: claude-sonnet-4.5
+intents_to_process: 1
+template_used:
+  framework: prisma
+  category: database
+  pack: oiml-prisma
+  version: 1.0.0
+  compat:
+    oiml: ">=0.1.0 <0.2.0"
+    prisma: ">=6.0.0 <7.0.0"
+steps:
+  - kind: add_entity
+    scope: data
+    target: Event
+    description: Create Event entity with id and title fields
+    changes:
+      - file: prisma/schema.prisma
+        action: modify
+        description: Add Event model with id (UUID primary key) and title (String, max 255) fields
+        steps:
+          - Add Event model definition
+          - Add id field with UUID type and primary key
+          - Add title field with String type and VarChar(255)
+          - Add @@map("events") directive for table name
+      - file: prisma/migrations/YYYYMMDDHHMMSS_add_event_entity/migration.sql
+        action: create
+        description: Generate migration SQL for Event table
+        dependencies:
+          - prisma/schema.prisma
+      - file: node_modules/@prisma/client
+        action: regenerate
+        description: Regenerate Prisma client to include Event model
+        dependencies:
+          - prisma/schema.prisma
+planned_changes:
+  - file: prisma/schema.prisma
+    action: modify
+    description: Add Event model with id (UUID primary key) and title (String, max 255) fields
+  - file: prisma/migrations/YYYYMMDDHHMMSS_add_event_entity/migration.sql
+    action: create
+    description: Generate migration SQL for Event table
+  - file: node_modules/@prisma/client
+    action: regenerate
+    description: Regenerate Prisma client to include Event model
+risk_assessment:
+  level: medium
+  factors:
+    - Database schema modifications
+    - New table creation
+  mitigations:
+    - Migration will be created and automatically applied
+    - Migration can be rolled back if needed
+    - No existing data affected as this is a new table
+warnings:
+  - Migrations will be automatically applied because autorun_migrations is true
+  - Database connection must be available during migration
+prerequisites:
+  config_checks:
+    - Database connection string configured in .env (DATABASE_URL)
+  required_files:
+    - prisma/schema.prisma
+  dependencies:
+    - "@prisma/client"
+    - prisma
+estimated_duration: 1-2 minutes
+
