@@ -2,10 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import type { EventResponse, ErrorResponse } from "@/packages/types";
 
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   // Resolve params (Next.js 15+ passes params as a Promise)
   const resolvedParams = await params;
 
@@ -36,7 +33,3 @@ export async function GET(
     return NextResponse.json(errorResponse, { status: 500 });
   }
 }
-
-
-
-

@@ -56,7 +56,3 @@ export async function POST(request: Request) {
     return NextResponse.json(errorResponse, { status: 500 });
   }
 }
-
-
-
-

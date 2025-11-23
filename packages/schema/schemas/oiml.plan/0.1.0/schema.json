@@ -50,12 +50,7 @@
         },
         "category": {
           "type": "string",
-          "enum": [
-            "database",
-            "api",
-            "ui",
-            "capability"
-          ],
+          "enum": ["database", "api", "ui", "capability"],
           "description": "Framework category"
         },
         "pack": {
@@ -80,12 +75,7 @@
           "description": "Compatibility constraints"
         }
       },
-      "required": [
-        "framework",
-        "category",
-        "pack",
-        "version"
-      ],
+      "required": ["framework", "category", "pack", "version"],
       "additionalProperties": false,
       "description": "Template pack information"
     },
@@ -101,12 +91,7 @@
           },
           "scope": {
             "type": "string",
-            "enum": [
-              "data",
-              "api",
-              "ui",
-              "capability"
-            ],
+            "enum": ["data", "api", "ui", "capability"],
             "description": "Intent scope (e.g., \"data\", \"api\", \"ui\")"
           },
           "target": {
@@ -131,12 +116,7 @@
                 },
                 "action": {
                   "type": "string",
-                  "enum": [
-                    "create",
-                    "modify",
-                    "delete",
-                    "regenerate"
-                  ],
+                  "enum": ["create", "modify", "delete", "regenerate"],
                   "description": "Action to perform on the file"
                 },
                 "description": {
@@ -159,23 +139,13 @@
                   "description": "Files that must exist or be changed first"
                 }
               },
-              "required": [
-                "file",
-                "action",
-                "description"
-              ],
+              "required": ["file", "action", "description"],
               "additionalProperties": false
             },
             "description": "Expected changes from processing this intent"
           }
         },
-        "required": [
-          "kind",
-          "scope",
-          "target",
-          "description",
-          "changes"
-        ],
+        "required": ["kind", "scope", "target", "description", "changes"],
         "additionalProperties": false
       },
       "minItems": 1,
@@ -193,12 +163,7 @@
           },
           "action": {
             "type": "string",
-            "enum": [
-              "create",
-              "modify",
-              "delete",
-              "regenerate"
-            ],
+            "enum": ["create", "modify", "delete", "regenerate"],
             "description": "Action to perform on the file"
           },
           "description": {
@@ -221,11 +186,7 @@
             "description": "Files that must exist or be changed first"
           }
         },
-        "required": [
-          "file",
-          "action",
-          "description"
-        ],
+        "required": ["file", "action", "description"],
         "additionalProperties": false
       },
       "minItems": 1,
@@ -236,11 +197,7 @@
       "properties": {
         "level": {
           "type": "string",
-          "enum": [
-            "low",
-            "medium",
-            "high"
-          ],
+          "enum": ["low", "medium", "high"],
           "description": "Overall risk level"
         },
         "factors": {
@@ -258,10 +215,7 @@
           "description": "Mitigation strategies"
         }
       },
-      "required": [
-        "level",
-        "factors"
-      ],
+      "required": ["level", "factors"],
       "additionalProperties": false,
       "description": "Risk assessment for the planned changes"
     },
@@ -305,25 +259,12 @@
       "description": "Estimated execution time (e.g., '2-3 minutes')"
     }
   },
-  "required": [
-    "version",
-    "created_at",
-    "intent_id",
-    "intents_to_process",
-    "template_used",
-    "steps",
-    "planned_changes"
-  ],
+  "required": ["version", "created_at", "intent_id", "intents_to_process", "template_used", "steps", "planned_changes"],
   "additionalProperties": false,
   "definitions": {
     "PlannedFileAction": {
       "type": "string",
-      "enum": [
-        "create",
-        "modify",
-        "delete",
-        "regenerate"
-      ]
+      "enum": ["create", "modify", "delete", "regenerate"]
     },
     "PlannedChange": {
       "type": "object",
@@ -335,12 +276,7 @@
         },
         "action": {
           "type": "string",
-          "enum": [
-            "create",
-            "modify",
-            "delete",
-            "regenerate"
-          ],
+          "enum": ["create", "modify", "delete", "regenerate"],
           "description": "Action to perform on the file"
         },
         "description": {
@@ -363,11 +299,7 @@
           "description": "Files that must exist or be changed first"
         }
       },
-      "required": [
-        "file",
-        "action",
-        "description"
-      ],
+      "required": ["file", "action", "description"],
       "additionalProperties": false
     },
     "TemplatePack": {
@@ -380,12 +312,7 @@
         },
         "category": {
           "type": "string",
-          "enum": [
-            "database",
-            "api",
-            "ui",
-            "capability"
-          ],
+          "enum": ["database", "api", "ui", "capability"],
           "description": "Framework category"
         },
         "pack": {
@@ -410,22 +337,12 @@
           "description": "Compatibility constraints"
         }
       },
-      "required": [
-        "framework",
-        "category",
-        "pack",
-        "version"
-      ],
+      "required": ["framework", "category", "pack", "version"],
       "additionalProperties": false
     },
     "IntentScope": {
       "type": "string",
-      "enum": [
-        "data",
-        "api",
-        "ui",
-        "capability"
-      ]
+      "enum": ["data", "api", "ui", "capability"]
     },
     "IntentStep": {
       "type": "object",
@@ -437,12 +354,7 @@
         },
         "scope": {
           "type": "string",
-          "enum": [
-            "data",
-            "api",
-            "ui",
-            "capability"
-          ],
+          "enum": ["data", "api", "ui", "capability"],
           "description": "Intent scope (e.g., \"data\", \"api\", \"ui\")"
         },
         "target": {
@@ -467,12 +379,7 @@
               },
               "action": {
                 "type": "string",
-                "enum": [
-                  "create",
-                  "modify",
-                  "delete",
-                  "regenerate"
-                ],
+                "enum": ["create", "modify", "delete", "regenerate"],
                 "description": "Action to perform on the file"
               },
               "description": {
@@ -495,43 +402,25 @@
                 "description": "Files that must exist or be changed first"
               }
             },
-            "required": [
-              "file",
-              "action",
-              "description"
-            ],
+            "required": ["file", "action", "description"],
             "additionalProperties": false
           },
           "description": "Expected changes from processing this intent"
         }
       },
-      "required": [
-        "kind",
-        "scope",
-        "target",
-        "description",
-        "changes"
-      ],
+      "required": ["kind", "scope", "target", "description", "changes"],
       "additionalProperties": false
     },
     "RiskLevel": {
       "type": "string",
-      "enum": [
-        "low",
-        "medium",
-        "high"
-      ]
+      "enum": ["low", "medium", "high"]
     },
     "RiskAssessment": {
       "type": "object",
       "properties": {
         "level": {
           "type": "string",
-          "enum": [
-            "low",
-            "medium",
-            "high"
-          ],
+          "enum": ["low", "medium", "high"],
           "description": "Overall risk level"
         },
         "factors": {
@@ -549,10 +438,7 @@
           "description": "Mitigation strategies"
         }
       },
-      "required": [
-        "level",
-        "factors"
-      ],
+      "required": ["level", "factors"],
       "additionalProperties": false
     },
     "Prerequisites": {

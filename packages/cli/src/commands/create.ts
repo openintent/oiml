@@ -71,7 +71,8 @@ export function generateIntentTemplate(name: string, version: string): string {
         {
           kind: "mcp_tool",
           tool: "get_agents_guide",
-          description: "OIML Agents implementation guide containing workflow instructions, framework-specific patterns, and best practices"
+          description:
+            "OIML Agents implementation guide containing workflow instructions, framework-specific patterns, and best practices"
         }
       ]
     },
