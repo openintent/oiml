@@ -1,0 +1,63 @@
+version: 0.1.0
+created_at: 2025-11-22T20:03:10Z
+intent_id: 🚀
+project_id: testy
+model: claude-sonnet-4.5
+intents_to_process: 1
+template_used:
+  framework: prisma
+  category: database
+  pack: oiml://compat/oiml-prisma/1.1.0
+  version: 1.1.0
+  digest: sha256-d531c39204d2e5b0335c67363472a381e12a24150f252cd42b80b328e13719a5
+  compat:
+    oiml: ">=0.1.0 <0.3.0"
+    prisma: ">=6.0.0 <8.0.0"
+    "@prisma/client": ">=6.0.0 <8.0.0"
+steps:
+  - kind: add_entity
+    scope: data
+    target: User
+    description: Create User entity with id (UUID) and email (String, unique) fields
+    changes:
+      - file: prisma/schema.prisma
+        action: modify
+        description: Add User model with id (UUID primary key) and email (String, unique) fields
+        steps:
+          - Create prisma directory if it doesn't exist
+          - Create schema.prisma with generator and datasource if needed
+          - Add User model with id and email fields
+          - Add User model with id (UUID primary key) and email (String, unique) fields
+      - file: prisma/migrations/*/migration.sql
+        action: create
+        description: Generate Prisma migration for User entity
+        dependencies:
+          - prisma/schema.prisma
+planned_changes:
+  - file: prisma/schema.prisma
+    action: modify
+    description: Add User model with id (UUID primary key) and email (String, unique) fields
+  - file: prisma/migrations/*/migration.sql
+    action: create
+    description: Generate Prisma migration for User entity
+risk_assessment:
+  level: low
+  factors:
+    - Database schema addition (new entity)
+    - No existing data to migrate
+  mitigations:
+    - Migration will be created but not automatically applied (autorun_migrations not set)
+warnings:
+  - Migration files will be created but not applied automatically
+  - Run migrations manually when ready using: npx prisma migrate dev
+prerequisites:
+  config_checks:
+    - Database connection string configured in .env (DATABASE_URL)
+  required_files:
+    - prisma/schema.prisma
+  dependencies:
+    - "@prisma/client"
+    - "prisma"
+estimated_duration: 2-3 minutes
+
+
