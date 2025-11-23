@@ -161,8 +161,10 @@ export const AIContext = z
     references: z
       .array(
         z.object({
-          kind: z.enum(["file"]).describe("Type of reference"),
-          path: z.string().describe("Path to the referenced resource")
+          kind: z.enum(["file", "mcp_tool"]).describe("Type of reference"),
+          path: z.string().optional().describe("Path to the referenced resource"),
+          tool: z.string().optional().describe("Tool name (required when kind is 'mcp_tool')"),
+          description: z.string().optional().describe("Description of the referenced resource")
         })
       )
       .optional()

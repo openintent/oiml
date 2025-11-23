@@ -88,12 +88,31 @@
       "properties": {
         "type": {
           "type": "string",
-          "enum": ["postgres", "mysql", "sqlite", "mongodb", "cockroachdb", "mariadb", "mssql", "other", "none"],
+          "enum": [
+            "postgres",
+            "mysql",
+            "sqlite",
+            "mongodb",
+            "cockroachdb",
+            "mariadb",
+            "mssql",
+            "other",
+            "none"
+          ],
           "description": "Database type"
         },
         "framework": {
           "type": "string",
-          "enum": ["prisma", "drizzle", "sqlalchemy", "ent", "gorm", "sqlx", "raw", "other"],
+          "enum": [
+            "prisma",
+            "drizzle",
+            "sqlalchemy",
+            "ent",
+            "gorm",
+            "sqlx",
+            "raw",
+            "other"
+          ],
           "description": "Database framework"
         },
         "schema": {
@@ -110,7 +129,9 @@
           "description": "Whether to automatically run migrations"
         }
       },
-      "required": ["type"],
+      "required": [
+        "type"
+      ],
       "additionalProperties": false,
       "description": "Database configuration"
     },
@@ -119,17 +140,34 @@
       "properties": {
         "framework": {
           "type": "string",
-          "enum": ["react", "vue", "sveltekit", "astro", "next", "vite", "nuxt", "other", "none"],
+          "enum": [
+            "react",
+            "vue",
+            "sveltekit",
+            "astro",
+            "next",
+            "vite",
+            "nuxt",
+            "other",
+            "none"
+          ],
           "description": "UI framework"
         },
         "components": {
           "type": "string",
-          "enum": ["shadcn/ui", "tailwindcss", "other"],
+          "enum": [
+            "shadcn/ui",
+            "tailwindcss",
+            "other"
+          ],
           "description": "UI components library"
         },
         "language": {
           "type": "string",
-          "enum": ["typescript", "javascript"],
+          "enum": [
+            "typescript",
+            "javascript"
+          ],
           "description": "UI programming language"
         },
         "base_components": {
@@ -172,7 +210,17 @@
       "properties": {
         "name": {
           "type": "string",
-          "enum": ["aws", "gcp", "azure", "vercel", "netlify", "railway", "render", "fly", "digitalocean"],
+          "enum": [
+            "aws",
+            "gcp",
+            "azure",
+            "vercel",
+            "netlify",
+            "railway",
+            "render",
+            "fly",
+            "digitalocean"
+          ],
           "description": "Cloud provider name"
         },
         "region": {
@@ -180,7 +228,10 @@
           "description": "Deployment region (e.g., 'us-east-1', 'eu-west-1')"
         }
       },
-      "required": ["name", "region"],
+      "required": [
+        "name",
+        "region"
+      ],
       "additionalProperties": false,
       "description": "Cloud provider configuration"
     },
@@ -189,7 +240,14 @@
       "properties": {
         "provider": {
           "type": "string",
-          "enum": ["next-auth", "auth0", "clerk", "supabase", "firebase", "custom"],
+          "enum": [
+            "next-auth",
+            "auth0",
+            "clerk",
+            "supabase",
+            "firebase",
+            "custom"
+          ],
           "description": "Authentication provider"
         },
         "adapter": {
@@ -198,11 +256,17 @@
         },
         "sessionStrategy": {
           "type": "string",
-          "enum": ["jwt", "database", "hybrid"],
+          "enum": [
+            "jwt",
+            "database",
+            "hybrid"
+          ],
           "description": "Session strategy"
         }
       },
-      "required": ["provider"],
+      "required": [
+        "provider"
+      ],
       "additionalProperties": false,
       "description": "Authentication configuration"
     },
@@ -255,7 +319,9 @@
               "description": "Adapter options (can use env:VAR_NAME format)"
             }
           },
-          "required": ["provider"],
+          "required": [
+            "provider"
+          ],
           "additionalProperties": false
         },
         "storage": {
@@ -263,7 +329,13 @@
           "properties": {
             "provider": {
               "type": "string",
-              "enum": ["s3", "gcs", "azure-blob", "cloudflare-r2", "local"],
+              "enum": [
+                "s3",
+                "gcs",
+                "azure-blob",
+                "cloudflare-r2",
+                "local"
+              ],
               "description": "Storage provider"
             },
             "bucket": {
@@ -275,7 +347,9 @@
               "description": "Storage region"
             }
           },
-          "required": ["provider"],
+          "required": [
+            "provider"
+          ],
           "additionalProperties": false
         }
       },
@@ -321,7 +395,16 @@
       "properties": {
         "provider": {
           "type": "string",
-          "enum": ["vercel", "netlify", "aws", "gcp", "azure", "railway", "render", "fly"],
+          "enum": [
+            "vercel",
+            "netlify",
+            "aws",
+            "gcp",
+            "azure",
+            "railway",
+            "render",
+            "fly"
+          ],
           "description": "Deployment provider"
         },
         "region": {
@@ -330,11 +413,17 @@
         },
         "env": {
           "type": "string",
-          "enum": ["production", "staging", "development"],
+          "enum": [
+            "production",
+            "staging",
+            "development"
+          ],
           "description": "Deployment environment"
         }
       },
-      "required": ["provider"],
+      "required": [
+        "provider"
+      ],
       "additionalProperties": false,
       "description": "Deployment configuration"
     },
@@ -401,7 +490,9 @@
                 "description": "Maintainer email"
               }
             },
-            "required": ["name"],
+            "required": [
+              "name"
+            ],
             "additionalProperties": false
           },
           "description": "Project maintainers"
@@ -420,7 +511,10 @@
       "description": "Project metadata"
     }
   },
-  "required": ["name", "version"],
+  "required": [
+    "name",
+    "version"
+  ],
   "additionalProperties": false,
   "definitions": {}
 }
