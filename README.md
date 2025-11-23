@@ -40,7 +40,6 @@ oiml init
 ```
 .oiml/
 ├── project.yaml              # Project configuration
-├── AGENTS.md                 # AI implementation guide
 │
 └── intents/                  # All intents (organized by ticket/issue ID)
     ├── FEAT-1/               # One folder per intent
