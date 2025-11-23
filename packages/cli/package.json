@@ -20,8 +20,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc && pnpm copy-templates",
-    "copy-templates": "mkdir -p dist/templates && cp -r src/templates/* dist/templates/ 2>/dev/null || true",
+    "build": "tsc",
     "postbuild": "chmod +x dist/cli.js 2>/dev/null || true",
     "dev": "tsc --watch",
     "prepublishOnly": "pnpm build || echo 'Build skipped - dist files already exist'",

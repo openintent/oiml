@@ -522,48 +522,18 @@ export async function initCommand(options: { yes?: boolean }) {
     console.log(chalk.green("✓ Created intents directory"));
   }
 
-  // Create _init folder with intent.yaml
-  const initIntentDir = join(intentsDir, "_init");
+  // Create 🚀 folder with intent.yaml
+  const initIntentDir = join(intentsDir, "🚀");
   if (!existsSync(initIntentDir)) {
     mkdirSync(initIntentDir, { recursive: true });
     const initIntentPath = join(initIntentDir, "intent.yaml");
-    const initIntentContent = generateIntentTemplate("_init", config.version);
+    const initIntentContent = generateIntentTemplate("🚀", config.version);
     writeFileSync(initIntentPath, initIntentContent, "utf-8");
-    console.log(chalk.green("✓ Created _init/intent.yaml"));
+    console.log(chalk.green("✓ Created 🚀/intent.yaml"));
   }
 
-  // Copy AGENTS.md template if it exists
-  // Try multiple possible locations (development vs built package)
-  const possibleTemplatePaths = [
-    // Built package locations
-    join(__dirname, "../../templates/AGENTS.md"), // dist/templates/AGENTS.md
-    join(__dirname, "../templates/AGENTS.md"), // dist/commands/../templates/AGENTS.md
-    // Source location (for development/workspace)
-    join(__dirname, "../../src/templates/AGENTS.md"), // dist/commands/../../src/templates/AGENTS.md
-    // npm package locations
-    join(process.cwd(), "node_modules/@oiml/cli/dist/templates/AGENTS.md"), // Published package
-    join(process.cwd(), "node_modules/@openintent/cli/dist/templates/AGENTS.md"), // Legacy package name
-    // Workspace package location
-    resolve(process.cwd(), "../../packages/cli/src/templates/AGENTS.md"), // Workspace source
-    resolve(process.cwd(), "../../packages/cli/dist/templates/AGENTS.md") // Workspace built
-  ];
-
-  let templatePath: string | null = null;
-  for (const path of possibleTemplatePaths) {
-    if (existsSync(path)) {
-      templatePath = path;
-      break;
-    }
-  }
-
-  if (templatePath) {
-    const template = readFileSync(templatePath, "utf-8");
-    const openintentMdPath = join(openintentDir, "AGENTS.md");
-    writeFileSync(openintentMdPath, template, "utf-8");
-    console.log(chalk.green("✓ Created AGENTS.md"));
-  } else {
-    console.log(chalk.yellow("⚠️  AGENTS.md template not found, skipping..."));
-  }
+  // Note: AGENTS.md is now available via MCP tool `get_agents_guide`
+  // No need to copy the file to each project - agents can fetch it when needed
 
   console.log(chalk.green("\n✨ OIML project initialized successfully!"));
   console.log(chalk.gray("\nNext steps:"));

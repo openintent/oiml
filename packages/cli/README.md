@@ -34,7 +34,8 @@ This command will:
 - Create a `.oiml` directory
 - Generate a `project.yaml` configuration file
 - Create an `intents` directory
-- Copy the `AGENTS.md` master prompt template
+
+Note: The OIML Agents implementation guide (AGENTS.md) is now available via the MCP tool `get_agents_guide` instead of being copied to each project. Agents can fetch it when needed.
 
 ### Options
 

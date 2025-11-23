@@ -41,7 +41,7 @@ async function validateProjectYaml(
       console.log(chalk.yellow("⚠️  MCP validation unavailable, using basic validation"));
     }
 
-    const version = projectConfig?.oiml_version;
+    const version = projectConfig?.version;
     if (!version) {
       return { valid: false, content: projectYaml, version: null };
     }
@@ -56,16 +56,22 @@ async function validateProjectYaml(
 }
 
 export function generateIntentTemplate(name: string, version: string): string {
+  const instructionsScalar = new YAML.Scalar(
+    "- CRITICAL: Call the MCP tool `get_agents_guide` FIRST before proceeding to retrieve the OIML Agents implementation guide and apply the instructions to the intent."
+  );
+  instructionsScalar.type = "BLOCK_FOLDED";
+
   const yamlObj = {
     version: version,
     type: "oiml.intent",
     ai_context: {
       purpose: "Conform to project frameworks, style, and conventions.",
-      instructions: "- Read .oiml/AGENTS.md and apply the instructions to the intent.\n",
+      instructions: instructionsScalar,
       references: [
         {
-          kind: "file",
-          path: ".oiml/AGENTS.md"
+          kind: "mcp_tool",
+          tool: "get_agents_guide",
+          description: "OIML Agents implementation guide containing workflow instructions, framework-specific patterns, and best practices"
         }
       ]
     },
@@ -109,7 +115,7 @@ export async function createCommand(name?: string) {
   if (!projectValidation.valid || !projectValidation.version) {
     console.log(chalk.red("❌ Error: project.yaml validation failed"));
     if (!projectValidation.version) {
-      console.log(chalk.gray("Please add an oiml_version field to .oiml/project.yaml"));
+      console.log(chalk.gray("Please add a version field to .oiml/project.yaml"));
       console.log(chalk.gray("Example: version: 0.1.0"));
     }
     process.exit(1);
