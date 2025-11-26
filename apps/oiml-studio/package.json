@@ -1,0 +1,171 @@
+{
+  "name": "@oiml/studio",
+  "productName": "OIML Studio",
+  "version": "0.1.2",
+  "description": "OIML Studio - Desktop application for building and managing OIML intents",
+  "author": "OIML",
+  "homepage": "https://github.com/openintent/oiml#readme",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "concurrently \"next dev\" \"wait-on http://localhost:3000 && npm run electron\"",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "electron:build:main": "tsc -p electron/tsconfig.json",
+    "electron": "npm run electron:build:main && electron .",
+    "electron:dev": "concurrently \"next dev\" \"wait-on http://localhost:3000 && npm run electron\"",
+    "electron:build": "next build && npm run electron:build:main && electron-builder",
+    "electron:pack": "next build && npm run electron:build:main && electron-builder --dir",
+    "build:electron": "next build && npm run electron:build:main",
+    "clean:standalone": "find .next/standalone -type l ! -exec test -e {} \\; -delete 2>/dev/null || true",
+    "dist": "./scripts/build-electron.sh",
+    "publish": "./scripts/publish-release.sh --publish=always"
+  },
+  "dependencies": {
+    "@linear/sdk": "^1.0.0",
+    "@oiml/schema": "workspace:*",
+    "@radix-ui/react-dialog": "^1",
+    "@radix-ui/react-dropdown-menu": "^2",
+    "@radix-ui/react-select": "^2",
+    "@radix-ui/react-tooltip": "^1.2.8",
+    "@types/js-yaml": "^4",
+    "@types/react-syntax-highlighter": "^15",
+    "@uiw/react-textarea-code-editor": "^3",
+    "chokidar": "^4",
+    "class-variance-authority": "^0",
+    "clsx": "^2",
+    "dotenv": "^17.2.3",
+    "electron-store": "^11",
+    "electron-updater": "^6",
+    "js-yaml": "^4",
+    "lucide-react": "^0",
+    "next": "^16",
+    "next-themes": "^0",
+    "react": "^19",
+    "react-dom": "^19",
+    "react-syntax-highlighter": "^16",
+    "sonner": "^2.0.7",
+    "tailwind-merge": "^3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "concurrently": "^9",
+    "electron": "^39.2.3",
+    "electron-builder": "^25",
+    "eslint": "^9",
+    "eslint-config-next": "^16",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "wait-on": "^8"
+  },
+  "build": {
+    "appId": "com.oiml.builder",
+    "productName": "OIML Studio",
+    "directories": {
+      "output": "release"
+    },
+    "npmRebuild": false,
+    "files": [
+      "electron/**/*",
+      "public/**/*",
+      "package.json",
+      "!node_modules/.pnpm/**",
+      "!node_modules/.bin/**",
+      "!.next/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": ".next/standalone",
+        "to": ".next/standalone",
+        "filter": [
+          "**/*",
+          "!**/node_modules/.bin/**",
+          "!**/.next/cache/**"
+        ]
+      },
+      {
+        "from": ".next/static",
+        "to": ".next/static",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "public",
+        "to": "public",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "openintent",
+        "repo": "oiml",
+        "private": false,
+        "releaseType": "release"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "icon": "public/icon_large.png",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "notarize": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "win": {
+      "icon": "public/icon_large.png",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "linux": {
+      "icon": "public/icon_large.png",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    }
+  }
+}
