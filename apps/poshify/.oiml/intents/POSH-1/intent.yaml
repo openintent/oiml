@@ -877,4 +877,3 @@ intents:
     description: Checkout cart and create order
     path: /api/cart/checkout
     entity: Order
-

@@ -4,7 +4,6 @@ description: >
   A simple todo application built on the OIML framework. It manages tasks
   with a clean API and modern UI.
 version: 0.1.0
-
 api:
   framework: next
   language: typescript
@@ -88,4 +87,3 @@ metadata:
     - name: "TodoApp Team"
       email: "team@todoapp.dev"
   repository: "https://github.com/openintent/todoapp"
-

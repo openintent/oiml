@@ -6,10 +6,11 @@
   "homepage": "https://github.com/openintent/oiml#readme",
   "packageManager": "pnpm@10.20.0",
   "scripts": {
-    "format": "prettier --write \"**/*.{ts,js,json,md}\"",
-    "format:check": "prettier --check \"**/*.{ts,js,json,md}\""
+    "format": "prettier --write \"**/*.{ts,js,tsx,jsx,json,md,yaml,yml}\"",
+    "format:check": "prettier --check \"**/*.{ts,js,tsx,jsx,json,md,yaml,yml}\""
   },
   "devDependencies": {
+    "@oiml/schema": "^0.1.10",
     "@types/node": "^24",
     "prettier": "^3",
     "tsx": "^4",

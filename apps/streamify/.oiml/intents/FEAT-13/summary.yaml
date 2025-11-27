@@ -9,8 +9,8 @@ template_used:
   pack: oiml://compat/oiml-gin/1.0.0
   version: 1.0.0
   compat:
-    oiml: '>=0.1.0 <0.2.0'
-    gin: '>=1.9.0 <2.0.0'
+    oiml: ">=0.1.0 <0.2.0"
+    gin: ">=1.9.0 <2.0.0"
 changes:
   - file: api/main.go
     action: modified
@@ -21,12 +21,12 @@ changes:
 errors: []
 notes: |
   Successfully created GET /api/v1/artists/{id} endpoint for retrieving an artist by ID.
-  
+
   **Endpoint Details:**
   - Method: GET
   - Path: /api/v1/artists/:id
   - Description: Get an artist by ID
-  
+
   **Implementation:**
   - Validates artist ID format (UUID)
   - Queries artist by ID using Ent client
@@ -35,7 +35,7 @@ notes: |
   - Returns 400 Bad Request for invalid artist ID format
   - Returns 404 Not Found if artist doesn't exist
   - Returns 500 Internal Server Error for database errors
-  
+
   **Response Structure:**
   ```json
   {
@@ -52,14 +52,13 @@ notes: |
     ]
   }
   ```
-  
+
   **Example Request:**
   ```bash
   curl http://localhost:8080/api/v1/artists/{artist-id}
   ```
-  
+
   **Error Responses:**
   - 400 Bad Request: Invalid artist ID format
   - 404 Not Found: Artist not found
   - 500 Internal Server Error: Database errors
-

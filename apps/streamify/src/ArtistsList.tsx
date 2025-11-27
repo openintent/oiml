@@ -35,9 +35,7 @@ function ArtistsList() {
         setArtists(data);
         setError(null);
       } catch (err) {
-        setError(
-          err instanceof Error ? err.message : "Failed to fetch artists"
-        );
+        setError(err instanceof Error ? err.message : "Failed to fetch artists");
       } finally {
         setLoading(false);
       }
@@ -74,11 +72,7 @@ function ArtistsList() {
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-3xl font-bold">Artists</h1>
           <div className="flex items-center gap-4">
-            {user && (
-              <span className="text-sm text-muted-foreground">
-                {user.email}
-              </span>
-            )}
+            {user && <span className="text-sm text-muted-foreground">{user.email}</span>}
             <Button variant="outline" onClick={logout}>
               Logout
             </Button>
@@ -92,7 +86,7 @@ function ArtistsList() {
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
-            {artists.map((artist) => (
+            {artists.map(artist => (
               <div
                 key={artist.id}
                 onClick={() => navigate(`/artist/${artist.id}`)}
@@ -101,11 +95,7 @@ function ArtistsList() {
                 {/* Artist Avatar Placeholder */}
                 <div className="relative mb-4 aspect-square rounded-full bg-linear-to-br from-primary/20 to-primary/5 overflow-hidden shadow-lg">
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <svg
-                      className="w-16 h-16 text-primary/40"
-                      fill="currentColor"
-                      viewBox="0 0 24 24"
-                    >
+                    <svg className="w-16 h-16 text-primary/40" fill="currentColor" viewBox="0 0 24 24">
                       <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
                     </svg>
                   </div>
@@ -118,10 +108,7 @@ function ArtistsList() {
 
                 {/* Album Count */}
                 <p className="text-xs text-muted-foreground line-clamp-1 text-center">
-                  {artist.edges?.albums?.length || 0}{" "}
-                  {(artist.edges?.albums?.length || 0) === 1
-                    ? "album"
-                    : "albums"}
+                  {artist.edges?.albums?.length || 0} {(artist.edges?.albums?.length || 0) === 1 ? "album" : "albums"}
                 </p>
               </div>
             ))}

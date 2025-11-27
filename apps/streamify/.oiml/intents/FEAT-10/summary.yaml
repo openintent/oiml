@@ -9,8 +9,8 @@ template_used:
   pack: oiml://compat/oiml-gin/1.0.0
   version: 1.0.0
   compat:
-    oiml: '>=0.1.0 <0.2.0'
-    gin: '>=1.9.0 <2.0.0'
+    oiml: ">=0.1.0 <0.2.0"
+    gin: ">=1.9.0 <2.0.0"
 changes:
   - file: api/main.go
     action: modified
@@ -21,7 +21,7 @@ changes:
 errors: []
 notes: |
   Successfully created POST /api/v1/tracks endpoint for creating new tracks.
-  
+
   **Endpoint Details:**
   - Method: POST
   - Path: /api/v1/tracks
@@ -33,7 +33,7 @@ notes: |
     }
     ```
   - Response: 201 Created with the created track object
-  
+
   **Implementation:**
   - Validates required fields (title, album_id)
   - Validates album_id is a valid UUID format
@@ -43,15 +43,15 @@ notes: |
   - Returns 400 Bad Request if album not found
   - Returns 201 Created with the created track on success
   - Returns 500 Internal Server Error for database errors
-  
+
   **Request Validation:**
   - title: required string field
   - album_id: required UUID string field
-  
+
   **Error Responses:**
   - 400 Bad Request: Missing required fields, invalid UUID format, or album not found
   - 500 Internal Server Error: Database errors
-  
+
   **Example Request:**
   ```bash
   curl -X POST http://localhost:8080/api/v1/tracks \
@@ -61,7 +61,7 @@ notes: |
       "album_id": "album-uuid-here"
     }'
   ```
-  
+
   **Example Response (201 Created):**
   ```json
   {
@@ -71,4 +71,3 @@ notes: |
     "created_at": "2025-01-27T00:00:00Z"
   }
   ```
-

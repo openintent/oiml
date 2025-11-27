@@ -91,18 +91,8 @@ function Artist() {
             onClick={() => navigate(-1)}
             className="mb-4 text-muted-foreground hover:text-foreground transition-colors flex items-center gap-2"
           >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 19l-7-7 7-7"
-              />
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
             Back
           </button>
@@ -119,7 +109,7 @@ function Artist() {
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
-            {albums.map((album) => (
+            {albums.map(album => (
               <div
                 key={album.id}
                 onClick={() => navigate(`/album/${album.id}`)}
@@ -128,22 +118,14 @@ function Artist() {
                 {/* Album Art Placeholder */}
                 <div className="relative mb-4 aspect-square rounded-lg bg-linear-to-br from-primary/20 to-primary/5 overflow-hidden shadow-lg">
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <svg
-                      className="w-16 h-16 text-primary/40"
-                      fill="currentColor"
-                      viewBox="0 0 24 24"
-                    >
+                    <svg className="w-16 h-16 text-primary/40" fill="currentColor" viewBox="0 0 24 24">
                       <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
                     </svg>
                   </div>
                   {/* Play button overlay on hover */}
                   <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center">
                     <button className="w-12 h-12 rounded-full bg-primary flex items-center justify-center hover:scale-110 transition-transform">
-                      <svg
-                        className="w-6 h-6 text-primary-foreground ml-1"
-                        fill="currentColor"
-                        viewBox="0 0 24 24"
-                      >
+                      <svg className="w-6 h-6 text-primary-foreground ml-1" fill="currentColor" viewBox="0 0 24 24">
                         <path d="M8 5v14l11-7z" />
                       </svg>
                     </button>
@@ -156,9 +138,7 @@ function Artist() {
                 </h3>
 
                 {/* Album Metadata */}
-                <p className="text-xs text-muted-foreground line-clamp-1">
-                  Album
-                </p>
+                <p className="text-xs text-muted-foreground line-clamp-1">Album</p>
               </div>
             ))}
           </div>
@@ -169,4 +149,3 @@ function Artist() {
 }
 
 export default Artist;
-

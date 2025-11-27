@@ -12,7 +12,7 @@ provenance:
     type: human
     name: ""
   created_at: 2025-11-10T22:30:54Z
-intents: 
+intents:
   - kind: add_field
     scope: data
     entity: Track

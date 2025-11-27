@@ -1,7 +1,7 @@
 version: 0.1.0
 type: oiml.intent
 ai_context:
-  purpose: | 
+  purpose: |
     - Add blog-related entities (User, Post, Profile) to the database schema
     - Add endpoints for the API
   instructions: |

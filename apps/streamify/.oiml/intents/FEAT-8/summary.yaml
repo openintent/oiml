@@ -9,8 +9,8 @@ template_used:
   pack: oiml://compat/oiml-gin/1.0.0
   version: 1.0.0
   compat:
-    oiml: '>=0.1.0 <0.2.0'
-    gin: '>=1.9.0 <2.0.0'
+    oiml: ">=0.1.0 <0.2.0"
+    gin: ">=1.9.0 <2.0.0"
 changes:
   - file: api/main.go
     action: modified
@@ -18,13 +18,13 @@ changes:
 errors: []
 notes: |
   Successfully updated the GET /api/v1/artists endpoint to include associated albums in the response.
-  
+
   Changes made:
   - Added WithAlbums() to the Artist query to eager load the albums relation
   - Updated function comment to reflect that albums are now included
-  
+
   The endpoint now returns artists with their albums nested in the response. Each artist object will include an "albums" array containing all associated albums.
-  
+
   Example response structure:
   ```json
   [

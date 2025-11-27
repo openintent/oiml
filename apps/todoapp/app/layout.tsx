@@ -3,20 +3,17 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Todo App",
-  description: "A simple todo application built with Next.js and Prisma",
+  description: "A simple todo application built with Next.js and Prisma"
 };
 
 export default function RootLayout({
-  children,
+  children
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
     <html lang="en">
-      <body className="antialiased">
-        {children}
-      </body>
+      <body className="antialiased">{children}</body>
     </html>
   );
 }
-

@@ -3,11 +3,11 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Posty",
-  description: "A simple application built with Next.js and Prisma",
+  description: "A simple application built with Next.js and Prisma"
 };
 
 export default function RootLayout({
-  children,
+  children
 }: Readonly<{
   children: React.ReactNode;
 }>) {

@@ -33,9 +33,7 @@ export default function ApiDocs() {
   const [apiResponse, setApiResponse] = useState<unknown>(null);
   const [apiLoading, setApiLoading] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
-  const [selectedEndpoint, setSelectedEndpoint] = useState<ApiEndpoint | null>(
-    null
-  );
+  const [selectedEndpoint, setSelectedEndpoint] = useState<ApiEndpoint | null>(null);
 
   useEffect(() => {
     async function fetchData() {
@@ -59,8 +57,7 @@ export default function ApiDocs() {
         if (routesData.endpoints) {
           // Filter out internal endpoints used for generating this page
           const filteredEndpoints = routesData.endpoints.filter(
-            (endpoint: ApiEndpoint) =>
-              endpoint.path !== "/api/routes" && endpoint.path !== "/api/schema"
+            (endpoint: ApiEndpoint) => endpoint.path !== "/api/routes" && endpoint.path !== "/api/schema"
           );
           setEndpoints(filteredEndpoints);
         } else {
@@ -104,16 +101,12 @@ export default function ApiDocs() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(
-          data.error || `HTTP ${response.status}: ${response.statusText}`
-        );
+        throw new Error(data.error || `HTTP ${response.status}: ${response.statusText}`);
       }
 
       setApiResponse(data);
     } catch (err) {
-      setApiError(
-        err instanceof Error ? err.message : "Failed to fetch endpoint"
-      );
+      setApiError(err instanceof Error ? err.message : "Failed to fetch endpoint");
       console.error("Error fetching endpoint:", err);
     } finally {
       setApiLoading(false);
@@ -126,54 +119,39 @@ export default function ApiDocs() {
         <div className="w-full space-y-12">
           <div>
             <h1 className="text-4xl font-bold mb-2">Streamify</h1>
-            <p className="text-muted-foreground">
-              Database Schema & API Overview
-            </p>
+            <p className="text-muted-foreground">Database Schema & API Overview</p>
           </div>
 
           {loading ? (
-            <div className="text-muted-foreground">
-              Loading schema and API routes...
-            </div>
+            <div className="text-muted-foreground">Loading schema and API routes...</div>
           ) : error ? (
             <div className="text-destructive">Error: {error}</div>
           ) : (
             <>
               {/* Schema Section */}
               <section className="w-full">
-                <h2 className="text-2xl font-semibold mb-4 border-b border-border pb-2">
-                  Schema
-                </h2>
+                <h2 className="text-2xl font-semibold mb-4 border-b border-border pb-2">Schema</h2>
                 <div className="grid gap-6 md:grid-cols-2">
-                  {models.map((model) => (
-                    <div
-                      key={model.name}
-                      className="border border-border rounded-lg p-6 bg-card"
-                    >
+                  {models.map(model => (
+                    <div key={model.name} className="border border-border rounded-lg p-6 bg-card">
                       <div className="mb-4">
                         <h3 className="text-xl font-semibold">{model.name}</h3>
                         <p className="text-sm text-muted-foreground">
-                          Table:{" "}
-                          <code className="bg-muted px-2 py-1 rounded">
-                            {model.tableName}
-                          </code>
+                          Table: <code className="bg-muted px-2 py-1 rounded">{model.tableName}</code>
                         </p>
                       </div>
                       <div className="space-y-2">
                         <h4 className="text-sm font-medium">Fields:</h4>
                         <ul className="space-y-2">
-                          {model.fields.map((field) => (
+                          {model.fields.map(field => (
                             <li key={field.name} className="text-sm">
                               <span className="font-medium">{field.name}:</span>{" "}
-                              <span className="text-muted-foreground">
-                                {field.type}
-                              </span>
+                              <span className="text-muted-foreground">{field.type}</span>
                               {field.foreignKey && (
                                 <span className="ml-2 inline-flex items-center gap-1 text-xs text-primary">
                                   <Key className="w-3 h-3" />
                                   <span>
-                                    {field.foreignKey.targetEntity}.
-                                    {field.foreignKey.targetField}
+                                    {field.foreignKey.targetEntity}.{field.foreignKey.targetField}
                                   </span>
                                 </span>
                               )}
@@ -188,36 +166,26 @@ export default function ApiDocs() {
 
               {/* API Endpoints Section */}
               <section className="w-full">
-                <h2 className="text-2xl font-semibold mb-4 border-b border-border pb-2">
-                  API Endpoints
-                </h2>
+                <h2 className="text-2xl font-semibold mb-4 border-b border-border pb-2">API Endpoints</h2>
                 <div className="border border-border rounded-lg overflow-hidden bg-card">
                   <table className="w-full">
                     <thead className="bg-muted">
                       <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
-                          Method
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
-                          Path
-                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Method</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Path</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
                       {endpoints
                         .filter(
-                          (endpoint) =>
-                            !endpoint.path.includes("/api/routes") &&
-                            !endpoint.path.includes("/api/schema")
+                          endpoint => !endpoint.path.includes("/api/routes") && !endpoint.path.includes("/api/schema")
                         )
                         .map((endpoint, idx) => (
                           <tr
                             key={idx}
                             onClick={() => handleEndpointClick(endpoint)}
                             className={`hover:bg-accent ${
-                              endpoint.method === "GET"
-                                ? "cursor-pointer transition-colors"
-                                : "cursor-default"
+                              endpoint.method === "GET" ? "cursor-pointer transition-colors" : "cursor-default"
                             } ${
                               selectedEndpoint &&
                               selectedEndpoint.method === endpoint.method &&
@@ -241,9 +209,7 @@ export default function ApiDocs() {
                               </span>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
-                              <code className="text-sm">
-                                {endpoint.path.replace(/\/$/, "")}
-                              </code>
+                              <code className="text-sm">{endpoint.path.replace(/\/$/, "")}</code>
                             </td>
                           </tr>
                         ))}
@@ -256,8 +222,7 @@ export default function ApiDocs() {
                   <div className="mt-6 border border-border rounded-lg bg-card p-6">
                     <div className="flex items-center justify-between mb-4">
                       <h3 className="text-lg font-semibold">
-                        Response: {selectedEndpoint.method}{" "}
-                        {selectedEndpoint.path.replace(/\/$/, "")}
+                        Response: {selectedEndpoint.method} {selectedEndpoint.path.replace(/\/$/, "")}
                       </h3>
                       <button
                         onClick={() => {
@@ -290,4 +255,3 @@ export default function ApiDocs() {
     </div>
   );
 }
-

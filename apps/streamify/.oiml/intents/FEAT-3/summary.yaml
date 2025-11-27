@@ -9,8 +9,8 @@ template_used:
   pack: oiml://compat/oiml-ent/1.0.0
   version: 1.0.0
   compat:
-    oiml: '>=0.1.0 <0.2.0'
-    entgo.io/ent: '>=0.12.0 <0.99.99'
+    oiml: ">=0.1.0 <0.2.0"
+    entgo.io/ent: ">=0.12.0 <0.99.99"
 changes:
   - file: api/ent/schema/artist.go
     action: created
@@ -18,19 +18,18 @@ changes:
 errors: []
 notes: |
   After applying this intent, you need to regenerate Ent code:
-  
+
   ```bash
   cd api
   go generate ./ent
   ```
-  
+
   This will regenerate all Ent client code including the new Artist entity.
   After regeneration, run migrations to update the database schema:
-  
+
   The Artist entity includes:
   - id: UUID field with Default(uuid.New) and Unique() constraint
   - name: String field with MaxLen(255), required (no Optional())
   - created_at: Time field with Default(time.Now)
-  
-  The database table "artists" will be created when migrations are run.
 
+  The database table "artists" will be created when migrations are run.

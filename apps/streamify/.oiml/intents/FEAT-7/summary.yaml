@@ -9,8 +9,8 @@ template_used:
   pack: oiml://compat/oiml-ent/1.0.0
   version: 1.0.0
   compat:
-    oiml: '>=0.1.0 <0.2.0'
-    entgo.io/ent: '>=0.12.0 <0.99.99'
+    oiml: ">=0.1.0 <0.2.0"
+    entgo.io/ent: ">=0.12.0 <0.99.99"
 changes:
   - file: api/ent/schema/user.go
     action: modified
@@ -24,24 +24,24 @@ changes:
 errors: []
 notes: |
   After applying this intent, you need to regenerate Ent code:
-  
+
   ```bash
   cd api
   go generate ./ent
   ```
-  
+
   This will regenerate all Ent client code including the new first_name and last_name fields.
   After regeneration, run migrations to update the database schema.
-  
+
   The User entity now includes:
   - first_name: String field with MaxLen(16), optional (allows NULL)
   - last_name: String field with MaxLen(16), optional (allows NULL)
-  
+
   **API Endpoints Updated:**
   Both POST endpoints now accept optional first_name and last_name fields:
   - POST /api/v1/users
   - POST /api/users
-  
+
   Example request:
   ```json
   {
@@ -50,9 +50,9 @@ notes: |
     "last_name": "Doe"
   }
   ```
-  
+
   The first_name and last_name fields are optional - they can be omitted from the request body.
-  
+
   **Important Note on MaxLen()**: Since these are new fields being added to an existing entity, the size constraints should be applied automatically when migrations are run. However, if you encounter issues with the size constraints not being applied, you may need to:
   - Drop and recreate the table (development only), OR
   - Use Ent's migration tools to generate explicit SQL migrations, OR
@@ -61,6 +61,5 @@ notes: |
     ALTER TABLE users ALTER COLUMN first_name TYPE VARCHAR(16);
     ALTER TABLE users ALTER COLUMN last_name TYPE VARCHAR(16);
     ```
-  
-  The database table "users" will be updated when migrations are run.
 
+  The database table "users" will be updated when migrations are run.

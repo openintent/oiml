@@ -9,8 +9,8 @@ template_used:
   pack: oiml://compat/oiml-ent/1.0.0
   version: 1.0.0
   compat:
-    oiml: '>=0.1.0 <0.2.0'
-    entgo.io/ent: '>=0.12.0 <0.99.99'
+    oiml: ">=0.1.0 <0.2.0"
+    entgo.io/ent: ">=0.12.0 <0.99.99"
 changes:
   - file: api/ent/schema/track.go
     action: created
@@ -27,18 +27,18 @@ changes:
 errors: []
 notes: |
   Successfully created Track entity and GET /api/v1/albums/{id}/tracks endpoint.
-  
+
   **Track Entity Created:**
   - id: UUID field with Default(uuid.New) and Unique()
   - title: String field with MaxLen(255) and SchemaType for VARCHAR(255)
   - album_id: UUID field for foreign key to Album
   - created_at: Time field with Default(time.Now)
   - Relation: many_to_one relation to Album entity
-  
+
   **Relation Setup:**
   - Track entity has edge.To("album", Album.Type) with Unique().Required().Field("album_id")
   - Album entity has edge.From("tracks", Track.Type).Ref("album") for reverse relation
-  
+
   **API Endpoint Created:**
   - GET /api/v1/albums/:id/tracks
   - Validates album ID format (UUID)
@@ -46,7 +46,7 @@ notes: |
   - Returns all tracks for the specified album
   - Returns 404 if album not found
   - Returns 400 for invalid album ID format
-  
+
   **Next Steps:**
   1. Regenerate Ent code:
      ```bash
@@ -56,7 +56,7 @@ notes: |
   2. Run migrations to create the tracks table in the database:
      - The migrations will run automatically when you restart the application
      - Or manually run: client.Schema.Create(context.Background())
-  
+
   **Database Schema:**
   The tracks table will be created with:
   - id: UUID PRIMARY KEY
@@ -64,4 +64,3 @@ notes: |
   - album_id: UUID NOT NULL (foreign key to albums.id)
   - created_at: TIMESTAMP NOT NULL DEFAULT NOW()
   - Foreign key constraint: tracks.album_id → albums.id
-

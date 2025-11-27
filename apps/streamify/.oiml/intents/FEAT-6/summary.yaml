@@ -9,8 +9,8 @@ template_used:
   pack: oiml://compat/oiml-gin/1.0.0
   version: 1.0.0
   compat:
-    oiml: '>=0.1.0 <0.2.0'
-    github.com/gin-gonic/gin: '>=1.9.0 <1.99.99'
+    oiml: ">=0.1.0 <0.2.0"
+    github.com/gin-gonic/gin: ">=1.9.0 <1.99.99"
 changes:
   - file: api/main.go
     action: modified
@@ -18,7 +18,7 @@ changes:
 errors: []
 notes: |
   Endpoint added:
-  
+
   POST /api/v1/albums
     - Accepts JSON body with "title" (required) and "artist_id" (required) fields
     - Validates artist_id is a valid UUID format
@@ -41,7 +41,7 @@ notes: |
       "artist_id": "artist-uuid-here"
     }'
   ```
-  
+
   Success Response (201):
   ```json
   {
@@ -51,4 +51,3 @@ notes: |
     "created_at": "2025-01-27T00:00:00Z"
   }
   ```
-

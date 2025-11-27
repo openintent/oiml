@@ -10,8 +10,8 @@ template_used:
   version: 1.0.0
   digest: sha256-444a55ffe875c6269eee613cdee0aeb5015853aeb4e9466c24f08e0388683661
   compat:
-    oiml: '>=0.1.0 <0.2.0'
-    prisma: '>=6.0.0 <7.0.0'
+    oiml: ">=0.1.0 <0.2.0"
+    prisma: ">=6.0.0 <7.0.0"
 changes:
   # Database Schema Changes
   - file: prisma/schema.prisma
@@ -228,6 +228,3 @@ changes:
     description: Created POST endpoint for cart checkout (creates order)
 
 errors: []
-
-
-

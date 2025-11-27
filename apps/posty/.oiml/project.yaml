@@ -4,7 +4,6 @@ description: >
   A simple application built on the OIML framework. It manages posts
   with a clean API and modern UI.
 version: 0.1.0
-
 api:
   framework: next
   language: typescript

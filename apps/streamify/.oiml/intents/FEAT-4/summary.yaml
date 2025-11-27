@@ -9,8 +9,8 @@ template_used:
   pack: oiml://compat/oiml-gin/1.0.0
   version: 1.0.0
   compat:
-    oiml: '>=0.1.0 <0.2.0'
-    github.com/gin-gonic/gin: '>=1.9.0 <1.99.99'
+    oiml: ">=0.1.0 <0.2.0"
+    github.com/gin-gonic/gin: ">=1.9.0 <1.99.99"
 changes:
   - file: api/main.go
     action: modified
@@ -21,12 +21,12 @@ changes:
 errors: []
 notes: |
   Endpoints added:
-  
+
   1. GET /api/v1/artists
      - Returns all artists
      - Returns HTTP 200 (OK) on success
      - Returns HTTP 500 (Internal Server Error) for database errors
-  
+
   2. POST /api/v1/artists
      - Accepts JSON body with "name" field (required)
      - Creates a new artist with the provided name
@@ -40,9 +40,8 @@ notes: |
     -H "Content-Type: application/json" \
     -d '{"name": "Artist Name"}'
   ```
-  
+
   Example GET request:
   ```bash
   curl http://localhost:8080/api/v1/artists
   ```
-

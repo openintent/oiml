@@ -12,7 +12,7 @@ provenance:
     type: human
     name: ""
   created_at: 2025-11-10T22:51:13Z
-intents: 
+intents:
   - kind: add_capability
     scope: capability
     capability: auth

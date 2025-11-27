@@ -21,5 +21,3 @@ changes:
     action: created
     description: Generated Prisma migration for User entity
 errors: []
-
-

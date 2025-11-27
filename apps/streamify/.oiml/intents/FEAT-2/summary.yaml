@@ -9,8 +9,8 @@ template_used:
   pack: oiml://compat/oiml-gin/1.0.0
   version: 1.0.0
   compat:
-    oiml: '>=0.1.0 <0.2.0'
-    github.com/gin-gonic/gin: '>=1.9.0 <1.99.99'
+    oiml: ">=0.1.0 <0.2.0"
+    github.com/gin-gonic/gin: ">=1.9.0 <1.99.99"
 changes:
   - file: api/main.go
     action: modified
@@ -25,4 +25,3 @@ notes: |
   - Returns HTTP 400 (Bad Request) for invalid input
   - Returns HTTP 409 (Conflict) if email already exists (unique constraint violation)
   - Returns HTTP 500 (Internal Server Error) for other errors
-

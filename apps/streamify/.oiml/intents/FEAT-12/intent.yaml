@@ -12,7 +12,7 @@ provenance:
     type: human
     name: ""
   created_at: 2025-11-10T21:23:22Z
-intents: 
+intents:
   - kind: update_endpoint
     scope: api
     method: GET

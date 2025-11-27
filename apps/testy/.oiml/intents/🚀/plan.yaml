@@ -59,5 +59,3 @@ prerequisites:
     - "@prisma/client"
     - "prisma"
 estimated_duration: 2-3 minutes
-
-

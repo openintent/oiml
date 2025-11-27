@@ -27,7 +27,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const storedToken = localStorage.getItem("auth_token");
     const storedUser = localStorage.getItem("auth_user");
-    
+
     if (storedToken && storedUser) {
       setToken(storedToken);
       try {
@@ -45,9 +45,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const response = await fetch("/api/auth/login", {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
+        "Content-Type": "application/json"
       },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password })
     });
 
     if (!response.ok) {
@@ -69,9 +69,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const response = await fetch("/api/auth/register", {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
+        "Content-Type": "application/json"
       },
-      body: JSON.stringify({ email, password, name }),
+      body: JSON.stringify({ email, password, name })
     });
 
     if (!response.ok) {
@@ -105,7 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         register,
         logout,
         isAuthenticated: !!token,
-        loading,
+        loading
       }}
     >
       {children}
@@ -120,4 +120,3 @@ export function useAuth() {
   }
   return context;
 }
-
