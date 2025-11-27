@@ -1,6 +1,6 @@
 {
   "name": "@oiml/mcp",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "description": "OpenIntent MCP server for validation and generation",
   "author": "OpenIntent",
   "license": "MPL-2.0",
@@ -15,6 +15,11 @@
     "./server.js": "./dist/server.js",
     "./src/server.js": "./src/server.js"
   },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
     "start": "node dist/mcp/src/server.js",
