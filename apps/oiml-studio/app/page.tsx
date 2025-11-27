@@ -2399,10 +2399,9 @@ export default function Home() {
                   </div>
 
                   {/* API Keys Settings */}
-                  {isElectron && (
+                  {/* {isElectron && (
                     <div className="pt-6 border-t border-border">
                       <div className="space-y-6">
-                        {/* OpenAI API Key */}
                         <div>
                           <h3 className="text-sm font-semibold mb-2">OpenAI API Key</h3>
                           <div className="flex gap-2">
@@ -2430,7 +2429,7 @@ export default function Home() {
                         </div>
                       </div>
                     </div>
-                  )}
+                  )} */}
                 </>
               ) : (
                 <p className="text-center text-muted-foreground">No project configuration found</p>
