@@ -1,13 +1,20 @@
 #!/usr/bin/env node
 
 import { Command } from "commander";
+import { readFileSync } from "fs";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
 import { initCommand } from "./commands/init.js";
 import { createCommand } from "./commands/create.js";
 import { startServer } from "@oiml/mcp/server.js";
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const packageJson = JSON.parse(readFileSync(join(__dirname, "../package.json"), "utf-8"));
+
 const program = new Command();
 
-program.name("openintent").description("OIML CLI for managing OIML projects").version("0.1.0");
+program.name("openintent").description("OIML CLI for managing OIML projects").version(packageJson.version);
 
 program
   .command("init")
