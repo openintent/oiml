@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  server:
+    image: openintent/oiml-mcp:latest
+    build:
+      context: ../..  # Build from monorepo root
+      dockerfile: packages/mcp/Dockerfile
+      args:
+        BUILD_PLATFORM: linux/arm64
+    container_name: oiml-mcp-server
+    platform: linux/arm64
+    ports:
+      - "3111:3111"
+    # No volumes needed - schemas are pre-cached in the image at build time
+    environment:
+      - NODE_ENV=production
+      - PORT=3111
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3111/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
