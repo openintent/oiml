@@ -1,0 +1,166 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum PostVisibility {
+  public
+  friends
+  private
+}
+
+enum MediaType {
+  image
+  video
+  gif
+}
+
+enum FriendshipStatus {
+  pending
+  accepted
+  blocked
+}
+
+model User {
+  id            String       @id @default(uuid()) @db.Uuid
+  email         String       @unique @db.VarChar(255)
+  username      String       @unique @db.VarChar(50)
+  password_hash String       @db.VarChar(255)
+  first_name    String?      @db.VarChar(100)
+  last_name     String?      @db.VarChar(100)
+  is_active     Boolean      @default(true)
+  is_verified   Boolean      @default(false)
+  created_at    DateTime     @default(now())
+  updated_at    DateTime     @updatedAt
+
+  // Relations
+  profile                Profile?
+  posts                  Post[]
+  likes                  Like[]
+  comments               Comment[]
+  friendships_initiated  Friendship[] @relation("FriendshipInitiated")
+  friendships_received   Friendship[] @relation("FriendshipReceived")
+  following              Follow[]     @relation("Follower")
+  followers              Follow[]     @relation("Following")
+
+  @@map("users")
+}
+
+model Profile {
+  id               String    @id @default(uuid()) @db.Uuid
+  user_id          String    @unique @db.Uuid
+  bio              String?   @db.Text
+  location         String?   @db.VarChar(255)
+  website          String?   @db.VarChar(255)
+  birth_date       DateTime? @db.Date
+  profile_picture_url String? @db.VarChar(500)
+  cover_photo_url  String?   @db.VarChar(500)
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @updatedAt
+
+  // Relations
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("profiles")
+}
+
+model Post {
+  id         String        @id @default(uuid()) @db.Uuid
+  author_id  String        @db.Uuid
+  content    String        @db.Text
+  visibility PostVisibility @default(public)
+  created_at DateTime      @default(now())
+  updated_at DateTime      @updatedAt
+
+  // Relations
+  author  User     @relation(fields: [author_id], references: [id], onDelete: Cascade)
+  likes   Like[]
+  comments Comment[]
+  media   Media[]
+
+  @@map("posts")
+}
+
+model Like {
+  id        String   @id @default(uuid()) @db.Uuid
+  user_id   String   @db.Uuid
+  post_id   String   @db.Uuid
+  created_at DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [post_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, post_id])
+  @@map("likes")
+}
+
+model Comment {
+  id               String    @id @default(uuid()) @db.Uuid
+  user_id          String    @db.Uuid
+  post_id          String    @db.Uuid
+  parent_comment_id String?  @db.Uuid
+  content          String    @db.Text
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @updatedAt
+
+  // Relations
+  user           User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  post           Post      @relation(fields: [post_id], references: [id], onDelete: Cascade)
+  parent_comment Comment?  @relation("CommentReplies", fields: [parent_comment_id], references: [id], onDelete: Cascade)
+  replies        Comment[] @relation("CommentReplies")
+
+  @@map("comments")
+}
+
+model Media {
+  id        String    @id @default(uuid()) @db.Uuid
+  post_id   String    @db.Uuid
+  url       String    @db.VarChar(500)
+  type      MediaType
+  width     Int?
+  height    Int?
+  file_size Int?
+  created_at DateTime @default(now())
+
+  // Relations
+  post Post @relation(fields: [post_id], references: [id], onDelete: Cascade)
+
+  @@map("medias")
+}
+
+model Friendship {
+  id         String           @id @default(uuid()) @db.Uuid
+  user_id    String           @db.Uuid
+  friend_id  String           @db.Uuid
+  status     FriendshipStatus @default(pending)
+  created_at DateTime         @default(now())
+  updated_at DateTime         @updatedAt
+
+  // Relations
+  user   User @relation("FriendshipInitiated", fields: [user_id], references: [id], onDelete: Cascade)
+  friend User @relation("FriendshipReceived", fields: [friend_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, friend_id])
+  @@map("friendships")
+}
+
+model Follow {
+  id           String   @id @default(uuid()) @db.Uuid
+  follower_id  String   @db.Uuid
+  following_id String   @db.Uuid
+  created_at   DateTime @default(now())
+
+  // Relations
+  follower  User @relation("Follower", fields: [follower_id], references: [id], onDelete: Cascade)
+  following User @relation("Following", fields: [following_id], references: [id], onDelete: Cascade)
+
+  @@unique([follower_id, following_id])
+  @@map("follows")
+}

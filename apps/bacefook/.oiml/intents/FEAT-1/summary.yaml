@@ -1,0 +1,67 @@
+version: 0.1.0
+applied_at: '2025-11-27T04:30:00Z'
+status: success
+intents_processed: 34
+model: claude-sonnet-4.5
+template_used:
+  framework: prisma
+  category: database
+  pack: oiml://compat/oiml-prisma/1.1.0
+  version: 1.1.0
+  digest: sha256-d531c39204d2e5b0335c67363472a381e12a24150f252cd42b80b328e13719a5
+  compat:
+    oiml: ">=0.1.0 <0.3.0"
+    prisma: ">=6.0.0 <8.0.0"
+changes:
+  - file: prisma/schema.prisma
+    action: modified
+    description: Added 8 entities (User, Profile, Post, Like, Comment, Media, Friendship, Follow) with 3 enums (PostVisibility, MediaType, FriendshipStatus) and all relations
+  - file: prisma/migrations/20251127042902_add_social_media_entities/migration.sql
+    action: created
+    description: Generated and applied Prisma migration for all entities
+  - file: packages/types/index.ts
+    action: modified
+    description: Added TypeScript interfaces for all entities and response types
+  - file: app/api/users/route.ts
+    action: modified
+    description: Updated POST handler for user creation (already existed)
+  - file: app/api/users/me/route.ts
+    action: modified
+    description: Updated GET and PUT handlers for current user (already existed)
+  - file: app/api/users/[id]/route.ts
+    action: created
+    description: Created GET handler for user by ID
+  - file: app/api/users/[id]/follow/route.ts
+    action: created
+    description: Created POST and DELETE handlers for follow/unfollow
+  - file: app/api/users/[id]/followers/route.ts
+    action: created
+    description: Created GET handler for user followers
+  - file: app/api/users/[id]/following/route.ts
+    action: created
+    description: Created GET handler for user following list
+  - file: app/api/posts/route.ts
+    action: modified
+    description: Updated POST and GET handlers for posts (already existed)
+  - file: app/api/posts/[id]/route.ts
+    action: created
+    description: Created GET, PUT, DELETE handlers for posts
+  - file: app/api/posts/[id]/like/route.ts
+    action: created
+    description: Created POST and DELETE handlers for like/unlike
+  - file: app/api/posts/[id]/likes/route.ts
+    action: created
+    description: Created GET handler for post likes
+  - file: app/api/posts/[id]/comments/route.ts
+    action: created
+    description: Created POST and GET handlers for post comments
+  - file: app/api/comments/[id]/route.ts
+    action: created
+    description: Created PUT and DELETE handlers for comments
+  - file: app/api/friendships/route.ts
+    action: modified
+    description: Updated POST and GET handlers for friendships (already existed)
+  - file: app/api/friendships/[id]/route.ts
+    action: created
+    description: Created PUT and DELETE handlers for friendship status updates
+errors: []

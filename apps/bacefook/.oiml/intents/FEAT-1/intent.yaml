@@ -1,0 +1,638 @@
+version: 0.1.0
+type: oiml.intent
+ai_context:
+  purpose: Conform to project frameworks, style, and conventions.
+  instructions: '- CRITICAL: Call the MCP tool `get_agents_guide` FIRST before proceeding to retrieve the OIML Agents implementation guide and apply the instructions to the intent.'
+  references:
+    - kind: mcp_tool
+      tool: get_agents_guide
+      description: OIML Agents implementation guide containing workflow instructions, framework-specific patterns, and best practices
+provenance:
+  created_by:
+    type: human
+    name: ''
+  created_at: '2025-11-27T03:55:44Z'
+intents:
+  # User Entity - Core authentication and user data
+  - kind: add_entity
+    scope: data
+    entity: User
+    fields:
+      - name: id
+        type: uuid
+        required: true
+      - name: email
+        type: string
+        required: true
+        unique: true
+        max_length: 255
+      - name: username
+        type: string
+        required: true
+        unique: true
+        max_length: 50
+      - name: password_hash
+        type: string
+        required: true
+        max_length: 255
+      - name: first_name
+        type: string
+        required: false
+        max_length: 100
+      - name: last_name
+        type: string
+        required: false
+        max_length: 100
+      - name: is_active
+        type: boolean
+        required: true
+        default: true
+      - name: is_verified
+        type: boolean
+        required: true
+        default: false
+      - name: created_at
+        type: datetime
+        required: true
+      - name: updated_at
+        type: datetime
+        required: true
+
+  # Profile Entity - Extended user profile information
+  - kind: add_entity
+    scope: data
+    entity: Profile
+    fields:
+      - name: id
+        type: uuid
+        required: true
+      - name: user_id
+        type: uuid
+        required: true
+        unique: true
+        relation:
+          target_entity: User
+          kind: many_to_one
+          foreign_key:
+            local_field: user_id
+            target_field: id
+          reverse:
+            enabled: true
+            field_name: profile
+            kind: one_to_many
+      - name: bio
+        type: text
+        required: false
+      - name: location
+        type: string
+        required: false
+        max_length: 255
+      - name: website
+        type: string
+        required: false
+        max_length: 255
+      - name: birth_date
+        type: date
+        required: false
+      - name: profile_picture_url
+        type: string
+        required: false
+        max_length: 500
+      - name: cover_photo_url
+        type: string
+        required: false
+        max_length: 500
+      - name: created_at
+        type: datetime
+        required: true
+      - name: updated_at
+        type: datetime
+        required: true
+
+  # Post Entity - User posts/content
+  - kind: add_entity
+    scope: data
+    entity: Post
+    fields:
+      - name: id
+        type: uuid
+        required: true
+      - name: author_id
+        type: uuid
+        required: true
+        relation:
+          target_entity: User
+          kind: many_to_one
+          foreign_key:
+            local_field: author_id
+            target_field: id
+          reverse:
+            enabled: true
+            field_name: posts
+            kind: one_to_many
+      - name: content
+        type: text
+        required: true
+      - name: visibility
+        type: enum
+        enum_values: ['public', 'friends', 'private']
+        required: true
+        default: 'public'
+      - name: created_at
+        type: datetime
+        required: true
+      - name: updated_at
+        type: datetime
+        required: true
+
+  # Like Entity - Likes on posts
+  - kind: add_entity
+    scope: data
+    entity: Like
+    fields:
+      - name: id
+        type: uuid
+        required: true
+      - name: user_id
+        type: uuid
+        required: true
+        relation:
+          target_entity: User
+          kind: many_to_one
+          foreign_key:
+            local_field: user_id
+            target_field: id
+          reverse:
+            enabled: true
+            field_name: likes
+            kind: one_to_many
+      - name: post_id
+        type: uuid
+        required: true
+        relation:
+          target_entity: Post
+          kind: many_to_one
+          foreign_key:
+            local_field: post_id
+            target_field: id
+          reverse:
+            enabled: true
+            field_name: likes
+            kind: one_to_many
+      - name: created_at
+        type: datetime
+        required: true
+    unique:
+      - - user_id
+        - post_id
+
+  # Comment Entity - Comments on posts
+  - kind: add_entity
+    scope: data
+    entity: Comment
+    fields:
+      - name: id
+        type: uuid
+        required: true
+      - name: user_id
+        type: uuid
+        required: true
+        relation:
+          target_entity: User
+          kind: many_to_one
+          foreign_key:
+            local_field: user_id
+            target_field: id
+          reverse:
+            enabled: true
+            field_name: comments
+            kind: one_to_many
+      - name: post_id
+        type: uuid
+        required: true
+        relation:
+          target_entity: Post
+          kind: many_to_one
+          foreign_key:
+            local_field: post_id
+            target_field: id
+          reverse:
+            enabled: true
+            field_name: comments
+            kind: one_to_many
+      - name: parent_comment_id
+        type: uuid
+        required: false
+        relation:
+          target_entity: Comment
+          kind: many_to_one
+          foreign_key:
+            local_field: parent_comment_id
+            target_field: id
+          reverse:
+            enabled: true
+            field_name: replies
+            kind: one_to_many
+      - name: content
+        type: text
+        required: true
+      - name: created_at
+        type: datetime
+        required: true
+      - name: updated_at
+        type: datetime
+        required: true
+
+  # Media Entity - Photos and media attachments for posts
+  - kind: add_entity
+    scope: data
+    entity: Media
+    fields:
+      - name: id
+        type: uuid
+        required: true
+      - name: post_id
+        type: uuid
+        required: true
+        relation:
+          target_entity: Post
+          kind: many_to_one
+          foreign_key:
+            local_field: post_id
+            target_field: id
+          reverse:
+            enabled: true
+            field_name: media
+            kind: one_to_many
+      - name: url
+        type: string
+        required: true
+        max_length: 500
+      - name: type
+        type: enum
+        enum_values: ['image', 'video', 'gif']
+        required: true
+      - name: width
+        type: integer
+        required: false
+      - name: height
+        type: integer
+        required: false
+      - name: file_size
+        type: integer
+        required: false
+      - name: created_at
+        type: datetime
+        required: true
+
+  # Friendship Entity - Friend relationships (many-to-many)
+  - kind: add_entity
+    scope: data
+    entity: Friendship
+    fields:
+      - name: id
+        type: uuid
+        required: true
+      - name: user_id
+        type: uuid
+        required: true
+        relation:
+          target_entity: User
+          kind: many_to_one
+          foreign_key:
+            local_field: user_id
+            target_field: id
+          reverse:
+            enabled: true
+            field_name: friendships_initiated
+            kind: one_to_many
+      - name: friend_id
+        type: uuid
+        required: true
+        relation:
+          target_entity: User
+          kind: many_to_one
+          foreign_key:
+            local_field: friend_id
+            target_field: id
+          reverse:
+            enabled: true
+            field_name: friendships_received
+            kind: one_to_many
+      - name: status
+        type: enum
+        enum_values: ['pending', 'accepted', 'blocked']
+        required: true
+        default: 'pending'
+      - name: created_at
+        type: datetime
+        required: true
+      - name: updated_at
+        type: datetime
+        required: true
+    unique:
+      - - user_id
+        - friend_id
+
+  # Follow Entity - Follow relationships (optional feature)
+  - kind: add_entity
+    scope: data
+    entity: Follow
+    fields:
+      - name: id
+        type: uuid
+        required: true
+      - name: follower_id
+        type: uuid
+        required: true
+        relation:
+          target_entity: User
+          kind: many_to_one
+          foreign_key:
+            local_field: follower_id
+            target_field: id
+          reverse:
+            enabled: true
+            field_name: following
+            kind: one_to_many
+      - name: following_id
+        type: uuid
+        required: true
+        relation:
+          target_entity: User
+          kind: many_to_one
+          foreign_key:
+            local_field: following_id
+            target_field: id
+          reverse:
+            enabled: true
+            field_name: followers
+            kind: one_to_many
+      - name: created_at
+        type: datetime
+        required: true
+    unique:
+      - - follower_id
+        - following_id
+
+  # API Endpoints - User Management
+  - kind: add_endpoint
+    scope: api
+    method: POST
+    path: /api/users
+    description: Create a new user account
+    entity: User
+    auth:
+      required: false
+    fields:
+      - name: email
+        type: string
+        required: true
+      - name: username
+        type: string
+        required: true
+      - name: password
+        type: string
+        required: true
+      - name: first_name
+        type: string
+        required: false
+      - name: last_name
+        type: string
+        required: false
+
+  - kind: add_endpoint
+    scope: api
+    method: GET
+    path: /api/users/me
+    description: Get current authenticated user's profile
+    entity: User
+    auth:
+      required: true
+
+  - kind: add_endpoint
+    scope: api
+    method: GET
+    path: /api/users/:id
+    description: Get user by ID
+    entity: User
+    auth:
+      required: true
+
+  - kind: add_endpoint
+    scope: api
+    method: PUT
+    path: /api/users/me
+    description: Update current user's profile
+    entity: User
+    auth:
+      required: true
+
+  # API Endpoints - Posts
+  - kind: add_endpoint
+    scope: api
+    method: POST
+    path: /api/posts
+    description: Create a new post
+    entity: Post
+    auth:
+      required: true
+    fields:
+      - name: content
+        type: text
+        required: true
+      - name: visibility
+        type: enum
+        enum_values: ['public', 'friends', 'private']
+        required: false
+
+  - kind: add_endpoint
+    scope: api
+    method: GET
+    path: /api/posts
+    description: Get posts feed (timeline)
+    entity: Post
+    auth:
+      required: true
+
+  - kind: add_endpoint
+    scope: api
+    method: GET
+    path: /api/posts/:id
+    description: Get a specific post by ID
+    entity: Post
+    auth:
+      required: true
+
+  - kind: add_endpoint
+    scope: api
+    method: PUT
+    path: /api/posts/:id
+    description: Update a post (only by author)
+    entity: Post
+    auth:
+      required: true
+
+  - kind: add_endpoint
+    scope: api
+    method: DELETE
+    path: /api/posts/:id
+    description: Delete a post (only by author)
+    entity: Post
+    auth:
+      required: true
+
+  # API Endpoints - Likes
+  - kind: add_endpoint
+    scope: api
+    method: POST
+    path: /api/posts/:id/like
+    description: Like a post
+    entity: Like
+    auth:
+      required: true
+
+  - kind: add_endpoint
+    scope: api
+    method: DELETE
+    path: /api/posts/:id/like
+    description: Unlike a post
+    entity: Like
+    auth:
+      required: true
+
+  - kind: add_endpoint
+    scope: api
+    method: GET
+    path: /api/posts/:id/likes
+    description: Get all likes for a post
+    entity: Like
+    auth:
+      required: true
+
+  # API Endpoints - Comments
+  - kind: add_endpoint
+    scope: api
+    method: POST
+    path: /api/posts/:id/comments
+    description: Create a comment on a post
+    entity: Comment
+    auth:
+      required: true
+    fields:
+      - name: content
+        type: text
+        required: true
+      - name: parent_comment_id
+        type: uuid
+        required: false
+
+  - kind: add_endpoint
+    scope: api
+    method: GET
+    path: /api/posts/:id/comments
+    description: Get all comments for a post
+    entity: Comment
+    auth:
+      required: true
+
+  - kind: add_endpoint
+    scope: api
+    method: PUT
+    path: /api/comments/:id
+    description: Update a comment (only by author)
+    entity: Comment
+    auth:
+      required: true
+
+  - kind: add_endpoint
+    scope: api
+    method: DELETE
+    path: /api/comments/:id
+    description: Delete a comment (only by author)
+    entity: Comment
+    auth:
+      required: true
+
+  # API Endpoints - Friendships
+  - kind: add_endpoint
+    scope: api
+    method: POST
+    path: /api/friendships
+    description: Send a friend request
+    entity: Friendship
+    auth:
+      required: true
+    fields:
+      - name: friend_id
+        type: uuid
+        required: true
+
+  - kind: add_endpoint
+    scope: api
+    method: PUT
+    path: /api/friendships/:id
+    description: Accept or reject a friend request
+    entity: Friendship
+    auth:
+      required: true
+    fields:
+      - name: status
+        type: enum
+        enum_values: ['accepted', 'blocked']
+        required: true
+
+  - kind: add_endpoint
+    scope: api
+    method: GET
+    path: /api/friendships
+    description: Get user's friendships
+    entity: Friendship
+    auth:
+      required: true
+
+  - kind: add_endpoint
+    scope: api
+    method: DELETE
+    path: /api/friendships/:id
+    description: Remove a friendship
+    entity: Friendship
+    auth:
+      required: true
+
+  # API Endpoints - Follows
+  - kind: add_endpoint
+    scope: api
+    method: POST
+    path: /api/users/:id/follow
+    description: Follow a user
+    entity: Follow
+    auth:
+      required: true
+
+  - kind: add_endpoint
+    scope: api
+    method: DELETE
+    path: /api/users/:id/follow
+    description: Unfollow a user
+    entity: Follow
+    auth:
+      required: true
+
+  - kind: add_endpoint
+    scope: api
+    method: GET
+    path: /api/users/:id/followers
+    description: Get user's followers
+    entity: Follow
+    auth:
+      required: true
+
+  - kind: add_endpoint
+    scope: api
+    method: GET
+    path: /api/users/:id/following
+    description: Get users that a user is following
+    entity: Follow
+    auth:
+      required: true

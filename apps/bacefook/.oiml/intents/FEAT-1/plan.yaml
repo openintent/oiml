@@ -1,0 +1,374 @@
+version: 0.1.0
+created_at: '2025-11-27T04:28:00Z'
+intent_id: FEAT-1
+project_id: bacefook
+model: claude-sonnet-4.5
+intents_to_process: 34
+template_used:
+  framework: prisma
+  category: database
+  pack: oiml://compat/oiml-prisma/1.1.0
+  version: 1.1.0
+  digest: sha256-d531c39204d2e5b0335c67363472a381e12a24150f252cd42b80b328e13719a5
+  compat:
+    oiml: ">=0.1.0 <0.3.0"
+    prisma: ">=6.0.0 <8.0.0"
+steps:
+  - kind: add_entity
+    scope: data
+    target: User
+    description: Create User entity with authentication fields
+    changes:
+      - file: prisma/schema.prisma
+        action: modify
+        description: Add User model with id, email, username, password_hash, first_name, last_name, is_active, is_verified, created_at, updated_at
+      - file: prisma/migrations/*/migration.sql
+        action: create
+        description: Generate migration for User entity
+  - kind: add_entity
+    scope: data
+    target: Profile
+    description: Create Profile entity with one-to-one relation to User
+    changes:
+      - file: prisma/schema.prisma
+        action: modify
+        description: Add Profile model with relation to User
+      - file: prisma/migrations/*/migration.sql
+        action: create
+        description: Generate migration for Profile entity
+  - kind: add_entity
+    scope: data
+    target: Post
+    description: Create Post entity with relation to User
+    changes:
+      - file: prisma/schema.prisma
+        action: modify
+        description: Add Post model with PostVisibility enum and relation to User
+      - file: prisma/migrations/*/migration.sql
+        action: create
+        description: Generate migration for Post entity
+  - kind: add_entity
+    scope: data
+    target: Like
+    description: Create Like entity with unique constraint on user_id and post_id
+    changes:
+      - file: prisma/schema.prisma
+        action: modify
+        description: Add Like model with relations to User and Post
+      - file: prisma/migrations/*/migration.sql
+        action: create
+        description: Generate migration for Like entity
+  - kind: add_entity
+    scope: data
+    target: Comment
+    description: Create Comment entity with self-referential relation for replies
+    changes:
+      - file: prisma/schema.prisma
+        action: modify
+        description: Add Comment model with relations to User, Post, and self
+      - file: prisma/migrations/*/migration.sql
+        action: create
+        description: Generate migration for Comment entity
+  - kind: add_entity
+    scope: data
+    target: Media
+    description: Create Media entity with MediaType enum
+    changes:
+      - file: prisma/schema.prisma
+        action: modify
+        description: Add Media model with MediaType enum and relation to Post
+      - file: prisma/migrations/*/migration.sql
+        action: create
+        description: Generate migration for Media entity
+  - kind: add_entity
+    scope: data
+    target: Friendship
+    description: Create Friendship entity with unique constraint on user_id and friend_id
+    changes:
+      - file: prisma/schema.prisma
+        action: modify
+        description: Add Friendship model with FriendshipStatus enum and relations to User
+      - file: prisma/migrations/*/migration.sql
+        action: create
+        description: Generate migration for Friendship entity
+  - kind: add_entity
+    scope: data
+    target: Follow
+    description: Create Follow entity with unique constraint on follower_id and following_id
+    changes:
+      - file: prisma/schema.prisma
+        action: modify
+        description: Add Follow model with relations to User
+      - file: prisma/migrations/*/migration.sql
+        action: create
+        description: Generate migration for Follow entity
+  - kind: add_endpoint
+    scope: api
+    target: POST /api/users
+    description: Create user registration endpoint
+    changes:
+      - file: app/api/users/route.ts
+        action: modify
+        description: Add POST handler for user creation with password hashing
+  - kind: add_endpoint
+    scope: api
+    target: GET /api/users/me
+    description: Get current authenticated user
+    changes:
+      - file: app/api/users/me/route.ts
+        action: modify
+        description: Update GET handler to return authenticated user
+  - kind: add_endpoint
+    scope: api
+    target: GET /api/users/:id
+    description: Get user by ID
+    changes:
+      - file: app/api/users/[id]/route.ts
+        action: create
+        description: Create GET handler for user by ID
+  - kind: add_endpoint
+    scope: api
+    target: PUT /api/users/me
+    description: Update current user profile
+    changes:
+      - file: app/api/users/me/route.ts
+        action: modify
+        description: Update PUT handler for user profile updates
+  - kind: add_endpoint
+    scope: api
+    target: POST /api/posts
+    description: Create new post
+    changes:
+      - file: app/api/posts/route.ts
+        action: modify
+        description: Update POST handler for post creation
+  - kind: add_endpoint
+    scope: api
+    target: GET /api/posts
+    description: Get posts feed
+    changes:
+      - file: app/api/posts/route.ts
+        action: modify
+        description: Update GET handler for posts feed
+  - kind: add_endpoint
+    scope: api
+    target: GET /api/posts/:id
+    description: Get post by ID
+    changes:
+      - file: app/api/posts/[id]/route.ts
+        action: create
+        description: Create GET handler for post by ID
+  - kind: add_endpoint
+    scope: api
+    target: PUT /api/posts/:id
+    description: Update post
+    changes:
+      - file: app/api/posts/[id]/route.ts
+        action: modify
+        description: Add PUT handler for post updates
+  - kind: add_endpoint
+    scope: api
+    target: DELETE /api/posts/:id
+    description: Delete post
+    changes:
+      - file: app/api/posts/[id]/route.ts
+        action: modify
+        description: Add DELETE handler for post deletion
+  - kind: add_endpoint
+    scope: api
+    target: POST /api/posts/:id/like
+    description: Like a post
+    changes:
+      - file: app/api/posts/[id]/like/route.ts
+        action: create
+        description: Create POST handler for liking a post
+  - kind: add_endpoint
+    scope: api
+    target: DELETE /api/posts/:id/like
+    description: Unlike a post
+    changes:
+      - file: app/api/posts/[id]/like/route.ts
+        action: modify
+        description: Add DELETE handler for unliking a post
+  - kind: add_endpoint
+    scope: api
+    target: GET /api/posts/:id/likes
+    description: Get all likes for a post
+    changes:
+      - file: app/api/posts/[id]/likes/route.ts
+        action: create
+        description: Create GET handler for post likes
+  - kind: add_endpoint
+    scope: api
+    target: POST /api/posts/:id/comments
+    description: Create comment on a post
+    changes:
+      - file: app/api/posts/[id]/comments/route.ts
+        action: create
+        description: Create POST handler for creating comments
+  - kind: add_endpoint
+    scope: api
+    target: GET /api/posts/:id/comments
+    description: Get all comments for a post
+    changes:
+      - file: app/api/posts/[id]/comments/route.ts
+        action: modify
+        description: Add GET handler for post comments
+  - kind: add_endpoint
+    scope: api
+    target: PUT /api/comments/:id
+    description: Update a comment
+    changes:
+      - file: app/api/comments/[id]/route.ts
+        action: create
+        description: Create PUT handler for comment updates
+  - kind: add_endpoint
+    scope: api
+    target: DELETE /api/comments/:id
+    description: Delete a comment
+    changes:
+      - file: app/api/comments/[id]/route.ts
+        action: modify
+        description: Add DELETE handler for comment deletion
+  - kind: add_endpoint
+    scope: api
+    target: POST /api/friendships
+    description: Send friend request
+    changes:
+      - file: app/api/friendships/route.ts
+        action: modify
+        description: Update POST handler for friend requests
+  - kind: add_endpoint
+    scope: api
+    target: PUT /api/friendships/:id
+    description: Accept or reject friend request
+    changes:
+      - file: app/api/friendships/[id]/route.ts
+        action: create
+        description: Create PUT handler for friendship status updates
+  - kind: add_endpoint
+    scope: api
+    target: GET /api/friendships
+    description: Get user's friendships
+    changes:
+      - file: app/api/friendships/route.ts
+        action: modify
+        description: Update GET handler for friendships list
+  - kind: add_endpoint
+    scope: api
+    target: DELETE /api/friendships/:id
+    description: Remove a friendship
+    changes:
+      - file: app/api/friendships/[id]/route.ts
+        action: modify
+        description: Add DELETE handler for friendship removal
+  - kind: add_endpoint
+    scope: api
+    target: POST /api/users/:id/follow
+    description: Follow a user
+    changes:
+      - file: app/api/users/[id]/follow/route.ts
+        action: create
+        description: Create POST handler for following a user
+  - kind: add_endpoint
+    scope: api
+    target: DELETE /api/users/:id/follow
+    description: Unfollow a user
+    changes:
+      - file: app/api/users/[id]/follow/route.ts
+        action: modify
+        description: Add DELETE handler for unfollowing
+  - kind: add_endpoint
+    scope: api
+    target: GET /api/users/:id/followers
+    description: Get user's followers
+    changes:
+      - file: app/api/users/[id]/followers/route.ts
+        action: create
+        description: Create GET handler for user followers
+  - kind: add_endpoint
+    scope: api
+    target: GET /api/users/:id/following
+    description: Get users that a user is following
+    changes:
+      - file: app/api/users/[id]/following/route.ts
+        action: create
+        description: Create GET handler for user following list
+planned_changes:
+  - file: prisma/schema.prisma
+    action: modify
+    description: Add all 8 entities with relations and enums
+  - file: prisma/migrations/*/migration.sql
+    action: create
+    description: Generate migration files (will be auto-applied)
+  - file: packages/types/index.ts
+    action: modify
+    description: Add TypeScript interfaces for all entities
+  - file: app/api/users/route.ts
+    action: modify
+    description: Add POST handler for user creation
+  - file: app/api/users/me/route.ts
+    action: modify
+    description: Update GET and PUT handlers
+  - file: app/api/users/[id]/route.ts
+    action: create
+    description: Create GET handler for user by ID
+  - file: app/api/users/[id]/follow/route.ts
+    action: create
+    description: Create follow/unfollow endpoints
+  - file: app/api/users/[id]/followers/route.ts
+    action: create
+    description: Create followers endpoint
+  - file: app/api/users/[id]/following/route.ts
+    action: create
+    description: Create following endpoint
+  - file: app/api/posts/route.ts
+    action: modify
+    description: Update POST and GET handlers
+  - file: app/api/posts/[id]/route.ts
+    action: create
+    description: Create GET, PUT, DELETE handlers for posts
+  - file: app/api/posts/[id]/like/route.ts
+    action: create
+    description: Create like/unlike endpoints
+  - file: app/api/posts/[id]/likes/route.ts
+    action: create
+    description: Create get likes endpoint
+  - file: app/api/posts/[id]/comments/route.ts
+    action: create
+    description: Create comment endpoints
+  - file: app/api/comments/[id]/route.ts
+    action: create
+    description: Create comment update/delete endpoints
+  - file: app/api/friendships/route.ts
+    action: modify
+    description: Update friendship endpoints
+  - file: app/api/friendships/[id]/route.ts
+    action: create
+    description: Create friendship status update endpoint
+risk_assessment:
+  level: medium
+  factors:
+    - Database schema changes with multiple relations
+    - Many API endpoints to create
+    - Authentication middleware not yet implemented (endpoints will have TODOs)
+  mitigations:
+    - Migrations will be auto-applied (autorun_migrations: true)
+    - Prisma client will be regenerated after migrations
+    - Authentication TODOs will be left in place for future implementation
+warnings:
+  - Authentication middleware is not implemented - endpoints will have placeholder auth checks
+  - Some endpoints reference relations that need to be included in queries
+  - Password hashing will use bcryptjs (already installed)
+prerequisites:
+  config_checks:
+    - Database connection string configured in .env (DATABASE_URL)
+  required_files:
+    - prisma/schema.prisma
+    - lib/prisma.ts
+  dependencies:
+    - "@prisma/client@^7.0.1"
+    - "prisma@^7.0.1"
+    - "bcryptjs@^3.0.3"
+    - "next@^16"
+estimated_duration: "10-15 minutes"

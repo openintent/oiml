@@ -1,0 +1,38 @@
+{
+  "name": "bacefook",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "test": "vitest",
+    "test:watch": "vitest --watch",
+    "test:coverage": "vitest --coverage"
+  },
+  "dependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/pg": "^8.15.6",
+    "bcryptjs": "^3.0.3",
+    "next": "^16",
+    "pg": "^8.16.3",
+    "react": "^19",
+    "react-dom": "^19"
+  },
+  "devDependencies": {
+    "@prisma/adapter-pg": "^7.0.1",
+    "@prisma/client": "^7.0.1",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitest/coverage-v8": "^2.1.9",
+    "eslint": "^9",
+    "eslint-config-next": "^16",
+    "prisma": "^7.0.1",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "vitest": "^2.1.9"
+  }
+}
