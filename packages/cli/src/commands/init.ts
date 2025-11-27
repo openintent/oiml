@@ -522,19 +522,6 @@ export async function initCommand(options: { yes?: boolean }) {
     console.log(chalk.green("✓ Created intents directory"));
   }
 
-  // Create 🚀 folder with intent.yaml
-  const initIntentDir = join(intentsDir, "🚀");
-  if (!existsSync(initIntentDir)) {
-    mkdirSync(initIntentDir, { recursive: true });
-    const initIntentPath = join(initIntentDir, "intent.yaml");
-    const initIntentContent = generateIntentTemplate("🚀", config.version);
-    writeFileSync(initIntentPath, initIntentContent, "utf-8");
-    console.log(chalk.green("✓ Created 🚀/intent.yaml"));
-  }
-
-  // Note: AGENTS.md is now available via MCP tool `get_agents_guide`
-  // No need to copy the file to each project - agents can fetch it when needed
-
   console.log(chalk.green("\n✨ OIML project initialized successfully!"));
   console.log(chalk.gray("\nNext steps:"));
   console.log(chalk.gray("  - Create intent files in .oiml/intents/"));
