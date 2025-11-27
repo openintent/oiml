@@ -13,6 +13,14 @@ const getElectronAPI = (): ElectronAPI | undefined => {
   return window.electronAPI;
 };
 
+interface OpenAIResponse {
+  choices?: Array<{
+    message?: {
+      content?: string;
+    };
+  }>;
+}
+
 export function OpenAIView() {
   const [prompt, setPrompt] = useState("");
   const [response, setResponse] = useState<string | null>(null);
@@ -48,7 +56,8 @@ export function OpenAIView() {
         throw new Error(result.error || "Failed to call OpenAI");
       }
 
-      const content = result.data?.choices?.[0]?.message?.content;
+      const openAIResponse = result.data as OpenAIResponse | undefined;
+      const content = openAIResponse?.choices?.[0]?.message?.content;
       if (content) {
         setResponse(content);
       } else {

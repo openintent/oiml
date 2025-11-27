@@ -3,7 +3,7 @@
   "productName": "OIML Studio",
   "version": "0.1.2",
   "description": "OIML Studio - Desktop application for building and managing OIML intents",
-  "author": "OIML",
+  "author": "OpenIntent",
   "homepage": "https://github.com/openintent/oiml#readme",
   "main": "electron/main.js",
   "scripts": {

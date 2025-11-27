@@ -110,13 +110,21 @@ interface ProjectConfig {
   };
 }
 
+interface IntentFileData {
+  version: string;
+  type?: string;
+  intents: Intent[];
+  ai_context?: any;
+  provenance?: any;
+}
+
 interface IntentInfo {
   id: string;
   path: string;
   hasIntent: boolean;
   hasPlan: boolean;
   hasSummary: boolean;
-  intentData?: Intent[];
+  intentData?: IntentFileData;
   planData?: any;
   summaryData?: any;
   intentYamlContent?: string; // Store raw YAML content for validation
@@ -1139,7 +1147,7 @@ export default function Home() {
                 // Store raw YAML content for validation
                 intentInfo.intentYamlContent = intentResult.content;
                 try {
-                  intentInfo.intentData = yaml.load(intentResult.content) as Intent[];
+                  intentInfo.intentData = yaml.load(intentResult.content) as IntentFileData;
                   // Validate the intent
                   if (intentInfo.intentData && intentResult.content) {
                     const validationResult = await validateIntent(intentResult.content);
@@ -1449,6 +1457,14 @@ export default function Home() {
                   <DropdownMenuItem onClick={handleSelectFolder} disabled={!isElectron}>
                     <FolderOpenIcon className="size-4 text-muted-foreground" />
                     <span>Open Project</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      window.open("https://oiml.dev/docs", "_blank", "noopener,noreferrer");
+                    }}
+                  >
+                    <FileTextIcon className="size-4 text-muted-foreground" />
+                    <span>Documentation</span>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuLabel>Theme</DropdownMenuLabel>
