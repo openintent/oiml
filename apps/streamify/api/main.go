@@ -18,7 +18,7 @@ import (
 )
 
 func main() {
-	client, err := ent.Open("postgres", "host=localhost port=5432 user=crystal dbname=streamify password=crystal sslmode=disable")
+	client, err := ent.Open("postgres", os.Getenv("DATABASE_URL"))
 	if err != nil {
 		log.Fatalf("failed opening connection to postgres: %v", err)
 	}
