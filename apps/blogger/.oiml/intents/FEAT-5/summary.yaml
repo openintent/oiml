@@ -19,18 +19,17 @@ changes:
   - file: prisma/schema.prisma
     action: modified
     description: Added Room model with id (UUID primary key) and created_at (DateTime with default now)
-  
+
   - file: prisma/migrations/20251122192514_add_room_entity/migration.sql
     action: created
     description: Generated Prisma migration to create rooms table
-  
+
   - file: node_modules/@prisma/client
     action: regenerated
     description: Regenerated Prisma client to include Room model and types
-  
+
   - file: packages/types/index.ts
     action: modified
     description: Added RoomInterface and RoomResponse types
 
 errors: []
-

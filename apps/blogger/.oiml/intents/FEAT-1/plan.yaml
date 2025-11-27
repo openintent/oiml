@@ -30,7 +30,7 @@ steps:
           - Add content field as Text (nullable for draft posts)
           - Add published field as Boolean with default value false
           - Add created_at field as DateTime with default value now()
-      
+
       - file: prisma/migrations/20251121194500_add_post_entity/migration.sql
         action: create
         description: Generate migration SQL to create posts table
@@ -41,7 +41,7 @@ steps:
           - Set up primary key constraint on id
           - Set up default values for published and created_at
           - Create indexes as needed for query optimization
-      
+
       - file: node_modules/@prisma/client
         action: regenerate
         description: Regenerate Prisma client to include Post model and types
@@ -52,13 +52,13 @@ planned_changes:
   - file: prisma/schema.prisma
     action: modify
     description: Add Post model with id, title, content, published, created_at fields
-  
+
   - file: prisma/migrations/20251121194500_add_post_entity/migration.sql
     action: create
     description: Generate migration SQL to create posts table
     dependencies:
       - prisma/schema.prisma
-  
+
   - file: node_modules/@prisma/client
     action: regenerate
     description: Regenerate Prisma client to include Post model and types
@@ -93,6 +93,3 @@ prerequisites:
     - "prisma"
 
 estimated_duration: 2-3 minutes
-
-
-

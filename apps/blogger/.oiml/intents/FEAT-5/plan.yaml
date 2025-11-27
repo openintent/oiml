@@ -30,7 +30,7 @@ steps:
           - Add id field as UUID primary key with auto-generation (@default(uuid()))
           - Add created_at field as DateTime with default value now()
           - Add @@map("rooms") directive for table name mapping
-      
+
       - file: prisma/migrations/*/migration.sql
         action: create
         description: Generate migration SQL to create rooms table
@@ -40,13 +40,13 @@ steps:
           - Create rooms table with id and created_at columns
           - Set up primary key constraint on id
           - Set up default value for created_at
-      
+
       - file: node_modules/@prisma/client
         action: regenerate
         description: Regenerate Prisma client to include Room model and types
         dependencies:
           - prisma/schema.prisma
-      
+
       - file: packages/types/index.ts
         action: modify
         description: Add RoomInterface and RoomResponse types
@@ -60,19 +60,19 @@ planned_changes:
   - file: prisma/schema.prisma
     action: modify
     description: Add Room model with id (UUID primary key) and created_at (DateTime with default now)
-  
+
   - file: prisma/migrations/*/migration.sql
     action: create
     description: Generate migration SQL to create rooms table
     dependencies:
       - prisma/schema.prisma
-  
+
   - file: node_modules/@prisma/client
     action: regenerate
     description: Regenerate Prisma client to include Room model and types
     dependencies:
       - prisma/schema.prisma
-  
+
   - file: packages/types/index.ts
     action: modify
     description: Add RoomInterface and RoomResponse types
@@ -106,4 +106,3 @@ prerequisites:
     - "prisma"
 
 estimated_duration: 2-3 minutes
-

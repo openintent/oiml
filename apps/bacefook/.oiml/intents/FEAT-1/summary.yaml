@@ -1,5 +1,5 @@
 version: 0.1.0
-applied_at: '2025-11-27T04:30:00Z'
+applied_at: "2025-11-27T04:30:00Z"
 status: success
 intents_processed: 34
 model: claude-sonnet-4.5

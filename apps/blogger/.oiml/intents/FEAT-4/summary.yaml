@@ -23,7 +23,3 @@ changes:
     action: created
     description: Created dynamic API route with GET handler for fetching individual event by ID
 errors: []
-
-
-
-

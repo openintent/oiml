@@ -9,16 +9,16 @@ template_used:
   pack: oiml://compat/oiml-prisma/1.0.0
   version: 1.0.0
   compat:
-    oiml: '>=0.1.0 <0.2.0'
-    prisma: '>=6.0.0 <7.0.0'
+    oiml: ">=0.1.0 <0.2.0"
+    prisma: ">=6.0.0 <7.0.0"
 api_template_used:
   framework: next
   category: api
   pack: oiml://compat/oiml-next/1.0.0
   version: 1.0.0
   compat:
-    oiml: '>=0.1.0 <0.2.0'
-    next: '>=14.0.0 <17.0.0'
+    oiml: ">=0.1.0 <0.2.0"
+    next: ">=14.0.0 <17.0.0"
 changes:
   - file: prisma/schema.prisma
     action: created

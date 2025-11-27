@@ -2,7 +2,7 @@ version: 0.1.0
 type: oiml.intent
 ai_context:
   purpose: Conform to project frameworks, style, and conventions.
-  instructions: '- CRITICAL: Call the MCP tool `get_agents_guide` FIRST before proceeding to retrieve the OIML Agents implementation guide and apply the instructions to the intent.'
+  instructions: "- CRITICAL: Call the MCP tool `get_agents_guide` FIRST before proceeding to retrieve the OIML Agents implementation guide and apply the instructions to the intent."
   references:
     - kind: mcp_tool
       tool: get_agents_guide
@@ -10,8 +10,8 @@ ai_context:
 provenance:
   created_by:
     type: human
-    name: ''
-  created_at: '2025-11-27T03:55:44Z'
+    name: ""
+  created_at: "2025-11-27T03:55:44Z"
 intents:
   # User Entity - Core authentication and user data
   - kind: add_entity
@@ -135,9 +135,9 @@ intents:
         required: true
       - name: visibility
         type: enum
-        enum_values: ['public', 'friends', 'private']
+        enum_values: ["public", "friends", "private"]
         required: true
-        default: 'public'
+        default: "public"
       - name: created_at
         type: datetime
         required: true
@@ -270,7 +270,7 @@ intents:
         max_length: 500
       - name: type
         type: enum
-        enum_values: ['image', 'video', 'gif']
+        enum_values: ["image", "video", "gif"]
         required: true
       - name: width
         type: integer
@@ -321,9 +321,9 @@ intents:
             kind: one_to_many
       - name: status
         type: enum
-        enum_values: ['pending', 'accepted', 'blocked']
+        enum_values: ["pending", "accepted", "blocked"]
         required: true
-        default: 'pending'
+        default: "pending"
       - name: created_at
         type: datetime
         required: true
@@ -443,7 +443,7 @@ intents:
         required: true
       - name: visibility
         type: enum
-        enum_values: ['public', 'friends', 'private']
+        enum_values: ["public", "friends", "private"]
         required: false
 
   - kind: add_endpoint
@@ -579,7 +579,7 @@ intents:
     fields:
       - name: status
         type: enum
-        enum_values: ['accepted', 'blocked']
+        enum_values: ["accepted", "blocked"]
         required: true
 
   - kind: add_endpoint

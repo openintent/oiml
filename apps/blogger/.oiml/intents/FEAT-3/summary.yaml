@@ -23,5 +23,3 @@ changes:
     action: regenerated
     description: Regenerated Prisma Client to include Event model (v6.19.0)
 errors: []
-
-

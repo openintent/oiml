@@ -25,4 +25,3 @@ errors: []
 notes:
   - Migration file created but not applied. Apply manually when ready using 'npx prisma migrate dev' or 'npx prisma migrate deploy'
   - Prisma client regenerated successfully and includes the new Post model
-

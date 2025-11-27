@@ -12,7 +12,7 @@ provenance:
     type: human
     name: ""
   created_at: 2025-11-17T23:20:49Z
-intents: 
+intents:
   - kind: add_entity
     scope: data
     entity: Post

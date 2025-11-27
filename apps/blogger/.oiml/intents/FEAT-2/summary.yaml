@@ -26,4 +26,3 @@ changes:
     action: created
     description: Generated Prisma migration creating comments table with foreign keys to posts and users
 errors: []
-
