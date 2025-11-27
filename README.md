@@ -239,7 +239,7 @@ paths:
   "mcpServers": {
     "oiml": {
       "type": "sse",
-      "url": "https://mcp.oiml.dev/mcp"
+      "url": "http://localhost:3111/mcp"
     }
   }
 }
