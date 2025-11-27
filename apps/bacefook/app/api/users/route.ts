@@ -1,6 +1,6 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import bcrypt from 'bcryptjs';
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import bcrypt from "bcryptjs";
 
 // POST /api/users - Create a new user account
 export async function POST(request: Request) {
@@ -11,7 +11,7 @@ export async function POST(request: Request) {
     // Validation
     if (!email || !username || !password) {
       return NextResponse.json(
-        { success: false, error: 'Missing required fields: email, username, password' },
+        { success: false, error: "Missing required fields: email, username, password" },
         { status: 400 }
       );
     }
@@ -19,13 +19,13 @@ export async function POST(request: Request) {
     // Check if user already exists
     const existingUser = await prisma.user.findFirst({
       where: {
-        OR: [{ email }, { username }],
-      },
+        OR: [{ email }, { username }]
+      }
     });
 
     if (existingUser) {
       return NextResponse.json(
-        { success: false, error: 'User with this email or username already exists' },
+        { success: false, error: "User with this email or username already exists" },
         { status: 409 }
       );
     }
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
         username,
         password_hash,
         first_name: first_name || null,
-        last_name: last_name || null,
+        last_name: last_name || null
       },
       select: {
         id: true,
@@ -51,19 +51,16 @@ export async function POST(request: Request) {
         is_active: true,
         is_verified: true,
         created_at: true,
-        updated_at: true,
-      },
+        updated_at: true
+      }
     });
 
     return NextResponse.json({ data: user }, { status: 201 });
   } catch (error) {
-    console.error('Error creating user:', error);
+    console.error("Error creating user:", error);
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : 'Failed to create user' },
+      { success: false, error: error instanceof Error ? error.message : "Failed to create user" },
       { status: 500 }
     );
   }
 }
-
-
-

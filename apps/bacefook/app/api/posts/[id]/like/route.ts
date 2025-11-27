@@ -1,21 +1,18 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import type { LikeResponse, ErrorResponse } from '@/packages/types';
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import type { LikeResponse, ErrorResponse } from "@/packages/types";
 
 // POST /api/posts/:id/like - Like a post
-export async function POST(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     // TODO: Implement authentication middleware
     // const userId = await getCurrentUserId(request);
-    const userId = ''; // Placeholder
+    const userId = ""; // Placeholder
 
     if (!userId) {
       const errorResponse: ErrorResponse = {
         success: false,
-        error: 'Authentication required',
+        error: "Authentication required"
       };
       return NextResponse.json(errorResponse, { status: 401 });
     }
@@ -24,13 +21,13 @@ export async function POST(
 
     // Check if post exists
     const post = await prisma.post.findUnique({
-      where: { id: resolvedParams.id },
+      where: { id: resolvedParams.id }
     });
 
     if (!post) {
       const errorResponse: ErrorResponse = {
         success: false,
-        error: 'Post not found',
+        error: "Post not found"
       };
       return NextResponse.json(errorResponse, { status: 404 });
     }
@@ -40,15 +37,15 @@ export async function POST(
       where: {
         user_id_post_id: {
           user_id: userId,
-          post_id: resolvedParams.id,
-        },
-      },
+          post_id: resolvedParams.id
+        }
+      }
     });
 
     if (existingLike) {
       const errorResponse: ErrorResponse = {
         success: false,
-        error: 'Post already liked',
+        error: "Post already liked"
       };
       return NextResponse.json(errorResponse, { status: 409 });
     }
@@ -56,39 +53,36 @@ export async function POST(
     const like = await prisma.like.create({
       data: {
         user_id: userId,
-        post_id: resolvedParams.id,
-      },
+        post_id: resolvedParams.id
+      }
     });
 
     const response: LikeResponse = {
-      data: like,
+      data: like
     };
 
     return NextResponse.json(response, { status: 201 });
   } catch (error) {
-    console.error('Error liking post:', error);
+    console.error("Error liking post:", error);
     const errorResponse: ErrorResponse = {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to like post',
+      error: error instanceof Error ? error.message : "Failed to like post"
     };
     return NextResponse.json(errorResponse, { status: 500 });
   }
 }
 
 // DELETE /api/posts/:id/like - Unlike a post
-export async function DELETE(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     // TODO: Implement authentication middleware
     // const userId = await getCurrentUserId(request);
-    const userId = ''; // Placeholder
+    const userId = ""; // Placeholder
 
     if (!userId) {
       const errorResponse: ErrorResponse = {
         success: false,
-        error: 'Authentication required',
+        error: "Authentication required"
       };
       return NextResponse.json(errorResponse, { status: 401 });
     }
@@ -99,34 +93,31 @@ export async function DELETE(
       where: {
         user_id_post_id: {
           user_id: userId,
-          post_id: resolvedParams.id,
-        },
-      },
+          post_id: resolvedParams.id
+        }
+      }
     });
 
     if (!existingLike) {
       const errorResponse: ErrorResponse = {
         success: false,
-        error: 'Post not liked',
+        error: "Post not liked"
       };
       return NextResponse.json(errorResponse, { status: 404 });
     }
 
     await prisma.like.delete({
       where: {
-        id: existingLike.id,
-      },
+        id: existingLike.id
+      }
     });
 
-    return NextResponse.json(
-      { success: true, message: 'Post unliked successfully' },
-      { status: 200 }
-    );
+    return NextResponse.json({ success: true, message: "Post unliked successfully" }, { status: 200 });
   } catch (error) {
-    console.error('Error unliking post:', error);
+    console.error("Error unliking post:", error);
     const errorResponse: ErrorResponse = {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to unlike post',
+      error: error instanceof Error ? error.message : "Failed to unlike post"
     };
     return NextResponse.json(errorResponse, { status: 500 });
   }

@@ -5,11 +5,13 @@ This directory contains comprehensive API tests for all endpoints in the Bacefoo
 ## Setup
 
 1. Install dependencies:
+
 ```bash
 npm install
 ```
 
 2. **Required**: Set up database connection. Tests require a DATABASE_URL environment variable:
+
 ```bash
 # Option 1: Use existing DATABASE_URL from .env
 # Make sure .env file has DATABASE_URL set
@@ -25,6 +27,7 @@ export DATABASE_URL="postgresql://user:password@localhost:5432/bacefook_test"
 ```
 
 3. **Required**: Run database migrations before running tests:
+
 ```bash
 # Make sure migrations are applied to your test database
 npx prisma migrate deploy
@@ -33,6 +36,7 @@ npx prisma migrate dev
 ```
 
 4. Run tests:
+
 ```bash
 npm test              # Run tests once
 npm run test:watch    # Run tests in watch mode
@@ -40,6 +44,7 @@ npm run test:coverage # Run tests with coverage report
 ```
 
 **Important Notes**:
+
 - Tests use a **real database connection** and will **clean the database before each test**
 - Make sure you're using a **test database** or are comfortable with data being deleted
 - All tables (likes, comments, media, posts, follows, friendships, profiles, users) are cleared before each test
@@ -62,6 +67,7 @@ npm run test:coverage # Run tests with coverage report
 ## Test Coverage
 
 Each endpoint is tested for:
+
 - ✅ Success cases
 - ✅ Validation errors (400)
 - ✅ Authentication errors (401)
@@ -76,4 +82,3 @@ Each endpoint is tested for:
 - Database is cleaned before each test
 - Authentication endpoints return 401 since auth middleware is not yet implemented
 - Tests verify response structure matches the API response format: `{ data: ... }` for success, `{ success: false, error: "..." }` for errors
-

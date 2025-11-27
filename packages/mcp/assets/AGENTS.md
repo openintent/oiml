@@ -830,29 +830,28 @@ After successfully applying intents, create an output summary file:
    - `errors[]`: Any errors encountered during execution
 
 4. **YAML Formatting Requirements**:
-   
+
    **CRITICAL:** All strings in `summary.yaml` must be valid YAML. When writing strings that contain special YAML characters, always quote them:
-   
    - **Curly braces `{ }`**: Must be quoted (e.g., `'{ data: ... }'` or `"{ data: ... }"`)
    - **Colons `:` in strings**: Quote strings containing colons that aren't part of key-value pairs
    - **Square brackets `[ ]`**: Quote if they appear in strings (e.g., `'[id]'`)
    - **Pipes `|` or greater-than `>`**: Quote if they appear in strings
    - **Strings starting with special characters**: Always quote (e.g., `'@/lib/prisma'`)
    - **Strings containing quotes**: Use single quotes for strings with double quotes, or escape quotes
-   
+
    **Examples:**
-   
+
    ```yaml
    # ❌ BAD - Will cause YAML parsing errors
    description: Response format: { data: ... } for success
    description: File path: app/api/users/[id]/route.ts
-   
+
    # ✅ GOOD - Properly quoted
    description: 'Response format: { data: ... } for success'
    description: 'File path: app/api/users/[id]/route.ts'
    description: "Response format: { data: ... } for success, { success: false, error: \"...\" } for errors"
    ```
-   
+
    **Best Practice**: When in doubt, quote strings in the `description` and `notes` fields, especially if they contain:
    - JSON-like structures (`{ }`, `[ ]`)
    - Code examples

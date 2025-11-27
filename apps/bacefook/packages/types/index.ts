@@ -1,9 +1,9 @@
 // TypeScript types for Bacefook entities
 // These types match the Prisma schema and use | null for nullable fields (not optional ?)
 
-export type PostVisibility = 'public' | 'friends' | 'private';
-export type MediaType = 'image' | 'video' | 'gif';
-export type FriendshipStatus = 'pending' | 'accepted' | 'blocked';
+export type PostVisibility = "public" | "friends" | "private";
+export type MediaType = "image" | "video" | "gif";
+export type FriendshipStatus = "pending" | "accepted" | "blocked";
 
 export interface UserInterface {
   id: string;
@@ -121,6 +121,3 @@ export interface ErrorResponse {
   success: false;
   error: string;
 }
-
-
-

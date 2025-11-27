@@ -1,21 +1,18 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import type { FollowResponse, ErrorResponse } from '@/packages/types';
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import type { FollowResponse, ErrorResponse } from "@/packages/types";
 
 // POST /api/users/:id/follow - Follow a user
-export async function POST(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     // TODO: Implement authentication middleware
     // const userId = await getCurrentUserId(request);
-    const userId = ''; // Placeholder
+    const userId = ""; // Placeholder
 
     if (!userId) {
       const errorResponse: ErrorResponse = {
         success: false,
-        error: 'Authentication required',
+        error: "Authentication required"
       };
       return NextResponse.json(errorResponse, { status: 401 });
     }
@@ -26,7 +23,7 @@ export async function POST(
     if (userId === followingId) {
       const errorResponse: ErrorResponse = {
         success: false,
-        error: 'Cannot follow yourself',
+        error: "Cannot follow yourself"
       };
       return NextResponse.json(errorResponse, { status: 400 });
     }
@@ -36,15 +33,15 @@ export async function POST(
       where: {
         follower_id_following_id: {
           follower_id: userId,
-          following_id: followingId,
-        },
-      },
+          following_id: followingId
+        }
+      }
     });
 
     if (existingFollow) {
       const errorResponse: ErrorResponse = {
         success: false,
-        error: 'Already following this user',
+        error: "Already following this user"
       };
       return NextResponse.json(errorResponse, { status: 409 });
     }
@@ -52,39 +49,36 @@ export async function POST(
     const follow = await prisma.follow.create({
       data: {
         follower_id: userId,
-        following_id: followingId,
-      },
+        following_id: followingId
+      }
     });
 
     const response: FollowResponse = {
-      data: follow,
+      data: follow
     };
 
     return NextResponse.json(response, { status: 201 });
   } catch (error) {
-    console.error('Error following user:', error);
+    console.error("Error following user:", error);
     const errorResponse: ErrorResponse = {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to follow user',
+      error: error instanceof Error ? error.message : "Failed to follow user"
     };
     return NextResponse.json(errorResponse, { status: 500 });
   }
 }
 
 // DELETE /api/users/:id/follow - Unfollow a user
-export async function DELETE(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     // TODO: Implement authentication middleware
     // const userId = await getCurrentUserId(request);
-    const userId = ''; // Placeholder
+    const userId = ""; // Placeholder
 
     if (!userId) {
       const errorResponse: ErrorResponse = {
         success: false,
-        error: 'Authentication required',
+        error: "Authentication required"
       };
       return NextResponse.json(errorResponse, { status: 401 });
     }
@@ -96,34 +90,31 @@ export async function DELETE(
       where: {
         follower_id_following_id: {
           follower_id: userId,
-          following_id: followingId,
-        },
-      },
+          following_id: followingId
+        }
+      }
     });
 
     if (!existingFollow) {
       const errorResponse: ErrorResponse = {
         success: false,
-        error: 'Not following this user',
+        error: "Not following this user"
       };
       return NextResponse.json(errorResponse, { status: 404 });
     }
 
     await prisma.follow.delete({
       where: {
-        id: existingFollow.id,
-      },
+        id: existingFollow.id
+      }
     });
 
-    return NextResponse.json(
-      { success: true, message: 'Unfollowed successfully' },
-      { status: 200 }
-    );
+    return NextResponse.json({ success: true, message: "Unfollowed successfully" }, { status: 200 });
   } catch (error) {
-    console.error('Error unfollowing user:', error);
+    console.error("Error unfollowing user:", error);
     const errorResponse: ErrorResponse = {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to unfollow user',
+      error: error instanceof Error ? error.message : "Failed to unfollow user"
     };
     return NextResponse.json(errorResponse, { status: 500 });
   }

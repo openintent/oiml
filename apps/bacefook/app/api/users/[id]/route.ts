@@ -1,12 +1,9 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import type { UserResponse, ErrorResponse } from '@/packages/types';
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import type { UserResponse, ErrorResponse } from "@/packages/types";
 
 // GET /api/users/:id - Get user by ID
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const resolvedParams = await params;
 
@@ -21,28 +18,28 @@ export async function GET(
         is_active: true,
         is_verified: true,
         created_at: true,
-        updated_at: true,
-      },
+        updated_at: true
+      }
     });
 
     if (!user) {
       const errorResponse: ErrorResponse = {
         success: false,
-        error: 'User not found',
+        error: "User not found"
       };
       return NextResponse.json(errorResponse, { status: 404 });
     }
 
     const response: UserResponse = {
-      data: user,
+      data: user
     };
 
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
-    console.error('Error fetching user:', error);
+    console.error("Error fetching user:", error);
     const errorResponse: ErrorResponse = {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to fetch user',
+      error: error instanceof Error ? error.message : "Failed to fetch user"
     };
     return NextResponse.json(errorResponse, { status: 500 });
   }
