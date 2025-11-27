@@ -1,6 +1,6 @@
 {
   "name": "@oiml/mcp",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "description": "OpenIntent MCP server for validation and generation",
   "author": "OpenIntent",
   "license": "MPL-2.0",
