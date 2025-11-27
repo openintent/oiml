@@ -17,6 +17,7 @@ npm run electron:dev
 ```
 
 This will:
+
 1. Start the Next.js dev server on `http://localhost:3000`
 2. Wait for the server to be ready
 3. Launch Electron and connect to the dev server
@@ -30,6 +31,7 @@ npm run electron:build
 ```
 
 This will:
+
 1. Build the Next.js app
 2. Compile the Electron TypeScript files
 3. Package everything into a distributable Electron app
@@ -42,13 +44,3 @@ For production builds, you have two options:
 2. **Static export**: Use `output: 'export'` in `next.config.ts` to generate static files that Electron can serve directly
 
 The current setup uses the dev server approach for development. For production, you'll need to implement a local server or switch to static export.
-
-
-
-
-
-
-
-
-
-

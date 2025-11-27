@@ -1,5 +1,5 @@
 export interface UpdateStatus {
-  status: 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error';
+  status: "checking" | "available" | "downloading" | "downloaded" | "not-available" | "error";
   version?: string;
   releaseNotes?: string;
   progress?: number;
@@ -24,7 +24,10 @@ export interface ElectronAPI {
   getRecentProjects: () => Promise<{ success: boolean; projects?: string[]; error?: string }>;
   addRecentProject: (folderPath: string) => Promise<{ success: boolean; error?: string }>;
   clearRecentProjects: () => Promise<{ success: boolean; error?: string }>;
-  runCommand: (command: string, cwd: string) => Promise<{ success: boolean; stdout?: string; stderr?: string; error?: string }>;
+  runCommand: (
+    command: string,
+    cwd: string
+  ) => Promise<{ success: boolean; stdout?: string; stderr?: string; error?: string }>;
   writeFile: (filePath: string, content: string) => Promise<{ success: boolean; error?: string }>;
   mkdir: (dirPath: string) => Promise<{ success: boolean; error?: string }>;
   rmdir: (dirPath: string) => Promise<{ success: boolean; error?: string }>;
@@ -37,10 +40,13 @@ export interface ElectronAPI {
   getLinearAccessToken: () => Promise<{ success: boolean; token?: string | null; error?: string }>;
   saveOpenAIApiKey: (apiKey: string) => Promise<{ success: boolean; error?: string }>;
   getOpenAIApiKey: () => Promise<{ success: boolean; apiKey?: string | null; error?: string }>;
-  callOpenAI: (messages: Array<{ role: string; content: string }>, model?: string) => Promise<{ success: boolean; data?: unknown; error?: string }>;
+  callOpenAI: (
+    messages: Array<{ role: string; content: string }>,
+    model?: string
+  ) => Promise<{ success: boolean; data?: unknown; error?: string }>;
   ipcRenderer?: {
     send: (channel: string, ...args: unknown[]) => void;
-    on: (channel: string, callback: (event: Electron.IpcRendererEvent, ...args: unknown[]) => void) => (() => void);
+    on: (channel: string, callback: (event: Electron.IpcRendererEvent, ...args: unknown[]) => void) => () => void;
     removeListener: (channel: string, callback: (event: Electron.IpcRendererEvent, ...args: unknown[]) => void) => void;
   };
 }
@@ -50,4 +56,3 @@ declare global {
     electronAPI?: ElectronAPI;
   }
 }
-

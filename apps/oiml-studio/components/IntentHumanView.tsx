@@ -1,13 +1,21 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Database, Code, Zap, FileText } from "lucide-react";
+import { Database, Code, Zap, FileText, MoreVertical, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
 
 interface IntentHumanViewProps {
   intentData: any;
+  onDeleteIntent?: (index: number) => void;
 }
 
-export function IntentHumanView({ intentData }: IntentHumanViewProps) {
+export function IntentHumanView({ intentData, onDeleteIntent }: IntentHumanViewProps) {
   if (!intentData) return null;
 
   const getIntentIcon = (kind: string) => {
@@ -198,7 +206,27 @@ export function IntentHumanView({ intentData }: IntentHumanViewProps) {
                       )}
                     </CardTitle>
                   </div>
-                  {intent.kind && <Badge variant="outline">{intent.kind}</Badge>}
+                  <div className="flex items-center gap-2">
+                    {intent.kind && <Badge variant="outline">{intent.kind}</Badge>}
+                    {onDeleteIntent && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            className="text-red-600 dark:text-red-400"
+                            onClick={() => onDeleteIntent(index)}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                  </div>
                 </div>
                 {intent.description && <CardDescription>{intent.description}</CardDescription>}
                 {intent.kind === "add_capability" && (

@@ -660,7 +660,7 @@ Your response must be ONLY the YAML content, nothing else.`;
         <div className="flex items-start justify-between">
           <div className="flex-1 flex items-center gap-4">
             <CardTitle className="text-lg">{issue.title}</CardTitle>
-            <Badge variant="outline">{issue.status}</Badge>
+            {/* <Badge variant="outline">{issue.status}</Badge> */}
           </div>
           <div className="flex items-center gap-2">
             <Button onClick={fetchIssue} disabled={isLoading} size="icon" variant="outline">

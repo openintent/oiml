@@ -116,7 +116,7 @@ interface IntentInfo {
   hasIntent: boolean;
   hasPlan: boolean;
   hasSummary: boolean;
-  intentData?: any;
+  intentData?: Intent[];
   planData?: any;
   summaryData?: any;
   intentYamlContent?: string; // Store raw YAML content for validation
@@ -148,13 +148,19 @@ export default function Home() {
   const [selectedIntent, setSelectedIntent] = useState<IntentInfo | null>(null);
   // Use a ref to track the current selected intent ID so it's always current in closures
   const selectedIntentIdRef = useRef<string | null>(null);
+  // Use a ref to track the current selected intent path so it's always current in closures
+  const selectedIntentPathRef = useRef<string | null>(null);
   const [activeTab, setActiveTab] = useState<string>("intent");
   const [isElectron, setIsElectron] = useState(false);
   const [isAddIntentDialogOpen, setIsAddIntentDialogOpen] = useState(false);
   const [isIntentYamlDialogOpen, setIsIntentYamlDialogOpen] = useState(false);
   const [isProjectSettingsYamlDialogOpen, setIsProjectSettingsYamlDialogOpen] = useState(false);
+  const [isEditIntentsDialogOpen, setIsEditIntentsDialogOpen] = useState(false);
   const [newIntentName, setNewIntentName] = useState("");
   const [builderIntents, setBuilderIntents] = useState<Intent[]>([]);
+  const [editIntents, setEditIntents] = useState<Intent[]>([]);
+  const [contextMenuIntentId, setContextMenuIntentId] = useState<string | null>(null);
+  const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
   const [projectConfig, setProjectConfig] = useState<ProjectConfig | null>(null);
@@ -163,7 +169,7 @@ export default function Home() {
   const [editedYaml, setEditedYaml] = useState<string>("");
   const [projectYaml, setProjectYaml] = useState<string>("");
   const [recentProjects, setRecentProjects] = useState<string[]>([]);
-  const [showProjectSettings, setShowProjectSettings] = useState(false);
+  const [isProjectSettingsDialogOpen, setIsProjectSettingsDialogOpen] = useState(false);
   const [linearAccessToken, setLinearAccessToken] = useState<string>("");
   const [isSavingLinearToken, setIsSavingLinearToken] = useState(false);
   const [openaiApiKey, setOpenaiApiKey] = useState<string>("");
@@ -237,6 +243,7 @@ export default function Home() {
   const updateSelectedIntent = (intent: IntentInfo | null) => {
     setSelectedIntent(intent);
     selectedIntentIdRef.current = intent?.id || null;
+    selectedIntentPathRef.current = intent?.path || null;
   };
 
   // Check if running in Electron
@@ -269,12 +276,8 @@ export default function Home() {
 
         // Load recent projects
         const recentResult = await electronAPI.getRecentProjects?.();
-        console.log("Recent projects result:", recentResult);
         if (recentResult?.success && recentResult.projects) {
-          console.log("Setting recent projects:", recentResult.projects);
           setRecentProjects(recentResult.projects);
-        } else {
-          console.log("No recent projects found or error:", recentResult);
         }
       } catch (error) {
         console.error("Error initializing app:", error);
@@ -288,27 +291,13 @@ export default function Home() {
 
   // Update edited YAML when intent changes or dialog opens
   useEffect(() => {
-    const timestamp = new Date().toISOString();
     if (selectedIntent?.intentData && isIntentYamlDialogOpen) {
-      console.log(`[useEffect editedYaml ${timestamp}] ========================================`);
-      console.log(`[useEffect editedYaml ${timestamp}] Updating editedYaml`);
-      console.log(`[useEffect editedYaml ${timestamp}] Selected intent ID: ${selectedIntent.id}`);
-      console.log(`[useEffect editedYaml ${timestamp}] Intent data exists: ${!!selectedIntent.intentData}`);
-
       const newYaml = yaml.dump(selectedIntent.intentData, {
         indent: 2,
         lineWidth: -1
       });
-      console.log(`[useEffect editedYaml ${timestamp}] Generated YAML length: ${newYaml.length} characters`);
-      console.log(`[useEffect editedYaml ${timestamp}] First 100 chars: ${newYaml.substring(0, 100)}...`);
 
       setEditedYaml(newYaml);
-
-      console.log(`[useEffect editedYaml ${timestamp}] ✓ editedYaml updated successfully`);
-    } else {
-      console.log(
-        `[useEffect editedYaml ${timestamp}] Skipping update - intentData: ${!!selectedIntent?.intentData}, dialogOpen: ${isIntentYamlDialogOpen}`
-      );
     }
   }, [selectedIntent?.intentData, isIntentYamlDialogOpen]);
 
@@ -372,58 +361,59 @@ export default function Home() {
     const handleFileChanged = async (data: { event: string; path: string; folderPath: string }) => {
       // Ignore file changes during intent creation
       if (isCreatingIntentRef.current) {
-        console.log(`[App] Ignoring file change during intent creation: ${data.path}`);
         return;
       }
 
-      const timestamp = new Date().toISOString();
-      console.log(`[App ${timestamp}] ========================================`);
-      console.log(`[App ${timestamp}] File changed event received in renderer:`);
-      console.log(`[App ${timestamp}]   Event: ${data.event}`);
-      console.log(`[App ${timestamp}]   Path: ${data.path}`);
-      console.log(`[App ${timestamp}]   Folder: ${data.folderPath}`);
-      console.log(`[App ${timestamp}]   Current selectedFolder: ${selectedFolder}`);
-      console.log(`[App ${timestamp}]   Current selectedIntent: ${selectedIntent?.id || "none"}`);
+      // Check if project.yaml was changed - check for both forward and backslash paths
+      const normalizedPath = data.path.replace(/\\/g, "/");
+      const isProjectYamlChange =
+        normalizedPath.includes("/.oiml/project.yaml") ||
+        normalizedPath.endsWith("/project.yaml") ||
+        normalizedPath.endsWith("project.yaml");
 
-      // Reload OIML data when files change
+      // Debug log to see what files are being watched
+      if (isProjectYamlChange) {
+        console.log("[FileWatcher] project.yaml changed:", data.path, "event:", data.event);
+      }
+
+      // If a directory was deleted and it matches the selected intent, clear the selection
+      if (data.event === "unlinkDir") {
+        // Extract intent ID from path (e.g., "/path/to/.oiml/intents/INTENT-1" -> "INTENT-1")
+        const pathParts = data.path.split(/[/\\]/);
+        const intentsIndex = pathParts.findIndex(part => part === "intents");
+        if (intentsIndex >= 0 && intentsIndex < pathParts.length - 1) {
+          const deletedIntentId = pathParts[intentsIndex + 1];
+          // Compare with selected intent ID using ref (always current, not stale)
+          if (selectedIntentIdRef.current === deletedIntentId) {
+            // Clear the selected intent state
+            updateSelectedIntent(null);
+          }
+        }
+      }
+
+      // Reload OIML data when files or directories change
       // Use the folderPath from the event data to ensure we're watching the right folder
       const folderToReload = data.folderPath || selectedFolder;
-      console.log(`[App ${timestamp}] Will reload OIML data for folder: ${folderToReload}`);
 
-      // Check if this is the currently selected intent's file
-      if (selectedIntent?.id && data.path.includes(selectedIntent.id)) {
-        console.log(`[App ${timestamp}] ⚠️ This is the currently selected intent's file!`);
-      }
+      // Use a delay to ensure file/directory operations are complete
+      // Directory operations (addDir/unlinkDir) may need slightly more time
+      // Project.yaml changes may need a slightly longer delay to ensure the file is fully written
+      const delay = data.event === "addDir" || data.event === "unlinkDir" ? 500 : isProjectYamlChange ? 300 : 300;
 
-      // Check if this is project.yaml
-      if (data.path.includes("project.yaml")) {
-        console.log(`[App ${timestamp}] 📋 project.yaml changed - will reload project configuration`);
-      }
-
-      // Use a small delay to ensure file write is complete
       setTimeout(async () => {
-        const reloadTimestamp = new Date().toISOString();
-        console.log(`[App ${reloadTimestamp}] Starting loadOIMLData...`);
         await loadOIMLData(folderToReload);
-        console.log(`[App ${reloadTimestamp}] ✓ loadOIMLData completed`);
-      }, 300);
+      }, delay);
     };
 
     const removeListener = electronAPI.onFileChanged?.(handleFileChanged);
 
     // Start watching the folder AFTER setting up the listener
-    electronAPI
-      .watchFolder?.(selectedFolder)
-      .then(result => {
-        console.log("File watcher started:", result);
-      })
-      .catch(error => {
-        console.error("Error starting file watcher:", error);
-      });
+    electronAPI.watchFolder?.(selectedFolder).catch(error => {
+      console.error("Error starting file watcher:", error);
+    });
 
     // Cleanup: stop watching and remove listener when folder changes or component unmounts
     return () => {
-      console.log("Cleaning up file watcher");
       if (removeListener && typeof removeListener === "function") {
         removeListener();
       } else {
@@ -433,6 +423,21 @@ export default function Home() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFolder]);
+
+  // Close context menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setContextMenuIntentId(null);
+      setContextMenuPosition(null);
+    };
+
+    if (contextMenuIntentId) {
+      document.addEventListener("click", handleClickOutside);
+      return () => {
+        document.removeEventListener("click", handleClickOutside);
+      };
+    }
+  }, [contextMenuIntentId]);
 
   const handleSelectFolder = async () => {
     const electronAPI = getElectronAPI();
@@ -589,11 +594,9 @@ export default function Home() {
 
       // Add to recent projects
       try {
-        const addResult = await electronAPI.addRecentProject?.(folderPath);
-        console.log("Add recent project result:", addResult);
+        await electronAPI.addRecentProject?.(folderPath);
         // Refresh recent projects list
         const recentResult = await electronAPI.getRecentProjects?.();
-        console.log("Recent projects after add:", recentResult);
         if (recentResult?.success && recentResult.projects) {
           setRecentProjects(recentResult.projects);
         }
@@ -840,7 +843,7 @@ export default function Home() {
     }
   };
 
-  const handleDeleteIntent = async () => {
+  const handleSaveIntents = async () => {
     if (!selectedIntent || !selectedFolder) {
       return;
     }
@@ -851,8 +854,104 @@ export default function Home() {
       return;
     }
 
-    // Confirm deletion
-    if (!confirm(`Are you sure you want to delete intent "${selectedIntent.id}"? This action cannot be undone.`)) {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      const intentFilePath = `${selectedIntent.path}/intent.yaml`;
+
+      // Read the existing intent.yaml file
+      const readResult = await electronAPI.readFile(intentFilePath);
+      if (!readResult.success || !readResult.content) {
+        setError("Failed to read intent.yaml");
+        setIsLoading(false);
+        return;
+      }
+
+      // Parse the existing YAML
+      const existingData = yaml.load(readResult.content) as any;
+      if (!existingData) {
+        setError("Failed to parse intent.yaml");
+        setIsLoading(false);
+        return;
+      }
+
+      // Convert Intent[] to the format expected in intent.yaml
+      const cleanedIntents = editIntents.map(intent => {
+        const cleaned: any = {
+          kind: intent.kind,
+          scope: intent.scope
+        };
+
+        if (intent.entity) cleaned.entity = intent.entity;
+        if (intent.fields && intent.fields.length > 0) {
+          cleaned.fields = intent.fields.map(field => {
+            const cleanedField: any = {
+              name: field.name,
+              type: field.type
+            };
+            if (field.required !== undefined) cleanedField.required = field.required;
+            if (field.unique !== undefined) cleanedField.unique = field.unique;
+            if (field.default !== undefined && field.default !== "") cleanedField.default = field.default;
+            if (field.max_length !== undefined) cleanedField.max_length = field.max_length;
+            if (field.array_type) cleanedField.array_type = field.array_type;
+            if (field.enum_values && field.enum_values.length > 0) cleanedField.enum_values = field.enum_values;
+            return cleanedField;
+          });
+        }
+        if (intent.relation) cleaned.relation = intent.relation;
+        if (intent.method) cleaned.method = intent.method;
+        if (intent.path) cleaned.path = intent.path;
+        if (intent.description) cleaned.description = intent.description;
+        if (intent.capability) cleaned.capability = intent.capability;
+        if (intent.framework) cleaned.framework = intent.framework;
+        if (intent.provider) cleaned.provider = intent.provider;
+        if (intent.config) cleaned.config = intent.config;
+
+        return cleaned;
+      });
+
+      // Update the intents array while preserving all other fields
+      const updatedData = {
+        ...existingData,
+        intents: cleanedIntents
+      };
+
+      // Convert back to YAML
+      const updatedYaml = yaml.dump(updatedData, {
+        indent: 2,
+        lineWidth: -1
+      });
+
+      // Write the updated file
+      const writeResult = await electronAPI.writeFile(intentFilePath, updatedYaml);
+      if (!writeResult.success) {
+        setError(`Failed to update intent.yaml: ${writeResult.error}`);
+        setIsLoading(false);
+        return;
+      }
+
+      // Reload OIML data to refresh the intent
+      await loadOIMLData(selectedFolder);
+
+      // Close dialog and reset form
+      setIsEditIntentsDialogOpen(false);
+      setEditIntents([]);
+    } catch (err) {
+      setError(`Error saving intents: ${err instanceof Error ? err.message : "Unknown error"}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteIntentFromArray = async (intentIndex: number) => {
+    if (!selectedIntent || !selectedFolder) {
+      return;
+    }
+
+    const electronAPI = getElectronAPI();
+    if (!electronAPI) {
+      setError("Electron API not available");
       return;
     }
 
@@ -860,7 +959,86 @@ export default function Home() {
       setIsLoading(true);
       setError(null);
 
-      const intentFolderPath = selectedIntent.path;
+      const intentFilePath = `${selectedIntent.path}/intent.yaml`;
+
+      // Read the existing intent.yaml file
+      const readResult = await electronAPI.readFile(intentFilePath);
+      if (!readResult.success || !readResult.content) {
+        setError("Failed to read intent.yaml");
+        setIsLoading(false);
+        return;
+      }
+
+      // Parse the existing YAML
+      const existingData = yaml.load(readResult.content) as any;
+      if (!existingData) {
+        setError("Failed to parse intent.yaml");
+        setIsLoading(false);
+        return;
+      }
+
+      // Remove the intent at the specified index
+      const updatedIntents = [...(existingData.intents || [])];
+      if (intentIndex >= 0 && intentIndex < updatedIntents.length) {
+        updatedIntents.splice(intentIndex, 1);
+      } else {
+        setError("Invalid intent index");
+        setIsLoading(false);
+        return;
+      }
+
+      // Update the intents array while preserving all other fields
+      const updatedData = {
+        ...existingData,
+        intents: updatedIntents
+      };
+
+      // Convert back to YAML
+      const updatedYaml = yaml.dump(updatedData, {
+        indent: 2,
+        lineWidth: -1
+      });
+
+      // Write the updated file
+      const writeResult = await electronAPI.writeFile(intentFilePath, updatedYaml);
+      if (!writeResult.success) {
+        setError(`Failed to update intent.yaml: ${writeResult.error}`);
+        setIsLoading(false);
+        return;
+      }
+
+      // Reload OIML data to refresh the intent
+      await loadOIMLData(selectedFolder);
+    } catch (err) {
+      setError(`Error deleting intent: ${err instanceof Error ? err.message : "Unknown error"}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteIntent = async (intentId?: string) => {
+    const intentToDelete = intentId ? intents.find(i => i.id === intentId) : selectedIntent;
+
+    if (!intentToDelete || !selectedFolder) {
+      return;
+    }
+
+    const electronAPI = getElectronAPI();
+    if (!electronAPI) {
+      setError("Electron API not available");
+      return;
+    }
+
+    // Confirm deletion
+    if (!confirm(`Are you sure you want to delete intent "${intentToDelete.id}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      const intentFolderPath = intentToDelete.path;
 
       // Delete the intent folder
       const deleteResult = await electronAPI.rmdir(intentFolderPath);
@@ -873,8 +1051,10 @@ export default function Home() {
       // Reload OIML data to refresh the intents list
       await loadOIMLData(selectedFolder);
 
-      // Clear selected intent
-      updateSelectedIntent(null);
+      // Clear selected intent if it was the one deleted
+      if (selectedIntent?.id === intentToDelete.id) {
+        updateSelectedIntent(null);
+      }
     } catch (err) {
       setError(`Error deleting intent: ${err instanceof Error ? err.message : "Unknown error"}`);
     } finally {
@@ -883,21 +1063,13 @@ export default function Home() {
   };
 
   const loadOIMLData = async (folderPath: string) => {
-    const timestamp = new Date().toISOString();
-    console.log(`[loadOIMLData ${timestamp}] ========================================`);
-    console.log(`[loadOIMLData ${timestamp}] Starting loadOIMLData for: ${folderPath}`);
-
     const electronAPI = getElectronAPI();
     if (!electronAPI) {
-      console.log(`[loadOIMLData ${timestamp}] ✗ Electron API not available`);
       return;
     }
 
     // Capture current selectedIntent ID from ref (always current, not stale)
     const currentSelectedIntentId = selectedIntentIdRef.current;
-    console.log(
-      `[loadOIMLData ${timestamp}] Current selected intent ID (from ref): ${currentSelectedIntentId || "none"}`
-    );
 
     setIsLoading(true);
     setError(null);
@@ -962,22 +1134,12 @@ export default function Home() {
 
             // Load intent.yaml if it exists
             if (hasIntent) {
-              console.log(`[loadOIMLData] Reading intent.yaml for ${intentId}: ${intentYamlPath}`);
               const intentResult = await electronAPI.readFile(intentYamlPath);
               if (intentResult.success && intentResult.content) {
-                console.log(`[loadOIMLData] ✓ Read ${intentResult.content.length} characters for ${intentId}`);
                 // Store raw YAML content for validation
                 intentInfo.intentYamlContent = intentResult.content;
                 try {
-                  intentInfo.intentData = yaml.load(intentResult.content);
-                  console.log(
-                    `[loadOIMLData] ✓ Parsed YAML for ${intentId}, has intents: ${!!intentInfo.intentData?.intents}`
-                  );
-                  if (intentInfo.intentData?.intents) {
-                    console.log(
-                      `[loadOIMLData] Intent ${intentId} has ${intentInfo.intentData.intents.length} intent(s)`
-                    );
-                  }
+                  intentInfo.intentData = yaml.load(intentResult.content) as Intent[];
                   // Validate the intent
                   if (intentInfo.intentData && intentResult.content) {
                     const validationResult = await validateIntent(intentResult.content);
@@ -991,8 +1153,6 @@ export default function Home() {
                     `Failed to parse YAML: ${err instanceof Error ? err.message : String(err)}`
                   ];
                 }
-              } else {
-                console.log(`[loadOIMLData] ✗ Failed to read intent.yaml for ${intentId}`);
               }
             }
 
@@ -1034,39 +1194,16 @@ export default function Home() {
           });
 
           setIntents(intentInfos);
-          console.log(`[loadOIMLData] Loaded ${intentInfos.length} intents`);
 
-          // Update selectedIntent if it was selected before reload
+          // Update selectedIntent if it was selected before reload and still exists
           if (currentSelectedIntentId) {
-            console.log(`[loadOIMLData] Looking for updated intent: ${currentSelectedIntentId}`);
             const updatedIntent = intentInfos.find(intent => intent.id === currentSelectedIntentId);
             if (updatedIntent) {
-              console.log(`[loadOIMLData] ✓ Found updated intent, updating selectedIntent to: ${updatedIntent.id}`);
-              console.log(`[loadOIMLData] Intent has intentData: ${!!updatedIntent.intentData}`);
-              if (updatedIntent.intentData) {
-                console.log(`[loadOIMLData] Intent data keys:`, Object.keys(updatedIntent.intentData));
-              }
               updateSelectedIntent(updatedIntent);
-              console.log(`[loadOIMLData] ✓ selectedIntent updated, NOT auto-selecting first intent`);
-            } else {
-              console.log(`[loadOIMLData] ✗ Intent ${currentSelectedIntentId} not found after reload`);
-              // Intent was deleted, don't auto-select
             }
+            // If intent was deleted, selection remains null (no auto-select)
           } else {
-            console.log(`[loadOIMLData] No previously selected intent`);
-            // Auto-select first intent if available AND no intent was previously selected
-            if (intentInfos.length > 0) {
-              console.log(`[loadOIMLData] Auto-selecting first intent: ${intentInfos[0].id}`);
-              updateSelectedIntent(intentInfos[0]);
-              // Set default tab based on available data
-              if (intentInfos[0].intentData) {
-                setActiveTab("intent");
-              } else if (intentInfos[0].planData) {
-                setActiveTab("plan");
-              } else if (intentInfos[0].summaryData) {
-                setActiveTab("summary");
-              }
-            }
+            updateSelectedIntent(null);
           }
         }
       }
@@ -1279,24 +1416,16 @@ export default function Home() {
     <div className="flex h-screen bg-zinc-50 font-sans dark:bg-black overflow-hidden flex-col">
       {/* Header */}
       <div
-        className="h-12 border-b border-border bg-background flex items-center justify-between px-4 flex-shrink-0"
+        className="h-12 border-b border-border bg-background flex items-center px-4 flex-shrink-0"
         style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
       >
-        <div className="flex items-center gap-2">
-          {/* <h1 className="text-sm font-semibold">OIML Builder</h1>
-          {projectConfig?.name && (
-            <>
-              <span className="text-muted-foreground">/</span>
-              <span className="text-sm text-muted-foreground">
-                {projectConfig.name}
-              </span>
-            </>
-          )} */}
+        <div className="flex-1 flex items-center justify-center">
+          {projectConfig?.name && <h1 className="text-xs font-semibold">{projectConfig.name}</h1>}
         </div>
         <div className="flex items-center gap-2" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
           {selectedFolder && (
             <>
-              {!error && (
+              {/* {!error && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -1305,7 +1434,7 @@ export default function Home() {
                 >
                   <Plus className="h-4 w-4" />
                 </Button>
-              )}
+              )} */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="h-8 w-8 p-0">
@@ -1313,7 +1442,7 @@ export default function Home() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => setShowProjectSettings(true)}>
+                  <DropdownMenuItem onClick={() => setIsProjectSettingsDialogOpen(true)}>
                     <Settings className="size-4 text-muted-foreground" />
                     <span>Project Settings</span>
                   </DropdownMenuItem>
@@ -1337,12 +1466,24 @@ export default function Home() {
 
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
-        {!error && (
+        {!error && intents.length > 0 && (
           <div className="w-64 border-r border-border bg-background flex flex-col select-none">
             {/* Intents List */}
             <ScrollArea className="flex-1">
               <div className="p-2">
-                <h2 className="text-sm font-semibold p-2 mb-1">Intents</h2>
+                <div className="flex items-center justify-between py-2 mb-1">
+                  <h2 className="text-sm font-semibold pl-1">Intents</h2>
+                  {!error && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setIsAddIntentDialogOpen(true)}
+                      className="h-8 w-8 p-0"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
                 {intents.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
                     <FileTextIcon className="w-8 h-8 mx-auto mb-2 opacity-50" />
@@ -1357,37 +1498,73 @@ export default function Home() {
                       const isSelected = selectedIntent?.id === intent.id;
 
                       return (
-                        <button
+                        <DropdownMenu
                           key={intent.id}
-                          onClick={() => {
-                            setShowProjectSettings(false);
-                            updateSelectedIntent(intent);
-                            // Set default tab based on available data
-                            if (intent.intentData) {
-                              setActiveTab("intent");
-                            } else if (intent.planData) {
-                              setActiveTab("plan");
-                            } else if (intent.summaryData) {
-                              setActiveTab("summary");
+                          open={contextMenuIntentId === intent.id}
+                          onOpenChange={open => {
+                            if (!open) {
+                              setContextMenuIntentId(null);
+                              setContextMenuPosition(null);
                             }
                           }}
-                          className={`w-full text-left py-2 px-3 rounded-md transition-colors hover:cursor-pointer ${
-                            isSelected ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
-                          }`}
                         >
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="font-medium text-xs truncate">{intent.id}</span>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              onClick={() => {
+                                setIsProjectSettingsDialogOpen(false);
+                                updateSelectedIntent(intent);
+                                // Set default tab based on available data
+                                if (intent.intentData) {
+                                  setActiveTab("intent");
+                                } else if (intent.planData) {
+                                  setActiveTab("plan");
+                                } else if (intent.summaryData) {
+                                  setActiveTab("summary");
+                                }
+                              }}
+                              onContextMenu={e => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                setContextMenuIntentId(intent.id);
+                                setContextMenuPosition({ x: rect.right, y: rect.top });
+                              }}
+                              className={`w-full text-left py-2 px-3 rounded-md transition-colors hover:cursor-pointer ${
+                                isSelected ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
+                              }`}
+                            >
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium text-xs truncate">{intent.id}</span>
+                                  </div>
+                                </div>
+                                {status === "success" ? (
+                                  <CheckCircle className="w-3 h-3 text-green-500 flex-shrink-0 ml-2" />
+                                ) : (
+                                  <CheckCircle className="w-3 h-3 text-gray-500 dark:text-gray-400 flex-shrink-0 ml-2" />
+                                )}
                               </div>
-                            </div>
-                            {status === "success" ? (
-                              <CheckCircle className="w-3 h-3 text-green-500 flex-shrink-0 ml-2" />
-                            ) : (
-                              <CheckCircle className="w-3 h-3 text-gray-500 dark:text-gray-400 flex-shrink-0 ml-2" />
-                            )}
-                          </div>
-                        </button>
+                            </button>
+                          </DropdownMenuTrigger>
+                          {contextMenuIntentId === intent.id && (
+                            <DropdownMenuContent align="start" side="right" className="z-50">
+                              <DropdownMenuItem
+                                className="text-red-600 dark:text-red-400"
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  e.preventDefault();
+                                  handleDeleteIntent(intent.id);
+                                  setContextMenuIntentId(null);
+                                  setContextMenuPosition(null);
+                                }}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          )}
+                        </DropdownMenu>
                       );
                     })}
                   </div>
@@ -1406,8 +1583,8 @@ export default function Home() {
                   <div className="mx-auto mb-4 w-16 h-16 bg-muted rounded-full flex items-center justify-center">
                     <FolderOpenIcon className="w-8 h-8 text-muted-foreground" />
                   </div>
-                  <CardTitle>No OIML Project Found</CardTitle>
-                  <CardDescription>{error}</CardDescription>
+                  <CardTitle>OIML Not Enabled</CardTitle>
+                  <CardDescription>Please select an option below to get started</CardDescription>
                   {selectedFolder && (
                     <div className="mt-4 pt-4 border-t border-border text-left">
                       <p className="text-xs text-muted-foreground">Current folder:</p>
@@ -1525,213 +1702,6 @@ export default function Home() {
                 </CardContent>
               </Card>
             </div>
-          ) : showProjectSettings ? (
-            <div className="flex-1 flex flex-col overflow-hidden">
-              {/* Header */}
-              <div className="p-6 pb-0 flex-shrink-0">
-                <div className="mb-2 flex items-start justify-between">
-                  <div className="flex-1">
-                    <h1 className="text-2xl font-semibold">{projectConfig?.name || "Project Settings"}</h1>
-                    {projectConfig?.description && (
-                      <p className="text-sm text-muted-foreground mt-1">{projectConfig?.description}</p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={handleSelectFolder}>
-                      <FolderOpenIcon className="w-4 h-4 mr-2" />
-                      Open Project
-                    </Button>
-                    <Button
-                      onClick={() => setIsProjectSettingsYamlDialogOpen(true)}
-                      size="sm"
-                      variant="outline"
-                      className="gap-2"
-                    >
-                      <Code className="w-4 h-4" />
-                      View Code
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setShowProjectSettings(false)}
-                      className="h-8 w-8 p-0"
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Project Settings Content */}
-              <div className="flex-1 overflow-hidden px-6 pt-4 flex flex-col">
-                <ScrollArea className="flex-1">
-                  <div className="pb-6">
-                    <Card>
-                      <CardContent className="pt-6">
-                        {projectConfig ? (
-                          <div className="space-y-6">
-                            {/* Framework Tiles */}
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                              {/* API Tile */}
-                              {projectConfig.api && (
-                                <Card className="p-4">
-                                  <div className="flex items-center gap-3 mb-3">
-                                    <div className="w-10 h-10 flex items-center justify-center bg-muted rounded">
-                                      {projectConfig.api.framework ? (
-                                        getFrameworkLogoComponent(projectConfig.api.framework, "api") || (
-                                          <Code className="w-5 h-5 text-muted-foreground" />
-                                        )
-                                      ) : (
-                                        <Code className="w-5 h-5 text-muted-foreground" />
-                                      )}
-                                    </div>
-                                    <div className="flex-1">
-                                      <h3 className="text-sm font-semibold">API</h3>
-                                      {projectConfig.api.framework && (
-                                        <p className="text-xs text-muted-foreground capitalize">
-                                          {projectConfig.api.framework}
-                                        </p>
-                                      )}
-                                    </div>
-                                  </div>
-                                </Card>
-                              )}
-
-                              {/* Database Tile */}
-                              {projectConfig.database && (
-                                <Card className="p-4">
-                                  <div className="flex items-center gap-3 mb-3">
-                                    <div className="w-10 h-10 flex items-center justify-center bg-muted rounded">
-                                      {projectConfig.database.framework ? (
-                                        getFrameworkLogoComponent(projectConfig.database.framework, "database") || (
-                                          <FileTextIcon className="w-5 h-5 text-muted-foreground" />
-                                        )
-                                      ) : (
-                                        <FileTextIcon className="w-5 h-5 text-muted-foreground" />
-                                      )}
-                                    </div>
-                                    <div className="flex-1">
-                                      <h3 className="text-sm font-semibold">Database</h3>
-                                      {projectConfig.database.framework && (
-                                        <p className="text-xs text-muted-foreground capitalize">
-                                          {projectConfig.database.framework}
-                                        </p>
-                                      )}
-                                    </div>
-                                  </div>
-                                </Card>
-                              )}
-
-                              {/* UI Tile */}
-                              {projectConfig.ui && (
-                                <Card className="p-4">
-                                  <div className="flex items-center gap-3 mb-3">
-                                    <div className="w-10 h-10 flex items-center justify-center bg-muted rounded">
-                                      {projectConfig.ui.framework ? (
-                                        getFrameworkLogoComponent(projectConfig.ui.framework, "ui") || (
-                                          <Code className="w-5 h-5 text-muted-foreground" />
-                                        )
-                                      ) : (
-                                        <Code className="w-5 h-5 text-muted-foreground" />
-                                      )}
-                                    </div>
-                                    <div className="flex-1">
-                                      <h3 className="text-sm font-semibold">UI</h3>
-                                      {projectConfig.ui.framework && (
-                                        <p className="text-xs text-muted-foreground capitalize">
-                                          {projectConfig.ui.framework}
-                                        </p>
-                                      )}
-                                    </div>
-                                  </div>
-                                </Card>
-                              )}
-                            </div>
-
-                            {/* API Keys Settings */}
-                            {isElectron && (
-                              <div className="mt-6 pt-6 border-t border-border">
-                                <div className="space-y-6">
-                                  {/* Linear API Key */}
-                                  <div>
-                                    <h3 className="text-sm font-semibold mb-2">Linear API Key</h3>
-                                    <div className="flex gap-2">
-                                      <Input
-                                        type="password"
-                                        placeholder="Enter Linear access token"
-                                        value={linearAccessToken}
-                                        onChange={e => setLinearAccessToken(e.target.value)}
-                                        className="flex-1"
-                                      />
-                                      <Button onClick={handleSaveLinearToken} disabled={isSavingLinearToken} size="sm">
-                                        {isSavingLinearToken ? "Saving..." : "Save"}
-                                      </Button>
-                                      {linearAccessToken && (
-                                        <Button
-                                          onClick={handleRemoveLinearToken}
-                                          disabled={isSavingLinearToken}
-                                          size="sm"
-                                          variant="outline"
-                                        >
-                                          <Trash2 className="w-4 h-4" />
-                                        </Button>
-                                      )}
-                                    </div>
-                                  </div>
-
-                                  {/* OpenAI API Key */}
-                                  <div>
-                                    <h3 className="text-sm font-semibold mb-2">OpenAI API Key</h3>
-                                    <div className="flex gap-2">
-                                      <Input
-                                        type="password"
-                                        placeholder="Enter OpenAI API key"
-                                        value={openaiApiKey}
-                                        onChange={e => setOpenaiApiKey(e.target.value)}
-                                        className="flex-1"
-                                      />
-                                      <Button onClick={handleSaveOpenAIKey} disabled={isSavingOpenAIKey} size="sm">
-                                        {isSavingOpenAIKey ? "Saving..." : "Save"}
-                                      </Button>
-                                      {openaiApiKey && (
-                                        <Button
-                                          onClick={handleRemoveOpenAIKey}
-                                          disabled={isSavingOpenAIKey}
-                                          size="sm"
-                                          variant="outline"
-                                        >
-                                          <Trash2 className="w-4 h-4" />
-                                        </Button>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <p className="text-center text-muted-foreground">No project configuration found</p>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </div>
-                </ScrollArea>
-                {/* Reset Project Button */}
-                <div className="pt-4 pb-6 border-t border-border">
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={async () => {
-                      await handleClearFolder();
-                      setShowProjectSettings(false);
-                    }}
-                  >
-                    <RotateCcw className="w-4 h-4 mr-2" />
-                    Reset Project
-                  </Button>
-                </div>
-              </div>
-            </div>
           ) : isLoading ? null : selectedIntent ? (
             <div className="flex-1 flex flex-col overflow-hidden">
               {/* Header */}
@@ -1750,15 +1720,6 @@ export default function Home() {
                     )}
                   </div> */}
                   <div className="flex items-center gap-2">
-                    <Button
-                      onClick={() => setIsIntentYamlDialogOpen(true)}
-                      size="sm"
-                      variant="outline"
-                      className="gap-2"
-                    >
-                      <Code className="w-4 h-4" />
-                      View Code
-                    </Button>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="outline" size="sm" className="h-8 w-8 p-0">
@@ -1766,7 +1727,14 @@ export default function Home() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem className="text-red-600 dark:text-red-400" onClick={handleDeleteIntent}>
+                        <DropdownMenuItem onClick={() => setIsIntentYamlDialogOpen(true)}>
+                          <Code className="mr-2 h-4 w-4" />
+                          View Code
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="text-red-600 dark:text-red-400"
+                          onClick={() => handleDeleteIntent()}
+                        >
                           <Trash2 className="mr-2 h-4 w-4" />
                           Delete
                         </DropdownMenuItem>
@@ -1805,9 +1773,9 @@ export default function Home() {
                     <TabsTrigger value="summary" icon={<FileCheck className="w-4 h-4" />}>
                       Summary
                     </TabsTrigger>
-                    <TabsTrigger value="linear" icon={<LinearIcon className="w-4 h-4" />}>
+                    {/* <TabsTrigger value="linear" icon={<LinearIcon className="w-4 h-4" />}>
                       Linear
-                    </TabsTrigger>
+                    </TabsTrigger> */}
                   </TabsList>
 
                   <div className="flex-1 overflow-hidden min-h-0">
@@ -1818,33 +1786,64 @@ export default function Home() {
                           <div className="space-y-4">
                             {/* Validation Banner */}
                             {selectedIntent.validationErrors && selectedIntent.validationErrors.length > 0 && (
-                              <Card className="border-red-500 dark:border-red-500/50 bg-red-50 dark:bg-red-950/20">
-                                <CardHeader className="pb-3">
-                                  <div className="flex items-start gap-2">
-                                    <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
-                                    <div className="flex-1">
-                                      <CardTitle className="text-sm text-red-900 dark:text-red-100">
-                                        Schema Validation Failed
-                                      </CardTitle>
-                                      <CardDescription className="text-xs text-red-700 dark:text-red-300 mt-1">
-                                        The intent.yaml file does not conform to the OIML schema version{" "}
-                                        {selectedIntent.intentData?.version || "unknown"}.
-                                      </CardDescription>
-                                    </div>
-                                  </div>
-                                </CardHeader>
-                                <CardContent className="pt-0">
-                                  <ul className="list-disc list-inside space-y-1 text-sm text-red-800 dark:text-red-200">
-                                    {selectedIntent.validationErrors.map((error, index) => (
-                                      <li key={index}>{error}</li>
-                                    ))}
-                                  </ul>
-                                </CardContent>
-                              </Card>
+                              <>
+                                {selectedIntent.validationErrors.some(error =>
+                                  error.includes("intents: Array must contain at least 1 element(s)")
+                                ) ? (
+                                  <Card>
+                                    <CardContent className="pt-6">
+                                      <div className="text-center text-muted-foreground space-y-4">
+                                        <p className="text-sm">You haven&apos;t add any intents yet.</p>
+                                        <Button
+                                          size="sm"
+                                          onClick={() => {
+                                            // Initialize editIntents with existing intents from the intent.yaml file
+                                            const intentData = selectedIntent.intentData as any;
+                                            const existingIntents = intentData?.intents || [];
+                                            setEditIntents(existingIntents);
+                                            setIsEditIntentsDialogOpen(true);
+                                          }}
+                                          className="gap-2"
+                                        >
+                                          <Plus className="h-4 w-4" />
+                                          Add Intent
+                                        </Button>
+                                      </div>
+                                    </CardContent>
+                                  </Card>
+                                ) : (
+                                  <Card className="border-red-500 dark:border-red-500/50 bg-red-50 dark:bg-red-950/20">
+                                    <CardHeader className="pb-3">
+                                      <div className="flex items-start gap-2">
+                                        <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+                                        <div className="flex-1">
+                                          <CardTitle className="text-sm text-red-900 dark:text-red-100">
+                                            Schema Validation Failed
+                                          </CardTitle>
+                                          <CardDescription className="text-xs text-red-700 dark:text-red-300 mt-1">
+                                            The intent.yaml file does not conform to the OIML schema version{" "}
+                                            {selectedIntent.intentData?.version || "unknown"}.
+                                          </CardDescription>
+                                        </div>
+                                      </div>
+                                    </CardHeader>
+                                    <CardContent className="pt-0">
+                                      <ul className="list-disc list-inside space-y-1 text-sm text-red-800 dark:text-red-200">
+                                        {selectedIntent.validationErrors.map((error, index) => (
+                                          <li key={index}>{error}</li>
+                                        ))}
+                                      </ul>
+                                    </CardContent>
+                                  </Card>
+                                )}
+                              </>
                             )}
 
                             {selectedIntent.intentData ? (
-                              <IntentHumanView intentData={selectedIntent.intentData} />
+                              <IntentHumanView
+                                intentData={selectedIntent.intentData}
+                                onDeleteIntent={handleDeleteIntentFromArray}
+                              />
                             ) : (
                               <Card>
                                 <CardContent className="pt-6">
@@ -2003,7 +2002,7 @@ export default function Home() {
                         </TabsContent>
 
                         {/* Linear Tab */}
-                        <TabsContent value="linear" className="mt-0">
+                        {/* <TabsContent value="linear" className="mt-0">
                           {linearAccessToken ? (
                             <LinearIssueView
                               issueId={selectedIntent.id}
@@ -2036,19 +2035,106 @@ export default function Home() {
                               </Button>
                             </div>
                           )}
-                        </TabsContent>
+                        </TabsContent> */}
                       </div>
                     </ScrollArea>
                   </div>
                 </Tabs>
               </div>
             </div>
-          ) : isLoading ? null : (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center text-muted-foreground">
-                <FileTextIcon className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>Select an intent to view details</p>
+          ) : isLoading ? null : intents.length === 0 ? (
+            <div className="flex items-center justify-center h-full p-6">
+              <div className="flex w-full max-w-2xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
+                <div className="w-full">
+                  <Card className="w-full">
+                    <CardHeader>
+                      {/* Logo and Name */}
+                      <div className="flex items-center">
+                        <div className="flex items-center gap-1">
+                          <h1 className="text-lg font-semibold">{projectConfig?.name || "Project"}</h1>
+                        </div>
+                      </div>
+                      <CardDescription>
+                        You haven&apos;t created any intents yet for this project. Where would you like to start?
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <button
+                          onClick={() => setIsAddIntentDialogOpen(true)}
+                          disabled={!isElectron}
+                          className="group relative p-6 rounded-lg border border-border bg-card hover:bg-accent transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed hover:cursor-pointer"
+                          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+                        >
+                          <div className="w-12 h-12 flex items-center justify-center">
+                            <Plus className="w-6 h-6 text-foreground" />
+                          </div>
+                          <h3 className="text-xs font-semibold mb-1">Add Intent</h3>
+                        </button>
+                        <button
+                          onClick={handleSelectFolder}
+                          disabled={!isElectron}
+                          className="group relative p-6 rounded-lg border border-border bg-card hover:bg-accent transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed hover:cursor-pointer"
+                          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+                        >
+                          <div className="w-12 h-12 flex items-center justify-center">
+                            <FolderOpenIcon className="w-6 h-6 text-foreground" />
+                          </div>
+                          <h3 className="text-xs font-semibold mb-1">Change Project</h3>
+                        </button>
+                        <a
+                          href="https://oiml.dev/docs"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="group relative p-6 rounded-lg border border-border bg-card hover:bg-accent transition-colors text-left block"
+                          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+                        >
+                          <div className="w-12 h-12 flex items-center justify-center">
+                            <FileTextIcon className="w-6 h-6 text-foreground" />
+                          </div>
+                          <h3 className="text-xs font-semibold mb-1">View Docs</h3>
+                        </a>
+                      </div>
+                      {error && <p className="text-sm text-red-500 mt-4">{error}</p>}
+                    </CardContent>
+                  </Card>
+                </div>
               </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-full p-6">
+              <Card className="w-full max-w-md">
+                <CardHeader className="text-center">
+                  <svg
+                    className="w-12 h-12 mx-auto mb-4 opacity-50"
+                    viewBox="0 0 512 512"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <circle cx="256" cy="256" r="50" fill="white" />
+                    <circle cx="256" cy="140" r="32" fill="white" />
+                    <line x1="256" y1="206" x2="256" y2="172" stroke="white" strokeWidth="16" strokeLinecap="round" />
+                    <circle cx="356" cy="190" r="32" fill="white" />
+                    <line x1="296" y1="226" x2="324" y2="206" stroke="white" strokeWidth="16" strokeLinecap="round" />
+                    <circle cx="356" cy="322" r="32" fill="white" />
+                    <line x1="296" y1="286" x2="324" y2="306" stroke="white" strokeWidth="16" strokeLinecap="round" />
+                    <circle cx="256" cy="372" r="32" fill="white" />
+                    <line x1="256" y1="306" x2="256" y2="340" stroke="white" strokeWidth="16" strokeLinecap="round" />
+                    <circle cx="156" cy="322" r="32" fill="white" />
+                    <line x1="216" y1="286" x2="188" y2="306" stroke="white" strokeWidth="16" strokeLinecap="round" />
+                    <circle cx="156" cy="190" r="32" fill="white" />
+                    <line x1="216" y1="226" x2="188" y2="206" stroke="white" strokeWidth="16" strokeLinecap="round" />
+                  </svg>
+                  <CardTitle>No Intent Selected</CardTitle>
+                  <CardDescription>Select an intent from the sidebar or create a new one</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button onClick={() => setIsAddIntentDialogOpen(true)} className="w-full" disabled={!isElectron}>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Intent
+                  </Button>
+                </CardContent>
+              </Card>
             </div>
           )}
         </div>
@@ -2066,19 +2152,22 @@ export default function Home() {
           }
         }}
       >
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogContent
+          className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col"
+          onInteractOutside={e => e.preventDefault()}
+        >
           <DialogHeader>
-            <DialogTitle>Create New Intent</DialogTitle>
-            <DialogDescription>Enter a name and build your intent using the builder below.</DialogDescription>
+            <DialogTitle>Add New Intent</DialogTitle>
+            {/* <DialogDescription>Enter a name and build your intent using the builder below.</DialogDescription> */}
           </DialogHeader>
           <div className="flex-1 overflow-y-auto space-y-4 px-1 py-4">
-            <div className="space-y-2">
+            <div className="space-y-2 flex flex-col">
               <label htmlFor="intent-name" className="text-sm font-medium">
-                Intent Name
+                Name
               </label>
               <Input
                 id="intent-name"
-                placeholder="e.g., FEAT-1, BUG-123"
+                placeholder="e.g., FEAT-123"
                 value={newIntentName}
                 onChange={e => setNewIntentName(e.target.value)}
                 autoFocus
@@ -2088,8 +2177,8 @@ export default function Home() {
               )}
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Intent Builder</label>
+            <div className="space-y-2 flex flex-col">
+              <label className="text-sm font-medium">Kind</label>
               <IntentBuilder intents={builderIntents} onChange={setBuilderIntents} />
             </div>
 
@@ -2110,6 +2199,61 @@ export default function Home() {
             </Button>
             <Button size="sm" onClick={handleCreateIntent} disabled={!newIntentName.trim() || isLoading}>
               {isLoading ? "Creating..." : "Create"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Intents Dialog */}
+      <Dialog
+        open={isEditIntentsDialogOpen}
+        onOpenChange={open => {
+          setIsEditIntentsDialogOpen(open);
+          if (!open) {
+            setEditIntents([]);
+            setError(null);
+          }
+        }}
+      >
+        <DialogContent
+          className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col"
+          onInteractOutside={e => e.preventDefault()}
+        >
+          <DialogHeader>
+            <DialogTitle>Add Intent</DialogTitle>
+            {/* <DialogDescription>Add or modify intents for this intent file.</DialogDescription> */}
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto space-y-4">
+            <div className="space-y-2">
+              {/* <label className="text-sm font-medium">Intent Builder</label> */}
+              <IntentBuilder intents={editIntents} onChange={setEditIntents} />
+            </div>
+
+            {error && <p className="text-sm text-red-500">{error}</p>}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setIsEditIntentsDialogOpen(false);
+                setEditIntents([]);
+                setError(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleSaveIntents}
+              disabled={
+                isLoading ||
+                !Array.isArray(editIntents) ||
+                editIntents.length === 0 ||
+                editIntents.some(intent => !intent.kind)
+              }
+            >
+              {isLoading ? "Saving..." : "Save"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2140,6 +2284,161 @@ export default function Home() {
           </div>
           <DialogFooter>
             <Button variant="ghost" size="sm" onClick={() => setIsIntentYamlDialogOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Project Settings Dialog */}
+      <Dialog open={isProjectSettingsDialogOpen} onOpenChange={setIsProjectSettingsDialogOpen}>
+        <DialogContent className="max-w-4xl min-h-[500px] max-h-[90vh] overflow-hidden flex flex-col [&>button]:hidden">
+          <DialogHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <DialogTitle>{projectConfig?.name || "Project Settings"}</DialogTitle>
+                {projectConfig?.description && (
+                  <DialogDescription className="text-xs text-muted-foreground mt-2">
+                    {projectConfig.description}
+                  </DialogDescription>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-8 w-8 p-0">
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => setIsProjectSettingsYamlDialogOpen(true)}>
+                      <Code className="mr-2 h-4 w-4" />
+                      View Code
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </div>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto">
+            <div className="space-y-6">
+              {projectConfig ? (
+                <>
+                  {/* Framework Tiles */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* API Tile */}
+                    {projectConfig.api && (
+                      <Card className="p-4">
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className="w-10 h-10 flex items-center justify-center bg-muted rounded">
+                            {projectConfig.api.framework ? (
+                              getFrameworkLogoComponent(projectConfig.api.framework, "api") || (
+                                <Code className="w-5 h-5 text-muted-foreground" />
+                              )
+                            ) : (
+                              <Code className="w-5 h-5 text-muted-foreground" />
+                            )}
+                          </div>
+                          <div className="flex-1">
+                            <h3 className="text-sm font-semibold">API</h3>
+                            {projectConfig.api.framework && (
+                              <p className="text-xs text-muted-foreground capitalize">{projectConfig.api.framework}</p>
+                            )}
+                          </div>
+                        </div>
+                      </Card>
+                    )}
+
+                    {/* Database Tile */}
+                    {projectConfig.database && (
+                      <Card className="p-4">
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className="w-10 h-10 flex items-center justify-center bg-muted rounded">
+                            {projectConfig.database.framework ? (
+                              getFrameworkLogoComponent(projectConfig.database.framework, "database") || (
+                                <FileTextIcon className="w-5 h-5 text-muted-foreground" />
+                              )
+                            ) : (
+                              <FileTextIcon className="w-5 h-5 text-muted-foreground" />
+                            )}
+                          </div>
+                          <div className="flex-1">
+                            <h3 className="text-sm font-semibold">Database</h3>
+                            {projectConfig.database.framework && (
+                              <p className="text-xs text-muted-foreground capitalize">
+                                {projectConfig.database.framework}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </Card>
+                    )}
+
+                    {/* UI Tile */}
+                    {projectConfig.ui && (
+                      <Card className="p-4">
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className="w-10 h-10 flex items-center justify-center bg-muted rounded">
+                            {projectConfig.ui.framework ? (
+                              getFrameworkLogoComponent(projectConfig.ui.framework, "ui") || (
+                                <Code className="w-5 h-5 text-muted-foreground" />
+                              )
+                            ) : (
+                              <Code className="w-5 h-5 text-muted-foreground" />
+                            )}
+                          </div>
+                          <div className="flex-1">
+                            <h3 className="text-sm font-semibold">UI</h3>
+                            {projectConfig.ui.framework && (
+                              <p className="text-xs text-muted-foreground capitalize">{projectConfig.ui.framework}</p>
+                            )}
+                          </div>
+                        </div>
+                      </Card>
+                    )}
+                  </div>
+
+                  {/* API Keys Settings */}
+                  {isElectron && (
+                    <div className="pt-6 border-t border-border">
+                      <div className="space-y-6">
+                        {/* OpenAI API Key */}
+                        <div>
+                          <h3 className="text-sm font-semibold mb-2">OpenAI API Key</h3>
+                          <div className="flex gap-2">
+                            <Input
+                              type="password"
+                              placeholder="Enter OpenAI API key"
+                              value={openaiApiKey}
+                              onChange={e => setOpenaiApiKey(e.target.value)}
+                              className="flex-1"
+                            />
+                            <Button onClick={handleSaveOpenAIKey} disabled={isSavingOpenAIKey} size="sm">
+                              {isSavingOpenAIKey ? "Saving..." : "Save"}
+                            </Button>
+                            {openaiApiKey && (
+                              <Button
+                                onClick={handleRemoveOpenAIKey}
+                                disabled={isSavingOpenAIKey}
+                                size="sm"
+                                variant="outline"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p className="text-center text-muted-foreground">No project configuration found</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" size="sm" onClick={() => setIsProjectSettingsDialogOpen(false)}>
               Close
             </Button>
           </DialogFooter>
