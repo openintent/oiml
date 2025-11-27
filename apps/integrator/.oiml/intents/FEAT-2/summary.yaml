@@ -154,10 +154,10 @@ api_endpoints:
     query_params:
       bucket: string
       path?: string
-      limit?: number (default: 100)
-      offset?: number (default: 0)
-      sortBy?: "name" | "created_at" | "updated_at"
-      sortOrder?: "asc" | "desc"
+      limit?: "number (default: 100)"
+      offset?: "number (default: 0)"
+      sortBy?: "name | created_at | updated_at"
+      sortOrder?: "asc | desc"
     response:
       success: true
       data:
@@ -183,7 +183,7 @@ usage_examples:
       formData.append("file", file);
       formData.append("bucket", "avatars");
       formData.append("userId", userId);
-      
+
       const response = await fetch("/api/storage/upload", {
         method: "POST",
         body: formData
@@ -217,7 +217,7 @@ usage_examples:
   - name: Get transformed image URL
     code: |
       import { getPublicUrl } from "@/lib/storage";
-      
+
       const url = getPublicUrl({
         bucket: "avatars",
         path: "user123/profile.jpg",
@@ -265,4 +265,3 @@ references:
   - https://supabase.com/docs/guides/storage/serving/image-transformations
   - https://supabase.com/docs/guides/storage/uploads/resumable-uploads
   - https://supabase.com/docs/guides/auth/row-level-security
-

@@ -116,7 +116,7 @@ api_endpoints:
       replyTo?: string
       cc?: string | string[]
       bcc?: string | string[]
-      tags?: Array<{ name: string, value: string }>
+      tags?: "Array<{ name: string, value: string }>"
       scheduledAt?: string
     response:
       success: true
@@ -128,14 +128,7 @@ api_endpoints:
     path: /api/email/batch
     description: Send multiple emails in a batch
     request_body:
-      emails: Array<{
-        to: string | string[],
-        subject: string,
-        html?: string,
-        text?: string,
-        from?: string,
-        replyTo?: string
-      }>
+      emails: "Array<{ to: string | string[], subject: string, html?: string, text?: string, from?: string, replyTo?: string }>"
     response:
       success: true
       data:
@@ -225,4 +218,3 @@ references:
   - https://resend.com/docs/send-with-nextjs
   - https://resend.com/docs/dashboard/webhooks/introduction
   - https://react.email
-
