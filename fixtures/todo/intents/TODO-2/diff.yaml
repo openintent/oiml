@@ -1,0 +1,75 @@
+osl: "1.0"
+summary: Label entity, TaskLabel junction with a composite key, one-to-one TaskNote
+ops:
+  - op: add_entity
+    name: Label
+    entity:
+      fields:
+        id: { type: integer, primary: true }
+        name: { type: string, max_length: 40, required: true, unique: true }
+  - op: add_entity
+    name: TaskLabel
+    entity:
+      table: task_labels
+      fields:
+        task_id: { type: integer, primary: true, relation: { entity: Task, reverse: task_labels, on_delete: cascade } }
+        label_id:
+          { type: integer, primary: true, relation: { entity: Label, reverse: task_labels, on_delete: cascade } }
+  - op: add_entity
+    name: TaskNote
+    entity:
+      fields:
+        id: { type: integer, primary: true }
+        task_id:
+          {
+            type: integer,
+            required: true,
+            unique: true,
+            relation: { entity: Task, kind: one_to_one, name: task, reverse: note, on_delete: cascade }
+          }
+        body: { type: text, required: true }
+  - op: add_resource
+    name: labels
+    resource: { entity: Label, operations: [list, create] }
+  - op: add_resource
+    name: notes
+    resource: { entity: TaskNote, operations: [get, create, delete], get: { include: [task] } }
+  - op: update_resource
+    name: tasks
+    resource:
+      entity: Task
+      operations: [list, get, create, update, delete]
+      list: { filters: [status, project_id], order: [[id, asc]], page_size: 50, include: [project] }
+      get: { include: [project, note] }
+  - op: add_scenario
+    scenario:
+      name: notes on tasks
+      steps:
+        - op: tasks.create
+          body: { title: Write docs }
+          expect: { status: 201 }
+          capture: { task: data.id }
+        - op: notes.create
+          body: { task_id: "{task}", body: Start with the README }
+          expect: { status: 201, body: { data: { body: Start with the README } } }
+          capture: { note: data.id }
+        - op: notes.create
+          body: { task_id: "{task}", body: Second note }
+          expect: { status: 409 }
+        - op: tasks.get
+          path: { id: "{task}" }
+          expect: { status: 200, body: { data: { note: { body: Start with the README } } } }
+        - op: notes.get
+          path: { id: "{note}" }
+          expect: { status: 200, body: { data: { task: { title: Write docs } } } }
+        - op: tasks.delete
+          path: { id: "{task}" }
+          expect: { status: 204 }
+        - op: notes.get
+          path: { id: "{note}" }
+          expect: { status: 404 }
+        - op: labels.create
+          body: { name: urgent }
+          expect: { status: 201 }
+        - op: labels.list
+          expect: { status: 200, body: { data: [{ name: urgent }] } }

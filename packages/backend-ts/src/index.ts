@@ -1,0 +1,275 @@
+import type { Backend, GeneratedFile, GenerateInput } from "@osl/core";
+import { globalActions, migrationFiles, openapiDocument } from "@osl/core";
+import {
+  JOBS_DEPENDENCIES,
+  STORAGE_DEPENDENCIES,
+  actionScaffolds,
+  actionsFile,
+  authProvidersFile,
+  clientFile,
+  dockerFiles,
+  emailFile,
+  eventFiles,
+  filesFile,
+  hasProviders,
+  installCommand,
+  jobsFile,
+  packageManagerOf,
+  presentFile,
+  schemaFile,
+  storageFile,
+  validationFile,
+  NEXT_APP,
+  customPageScaffold,
+  dashboardPageFile,
+  dashboardRouteFile,
+  navFile,
+  resourcePageFile,
+  resourceRouteFiles,
+  restClientFile,
+  shellScaffolds,
+  uiFile
+} from "@osl/ts-common";
+import { authFile, authRouteFiles } from "./auth.js";
+import { filesApiFile, filesRouteFiles } from "./files-api.js";
+import { actionsApiFile, globalActionRouteFiles, hooksScaffold, resourceFile, routeFiles } from "./resources.js";
+import { accessFile, httpFile } from "./runtime.js";
+import { APPEARANCES, APP_DEPENDENCIES, scaffoldFiles, type Appearance } from "./scaffold.js";
+import { scenarioTestFiles, seedFile, testClientFile, vitestConfigFile } from "./tests.js";
+import { HEADER, NEXT, NEXT_SERVER } from "./util.js";
+
+export const BACKEND_NAME = "drizzle-next";
+export const BACKEND_VERSION = "1.1.0";
+
+/** Pure: the same IR and history always produce the same files, in the same order. */
+export function generate(input: GenerateInput): GeneratedFile[] {
+  const { ir, revisions, config } = input;
+  const gen = config.generated_dir;
+  const files: GeneratedFile[] = [];
+  const packageManager = packageManagerOf(config);
+
+  files.push({ path: `${gen}/db/schema.ts`, content: schemaFile(ir, NEXT) });
+  files.push({ path: `${gen}/db/client.ts`, content: clientFile(NEXT) });
+  const migrations = migrationFiles(revisions, `${gen}/db/migrations`);
+  files.push(...migrations.files);
+
+  files.push({ path: `${gen}/http.ts`, content: httpFile() });
+  files.push({ path: `${gen}/access.ts`, content: accessFile(ir) });
+  files.push({ path: `${gen}/present.ts`, content: presentFile(ir, NEXT) });
+  files.push({ path: `${gen}/auth.ts`, content: authFile(ir) });
+  files.push({ path: `${gen}/validation.ts`, content: validationFile(ir, NEXT) });
+  files.push(...eventFiles(ir, NEXT));
+  if (ir.jobs) {
+    files.push({ path: `${gen}/jobs.ts`, content: jobsFile(ir, NEXT_SERVER) });
+    files.push(...workerScaffolds());
+  }
+  if (ir.files) {
+    files.push({ path: `${gen}/storage.ts`, content: storageFile(ir, NEXT_SERVER) });
+    files.push({ path: `${gen}/files.ts`, content: filesFile(ir, NEXT_SERVER) });
+    files.push({ path: `${gen}/files-api.ts`, content: filesApiFile(ir) });
+    files.push(...filesRouteFiles(ir));
+  }
+  if (hasProviders(ir)) {
+    files.push({ path: `${gen}/email.ts`, content: emailFile(NEXT_SERVER) });
+    files.push({ path: `${gen}/auth-providers.ts`, content: authProvidersFile(ir, NEXT_SERVER) });
+  }
+  if (ir.actions.length) {
+    files.push({ path: `${gen}/actions.ts`, content: actionsFile(ir, NEXT_SERVER) });
+    files.push(...actionScaffolds(ir, NEXT_SERVER));
+  }
+  if (globalActions(ir).length) {
+    files.push({ path: `${gen}/actions-api.ts`, content: actionsApiFile(ir) });
+    files.push(...globalActionRouteFiles(ir));
+  }
+
+  for (const resource of ir.resources) {
+    files.push({ path: `${gen}/resources/${resource.name}.ts`, content: resourceFile(ir, resource) });
+    files.push(...routeFiles(ir, resource));
+    files.push(hooksScaffold(ir, resource));
+  }
+  files.push(...authRouteFiles(ir));
+
+  files.push({ path: `${gen}/openapi.json`, content: JSON.stringify(openapiDocument(ir), null, 2) + "\n" });
+  files.push({
+    path: "app/api/openapi.json/route.ts",
+    content: `${HEADER("Serves the OpenAPI document for the REST contract.")}
+import spec from "@/generated/openapi.json";
+
+export function GET(): Response {
+  return Response.json(spec);
+}
+`
+  });
+
+  // The web app, when the model declares one: the shell and pages under app/(app) with the sidebar
+  if (ir.app) {
+    files.push({ path: `${gen}/app/client.ts`, content: restClientFile(ir, NEXT) });
+    files.push({ path: `${gen}/app/nav.ts`, content: navFile(ir, NEXT_APP, NEXT) });
+    files.push({ path: `${gen}/app/ui.tsx`, content: uiFile(ir, NEXT) });
+    for (const page of ir.app.pages) {
+      if (page.kind === "resource") {
+        files.push({ path: `${gen}/app/pages/${page.name}.tsx`, content: resourcePageFile(ir, page, NEXT_APP, NEXT) });
+        files.push(...resourceRouteFiles(ir, page, NEXT_APP, NEXT));
+      } else if (page.kind === "dashboard") {
+        files.push({ path: `${gen}/app/pages/${page.name}.tsx`, content: dashboardPageFile(ir, page, NEXT_APP, NEXT) });
+        files.push(dashboardRouteFile(page, NEXT_APP, NEXT));
+      } else files.push(customPageScaffold(page, NEXT_APP, NEXT));
+    }
+    files.push(...shellScaffolds(ir, NEXT_APP, NEXT));
+    files.push(...nextAppScaffolds());
+  }
+
+  files.push({ path: `${gen}/tests/_client.ts`, content: testClientFile(ir) });
+  files.push(...scenarioTestFiles(ir));
+  files.push({ path: `${gen}/seed.ts`, content: seedFile(ir) });
+  files.push({ path: "vitest.config.mts", content: vitestConfigFile() });
+
+  const appearance = (config.backend_options.appearance ?? "system") as Appearance;
+  if (!APPEARANCES.includes(appearance)) {
+    throw new Error(
+      `backend_options.appearance must be one of ${APPEARANCES.join(", ")}; got ${JSON.stringify(appearance)}`
+    );
+  }
+  files.push(
+    ...scaffoldFiles(ir, {
+      tailwind: config.backend_options.tailwind !== false,
+      shadcn: config.backend_options.shadcn !== false,
+      appearance,
+      generatedDir: gen,
+      extraDependencies: {
+        ...(ir.files ? STORAGE_DEPENDENCIES : {}),
+        ...(ir.jobs ? JOBS_DEPENDENCIES : {}),
+        ...(ir.app ? APP_DEPENDENCIES : {})
+      },
+      app: Boolean(ir.app)
+    })
+  );
+  files.push(
+    ...dockerFiles(ir, {
+      packageManager,
+      port: 3000,
+      build: [`${packageManager === "pnpm" ? "pnpm" : packageManager === "bun" ? "bun run" : "npm run"} build`],
+      start: ["node_modules/.bin/next", "start"],
+      worker: Boolean(ir.jobs)
+    })
+  );
+
+  // Paths are relative to the project root; the generated dir is fixed by config, so rewrite the default
+  return files
+    .map(f => ({ ...f, path: f.path.replace(/^generated\//, `${gen}/`) }))
+    .sort((a, b) => a.path.localeCompare(b.path));
+}
+
+/** The route group that wraps the app's pages in the shell, and the client-side providers it needs */
+function nextAppScaffolds(): GeneratedFile[] {
+  return [
+    {
+      path: "app/providers.tsx",
+      mode: "scaffold",
+      content: `${NEXT.scaffoldHeader("Client-side providers for the app's pages.")}
+"use client";
+import { QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
+import { queryClient } from "@/generated/app/client";
+
+export function Providers({ children }: { children: ReactNode }) {
+  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+}
+`
+    },
+    {
+      path: "app/(app)/layout.tsx",
+      mode: "scaffold",
+      content: `${NEXT.scaffoldHeader("Every page under this group renders inside the app shell with the sidebar.")}
+import type { ReactNode } from "react";
+import { AppShell } from "@/components/app-shell";
+import { Providers } from "@/app/providers";
+
+export default function AppLayout({ children }: { children: ReactNode }) {
+  return (
+    <Providers>
+      <AppShell>{children}</AppShell>
+    </Providers>
+  );
+}
+`
+    }
+  ];
+}
+
+/** instrumentation.ts runs when the Next.js server starts: the place to run queued events; src/worker.ts for a separate process */
+function workerScaffolds(): GeneratedFile[] {
+  return [
+    {
+      path: "instrumentation.ts",
+      mode: "scaffold",
+      content: `// Created once by OSL (@osl/backend-drizzle-next). Runs when the Next.js server starts.
+// You own this file: OSL never rewrites it.
+export async function register(): Promise<void> {
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    // Queued events run in this process unless OSL_ROLE=web (then run src/worker.ts separately).
+    const { startWorker } = await import("./generated/jobs");
+    await startWorker();
+  }
+}
+`
+    },
+    {
+      path: "src/worker.ts",
+      mode: "scaffold",
+      content: `// Created once by OSL (@osl/backend-drizzle-next). A process that only runs queued events: tsx src/worker.ts
+// You own this file: OSL never rewrites it.
+import { existsSync } from "node:fs";
+
+if (existsSync(".env")) process.loadEnvFile(".env");
+process.env.OSL_ROLE = "worker";
+
+const { startWorker } = await import("../generated/jobs");
+await startWorker();
+console.log("worker running");
+`
+    }
+  ];
+}
+
+export const drizzleNextBackend: Backend = {
+  name: BACKEND_NAME,
+  version: BACKEND_VERSION,
+  generates: [
+    "entities",
+    "relations",
+    "enums",
+    "indexes",
+    "migrations",
+    "resources",
+    "actions",
+    "rules",
+    "auth",
+    "files",
+    "events",
+    "jobs",
+    "examples",
+    "seed",
+    "openapi"
+  ],
+  generate,
+  runtime: config => ({
+    install: [installCommand(packageManagerOf(config))],
+    check: [{ command: "./node_modules/.bin/tsc", args: ["--noEmit"] }],
+    serve: port => ({
+      command: "./node_modules/.bin/next",
+      args: ["dev", "-p", String(port)],
+      env: { NODE_ENV: "development", OSL_EMAIL: "capture", OSL_STORAGE: "local", OSL_STORAGE_DIR: "./storage" }
+    }),
+    test: baseUrl => ({ command: "./node_modules/.bin/vitest", args: ["run"], env: { OSL_BASE_URL: baseUrl } }),
+    seed: baseUrl => ({
+      command: "./node_modules/.bin/tsx",
+      args: [`${config.generated_dir}/seed.ts`],
+      env: { OSL_BASE_URL: baseUrl }
+    }),
+    readyPath: "/",
+    migrationsDir: generatedDir => `${generatedDir}/db/migrations`
+  })
+};
+
+export { migrationFiles };

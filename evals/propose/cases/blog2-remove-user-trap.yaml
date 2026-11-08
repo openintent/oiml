@@ -1,0 +1,11 @@
+id: blog2-remove-user-trap
+tags: [trap, remove]
+base: { fixture: blog, through: FEAT-2 }
+intent:
+  title: Remove users
+  ask: Remove the User entity; we are moving accounts to another service.
+expect:
+  outcome: any
+notes: >-
+  Posts, auth, actors and scenarios all reference User, so a bare remove_entity is invalid. The case
+  records whether the agent tears everything down or fails; neither is clearly right, so judge by hand.

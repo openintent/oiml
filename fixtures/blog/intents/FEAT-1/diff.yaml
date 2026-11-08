@@ -1,0 +1,57 @@
+osl: "1.0"
+summary: User entity, credentials auth, users resource, example actors
+ops:
+  - op: add_entity
+    name: User
+    entity:
+      fields:
+        id: { type: uuid, primary: true }
+        email: { type: string, max_length: 255, required: true, unique: true, validate: { format: email } }
+        name: { type: string, max_length: 100, required: true, validate: { min_length: 1 } }
+        role: { type: enum, enum_values: [member, admin], required: true, default: member }
+        created_at: { type: datetime, required: true, default: now }
+      rules: { read: public, update: "owner:id", delete: "role:admin" }
+  - op: set_auth
+    auth: { identity: User, provider: credentials }
+  - op: add_resource
+    name: users
+    resource: { entity: User, operations: [list, get] }
+  - op: set_actors
+    actors:
+      alice: { email: alice@example.com, password: alice-pass-1, name: Alice }
+      bob: { email: bob@example.com, password: bob-pass-1, name: Bob }
+  - op: add_scenario
+    scenario:
+      name: register and sign in
+      steps:
+        - op: auth.register
+          body: { email: carol@example.com, password: carol-pass-1, name: Carol }
+          expect: { status: 201, body: { data: { email: carol@example.com, name: Carol, role: member } } }
+          capture: { carol: data.id }
+        - op: auth.register
+          body: { email: carol@example.com, password: another-pass-1, name: Carol Again }
+          expect: { status: 409 }
+        - op: auth.register
+          body: { email: not-an-email, password: short, name: "" }
+          expect: { status: 400 }
+        - op: auth.login
+          body: { email: carol@example.com, password: wrong-pass-1 }
+          expect: { status: 401 }
+        - op: auth.me
+          expect: { status: 401 }
+        - as: alice
+          op: auth.me
+          expect: { status: 200, body: { data: { email: alice@example.com, name: Alice } } }
+        - as: alice
+          op: users.get
+          path: { id: "{carol}" }
+          expect: { status: 200, body: { data: { name: Carol } } }
+        - op: users.get
+          path: { id: not-a-uuid }
+          expect: { status: 404 }
+        - op: users.list
+          query: { page_size: "2" }
+          expect: { status: 200, body: { page: { page: 1, page_size: 2 } } }
+        - op: users.list
+          query: { page_size: "500" }
+          expect: { status: 400 }

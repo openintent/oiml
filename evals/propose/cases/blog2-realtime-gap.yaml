@@ -1,0 +1,11 @@
+id: blog2-realtime-gap
+tags: [gap, entity]
+base: { fixture: blog, through: FEAT-2 }
+intent:
+  title: Live comments
+  ask: Readers can comment on posts and see new comments appear in real time over a websocket.
+expect:
+  outcome: any
+  flags_limit: true
+  entities: [Comment]
+notes: The model has no realtime construct; the data part (comments) should still land, nothing invented.

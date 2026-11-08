@@ -1,0 +1,6 @@
+osl: "1.0"
+title: Projects and tasks
+ask: >-
+  A todo app without accounts. Projects hold tasks. A task has a status, an optional estimate in
+  hours, an optional due date and an optional assignee name. Deleting a project keeps its tasks but
+  detaches them.

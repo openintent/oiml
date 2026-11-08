@@ -1,0 +1,29 @@
+version: 0.1.0
+applied_at: 2026-11-05T14:19:30Z
+status: success
+intents_processed: 2
+model: claude-opus-5-5
+template_used:
+  framework: drizzle
+  category: database
+  pack: osl://compat/osl-drizzle/1.0.0
+  version: 1.0.0
+  digest: sha256-f73a0885429de96cf7746a939539c72678b618963f4321147b93688384c2e5bf
+  compat:
+    osl: ">=0.1.0 <0.2.0"
+    drizzle-orm: ">=0.45.0 <1.0.0"
+    drizzle-kit: ">=0.31.0 <1.0.0"
+changes:
+  - file: lib/schema.ts
+    action: modified
+    description: Renamed posts.body to content and added published boolean not null default false
+  - file: drizzle/0003_rename_post_body_to_content.sql
+    action: created
+    description: Custom migration renaming posts.body to content, snapshot patched with the rename procedure
+  - file: drizzle/0004_add_post_published.sql
+    action: created
+    description: Migration adding posts.published
+  - file: app/api/posts/route.ts
+    action: modified
+    description: POST validates content instead of body and accepts optional published
+errors: []

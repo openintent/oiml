@@ -1,0 +1,27 @@
+{
+  "name": "@osl/backend-hono-trpc-vite",
+  "version": "1.0.0-alpha.1",
+  "description": "OSL backend: a Hono + tRPC API over Drizzle and a Vite + React + TanStack Router web app with a sidebar shell, from IR",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "README.md",
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch"
+  },
+  "dependencies": {
+    "@osl/core": "workspace:*",
+    "@osl/ts-common": "workspace:*"
+  }
+}

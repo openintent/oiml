@@ -1,0 +1,23 @@
+id: fx-todo-4-board-actions
+tags: [fixture, app, actions, no-auth]
+base: { fixture: todo, through: TODO-3 }
+oracle: fixtures/todo/intents/TODO-4/diff.yaml
+intent:
+  title: Task board, project table and completion actions
+  ask: >-
+    Show tasks as a board by status where dragging a card moves it, projects as a sortable table, and a
+    dashboard of counts. One action completes a task, another clears every done task.
+  acceptance:
+    - Completing a task sets its status to done
+    - Clearing done tasks reports how many it removed
+    - The board groups tasks by status
+expect:
+  pages:
+    tasks: { layout: board, group_by: status }
+    projects: { layout: table }
+    "home|dashboard|overview": { kind: dashboard, tiles_min: 1 }
+  actions_on:
+    tasks: { scope: row, returns: entity }
+  actions: ["tasks.clear_done|tasks.clear_completed|tasks.clear|tasks.purge_done|tasks.remove_done"]
+  scenarios: { min: 1 }
+  touches: [tasks]

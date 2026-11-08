@@ -1,0 +1,9 @@
+osl: "1.0"
+title: Task board, project table and completion actions
+ask: >-
+  Show tasks as a board by status where dragging a card moves it, projects as a sortable table, and a
+  dashboard of counts. One action completes a task, another clears every done task.
+acceptance:
+  - Completing a task sets its status to done
+  - Clearing done tasks reports how many it removed
+  - The board groups tasks by status

@@ -1,0 +1,13 @@
+id: todo2-priorities
+tags: [fields, enum, list, no-auth]
+base: { fixture: todo, through: TODO-2 }
+intent:
+  title: Priorities
+  ask: Tasks get a priority of low, medium or high, medium by default. Filter tasks by priority and let the list sort by due date.
+expect:
+  fields: { Task: [priority] }
+  types: { Task.priority: enum }
+  field_props: { Task.priority: { default: medium } }
+  list: { tasks: { filters: [priority, status], sortable: [due_on] } }
+  ops: { max: 3 }
+notes: update_resource replaces the whole resource, so the existing filters, include and page size must be carried over.

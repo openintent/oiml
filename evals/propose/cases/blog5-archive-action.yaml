@@ -1,0 +1,16 @@
+id: blog5-archive-action
+tags: [actions, events, fields]
+base: { fixture: blog }
+intent:
+  title: Archiving articles
+  ask: >-
+    Authors can archive one of their articles, which marks it archived and records when. Archiving
+    notifies in the background, like publishing does.
+  acceptance:
+    - Another user archiving my article gets 403
+expect:
+  fields: { Article: ["archived|is_archived|archived_at"] }
+  actions_on: { posts: { scope: row, rule: "owner:author_id" } }
+  events: ["posts.archive:queue"]
+  scenarios: { min: 1, rejections: 1, statuses: [403] }
+notes: The resource is still called posts although the entity is Article; the event must be posts.archive.

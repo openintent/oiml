@@ -1,0 +1,10 @@
+id: blog2-seed
+tags: [seed]
+base: { fixture: blog, through: FEAT-2 }
+intent:
+  title: Seed data
+  ask: Add seed data so a fresh development database has two users and three posts to look at.
+expect:
+  seed_min: 3
+  ops: { max: 3 }
+notes: Seed steps register users and create posts as them; actors already exist (alice, bob).

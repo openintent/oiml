@@ -1,0 +1,3 @@
+name: workspace
+description: Teams with memberships and roles, member rules on projects, auto-membership for creators, magic links.
+backends: [drizzle-next, gin-pgx, hono-trpc-vite]

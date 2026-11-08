@@ -1,0 +1,36 @@
+id: empty-event-rsvp
+tags: [entity, auth, rules, unique, scenario]
+base: { empty: rsvp }
+intent:
+  title: Event RSVPs
+  ask: >-
+    An events app. People sign up with email and password. An event has a title, a start time, a
+    location and a capacity. Anyone can browse events; signed-in users create them, and only the
+    organizer who created an event can change or cancel it. A signed-in user can RSVP to an event once,
+    with a status of going, maybe or no, and can change their answer later.
+  acceptance:
+    - A second RSVP by the same user to the same event is a conflict
+    - Someone other than the organizer updating an event gets 403
+expect:
+  entities: [User, Event, "Rsvp|RSVP|EventRsvp|Attendance|Response"]
+  fields: { Event: [title, "starts_at|start_time|start_at|starts|begins_at", location, capacity] }
+  types: { Event.capacity: integer, "Rsvp|RSVP|EventRsvp|Attendance|Response.status|answer|response": enum }
+  relations:
+    [
+      "Rsvp|RSVP|EventRsvp|Attendance|Response.* -> Event",
+      "Rsvp|RSVP|EventRsvp|Attendance|Response.* -> User",
+      "Event.* -> User"
+    ]
+  unique_together: { "Rsvp|RSVP|EventRsvp|Attendance|Response": [event_id, user_id] }
+  rules:
+    {
+      Event:
+        {
+          read: public,
+          update: "owner:organizer_id|owner:user_id|owner:creator_id|owner:created_by|owner:host_id|owner:owner_id",
+          delete: "owner:organizer_id|owner:user_id|owner:creator_id|owner:created_by|owner:host_id|owner:owner_id"
+        }
+    }
+  auth: { identity: User }
+  resources: [events]
+  scenarios: { min: 1, rejections: 1, statuses: [409, 403] }

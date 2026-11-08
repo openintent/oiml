@@ -1,0 +1,12 @@
+id: blog2-rename-content
+tags: [rename, fields]
+base: { fixture: blog, through: FEAT-2 }
+intent:
+  title: Body and shorter titles
+  ask: Call a post's content its body from now on, and cap titles at 120 characters.
+expect:
+  fields: { Post: [body] }
+  absent_fields: { Post: [content] }
+  field_props: { Post.title: { max_length: 120, required: true } }
+  ops: { require: [rename_field], forbid: [remove_field, remove_entity] }
+notes: A rename must stay a rename (data survives); update_field must keep the title's other properties.

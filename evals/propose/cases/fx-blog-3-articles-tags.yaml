@@ -1,0 +1,19 @@
+id: fx-blog-3-articles-tags
+tags: [fixture, rename, array]
+base: { fixture: blog, through: FEAT-2 }
+oracle: fixtures/blog/intents/FEAT-3/diff.yaml
+intent:
+  title: Articles with tags
+  ask: >-
+    Rename posts to articles in the data model, call the creation timestamp posted_at, and let an
+    article carry a list of tags. The public API paths stay the same.
+expect:
+  entities: [Article]
+  absent_entities: [Post]
+  fields: { Article: [posted_at, tags] }
+  absent_fields: { Article: [created_at] }
+  types: { Article.tags: array }
+  resources: [posts]
+  absent_resources: [articles]
+  ops: { require: [rename_entity, rename_field], forbid: [remove_entity] }
+notes: A rename must stay a rename so the migration keeps the rows; remove-and-add would drop them.

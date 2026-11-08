@@ -1,0 +1,23 @@
+id: fx-blog-1-accounts
+tags: [fixture, auth, entity, rules, scenario]
+base: { empty: blog }
+oracle: fixtures/blog/intents/FEAT-1/diff.yaml
+intent:
+  title: User accounts
+  ask: >-
+    People can register with an email and password and sign in. Every user has a name and a role,
+    member by default. Users can read any profile, edit only their own, and only admins can delete.
+  acceptance:
+    - Registering twice with the same email fails with a conflict
+    - Signing in with a wrong password is rejected
+    - An anonymous request to /api/auth/me is rejected
+expect:
+  entities: [User]
+  fields: { User: [email, name, role] }
+  types: { User.role: enum, User.email: string }
+  field_props: { User.role: { default: member } }
+  rules: { User: { read: "public|authenticated", update: "owner:id", delete: "role:admin" } }
+  auth: { identity: User, providers: [credentials] }
+  resources: [users]
+  absent_operations: { users: [create] }
+  scenarios: { min: 1, rejections: 1, statuses: [409, 401] }

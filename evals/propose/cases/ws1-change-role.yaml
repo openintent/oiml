@@ -1,0 +1,14 @@
+id: ws1-change-role
+tags: [tenancy, actions, rules]
+base: { fixture: workspace, through: WS-1 }
+intent:
+  title: Change a member's role
+  ask: Owners can change another member's role with one operation; admins and members cannot.
+  acceptance:
+    - An admin changing a role gets 403
+expect:
+  any_of:
+    - actions_on: { members: { scope: row, rule: "member:team_id:owner", input: [role] } }
+    - rules: { TeamMember: { update: "member:team_id:owner" } }
+  scenarios: { min: 1, rejections: 1, statuses: [403] }
+notes: Either a dedicated action or restricting the members update to owners (with update.fields [role]) answers the ask.

@@ -1,0 +1,9 @@
+osl: "1.0"
+title: User accounts
+ask: >-
+  People can register with an email and password and sign in. Every user has a name and a role,
+  member by default. Users can read any profile, edit only their own, and only admins can delete.
+acceptance:
+  - Registering twice with the same email fails with a conflict
+  - Signing in with a wrong password is rejected
+  - An anonymous request to /api/auth/me is rejected

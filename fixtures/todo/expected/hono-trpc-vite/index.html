@@ -1,0 +1,17 @@
+<!doctype html>
+<!-- Appearance: system (follows the OS; the dark class is applied before first paint). Set backend_options.appearance in .osl/config.yaml before the first osl generate, or edit this file; OSL never rewrites it. -->
+<html lang="en" style="--font-sans: ui-sans-serif, system-ui, sans-serif">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>todo</title>
+    <script>
+      (function(){var m=window.matchMedia('(prefers-color-scheme: dark)');function apply(){document.documentElement.classList.toggle('dark',m.matches)}apply();m.addEventListener('change',apply)})();
+    </script>
+  </head>
+  <body class="min-h-svh antialiased">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

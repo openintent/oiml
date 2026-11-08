@@ -1,0 +1,41 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1793888234919,
+      "tag": "0000_add_user_entity",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793888244540,
+      "tag": "0001_add_post_entity",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793888245643,
+      "tag": "0002_add_post_user_relation",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793888317226,
+      "tag": "0003_rename_post_body_to_content",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793888326681,
+      "tag": "0004_add_post_published",
+      "breakpoints": true
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+id: blog2-paid-posts
+tags: [fields, validation]
+base: { fixture: blog, through: FEAT-2 }
+intent:
+  title: Paid posts
+  ask: >-
+    A post can carry a price in dollars and cents and a three-letter currency code; both are optional
+    and a price cannot be negative.
+expect:
+  fields: { Post: [price, currency] }
+  types: { Post.price: decimal, Post.currency: string }
+  field_props: { Post.price: { validate: { min: 0 } } }
+  ops: { max: 3 }

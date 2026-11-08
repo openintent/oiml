@@ -1,0 +1,52 @@
+# The osl command
+
+Install from the workspace with `pnpm build`, then run `node packages/cli/dist/cli.js` or link it as `osl`.
+
+| Command                                                                                                                | What it does                                                                                                                                                                                                                                                     |
+| ---------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `osl init [--name n] [--backend b] [--description d] [--no-tailwind] [--no-shadcn] [--appearance system\|light\|dark] [--package-manager pnpm\|bun\|npm]` | Create `.osl/` with an empty model, the config and the lock. `--backend` is `drizzle-next` (default), `hono-trpc-vite` or `gin-pgx`. `drizzle-next` scaffolds Tailwind CSS 4 and shadcn/ui unless told not to (`--no-tailwind` implies `--no-shadcn`); `hono-trpc-vite` always has them. Both follow the OS color scheme unless `--appearance` pins light or dark, and are installed and run with pnpm unless `--package-manager` picks bun or npm. |
+| `osl intent <ID> --title t --ask a [-c crit ...]`                                                                      | Create `.osl/intents/<ID>/intent.yaml` with the ask in prose.                                                                                                                                                                                                    |
+| `osl propose <ID> [--model m] [--print]`                                                                               | Ask Claude for a diff that delivers the intent. The diff is validated against the current model and retried once with the errors. Writes `diff.yaml` for review; parts of the ask the model cannot express are printed as `not delivered`, and when nothing is expressible the command says why and exits 1. Needs Claude API credentials (`ANTHROPIC_API_KEY` or `ant auth login`). |
+| `osl apply [ID ...]`                                                                                                   | Apply diffs to the model in order. Default: every intent not yet applied. Idempotent.                                                                                                                                                                            |
+| `osl generate`                                                                                                         | Run the backend and write the files. Reports written, merged, unchanged and removed files.                                                                                                                                                                       |
+| `osl migrate [--url u]`                                                                                                | Apply pending migrations. Reads `DATABASE_URL` from the environment or `.env`.                                                                                                                                                                                   |
+| `osl drift [--url u]`                                                                                                  | Compare the database with the model. Exit code 1 on drift.                                                                                                                                                                                                       |
+| `osl status`                                                                                                           | Model summary, revisions, pending intents and migrations.                                                                                                                                                                                                        |
+| `osl verify [--url u] [--base-url u]`                                                                                  | Generated files current, typecheck, pending migrations, drift, and with `--base-url` the contract tests. Exit code 1 on any failure.                                                                                                                             |
+| `osl seed [--base-url u]`                                                                                              | Replay the model's seed steps (`examples.seed`) against a running app. Rows that already exist are skipped. Actors that carry a `role` are registered, then given it straight in the database, so `DATABASE_URL` (from `.env`) must point at the app's database. |
+| `osl model` / `osl ir`                                                                                                 | Print the model as YAML or the IR as JSON.                                                                                                                                                                                                                       |
+| `osl mcp`                                                                                                              | Serve the project over stdio (Model Context Protocol).                                                                                                                                                                                                           |
+| `osl conformance [fixture ...] [--backend b] [--package-manager pm] [--update] [--snapshot-only] [--keep]`             | Run the conformance harness. `--package-manager bun` or `npm` runs the TypeScript projects with that manager instead of pnpm (the snapshot compare is skipped).                                                                                                 |
+
+## A first project
+
+```bash
+mkdir blog && cd blog
+osl init --name blog
+osl intent FEAT-1 --title "User accounts" \
+  --ask "People register with an email and password and sign in. Each user has a name." \
+  -c "Registering twice with the same email fails with a conflict"
+osl propose FEAT-1        # or write .osl/intents/FEAT-1/diff.yaml by hand
+osl apply
+osl generate
+pnpm install
+echo 'DATABASE_URL=postgres://postgres@localhost:5432/blog' > .env
+osl migrate
+pnpm dev &                # the generated Next.js app (with --backend hono-trpc-vite: the API on 3111 and Vite on 5173)
+osl verify --base-url http://localhost:3000   # hono-trpc-vite: --base-url http://localhost:3111
+```
+
+## Policies
+
+`.osl/config.yaml` can limit what one intent may do. `osl apply` and `osl propose` refuse diffs that break them.
+
+```yaml
+policies:
+  max_ops_per_intent: 20
+  forbid_remove_entity: true
+  forbid_remove_field: false
+```
+
+## MCP tools
+
+`osl mcp` exposes, for the project in the current directory: `osl_reference` (the diff format), `osl_status`, `osl_model`, `osl_intent`, `osl_check_diff` (validate without applying), `osl_write_diff` (save a validated diff for review), `osl_apply`, `osl_generate` and `osl_drift`. An agent can write a diff, check it, save it for human review, and generate, without ever editing `model.yaml` or `generated/` by hand.

@@ -1,0 +1,151 @@
+version: 0.1.0
+created_at: 2026-11-05T14:20:00Z
+intent_id: FEAT-1
+project_id: drizzly
+model: claude-opus-5-5
+intents_to_process: 7
+template_used:
+  framework: drizzle
+  category: database
+  pack: osl://compat/osl-drizzle/1.0.0
+  version: 1.0.0
+  compat:
+    osl: ">=0.1.0 <0.2.0"
+    drizzle-orm: ">=0.45.0 <1.0.0"
+    drizzle-kit: ">=0.31.0 <1.0.0"
+steps:
+  - kind: add_entity
+    scope: data
+    target: User
+    description: Create users table with uuid id, unique email, name and created_at
+    changes:
+      - file: drizzle.config.ts
+        action: create
+        description: drizzle-kit config for postgresql, schema lib/schema.ts, migrations in drizzle/
+      - file: lib/db.ts
+        action: create
+        description: node-postgres pool and drizzle client with schema for relational queries
+      - file: lib/schema.ts
+        action: create
+        description: Add users table
+      - file: drizzle/NNNN_add_user_entity.sql
+        action: create
+        description: Generate migration with drizzle-kit generate
+        dependencies:
+          - lib/schema.ts
+  - kind: add_entity
+    scope: data
+    target: Post
+    description: Create posts table with uuid id, title, body and created_at
+    changes:
+      - file: lib/schema.ts
+        action: modify
+        description: Add posts table
+      - file: drizzle/NNNN_add_post_entity.sql
+        action: create
+        description: Generate migration with drizzle-kit generate
+        dependencies:
+          - lib/schema.ts
+  - kind: add_relation
+    scope: data
+    target: Post.author
+    description: Post many_to_one User via author_id, reverse posts
+    changes:
+      - file: lib/schema.ts
+        action: modify
+        description: Add author_id FK with onDelete restrict, index, and relations() for users and posts
+      - file: drizzle/NNNN_add_post_user_relation.sql
+        action: create
+        description: Generate migration with drizzle-kit generate
+        dependencies:
+          - lib/schema.ts
+  - kind: add_endpoint
+    scope: api
+    target: GET /api/posts
+    description: List posts newest first with author
+    changes:
+      - file: app/api/posts/route.ts
+        action: create
+        description: GET handler using db.query.posts.findMany with author
+  - kind: add_endpoint
+    scope: api
+    target: POST /api/posts
+    description: Create a post for an existing author
+    changes:
+      - file: app/api/posts/route.ts
+        action: modify
+        description: POST handler with validation, 400 on unknown author_id via FK error code
+  - kind: add_endpoint
+    scope: api
+    target: POST /api/users
+    description: Create a user
+    changes:
+      - file: app/api/users/route.ts
+        action: create
+        description: POST handler with validation, 409 on duplicate email
+  - kind: add_endpoint
+    scope: api
+    target: GET /api/users/{id}
+    description: Get a user with their posts
+    changes:
+      - file: app/api/users/[id]/route.ts
+        action: create
+        description: GET handler using db.query.users.findFirst with posts, 404 when missing
+      - file: lib/db-errors.ts
+        action: create
+        description: getDbErrorCode helper that unwraps DrizzleQueryError
+      - file: packages/types/index.ts
+        action: create
+        description: Types derived with $inferSelect and $inferInsert plus response types
+planned_changes:
+  - file: drizzle.config.ts
+    action: create
+    description: drizzle-kit config
+  - file: lib/db.ts
+    action: create
+    description: Drizzle client
+  - file: lib/schema.ts
+    action: create
+    description: users and posts tables, FK, index and relations
+  - file: lib/db-errors.ts
+    action: create
+    description: Database error code helper
+  - file: drizzle/NNNN_add_user_entity.sql
+    action: create
+    description: Migration for users
+  - file: drizzle/NNNN_add_post_entity.sql
+    action: create
+    description: Migration for posts
+  - file: drizzle/NNNN_add_post_user_relation.sql
+    action: create
+    description: Migration for author_id FK and index
+  - file: app/api/posts/route.ts
+    action: create
+    description: GET and POST /api/posts
+  - file: app/api/users/route.ts
+    action: create
+    description: POST /api/users
+  - file: app/api/users/[id]/route.ts
+    action: create
+    description: GET /api/users/{id}
+  - file: packages/types/index.ts
+    action: create
+    description: Entity and response types
+risk_assessment:
+  level: medium
+  factors:
+    - New database tables and a foreign key
+  mitigations:
+    - One migration per intent, reviewed before applying
+    - Migrations applied with drizzle-kit migrate because autorun_migrations is true
+warnings: []
+prerequisites:
+  config_checks:
+    - DATABASE_URL configured in .env
+  required_files:
+    - lib/schema.ts
+  dependencies:
+    - drizzle-orm
+    - drizzle-kit
+    - pg
+estimated_duration: 5 minutes

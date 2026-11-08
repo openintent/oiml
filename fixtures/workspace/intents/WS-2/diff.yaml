@@ -1,0 +1,35 @@
+osl: "1.0"
+summary: Magic link provider, sidebar app with team, project and member pages
+ops:
+  - op: set_auth
+    auth:
+      identity: User
+      providers: [credentials, magic_link]
+      tenancy: { entity: Team, membership: TeamMember, role_field: role, creator_role: owner }
+  - op: set_app
+    app:
+      title: Workspace
+      pages:
+        teams: { resource: teams, columns: [name, created_at] }
+        projects: { resource: projects, layout: table, columns: [name, status, created_at] }
+        members: { resource: members, layout: table, columns: [user_id, team_id, role] }
+      sidebar:
+        items:
+          - { page: teams, icon: building }
+          - { page: projects, icon: folder-kanban }
+          - { page: members, icon: users }
+        footer: { user: true, settings: true }
+  - op: add_scenario
+    scenario:
+      name: magic link sign-in
+      steps:
+        - op: auth.magic_link
+          body: { email: alice@example.com }
+          expect: { status: 200, body: { data: { sent: true } } }
+          capture: { token: data.debug.token }
+        - op: auth.magic_link_verify
+          body: { token: "{token}" }
+          expect: { status: 200, body: { data: { email: alice@example.com } } }
+        - op: auth.magic_link_verify
+          body: { token: nope }
+          expect: { status: 400 }

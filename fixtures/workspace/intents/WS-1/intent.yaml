@@ -1,0 +1,11 @@
+osl: "1.0"
+title: Teams, members and projects
+ask: >-
+  People sign up and create teams. Whoever creates a team owns it. Owners and admins add members and
+  set their roles; members see and create the team's projects; admins can delete projects; only an owner
+  can delete the team or remove members.
+acceptance:
+  - A user who is not a member sees none of a team's projects and cannot create one
+  - The creator of a team is its owner
+  - A member can create and update projects but not delete them; an admin can delete them
+  - Only an owner can delete a team

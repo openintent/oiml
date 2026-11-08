@@ -1,0 +1,6 @@
+osl: "1.0"
+title: Magic links and the workspace app
+ask: Let people sign in with a magic link too, and give the app a sidebar with the teams, members and projects.
+acceptance:
+  - An existing user can sign in with a magic link
+  - The sidebar lists teams, projects and members

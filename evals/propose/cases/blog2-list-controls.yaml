@@ -1,0 +1,14 @@
+id: blog2-list-controls
+tags: [list]
+base: { fixture: blog, through: FEAT-2 }
+intent:
+  title: Post list controls
+  ask: >-
+    Readers can search posts by title and content, sort the list by title or creation time, and get ten
+    per page. Each post in the list carries its author.
+  acceptance:
+    - sort by an unknown field is refused
+expect:
+  list: { posts: { search: [title, content], sortable: [title, created_at], include: [author], page_size: 10 } }
+  ops: { max: 3 }
+  scenarios: { min: 1, rejections: 1, statuses: [400] }

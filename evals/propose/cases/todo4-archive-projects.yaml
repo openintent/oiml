@@ -1,0 +1,15 @@
+id: todo4-archive-projects
+tags: [actions, fields, app, no-auth]
+base: { fixture: todo }
+intent:
+  title: Archive projects
+  ask: Projects can be archived with one operation. The dashboard shows how many projects are archived.
+  acceptance:
+    - Archiving a project marks it archived
+expect:
+  fields: { Project: ["archived|is_archived|archived_at"] }
+  actions_on: { projects: { scope: row } }
+  pages: { "home|dashboard|overview": { kind: dashboard } }
+  list: { projects: { filters: ["archived|is_archived"] } }
+  scenarios: { min: 1 }
+notes: A dashboard tile filters on a list filter, so the agent must add the filter to the projects list.

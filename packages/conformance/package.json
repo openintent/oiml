@@ -1,0 +1,33 @@
+{
+  "name": "@osl/conformance",
+  "version": "1.0.0-alpha.1",
+  "description": "OSL conformance harness: generates fixtures and proves backends against a real database",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch"
+  },
+  "dependencies": {
+    "@osl/backend-drizzle-next": "workspace:*",
+    "@osl/backend-gin-pgx": "workspace:*",
+    "@osl/backend-hono-trpc-vite": "workspace:*",
+    "@osl/core": "workspace:*",
+    "pg": "^8"
+  },
+  "devDependencies": {
+    "@types/pg": "^8"
+  }
+}

@@ -1,0 +1,14 @@
+osl: "1.0"
+summary: Sidebar with projects and tasks pages
+ops:
+  - op: add_page
+    name: projects
+    page: { resource: projects }
+  - op: add_page
+    name: tasks
+    page: { resource: tasks, path: /tasks, columns: [title, status, due_on] }
+  - op: set_sidebar
+    sidebar:
+      items:
+        - { page: projects, icon: folder-kanban }
+        - { page: tasks, label: All tasks, icon: list-checks }

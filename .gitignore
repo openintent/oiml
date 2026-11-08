@@ -1,7 +1,10 @@
 node_modules
 dist
 .env
+.env.local
+.env.*.local
 .DS_Store
 .vscode
 .cursor
 .claude
+evals/propose/runs/

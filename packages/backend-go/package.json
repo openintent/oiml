@@ -1,0 +1,26 @@
+{
+  "name": "@osl/backend-gin-pgx",
+  "version": "1.0.0-alpha.1",
+  "description": "OSL backend: a Go module with Gin route handlers and pgx database access from IR",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch"
+  },
+  "dependencies": {
+    "@osl/core": "workspace:*"
+  }
+}

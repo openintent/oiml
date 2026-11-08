@@ -1,0 +1,24 @@
+id: fx-todo-1-projects-tasks
+tags: [fixture, entity, relation, no-auth]
+base: { empty: todo }
+oracle: fixtures/todo/intents/TODO-1/diff.yaml
+intent:
+  title: Projects and tasks
+  ask: >-
+    A todo app without accounts. Projects hold tasks. A task has a status, an optional estimate in
+    hours, an optional due date and an optional assignee name. Deleting a project keeps its tasks but
+    detaches them.
+expect:
+  entities: [Project, Task]
+  fields:
+    {
+      Task: [status, "estimate_hours|estimate|estimated_hours", "due_on|due_date|due_at|due", "assignee|assignee_name"]
+    }
+  types: { Task.status: enum, "Task.due_on|due_date|due_at|due": "date|datetime" }
+  field_props:
+    { "Task.estimate_hours|estimate|estimated_hours": { required: null }, "Task.project_id": { required: null } }
+  relations: ["Task.* -> Project:set_null"]
+  rules: { Task: { read: public, create: public, update: public, delete: public } }
+  resources: [projects, tasks]
+  auth: { none: true }
+  scenarios: { min: 1 }

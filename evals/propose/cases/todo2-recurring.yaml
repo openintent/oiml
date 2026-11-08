@@ -1,0 +1,17 @@
+id: todo2-recurring
+tags: [fields, enum, actions, events, no-auth]
+base: { fixture: todo, through: TODO-2 }
+intent:
+  title: Repeating tasks
+  ask: >-
+    A task can repeat daily, weekly or monthly, or not at all. Completing a task is its own operation
+    that marks it done; when a repeating task is completed, a handler creates the next occurrence.
+  acceptance:
+    - Completing a task sets its status to done
+expect:
+  fields: { Task: ["repeat|recurrence|repeats|frequency"] }
+  types: { "Task.repeat|recurrence|repeats|frequency": enum }
+  actions: ["tasks.complete|tasks.finish|tasks.done"]
+  events: ["tasks.complete|tasks.finish|tasks.done"]
+  scenarios: { min: 1 }
+  touches: [tasks]

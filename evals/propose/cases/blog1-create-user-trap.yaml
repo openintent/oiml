@@ -1,0 +1,19 @@
+id: blog1-create-user-trap
+tags: [trap, auth, actions]
+base: { fixture: blog, through: FEAT-1 }
+intent:
+  title: Admins create accounts
+  ask: >-
+    Admins can create user accounts directly through the API, setting the email, name and role, so they
+    can onboard people before those people sign in themselves.
+  acceptance:
+    - A member calling it gets 403
+    - An admin creates an account and it appears in the users list
+expect:
+  absent_operations: { users: [create] }
+  actions_on: { users: { scope: collection, rule: "role:admin" } }
+  actor_fields: { role: admin }
+  scenarios: { min: 1, rejections: 1, statuses: [403, 200] }
+notes: >-
+  The identity entity cannot have a create operation; the way through is a collection action, and an admin
+  actor (set_actors with role admin) shows it working.

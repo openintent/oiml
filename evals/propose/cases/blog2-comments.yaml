@@ -1,0 +1,31 @@
+id: blog2-comments
+tags: [entity, relation, rules, list, scenario]
+base: { fixture: blog, through: FEAT-2 }
+intent:
+  title: Comments
+  ask: >-
+    Signed-in users comment on posts. A comment has a body and shows who wrote it and when. Anyone can
+    read comments; only the commenter can edit or delete theirs. Comments are listed per post, newest
+    first, and deleting a post deletes its comments.
+  acceptance:
+    - An anonymous comment is rejected with 401
+    - Another user deleting my comment gets 403
+    - Listing comments filtered by post returns only that post's comments
+expect:
+  entities: [Comment]
+  fields: { Comment: ["body|content|text", post_id, "author_id|user_id"] }
+  relations: ["Comment.post_id -> Post:cascade", "Comment.* -> User"]
+  rules:
+    {
+      Comment:
+        {
+          read: public,
+          create: "owner:author_id|owner:user_id|authenticated",
+          update: "owner:author_id|owner:user_id",
+          delete: "owner:author_id|owner:user_id"
+        }
+    }
+  resources: [comments]
+  list: { comments: { filters: [post_id] } }
+  scenarios: { min: 1, rejections: 1, statuses: [401, 403] }
+  touches: [comments]

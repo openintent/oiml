@@ -1,0 +1,15 @@
+id: empty-minimal
+tags: [entity, minimal, no-auth]
+base: { empty: counters }
+intent:
+  title: Counters
+  ask: Just a Counter entity with a name and an integer value, with the usual API. No accounts.
+expect:
+  entities: [Counter]
+  fields: { Counter: [name, value] }
+  types: { Counter.value: "integer|bigint" }
+  resources: [counters]
+  operations: { counters: [list, get, create, update, delete] }
+  auth: { none: true }
+  ops: { max: 6 }
+notes: Checks that a small ask gets a small diff.

@@ -1,0 +1,28 @@
+{
+  "name": "@osl/ts-common",
+  "version": "1.0.0-alpha.1",
+  "description": "Generators shared by OSL's TypeScript backends: Drizzle schema, validation, presenters, events, test helpers and the stock shadcn/ui sources",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "README.md",
+    "dist",
+    "scripts"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "sync:shadcn": "node scripts/sync-shadcn.mjs"
+  },
+  "dependencies": {
+    "@osl/core": "workspace:*"
+  }
+}

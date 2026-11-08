@@ -1,0 +1,201 @@
+import type { Backend, GeneratedFile, GenerateInput } from "@osl/core";
+import { globalActions, migrationFiles } from "@osl/core";
+import {
+  JOBS_DEPENDENCIES,
+  STORAGE_DEPENDENCIES,
+  actionScaffolds,
+  actionsFile,
+  authProvidersFile,
+  clientFile,
+  dockerFiles,
+  emailFile,
+  eventFiles,
+  filesFile,
+  hasProviders,
+  installCommand,
+  jobsFile,
+  packageManagerOf,
+  presentFile,
+  schemaFile,
+  storageFile,
+  validationFile,
+  TANSTACK,
+  customPageScaffold,
+  dashboardPageFile,
+  dashboardRouteFile,
+  navFile,
+  resourcePageFile,
+  resourceRouteFiles,
+  shellScaffolds,
+  trpcClientFile,
+  uiFile
+} from "@osl/ts-common";
+import { APPEARANCES, projectScaffolds, type Appearance } from "./scaffold.js";
+import {
+  accessFile,
+  actionsRouterFile,
+  appFile,
+  authFile,
+  contextFile,
+  errorsFile,
+  filesRouterFile,
+  hooksScaffold,
+  resourceRouterFile,
+  routerFile,
+  serverMainScaffold,
+  trpcFile,
+  workerScaffold
+} from "./server.js";
+import { scenarioTestFiles, seedFile, testClientFile, vitestConfigFile } from "./tests.js";
+import { VITE, VITE_SERVER } from "./util.js";
+import { viteScaffolds } from "./web.js";
+
+export const BACKEND_NAME = "hono-trpc-vite";
+export const BACKEND_VERSION = "1.1.0";
+
+/** Pure: the same IR and history always produce the same files, in the same order. */
+export function generate(input: GenerateInput): GeneratedFile[] {
+  const { ir, revisions, config } = input;
+  const gen = config.generated_dir;
+  const options = config.backend_options;
+  if (options.tailwind === false || options.shadcn === false) {
+    throw new Error(
+      `${BACKEND_NAME} builds its web app on Tailwind CSS and shadcn/ui; backend_options.tailwind and backend_options.shadcn cannot be false`
+    );
+  }
+  const packageManager = packageManagerOf(config);
+  const appearance = (options.appearance ?? "system") as Appearance;
+  if (!APPEARANCES.includes(appearance)) {
+    throw new Error(
+      `backend_options.appearance must be one of ${APPEARANCES.join(", ")}; got ${JSON.stringify(appearance)}`
+    );
+  }
+
+  const files: GeneratedFile[] = [];
+
+  // Database
+  files.push({ path: `${gen}/db/schema.ts`, content: schemaFile(ir, VITE) });
+  files.push({ path: `${gen}/db/client.ts`, content: clientFile(VITE) });
+  files.push(...migrationFiles(revisions, `${gen}/db/migrations`).files);
+
+  // Shared by the API and the web app
+  files.push({ path: `${gen}/present.ts`, content: presentFile(ir, VITE) });
+  files.push({ path: `${gen}/validation.ts`, content: validationFile(ir, VITE, { listInput: "typed" }) });
+  files.push(...eventFiles(ir, VITE));
+  if (ir.jobs) {
+    files.push({ path: `${gen}/jobs.ts`, content: jobsFile(ir, VITE_SERVER) });
+    files.push(workerScaffold());
+  }
+  if (ir.files) {
+    files.push({ path: `${gen}/storage.ts`, content: storageFile(ir, VITE_SERVER) });
+    files.push({ path: `${gen}/files.ts`, content: filesFile(ir, VITE_SERVER) });
+  }
+  if (hasProviders(ir)) {
+    files.push({ path: `${gen}/email.ts`, content: emailFile(VITE_SERVER) });
+    files.push({ path: `${gen}/auth-providers.ts`, content: authProvidersFile(ir, VITE_SERVER) });
+  }
+  if (ir.actions.length) {
+    files.push({ path: `${gen}/actions.ts`, content: actionsFile(ir, VITE_SERVER) });
+    files.push(...actionScaffolds(ir, VITE_SERVER));
+  }
+
+  // API
+  files.push({ path: `${gen}/server/trpc.ts`, content: trpcFile() });
+  files.push({ path: `${gen}/server/context.ts`, content: contextFile() });
+  files.push({ path: `${gen}/server/errors.ts`, content: errorsFile() });
+  files.push({ path: `${gen}/server/access.ts`, content: accessFile(ir) });
+  files.push({ path: `${gen}/server/auth.ts`, content: authFile(ir) });
+  if (ir.files) files.push({ path: `${gen}/server/files-router.ts`, content: filesRouterFile(ir) });
+  if (globalActions(ir).length) files.push({ path: `${gen}/server/actions-router.ts`, content: actionsRouterFile(ir) });
+  for (const resource of ir.resources) {
+    files.push({ path: `${gen}/server/resources/${resource.name}.ts`, content: resourceRouterFile(ir, resource) });
+    files.push(hooksScaffold(ir, resource));
+  }
+  files.push({ path: `${gen}/server/router.ts`, content: routerFile(ir) });
+  files.push({ path: `${gen}/server/app.ts`, content: appFile(ir) });
+  files.push(serverMainScaffold());
+
+  // Web app
+  files.push({ path: `${gen}/app/client.ts`, content: trpcClientFile(ir, VITE) });
+  files.push({ path: `${gen}/app/nav.ts`, content: navFile(ir, TANSTACK, VITE) });
+  files.push({ path: `${gen}/app/ui.tsx`, content: uiFile(ir, VITE) });
+  for (const page of ir.app?.pages ?? []) {
+    if (page.kind === "resource") {
+      files.push({ path: `${gen}/app/pages/${page.name}.tsx`, content: resourcePageFile(ir, page, TANSTACK, VITE) });
+      files.push(...resourceRouteFiles(ir, page, TANSTACK, VITE));
+    } else if (page.kind === "dashboard") {
+      files.push({ path: `${gen}/app/pages/${page.name}.tsx`, content: dashboardPageFile(ir, page, TANSTACK, VITE) });
+      files.push(dashboardRouteFile(page, TANSTACK, VITE));
+    } else files.push(customPageScaffold(page, TANSTACK, VITE));
+  }
+  files.push(...shellScaffolds(ir, TANSTACK, VITE));
+  files.push(...viteScaffolds(ir));
+  const extraDependencies = {
+    ...(ir.files ? STORAGE_DEPENDENCIES : {}),
+    ...(ir.jobs ? JOBS_DEPENDENCIES : {})
+  };
+  files.push(...projectScaffolds(ir, config, appearance, packageManager, extraDependencies));
+  files.push(
+    ...dockerFiles(ir, {
+      packageManager,
+      port: 3111,
+      build: [`${packageManager === "pnpm" ? "pnpm" : packageManager === "bun" ? "bun run" : "npm run"} build`],
+      start: ["node_modules/.bin/tsx", "src/server/main.ts"],
+      worker: Boolean(ir.jobs)
+    })
+  );
+
+  // Contract tests and seed
+  files.push({ path: `${gen}/tests/_client.ts`, content: testClientFile(ir) });
+  files.push(...scenarioTestFiles(ir));
+  files.push({ path: `${gen}/seed.ts`, content: seedFile(ir) });
+  files.push({ path: "vitest.config.mts", content: vitestConfigFile() });
+
+  return files
+    .map(f => ({ ...f, path: f.path.replace(/^generated\//, `${gen}/`) }))
+    .sort((a, b) => a.path.localeCompare(b.path));
+}
+
+export const honoTrpcViteBackend: Backend = {
+  name: BACKEND_NAME,
+  version: BACKEND_VERSION,
+  generates: [
+    "entities",
+    "relations",
+    "enums",
+    "indexes",
+    "migrations",
+    "resources",
+    "actions",
+    "rules",
+    "auth",
+    "files",
+    "events",
+    "jobs",
+    "examples",
+    "seed",
+    "app"
+  ],
+  generate,
+  runtime: config => ({
+    install: [installCommand(packageManagerOf(config))],
+    // vite build writes src/routeTree.gen.ts and bundles the web app; tsc then checks both sides
+    check: [
+      { command: "./node_modules/.bin/vite", args: ["build", "--logLevel", "warn"] },
+      { command: "./node_modules/.bin/tsc", args: ["--noEmit"] }
+    ],
+    serve: port => ({
+      command: "./node_modules/.bin/tsx",
+      args: ["src/server/main.ts"],
+      env: { PORT: String(port), OSL_EMAIL: "capture", OSL_STORAGE: "local", OSL_STORAGE_DIR: "./storage" }
+    }),
+    test: baseUrl => ({ command: "./node_modules/.bin/vitest", args: ["run"], env: { OSL_BASE_URL: baseUrl } }),
+    seed: baseUrl => ({
+      command: "./node_modules/.bin/tsx",
+      args: [`${config.generated_dir}/seed.ts`],
+      env: { OSL_BASE_URL: baseUrl }
+    }),
+    readyPath: "/healthz",
+    migrationsDir: generatedDir => `${generatedDir}/db/migrations`
+  })
+};

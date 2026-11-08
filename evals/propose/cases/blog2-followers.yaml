@@ -1,0 +1,22 @@
+id: blog2-followers
+tags: [entity, unique, self-relation, rules]
+base: { fixture: blog, through: FEAT-2 }
+intent:
+  title: Followers
+  ask: >-
+    Signed-in users follow other users. Following the same person twice is a conflict, and only the
+    follower can unfollow. Anyone can list who a user follows and who follows them.
+  acceptance:
+    - A duplicate follow is a conflict
+    - Deleting someone else's follow gets 403
+expect:
+  entities: ["Follow|Follower|Following|UserFollow"]
+  relations: ["Follow|Follower|Following|UserFollow.* -> User:cascade"]
+  unique_together:
+    {
+      "Follow|Follower|Following|UserFollow":
+        ["follower_id|user_id", "followee_id|followed_id|following_id|target_id|followed_user_id"]
+    }
+  rules: { "Follow|Follower|Following|UserFollow": { read: public, delete: "owner:follower_id|owner:user_id" } }
+  resources: ["follows|followers|followings"]
+  scenarios: { min: 1, rejections: 1, statuses: [409, 403] }

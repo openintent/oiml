@@ -1,0 +1,101 @@
+osl: "1.0"
+summary: Post entity owned by its author, posts resource, created event, scenarios
+ops:
+  - op: add_entity
+    name: Post
+    entity:
+      fields:
+        id: { type: uuid, primary: true }
+        title: { type: string, max_length: 200, required: true, validate: { min_length: 1 } }
+        content: { type: text, required: true }
+        published: { type: boolean, required: true, default: false }
+        author_id:
+          type: uuid
+          required: true
+          relation: { entity: User, name: author, reverse: posts, on_delete: cascade }
+        created_at: { type: datetime, required: true, default: now }
+      rules: { read: public, create: "owner:author_id", update: "owner:author_id", delete: "owner:author_id" }
+      unique: [[author_id, title]]
+  - op: add_resource
+    name: posts
+    resource:
+      entity: Post
+      operations: [list, get, create, update, delete]
+      list: { filters: [published, author_id], order: [[created_at, desc]], include: [author] }
+      get: { include: [author] }
+  - op: update_resource
+    name: users
+    resource: { entity: User, operations: [list, get], get: { include: [posts] } }
+  - op: add_event
+    event: { on: Post.created, handler: post_created }
+  - op: add_scenario
+    scenario:
+      name: alice writes a post
+      steps:
+        - as: alice
+          op: posts.create
+          body: { title: Hello, content: First post }
+          expect: { status: 201, body: { data: { title: Hello, published: false, author_id: "{actor.id}" } } }
+          capture: { post: data.id }
+        - op: posts.get
+          path: { id: "{post}" }
+          expect: { status: 200, body: { data: { title: Hello, author: { name: Alice } } } }
+        - as: bob
+          op: posts.update
+          path: { id: "{post}" }
+          body: { title: Hijacked }
+          expect: { status: 403 }
+        - op: posts.update
+          path: { id: "{post}" }
+          body: { title: Anonymous }
+          expect: { status: 401 }
+        - as: alice
+          op: posts.update
+          path: { id: "{post}" }
+          body: { published: true }
+          expect: { status: 200, body: { data: { published: true, title: Hello } } }
+        - op: posts.list
+          query: { published: "true" }
+          expect: { status: 200, body: { data: [{ title: Hello, author: { name: Alice } }] } }
+        - as: alice
+          op: users.get
+          path: { id: "{actor.id}" }
+          expect: { status: 200, body: { data: { posts: [{ title: Hello }] } } }
+        - as: bob
+          op: posts.delete
+          path: { id: "{post}" }
+          expect: { status: 403 }
+        - as: alice
+          op: posts.delete
+          path: { id: "{post}" }
+          expect: { status: 204 }
+        - op: posts.get
+          path: { id: "{post}" }
+          expect: { status: 404 }
+  - op: add_scenario
+    scenario:
+      name: post validation
+      steps:
+        - op: posts.create
+          body: { title: Nope, content: anonymous }
+          expect: { status: 401 }
+        - as: alice
+          op: posts.create
+          body: { title: "", content: x }
+          expect: { status: 400 }
+        - as: alice
+          op: posts.create
+          body: { title: Twice, content: once }
+          expect: { status: 201 }
+        - as: alice
+          op: posts.create
+          body: { title: Twice, content: again }
+          expect: { status: 409 }
+        - as: bob
+          op: posts.create
+          body: { title: Twice, content: other author }
+          expect: { status: 201 }
+        - as: bob
+          op: posts.list
+          query: { author_id: "{actor.id}" }
+          expect: { status: 200, body: { page: { total: 1 } } }

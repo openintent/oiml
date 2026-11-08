@@ -1,39 +1,44 @@
 {
-  "name": "@oiml/cli",
-  "version": "0.1.12",
-  "description": "OIML CLI for initializing and managing OIML projects",
-  "author": "OIML",
+  "name": "@osl/cli",
+  "version": "1.0.0-alpha.1",
+  "description": "OSL command line: init, propose, apply, generate, migrate, verify, mcp",
   "license": "Apache-2.0",
   "type": "module",
-  "homepage": "https://github.com/openintent/oiml#readme",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/openintent/oiml.git",
-    "directory": "packages/cli"
-  },
-  "bin": {
-    "oiml": "./dist/cli.js"
-  },
   "main": "./dist/cli.js",
   "types": "./dist/cli.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/cli.d.ts",
+      "default": "./dist/cli.js"
+    },
+    "./propose": {
+      "types": "./dist/propose.d.ts",
+      "default": "./dist/propose.js"
+    }
+  },
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
   "scripts": {
-    "build": "tsc",
-    "postbuild": "chmod +x dist/cli.js 2>/dev/null || true",
-    "dev": "tsc --watch",
-    "prepublishOnly": "pnpm build || echo 'Build skipped - dist files already exist'",
-    "publish:npm": "pnpm build && pnpm publish --access public"
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "postbuild": "chmod +x dist/cli.js"
   },
   "dependencies": {
-    "@oiml/mcp": "workspace:*",
-    "commander": "^12.1.0",
-    "yaml": "^2.5.0",
-    "chalk": "^5.3.0",
-    "inquirer": "^10.2.2"
+    "@anthropic-ai/sdk": "^1",
+    "@modelcontextprotocol/sdk": "^1",
+    "@osl/backend-drizzle-next": "workspace:*",
+    "@osl/backend-gin-pgx": "workspace:*",
+    "@osl/backend-hono-trpc-vite": "workspace:*",
+    "@osl/conformance": "workspace:*",
+    "@osl/core": "workspace:*",
+    "chalk": "^5",
+    "commander": "^12",
+    "yaml": "^2",
+    "zod": "^3"
   },
-  "devDependencies": {
-    "@types/inquirer": "^9.0.7"
+  "bin": {
+    "osl": "./dist/cli.js"
   }
 }

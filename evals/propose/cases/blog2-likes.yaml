@@ -1,0 +1,19 @@
+id: blog2-likes
+tags: [entity, unique, rules, scenario]
+base: { fixture: blog, through: FEAT-2 }
+intent:
+  title: Likes
+  ask: >-
+    A signed-in user can like a post once and take the like back. Anyone can see how many likes a post
+    has by listing them per post. Deleting a post or a user removes their likes.
+  acceptance:
+    - Liking the same post twice is a conflict
+    - Removing someone else's like gets 403
+expect:
+  entities: ["Like|PostLike"]
+  relations: ["Like|PostLike.* -> Post:cascade", "Like|PostLike.* -> User:cascade"]
+  unique_together: { "Like|PostLike": [post_id, user_id] }
+  rules: { "Like|PostLike": { read: public, delete: "owner:user_id" } }
+  resources: [likes]
+  list: { likes: { filters: [post_id] } }
+  scenarios: { min: 1, rejections: 1, statuses: [409, 403] }

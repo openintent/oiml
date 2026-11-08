@@ -1,0 +1,16 @@
+id: empty-bookmarks
+tags: [entity, array, list, no-auth]
+base: { empty: bookmarks }
+intent:
+  title: Bookmarks
+  ask: >-
+    Bookmarks without accounts: a URL, a title, a list of tags and a read flag that starts off. Filter the
+    list by read, search by title, newest first.
+expect:
+  entities: [Bookmark]
+  fields: { Bookmark: [url, title, tags, read] }
+  types: { Bookmark.tags: array, Bookmark.read: boolean }
+  field_props: { Bookmark.read: { default: false } }
+  list: { bookmarks: { filters: [read], search: [title] } }
+  resources: [bookmarks]
+  auth: { none: true }

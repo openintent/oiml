@@ -1,0 +1,21 @@
+id: empty-inventory
+tags: [entity, relation, validation, no-auth]
+base: { empty: inventory }
+intent:
+  title: Warehouse inventory
+  ask: >-
+    Track products in a warehouse, no accounts needed. A product has a unique SKU, a name, a price with
+    cents, and a quantity on hand that cannot go negative. Products belong to a category with a unique
+    name. A category cannot be deleted while products still reference it.
+  acceptance:
+    - Creating a second product with the same SKU is a conflict
+    - A negative quantity is rejected
+expect:
+  entities: [Product, Category]
+  fields: { Product: [sku, name, price, quantity], Category: [name] }
+  types: { Product.price: "decimal|integer", Product.quantity: integer }
+  field_props: { Product.sku: { unique: true }, Category.name: { unique: true } }
+  relations: ["Product.* -> Category:restrict"]
+  resources: [products, categories]
+  auth: { none: true }
+  scenarios: { min: 1, rejections: 1, statuses: [409, 400] }

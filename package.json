@@ -1,19 +1,26 @@
 {
-  "name": "oiml",
-  "description": "OIML is a global standard for AI-driven development that enables declarative development, standardized schema, project metadata, deterministic generation, and agent integration.",
-  "author": "OIML",
+  "name": "osl",
+  "private": true,
+  "description": "Open Schema Language: a compiler from a declared application model to working code.",
   "license": "Apache-2.0",
-  "homepage": "https://github.com/openintent/oiml#readme",
   "packageManager": "pnpm@10.20.0",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
-    "format": "prettier --write \"**/*.{ts,js,tsx,jsx,json,md,yaml,yml}\"",
-    "format:check": "prettier --check \"**/*.{ts,js,tsx,jsx,json,md,yaml,yml}\""
+    "build": "pnpm -r --filter './packages/*' run build",
+    "test": "vitest run",
+    "typecheck": "pnpm -r --filter './packages/*' exec tsc --noEmit",
+    "format": "prettier --write \"packages/**/*.{ts,js,json,md,yaml,yml}\" \"fixtures/**/*.{ts,js,json,md,yaml,yml}\" \"evals/**/*.{md,yaml,yml}\" \"*.{json,md,yaml,yml}\"",
+    "format:check": "prettier --check \"packages/**/*.{ts,js,json,md,yaml,yml}\" \"fixtures/**/*.{ts,js,json,md,yaml,yml}\" \"evals/**/*.{md,yaml,yml}\" \"*.{json,md,yaml,yml}\"",
+    "conformance": "tsx packages/conformance/src/run.ts",
+    "evals": "tsx packages/evals/src/run.ts"
   },
   "devDependencies": {
-    "@oiml/schema": "^0.1.10",
     "@types/node": "^24",
     "prettier": "^3",
     "tsx": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^5"
   }
 }

@@ -1,0 +1,15 @@
+id: blog2-view-counter
+tags: [actions, fields]
+base: { fixture: blog, through: FEAT-2 }
+intent:
+  title: View counts
+  ask: Track how many times each post has been viewed. Recording a view is open to anyone, and the count is part of the post.
+  acceptance:
+    - Recording a view as an anonymous reader succeeds
+expect:
+  fields: { Post: ["view_count|views|view_counter"] }
+  types: { "Post.view_count|views|view_counter": "integer|bigint" }
+  field_props: { "Post.view_count|views|view_counter": { default: 0 } }
+  actions_on: { posts: { scope: row, rule: public } }
+  scenarios: { min: 1 }
+  touches: [posts]

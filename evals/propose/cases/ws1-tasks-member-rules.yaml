@@ -1,0 +1,25 @@
+id: ws1-tasks-member-rules
+tags: [tenancy, rules, relation, entity]
+base: { fixture: workspace, through: WS-1 }
+intent:
+  title: Project tasks
+  ask: >-
+    Projects hold tasks with a title and a done flag. Members of the project's team see and edit its
+    tasks; nobody outside the team can.
+  acceptance:
+    - A non-member cannot list or create a project's tasks
+expect:
+  entities: [Task]
+  relations: ["Task.* -> Project", "Task.* -> Team"]
+  rules:
+    {
+      Task:
+        {
+          read: "member:team_id",
+          create: "member:team_id|member:team_id:member",
+          update: "member:team_id|member:team_id:member"
+        }
+    }
+  resources: [tasks]
+  scenarios: { min: 1, rejections: 1, statuses: [403] }
+notes: A member rule needs a relation to the tenant on the row itself, so Task needs team_id as well as project_id.

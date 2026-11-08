@@ -1,0 +1,6 @@
+osl: "1.0"
+title: Projects and tasks pages
+ask: Add a sidebar with Projects and Tasks pages; there is no sign-in, so the footer only links to settings.
+acceptance:
+  - The sidebar lists Projects and Tasks
+  - Tasks shows the list with its status and the selected task's details

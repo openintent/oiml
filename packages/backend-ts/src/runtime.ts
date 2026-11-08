@@ -1,0 +1,134 @@
+import type { EntityIR, IR } from "@osl/core";
+import { verdictSource } from "@osl/ts-common";
+import { HEADER, entityByName } from "./util.js";
+
+/** generated/http.ts: response helpers, parsing and database error mapping. Static. */
+export function httpFile(): string {
+  return `${HEADER("HTTP helpers shared by every handler.")}
+import type { ZodTypeAny, z } from "zod";
+
+export class HttpError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly code: string,
+    message: string,
+    public readonly details?: unknown
+  ) {
+    super(message);
+    this.name = "HttpError";
+  }
+}
+
+export function json(status: number, body: unknown): Response {
+  return Response.json(body, { status });
+}
+
+export function ok(data: unknown, extra: Record<string, unknown> = {}): Response {
+  return json(200, { data, ...extra });
+}
+
+export function created(data: unknown): Response {
+  return json(201, { data });
+}
+
+export function noContent(): Response {
+  return new Response(null, { status: 204 });
+}
+
+export function error(status: number, code: string, message: string, details?: unknown): Response {
+  return json(status, { error: details === undefined ? { code, message } : { code, message, details } });
+}
+
+export type Parsed<T> = { ok: true; data: T } | { ok: false; response: Response };
+
+export async function parseBody<S extends ZodTypeAny>(schema: S, request: Request): Promise<Parsed<z.infer<S>>> {
+  let raw: unknown;
+  try {
+    raw = await request.json();
+  } catch {
+    return { ok: false, response: error(400, "invalid_json", "Request body must be valid JSON") };
+  }
+  const result = schema.safeParse(raw);
+  if (!result.success) return { ok: false, response: error(400, "validation", "Request body is invalid", issues(result.error)) };
+  return { ok: true, data: result.data };
+}
+
+export function parseQuery<S extends ZodTypeAny>(schema: S, request: Request): Parsed<z.infer<S>> {
+  const url = new URL(request.url);
+  const raw: Record<string, string> = {};
+  url.searchParams.forEach((value, key) => {
+    raw[key] = value;
+  });
+  const result = schema.safeParse(raw);
+  if (!result.success) return { ok: false, response: error(400, "validation", "Query string is invalid", issues(result.error)) };
+  return { ok: true, data: result.data };
+}
+
+/** A malformed id can never match a row, so it is reported as not found. */
+export function parseId<S extends ZodTypeAny>(schema: S, raw: string): Parsed<z.infer<S>> {
+  const result = schema.safeParse(raw);
+  if (!result.success) return { ok: false, response: notFound() };
+  return { ok: true, data: result.data };
+}
+
+export function notFound(): Response {
+  return error(404, "not_found", "Not found");
+}
+
+function issues(err: { issues: { path: PropertyKey[]; message: string }[] }) {
+  return err.issues.map(i => ({ path: i.path.map(String).join("."), message: i.message }));
+}
+
+/** Drizzle wraps driver errors; the PostgreSQL code is on the cause. */
+export function dbErrorCode(err: unknown): string | undefined {
+  const cause = err && typeof err === "object" && "cause" in err ? (err as { cause?: unknown }).cause : err;
+  if (!cause || typeof cause !== "object") return undefined;
+  return (cause as { code?: string }).code;
+}
+
+/** Refuse the request with a status and code; handleError turns it into the response */
+export function fail(status: number, code: string, message: string): never {
+  throw new HttpError(status, code, message);
+}
+
+export function handleError(err: unknown, operation: "read" | "write" | "delete"): Response {
+  if (err instanceof HttpError) return error(err.status, err.code, err.message, err.details);
+  const code = dbErrorCode(err);
+  if (code === "23505") return error(409, "conflict", "A row with the same unique value already exists");
+  // 23503 is a missing referenced row (or ON DELETE NO ACTION); 23001 is ON DELETE RESTRICT refusing the delete
+  if (code === "23503" || code === "23001") {
+    return operation === "delete" || code === "23001"
+      ? error(409, "conflict", "Other rows still reference this row")
+      : error(400, "invalid_reference", "A referenced row does not exist");
+  }
+  if (code === "23502") return error(400, "validation", "A required value is missing");
+  if (code === "22P02") return operation === "read" ? notFound() : error(400, "validation", "A value has the wrong format");
+  console.error(err);
+  return error(500, "internal", "Something went wrong");
+}
+`;
+}
+
+/** generated/access.ts */
+export function accessFile(ir: IR): string {
+  return `${HEADER("Access rule evaluation.")}
+import type { Session } from "./auth";
+
+${verdictSource(ir)}
+
+/** Check a rule for a session and, when the rule is about a row, that row (or the body of a create). */
+export function checkRule(rule: Rule, session: Session | null, row?: Record<string, unknown> | null): Verdict {
+  return verdict(rule, session, row);
+}
+
+export function denied(result: { ok: false; status: 401 | 403 }): Response {
+  return result.status === 401
+    ? Response.json({ error: { code: "unauthenticated", message: "Sign in to continue" } }, { status: 401 })
+    : Response.json({ error: { code: "forbidden", message: "You cannot do that" } }, { status: 403 });
+}
+`;
+}
+
+export function identityEntity(ir: IR): EntityIR | null {
+  return ir.auth ? entityByName(ir, ir.auth.identity) : null;
+}

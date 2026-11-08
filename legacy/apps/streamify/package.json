@@ -1,0 +1,37 @@
+{
+  "name": "osl-vite",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^19",
+    "react-dom": "^19",
+    "react-router-dom": "^7",
+    "class-variance-authority": "^0",
+    "clsx": "^2",
+    "tailwind-merge": "^2",
+    "lucide-react": "^0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^5",
+    "autoprefixer": "^10",
+    "eslint": "^9",
+    "eslint-plugin-react-hooks": "^5",
+    "eslint-plugin-react-refresh": "^0.4",
+    "globals": "^16",
+    "@tailwindcss/postcss": "^4",
+    "postcss": "^8",
+    "tailwindcss": "^4",
+    "typescript-eslint": "^8",
+    "vite": "^7"
+  }
+}

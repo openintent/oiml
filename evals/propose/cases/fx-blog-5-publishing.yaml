@@ -1,0 +1,36 @@
+id: fx-blog-5-publishing
+tags: [fixture, actions, files, auth, app, events, list]
+base: { fixture: blog, through: FEAT-4 }
+oracle: fixtures/blog/intents/FEAT-5/diff.yaml
+intent:
+  title: Publishing, cover images, search and an overview
+  ask: >-
+    Authors publish their articles with one action, admins can unpublish everything at once, and an admin
+    can send a digest. Articles carry a cover image. Lists can be sorted and searched. Give the app an
+    overview page with counts and the latest articles, an archive table, and let people sign in with a
+    magic link or GitHub. Publishing should notify in the background.
+  acceptance:
+    - Only the author can publish their article; anonymous callers get 401 and other users 403
+    - Only an admin can unpublish everything or send the digest; a member gets 403
+    - A cover upload is accepted for images only and comes back with the article as its metadata and a URL
+    - Lists accept q to search titles and content and sort to order by title or date; other fields are refused
+    - The overview page shows counts and the latest articles; the archive is a sortable table
+    - A magic link signs an existing user in once
+expect:
+  actions_on:
+    posts: { scope: row, rule: "owner:author_id" }
+    actions: { rule: "role:admin" }
+  actor_fields: { role: admin }
+  fields: { Article: ["cover|cover_image|cover_image_id"] }
+  types: { "Article.cover|cover_image|cover_image_id": file }
+  file_accept: { "Article.cover|cover_image|cover_image_id": "image/" }
+  list: { posts: { search: [title, content], sortable: [title] } }
+  auth: { providers: [credentials, magic_link, "oauth:github"] }
+  pages:
+    "overview|home|dashboard": { kind: dashboard, tiles_min: 1 }
+    archive: { kind: resource, layout: table }
+  scenarios: { min: 1, rejections: 1, statuses: [401, 403] }
+notes: >-
+  The fixture also declares a collection action (unpublish_all) and a queued event on the publish action;
+  the checks ask only for what the acceptance criteria pin down. The digest is admin-only, which needs an
+  actor carrying role admin.

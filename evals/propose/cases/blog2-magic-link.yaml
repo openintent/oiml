@@ -1,0 +1,12 @@
+id: blog2-magic-link
+tags: [auth]
+base: { fixture: blog, through: FEAT-2 }
+intent:
+  title: Magic link sign-in
+  ask: Let people sign in with a magic link sent to their email, as well as with their password.
+  acceptance:
+    - An existing user receives a link and the link signs them in once
+expect:
+  auth: { providers: [credentials, magic_link] }
+  scenarios: { min: 1 }
+  touches: ["auth.magic_link|auth"]

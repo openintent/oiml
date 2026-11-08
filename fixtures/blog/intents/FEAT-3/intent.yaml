@@ -1,0 +1,5 @@
+osl: "1.0"
+title: Articles with tags
+ask: >-
+  Rename posts to articles in the data model, call the creation timestamp posted_at, and let an
+  article carry a list of tags. The public API paths stay the same.

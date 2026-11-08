@@ -1,0 +1,38 @@
+{
+  "name": "osl-drizzle",
+  "version": "1.0.0",
+  "framework": "drizzle",
+  "category": "database",
+  "created_at": "2026-11-05T00:00:00Z",
+  "last_updated": "2026-11-05T00:00:00Z",
+  "compatible_osl_versions": ["0.1.x"],
+  "compatible_package_versions": {
+    "drizzle-orm": ["0.45.x"],
+    "drizzle-kit": ["0.31.x"]
+  },
+  "minimum_versions": {
+    "drizzle-orm": "0.45.0",
+    "drizzle-kit": "0.31.0"
+  },
+  "maximum_versions": {
+    "drizzle-orm": "0.99.99",
+    "drizzle-kit": "0.99.99"
+  },
+  "supported_dialects": ["postgresql", "mysql", "sqlite"],
+  "breaking_changes": [],
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-11-05",
+      "changes": [
+        "Initial template version",
+        "Support for drizzle-orm 0.45.x and drizzle-kit 0.31.x",
+        "Field type mappings for PostgreSQL, MySQL and SQLite",
+        "Non-interactive rename procedure for drizzle-kit",
+        "Relations, migrations and error handling patterns"
+      ]
+    }
+  ],
+  "authors": ["OSL Team"],
+  "license": "Apache-2.0"
+}

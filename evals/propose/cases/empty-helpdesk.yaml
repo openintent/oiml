@@ -1,0 +1,29 @@
+id: empty-helpdesk
+tags: [tenancy, auth, rules, entity, actions]
+base: { empty: helpdesk }
+intent:
+  title: Support desk with organizations
+  ask: >-
+    A support desk. People sign up with email and password and create organizations; the creator is the
+    organization's admin and can add agents. Tickets belong to an organization and have a subject, a body
+    and a status of open, pending or closed. Agents and admins of an organization see and update its
+    tickets; only admins delete them. Closing a ticket is its own operation that records when it closed.
+  acceptance:
+    - A user outside the organization cannot see or create its tickets
+    - An agent cannot delete a ticket; an admin can
+    - Closing a ticket sets its status to closed
+expect:
+  entities: [User, "Organization|Org", Ticket]
+  auth:
+    identity: User
+    tenancy: { entity: "Organization|Org" }
+  relations: ["Ticket.* -> Organization|Org"]
+  types: { Ticket.status: enum }
+  rules:
+    {
+      Ticket:
+        { read: "member:organization_id|member:org_id", delete: "member:organization_id:admin|member:org_id:admin" }
+    }
+  resources: [tickets]
+  actions_on: { tickets: { scope: row } }
+  scenarios: { min: 1, rejections: 1, statuses: [403] }

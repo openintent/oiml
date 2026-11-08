@@ -1,0 +1,30 @@
+id: todo2-add-accounts
+tags: [auth, rules, relation, entity]
+base: { fixture: todo, through: TODO-2 }
+intent:
+  title: Accounts
+  ask: >-
+    Add accounts: people sign up with an email and password. From now on projects and tasks belong to
+    whoever created them and nobody else can see or change them.
+  acceptance:
+    - An anonymous request for tasks is rejected
+    - Another user cannot see my project
+expect:
+  entities: [User]
+  auth: { identity: User, providers: [credentials] }
+  relations: ["Project.* -> User", "Task.* -> User"]
+  rules:
+    Project:
+      {
+        read: "owner:user_id|owner:owner_id|owner:creator_id|owner:created_by",
+        update: "owner:user_id|owner:owner_id|owner:creator_id|owner:created_by"
+      }
+    Task:
+      {
+        read: "owner:user_id|owner:owner_id|owner:creator_id|owner:created_by",
+        update: "owner:user_id|owner:owner_id|owner:creator_id|owner:created_by"
+      }
+  scenarios: { min: 1, rejections: 1, statuses: [401] }
+notes: >-
+  Existing scenarios make anonymous calls that will now fail; a complete diff adds actors and rewrites
+  or removes those scenarios. The full run tells whether it did.

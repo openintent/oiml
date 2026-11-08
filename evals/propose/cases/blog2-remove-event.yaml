@@ -1,0 +1,9 @@
+id: blog2-remove-event
+tags: [events, remove]
+base: { fixture: blog, through: FEAT-2 }
+intent:
+  title: Drop the post_created handler
+  ask: We no longer need the handler that runs when a post is created. Remove it.
+expect:
+  absent_events: [Post.created]
+  ops: { require: [remove_event], max: 1 }

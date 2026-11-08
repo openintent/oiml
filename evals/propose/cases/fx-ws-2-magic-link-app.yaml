@@ -1,0 +1,19 @@
+id: fx-ws-2-magic-link-app
+tags: [fixture, auth, app]
+base: { fixture: workspace, through: WS-1 }
+oracle: fixtures/workspace/intents/WS-2/diff.yaml
+intent:
+  title: Magic links and the workspace app
+  ask: Let people sign in with a magic link too, and give the app a sidebar with the teams, members and projects.
+  acceptance:
+    - An existing user can sign in with a magic link
+    - The sidebar lists teams, projects and members
+expect:
+  auth: { providers: [credentials, magic_link] }
+  pages:
+    teams: { kind: resource, resource: teams }
+    projects: { kind: resource, resource: projects }
+    members: { kind: resource, resource: members }
+  sidebar: [teams, projects, members]
+  scenarios: { min: 1 }
+  touches: ["auth.magic_link|auth"]

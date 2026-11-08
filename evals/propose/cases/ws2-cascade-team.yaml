@@ -1,0 +1,10 @@
+id: ws2-cascade-team
+tags: [relation, fields]
+base: { fixture: workspace }
+intent:
+  title: Deleting a team deletes its projects
+  ask: Deleting a team must delete its memberships and its projects, not be refused.
+expect:
+  relations: ["TeamMember.team_id -> Team:cascade", "Project.team_id -> Team:cascade"]
+  ops: { max: 2 }
+notes: Already true in the fixture; a correct answer is a no-op or a diff that repeats the setting without breaking anything.

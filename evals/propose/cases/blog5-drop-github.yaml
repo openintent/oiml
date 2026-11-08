@@ -1,0 +1,10 @@
+id: blog5-drop-github
+tags: [auth, remove]
+base: { fixture: blog }
+intent:
+  title: Drop GitHub sign-in
+  ask: Remove the GitHub sign-in option. Passwords and magic links stay.
+expect:
+  auth: { providers: [credentials, magic_link], absent_providers: ["oauth:github", oauth] }
+  ops: { max: 2 }
+notes: set_auth must carry the whole auth block, including tenancy-free fields already there.

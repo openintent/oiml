@@ -1,0 +1,9 @@
+id: blog1-google-login
+tags: [auth]
+base: { fixture: blog, through: FEAT-1 }
+intent:
+  title: Sign in with Google
+  ask: Also let people sign in with their Google account. Email and password keep working.
+expect:
+  auth: { providers: [credentials, "oauth:google"] }
+  ops: { max: 3 }

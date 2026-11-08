@@ -1,0 +1,24 @@
+id: empty-recipes
+tags: [entity, array, validation, list, no-auth]
+base: { empty: recipes }
+intent:
+  title: Recipe box
+  ask: >-
+    A public recipe collection without accounts. A recipe has a title, a cuisine (italian, mexican,
+    japanese, indian or other), a list of ingredients, the method as long text, and how many it serves,
+    which must be at least one. People can search recipes by title and filter by cuisine.
+expect:
+  entities: [Recipe]
+  fields: { Recipe: [title, cuisine, ingredients, "method|instructions|steps|directions", "serves|servings"] }
+  types:
+    {
+      Recipe.cuisine: enum,
+      Recipe.ingredients: array,
+      "Recipe.method|instructions|steps|directions": text,
+      "Recipe.serves|servings": integer
+    }
+  field_props: { "Recipe.serves|servings": { validate: { min: 1 } } }
+  resources: [recipes]
+  list: { recipes: { search: [title], filters: [cuisine] } }
+  auth: { none: true }
+  scenarios: { min: 1 }

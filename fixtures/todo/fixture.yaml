@@ -1,0 +1,3 @@
+name: todo
+description: No auth, integer keys, enums, decimals, a one-to-one profile, set-null deletes and a composite-key junction.
+backends: [drizzle-next, gin-pgx, hono-trpc-vite]

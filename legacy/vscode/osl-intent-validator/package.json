@@ -1,0 +1,93 @@
+{
+  "name": "osl-intent-validator",
+  "displayName": "OSL - Intent Validator",
+  "description": "Validates Open Schema Language (OSL) intent.yaml files",
+  "version": "0.1.6",
+  "publisher": "openintent",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/openintent/oiml"
+  },
+  "icon": "icon.png",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Linters",
+    "Programming Languages"
+  ],
+  "keywords": [
+    "osl",
+    "openintent",
+    "intent",
+    "yaml",
+    "validation",
+    "schema"
+  ],
+  "activationEvents": [
+    "onLanguage:yaml"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "osl.validateWorkspace",
+        "title": "OSL: Validate All Intent Files in Workspace"
+      },
+      {
+        "command": "osl.validateCurrentFile",
+        "title": "OSL: Validate Current File"
+      }
+    ],
+    "configuration": {
+      "title": "OSL",
+      "properties": {
+        "osl.validateOnSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically validate intent.yaml files on save"
+        },
+        "osl.validateOnType": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically validate intent.yaml files as you type"
+        },
+        "osl.filePattern": {
+          "type": "string",
+          "default": "**/intent.yaml",
+          "description": "Glob pattern to match OSL intent files"
+        },
+        "osl.schemaVersion": {
+          "type": "string",
+          "default": "0.1.0",
+          "description": "OSL schema version to use for validation. All available versions are bundled with the extension. Select from the dropdown to change the schema version.",
+          "enum": [
+            "0.1.0"
+          ]
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "pnpm run build",
+    "build": "node esbuild.js --production",
+    "watch": "node esbuild.js --watch",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js",
+    "package": "vsce package --no-dependencies",
+    "publish": "vsce publish --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4",
+    "@types/vscode": "^1",
+    "@typescript-eslint/eslint-plugin": "^6",
+    "@typescript-eslint/parser": "^6",
+    "esbuild": "^0",
+    "eslint": "^9"
+  },
+  "dependencies": {
+    "js-yaml": "^4",
+    "zod": "^3"
+  }
+}

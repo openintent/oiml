@@ -1,0 +1,14 @@
+osl: "1.0"
+title: Publishing, cover images, search and an overview
+ask: >-
+  Authors publish their articles with one action, admins can unpublish everything at once, and an admin
+  can send a digest. Articles carry a cover image. Lists can be sorted and searched. Give the app an
+  overview page with counts and the latest articles, an archive table, and let people sign in with a
+  magic link or GitHub. Publishing should notify in the background.
+acceptance:
+  - Only the author can publish their article; anonymous callers get 401 and other users 403
+  - Only an admin can unpublish everything or send the digest; a member gets 403
+  - A cover upload is accepted for images only and comes back with the article as its metadata and a URL
+  - Lists accept q to search titles and content and sort to order by title or date; other fields are refused
+  - The overview page shows counts and the latest articles; the archive is a sortable table
+  - A magic link signs an existing user in once

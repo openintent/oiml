@@ -1,0 +1,5 @@
+osl: "1.0"
+title: Labels and notes
+ask: >-
+  Tasks can carry any number of labels, and a label can sit on many tasks. A task can have at most
+  one note with longer text. Deleting a task removes its note and its label links.

@@ -1,0 +1,73 @@
+osl: "1.0"
+summary: Complete and clear_done actions, board and table pages, a dashboard, seed data
+ops:
+  - op: add_action
+    resource: tasks
+    name: complete
+    action: { description: Mark the task done }
+  - op: add_action
+    resource: tasks
+    name: clear_done
+    action:
+      description: Delete every task that is done
+      scope: collection
+      returns: { count: { type: integer, required: true } }
+  - op: update_resource
+    name: projects
+    resource:
+      entity: Project
+      operations: [list, get, create, update, delete]
+      list: { sortable: [name], search: [name] }
+      get: { include: [tasks] }
+  - op: update_page
+    name: tasks
+    page: { resource: tasks, layout: board, group_by: status, columns: [title, status, due_on], title: Board }
+  - op: update_page
+    name: projects
+    page: { resource: projects, layout: table, columns: [name, color] }
+  - op: add_page
+    name: home
+    page:
+      kind: dashboard
+      title: Home
+      tiles:
+        - { resource: tasks, label: Tasks }
+        - { resource: tasks, label: Doing, filter: { status: doing } }
+        - { resource: projects, label: Projects }
+      recent: [{ resource: tasks, limit: 5 }]
+  - op: set_sidebar
+    sidebar:
+      items:
+        - { page: home, icon: house }
+        - { page: tasks, icon: kanban }
+        - { page: projects, icon: folder-kanban }
+  - op: add_scenario
+    scenario:
+      name: completing tasks
+      steps:
+        - op: tasks.create
+          body: { title: Mow the lawn }
+          expect: { status: 201, body: { data: { status: todo } } }
+          capture: { task: data.id }
+        - op: tasks.complete
+          path: { id: "{task}" }
+          expect: { status: 200, body: { data: { title: Mow the lawn, status: done } } }
+        - op: tasks.complete
+          path: { id: abc }
+          expect: { status: 404 }
+        - op: tasks.clear_done
+          expect: { status: 200, body: { data: { count: 1 } } }
+        - op: tasks.get
+          path: { id: "{task}" }
+          expect: { status: 404 }
+        - op: tasks.clear_done
+          expect: { status: 200, body: { data: { count: 0 } } }
+  - op: set_seed
+    seed:
+      - op: projects.create
+        body: { name: Garden, color: "#22aa44" }
+        capture: { garden: data.id }
+      - op: tasks.create
+        body: { title: Plant tomatoes, project_id: "{garden}", status: doing }
+      - op: tasks.create
+        body: { title: Water the beds, project_id: "{garden}" }

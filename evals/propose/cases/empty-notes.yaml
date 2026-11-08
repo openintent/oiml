@@ -1,0 +1,31 @@
+id: empty-notes
+tags: [entity, auth, rules, scenario]
+base: { empty: notes }
+intent:
+  title: Personal notes
+  ask: >-
+    A personal notes app. People sign up with an email and password. A note has a title, a body and a
+    pinned flag. Only the owner can see, edit or delete their notes. Notes list newest first and can be
+    filtered to pinned ones.
+  acceptance:
+    - An anonymous request for notes is rejected
+    - A user cannot read another user's note
+expect:
+  entities: [User, Note]
+  fields: { Note: [title, "body|content", pinned] }
+  types: { Note.pinned: boolean }
+  relations: ["Note.* -> User"]
+  rules:
+    {
+      Note:
+        {
+          read: "owner:user_id|owner:owner_id|owner:author_id",
+          update: "owner:user_id|owner:owner_id|owner:author_id",
+          delete: "owner:user_id|owner:owner_id|owner:author_id"
+        }
+    }
+  auth: { identity: User, providers: [credentials] }
+  resources: [notes]
+  list: { notes: { filters: [pinned] } }
+  scenarios: { min: 1, rejections: 1, statuses: [401] }
+  touches: [notes]

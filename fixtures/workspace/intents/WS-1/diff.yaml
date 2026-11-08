@@ -1,0 +1,237 @@
+osl: "1.0"
+summary: Users, teams, memberships with roles, projects scoped to teams, credentials auth with tenancy
+ops:
+  - op: add_entity
+    name: User
+    entity:
+      fields:
+        id: { type: uuid, primary: true }
+        email: { type: string, required: true, unique: true, validate: { format: email } }
+        name: { type: string, max_length: 100, required: true, validate: { min_length: 1 } }
+        created_at: { type: datetime, required: true, default: now }
+      rules: { read: authenticated, update: "owner:id", delete: none }
+  - op: add_entity
+    name: Team
+    entity:
+      fields:
+        id: { type: uuid, primary: true }
+        name: { type: string, max_length: 100, required: true, validate: { min_length: 1 } }
+        created_at: { type: datetime, required: true, default: now }
+      rules: { read: "member:id", create: authenticated, update: "member:id:admin", delete: "member:id:owner" }
+  - op: add_entity
+    name: TeamMember
+    entity:
+      table: team_members
+      fields:
+        id: { type: uuid, primary: true }
+        team_id:
+          { type: uuid, required: true, relation: { entity: Team, name: team, reverse: members, on_delete: cascade } }
+        user_id:
+          {
+            type: uuid,
+            required: true,
+            relation: { entity: User, name: user, reverse: memberships, on_delete: cascade }
+          }
+        role: { type: enum, enum_values: [owner, admin, member], required: true, default: member }
+        created_at: { type: datetime, required: true, default: now }
+      unique: [[team_id, user_id]]
+      rules:
+        {
+          read: "member:team_id",
+          create: "member:team_id:admin",
+          update: "member:team_id:admin",
+          delete: "member:team_id:owner"
+        }
+  - op: add_entity
+    name: Project
+    entity:
+      fields:
+        id: { type: uuid, primary: true }
+        team_id:
+          { type: uuid, required: true, relation: { entity: Team, name: team, reverse: projects, on_delete: cascade } }
+        name: { type: string, max_length: 120, required: true, validate: { min_length: 1 } }
+        status: { type: enum, enum_values: [active, archived], required: true, default: active }
+        created_at: { type: datetime, required: true, default: now }
+      rules:
+        { read: "member:team_id", create: "member:team_id", update: "member:team_id", delete: "member:team_id:admin" }
+  - op: set_auth
+    auth:
+      identity: User
+      providers: [credentials]
+      tenancy: { entity: Team, membership: TeamMember, role_field: role, creator_role: owner }
+  - op: add_resource
+    name: users
+    resource: { entity: User, operations: [list, get], list: { search: [name, email] } }
+  - op: add_resource
+    name: teams
+    resource: { entity: Team, operations: [list, get, create, update, delete], get: { include: [members] } }
+  - op: add_resource
+    name: members
+    resource:
+      entity: TeamMember
+      operations: [list, get, create, update, delete]
+      list: { filters: [team_id, user_id], include: [user] }
+  - op: add_resource
+    name: projects
+    resource:
+      entity: Project
+      operations: [list, get, create, update, delete]
+      list: { filters: [team_id, status], order: [[created_at, desc]], sortable: [name, created_at], search: [name] }
+  - op: set_actors
+    actors:
+      alice: { email: alice@example.com, password: alice-pass-1, name: Alice }
+      bob: { email: bob@example.com, password: bob-pass-1, name: Bob }
+      carol: { email: carol@example.com, password: carol-pass-1, name: Carol }
+  - op: add_scenario
+    scenario:
+      name: a team and its members
+      steps:
+        - op: teams.create
+          body: { name: Anonymous }
+          expect: { status: 401 }
+        - as: alice
+          op: teams.create
+          body: { name: Acme }
+          expect: { status: 201, body: { data: { name: Acme } } }
+          capture: { team: data.id }
+        - as: alice
+          op: members.list
+          query: { team_id: "{team}" }
+          expect: { status: 200, body: { data: [{ user_id: "{actor.id}", role: owner }], page: { total: 1 } } }
+        - as: bob
+          op: teams.get
+          path: { id: "{team}" }
+          expect: { status: 403 }
+        - as: bob
+          op: teams.list
+          expect: { status: 200, body: { page: { total: 0 } } }
+        - as: alice
+          op: auth.me
+          expect: { status: 200 }
+          capture: { alice: data.id }
+        - as: bob
+          op: auth.me
+          expect: { status: 200 }
+          capture: { bob: data.id }
+        - as: bob
+          op: members.create
+          body: { team_id: "{team}", user_id: "{bob}", role: admin }
+          expect: { status: 403 }
+        - as: alice
+          op: members.create
+          body: { team_id: "{team}", user_id: "{bob}", role: member }
+          expect: { status: 201, body: { data: { role: member } } }
+          capture: { bob_membership: data.id }
+        - as: alice
+          op: members.create
+          body: { team_id: "{team}", user_id: "{bob}", role: member }
+          expect: { status: 409 }
+        - as: bob
+          op: teams.get
+          path: { id: "{team}" }
+          expect: { status: 200, body: { data: { name: Acme, members: [{ role: owner }, { role: member }] } } }
+        - as: bob
+          op: teams.list
+          expect: { status: 200, body: { data: [{ name: Acme }], page: { total: 1 } } }
+        - as: bob
+          op: teams.update
+          path: { id: "{team}" }
+          body: { name: Bob's }
+          expect: { status: 403 }
+        - as: bob
+          op: members.update
+          path: { id: "{bob_membership}" }
+          body: { role: owner }
+          expect: { status: 403 }
+        - as: alice
+          op: members.update
+          path: { id: "{bob_membership}" }
+          body: { role: admin }
+          expect: { status: 200, body: { data: { role: admin } } }
+        - as: bob
+          op: teams.update
+          path: { id: "{team}" }
+          body: { name: Acme Inc }
+          expect: { status: 200, body: { data: { name: Acme Inc } } }
+        - as: bob
+          op: teams.delete
+          path: { id: "{team}" }
+          expect: { status: 403 }
+        - as: carol
+          op: members.list
+          query: { team_id: "{team}" }
+          expect: { status: 200, body: { page: { total: 0 } } }
+  - op: add_scenario
+    scenario:
+      name: projects belong to teams
+      steps:
+        - as: alice
+          op: teams.create
+          body: { name: Globex }
+          expect: { status: 201 }
+          capture: { team: data.id }
+        - as: carol
+          op: teams.create
+          body: { name: Initech }
+          expect: { status: 201 }
+          capture: { other: data.id }
+        - as: carol
+          op: projects.create
+          body: { name: Intruder, team_id: "{team}" }
+          expect: { status: 403 }
+        - as: alice
+          op: projects.create
+          body: { name: Launch, team_id: "{team}" }
+          expect: { status: 201, body: { data: { name: Launch, status: active } } }
+          capture: { project: data.id }
+        - as: carol
+          op: projects.create
+          body: { name: Theirs, team_id: "{other}" }
+          expect: { status: 201 }
+        - as: alice
+          op: projects.list
+          expect: { status: 200, body: { data: [{ name: Launch }], page: { total: 1 } } }
+        - as: carol
+          op: projects.list
+          expect: { status: 200, body: { data: [{ name: Theirs }], page: { total: 1 } } }
+        - as: carol
+          op: projects.get
+          path: { id: "{project}" }
+          expect: { status: 403 }
+        - op: projects.list
+          expect: { status: 401 }
+        - as: bob
+          op: auth.me
+          expect: { status: 200 }
+          capture: { bob: data.id }
+        - as: alice
+          op: members.create
+          body: { team_id: "{team}", user_id: "{bob}" }
+          expect: { status: 201, body: { data: { role: member } } }
+          capture: { bob_membership: data.id }
+        - as: bob
+          op: projects.update
+          path: { id: "{project}" }
+          body: { status: archived }
+          expect: { status: 200, body: { data: { status: archived } } }
+        - as: bob
+          op: projects.delete
+          path: { id: "{project}" }
+          expect: { status: 403 }
+        - as: alice
+          op: members.update
+          path: { id: "{bob_membership}" }
+          body: { role: admin }
+          expect: { status: 200 }
+        - as: bob
+          op: projects.delete
+          path: { id: "{project}" }
+          expect: { status: 204 }
+        - as: alice
+          op: projects.list
+          query: { team_id: "{team}" }
+          expect: { status: 200, body: { page: { total: 0 } } }
+        - as: alice
+          op: teams.delete
+          path: { id: "{team}" }
+          expect: { status: 204 }

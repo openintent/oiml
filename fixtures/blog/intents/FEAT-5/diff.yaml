@@ -1,0 +1,212 @@
+osl: "1.0"
+summary: Publish and admin-only digest and unpublish actions, an admin actor, cover files, sortable searchable lists, magic link and GitHub sign-in, overview and archive pages, a queued event, seed data
+ops:
+  - op: add_field
+    entity: Article
+    name: cover
+    field: { type: file, file: { accept: [image/*], max_size: 2097152 }, description: Cover image }
+  - op: update_resource
+    name: posts
+    resource:
+      entity: Article
+      operations: [list, get, create, update, delete]
+      list:
+        filters: [published, author_id]
+        order: [[posted_at, desc]]
+        include: [author]
+        sortable: [title, posted_at]
+        search: [title, content]
+      get: { include: [author] }
+      actions:
+        publish:
+          description: Mark the article published
+          rule: "owner:author_id"
+        unpublish_all:
+          description: Unpublish every article
+          scope: collection
+          rule: "role:admin"
+          returns: { count: { type: integer, required: true } }
+  - op: add_action
+    name: send_digest
+    action:
+      description: Email a digest of recent articles
+      rule: "role:admin"
+      input: { subject: { type: string, required: true, max_length: 100, validate: { min_length: 1 } } }
+      returns: { sent: { type: integer, required: true } }
+  - op: add_event
+    event: { on: posts.publish, handler: post_published, delivery: queue }
+  - op: set_auth
+    auth: { identity: User, providers: [credentials, magic_link, { oauth: github }] }
+  - op: set_actors
+    actors:
+      alice: { email: alice@example.com, password: alice-pass-1, name: Alice }
+      bob: { email: bob@example.com, password: bob-pass-1, name: Bob }
+      admin: { email: admin@example.com, password: admin-pass-1, name: Admin, role: admin }
+  - op: update_page
+    name: posts
+    page:
+      resource: posts
+      columns: [title, published, posted_at]
+      fields: [title, content, published, cover, tags, posted_at, author_id]
+  - op: add_page
+    name: archive
+    page: { resource: posts, layout: table, title: Archive, columns: [title, published, posted_at, author_id] }
+  - op: add_page
+    name: overview
+    page:
+      kind: dashboard
+      title: Overview
+      tiles:
+        - { resource: posts, label: Articles, icon: file-text }
+        - { resource: posts, label: Published, filter: { published: true }, icon: check }
+        - { resource: users, label: Users, icon: users }
+      recent: [{ resource: posts, limit: 5 }]
+  - op: set_sidebar
+    sidebar:
+      items:
+        - { page: overview, icon: layout-dashboard }
+        - { page: posts, icon: file-text }
+        - { page: archive, icon: archive }
+        - { page: users, icon: users }
+        - { page: about, icon: info }
+      footer: { user: true, settings: true }
+  - op: add_scenario
+    scenario:
+      name: publishing
+      steps:
+        - as: alice
+          op: posts.create
+          body: { title: Draft, content: Not yet }
+          expect: { status: 201, body: { data: { published: false } } }
+          capture: { draft: data.id }
+        - op: posts.publish
+          path: { id: "{draft}" }
+          expect: { status: 401 }
+        - as: bob
+          op: posts.publish
+          path: { id: "{draft}" }
+          expect: { status: 403 }
+        - as: alice
+          op: posts.publish
+          path: { id: "{draft}" }
+          expect: { status: 200, body: { data: { title: Draft, published: true } } }
+        - as: alice
+          op: posts.publish
+          path: { id: not-a-uuid }
+          expect: { status: 404 }
+        - as: alice
+          op: posts.unpublish_all
+          expect: { status: 403 }
+        - as: admin
+          op: posts.unpublish_all
+          expect: { status: 200, body: { data: { count: 1 } } }
+        - op: posts.get
+          path: { id: "{draft}" }
+          expect: { status: 200, body: { data: { published: false } } }
+        - op: actions.send_digest
+          body: { subject: Weekly }
+          expect: { status: 401 }
+        - as: alice
+          op: actions.send_digest
+          body: { subject: Weekly }
+          expect: { status: 403 }
+        - as: admin
+          op: actions.send_digest
+          body: { subject: "" }
+          expect: { status: 400 }
+        - as: admin
+          op: actions.send_digest
+          body: { subject: Weekly }
+          expect: { status: 200, body: { data: { sent: 0 } } }
+  - op: add_scenario
+    scenario:
+      name: cover images
+      steps:
+        - op: files.upload
+          body: { name: cover.png, type: image/png, content: not-really-a-png }
+          expect: { status: 401 }
+        - as: alice
+          op: files.upload
+          body: { name: cover.png, type: image/png, content: not-really-a-png }
+          expect: { status: 200, body: { data: { name: cover.png, type: image/png, size: 16, status: ready } } }
+          capture: { cover: data.id }
+        - as: alice
+          op: files.upload
+          body: { name: notes.txt, type: text/plain, content: hello }
+          expect: { status: 200 }
+          capture: { notes: data.id }
+        - as: alice
+          op: posts.create
+          body: { title: With cover, content: Picture, cover: "{cover}" }
+          expect: { status: 201, body: { data: { cover: { id: "{cover}", name: cover.png, type: image/png } } } }
+          capture: { covered: data.id }
+        - as: alice
+          op: posts.create
+          body: { title: Wrong kind, content: Text, cover: "{notes}" }
+          expect: { status: 400 }
+        - as: alice
+          op: posts.create
+          body: { title: Missing, content: Text, cover: 00000000-0000-4000-8000-000000000000 }
+          expect: { status: 400 }
+        - op: posts.get
+          path: { id: "{covered}" }
+          expect: { status: 200, body: { data: { cover: { name: cover.png } } } }
+        - op: files.get
+          path: { id: "{cover}" }
+          expect: { status: 200, body: { data: { id: "{cover}", status: ready } } }
+        - op: files.get
+          path: { id: not-a-uuid }
+          expect: { status: 404 }
+  - op: add_scenario
+    scenario:
+      name: search and sort
+      steps:
+        - as: bob
+          op: posts.create
+          body: { title: Alpha article, content: Searchable words here }
+          expect: { status: 201 }
+        - as: bob
+          op: posts.create
+          body: { title: Beta article, content: Other text }
+          expect: { status: 201 }
+        - op: posts.list
+          query: { q: searchable }
+          expect: { status: 200, body: { data: [{ title: Alpha article }], page: { total: 1 } } }
+        - op: posts.list
+          query: { q: article, sort: "title:asc" }
+          expect:
+            { status: 200, body: { data: [{ title: Alpha article }, { title: Beta article }], page: { total: 2 } } }
+        - op: posts.list
+          query: { sort: "content:asc" }
+          expect: { status: 400 }
+        - op: posts.list
+          query: { sort: "title:sideways" }
+          expect: { status: 400 }
+  - op: add_scenario
+    scenario:
+      name: magic link
+      steps:
+        - op: auth.magic_link
+          body: { email: alice@example.com }
+          expect: { status: 200, body: { data: { sent: true } } }
+          capture: { token: data.debug.token }
+        - op: auth.magic_link_verify
+          body: { token: "{token}" }
+          expect: { status: 200, body: { data: { email: alice@example.com, name: Alice } } }
+        - op: auth.magic_link_verify
+          body: { token: "{token}" }
+          expect: { status: 400 }
+        - op: auth.magic_link
+          body: { email: nobody@example.com }
+          expect: { status: 200, body: { data: { sent: true } } }
+        - op: auth.magic_link
+          body: { email: not-an-email }
+          expect: { status: 400 }
+  - op: set_seed
+    seed:
+      - as: alice
+        op: posts.create
+        body: { title: Welcome, content: The first article, published: true }
+      - as: bob
+        op: posts.create
+        body: { title: Second thoughts, content: Another article }

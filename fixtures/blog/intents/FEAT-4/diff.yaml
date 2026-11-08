@@ -1,0 +1,24 @@
+osl: "1.0"
+summary: App shell with a sidebar, posts and users pages, an about page
+ops:
+  - op: set_app
+    app:
+      title: Blog
+      pages:
+        posts:
+          resource: posts
+          columns: [title, published, posted_at]
+          fields: [title, content, published, tags, posted_at, author_id]
+        users:
+          resource: users
+          columns: [name, email, role]
+        about:
+          kind: custom
+          title: About
+          description: What this blog is about.
+      sidebar:
+        items:
+          - { page: posts, icon: file-text }
+          - { page: users, icon: users }
+          - { page: about, icon: info }
+        footer: { user: true, settings: true }

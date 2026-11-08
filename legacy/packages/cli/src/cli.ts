@@ -1,0 +1,53 @@
+#!/usr/bin/env node
+
+import { Command } from "commander";
+import { readFileSync } from "fs";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
+import { initCommand } from "./commands/init.js";
+import { createCommand } from "./commands/create.js";
+import { startServer } from "@osl/mcp/server.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const packageJson = JSON.parse(readFileSync(join(__dirname, "../package.json"), "utf-8"));
+
+const program = new Command();
+
+program.name("osl").description("OSL CLI for managing OSL projects").version(packageJson.version);
+
+program
+  .command("init")
+  .description("Initialize a new OSL project in the current directory")
+  .option("-y, --yes", "Skip prompts and use defaults")
+  .action(async options => {
+    await initCommand(options);
+  });
+
+program
+  .command("create")
+  .description("Create a new intent file in .osl/intents/")
+  .argument("[name]", "Name of the intent (e.g. 'INT-1')")
+  .action(async name => {
+    await createCommand(name);
+  });
+
+program
+  .command("mcp")
+  .description("Start the local MCP server")
+  .option("-p, --port <port>", "Port to run the server on", "3111")
+  .action(async options => {
+    const port = parseInt(options.port, 10);
+    if (isNaN(port) || port < 1 || port > 65535) {
+      console.error(`Error: Invalid port number: ${options.port}`);
+      process.exit(1);
+    }
+    try {
+      await startServer(port);
+    } catch (error) {
+      console.error("Failed to start MCP server:", error);
+      process.exit(1);
+    }
+  });
+
+program.parse();

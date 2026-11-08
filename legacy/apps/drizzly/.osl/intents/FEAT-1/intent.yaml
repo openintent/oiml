@@ -1,0 +1,100 @@
+version: 0.1.0
+type: osl.intent
+ai_context:
+  purpose: Conform to project frameworks, style, and conventions.
+  instructions: >-
+    - CRITICAL: Call the MCP tool `get_agents_guide` FIRST before proceeding to
+    retrieve the OSL Agents implementation guide and apply the instructions to
+    the intent.
+  references:
+    - kind: mcp_tool
+      tool: get_agents_guide
+      description: OSL Agents implementation guide containing workflow instructions,
+        framework-specific patterns, and best practices
+provenance:
+  created_by:
+    type: human
+    name: OSL maintainers
+  created_at: 2026-11-05T14:16:17Z
+intents:
+  - kind: add_entity
+    scope: data
+    entity: User
+    fields:
+      - name: id
+        type: uuid
+        required: true
+      - name: email
+        type: string
+        max_length: 255
+        required: true
+        unique: true
+      - name: name
+        type: string
+        max_length: 100
+        required: true
+      - name: created_at
+        type: datetime
+        required: true
+        default: now
+
+  - kind: add_entity
+    scope: data
+    entity: Post
+    fields:
+      - name: id
+        type: uuid
+        required: true
+      - name: title
+        type: string
+        max_length: 200
+        required: true
+      - name: body
+        type: text
+        required: true
+      - name: created_at
+        type: datetime
+        required: true
+        default: now
+
+  - kind: add_relation
+    scope: data
+    relation:
+      source_entity: Post
+      target_entity: User
+      kind: many_to_one
+      field_name: author
+      foreign_key:
+        local_field: author_id
+        target_field: id
+      reverse:
+        kind: one_to_many
+        field_name: posts
+
+  - kind: add_endpoint
+    scope: api
+    method: GET
+    path: /api/posts
+    entity: Post
+    description: List posts, newest first, with their author
+
+  - kind: add_endpoint
+    scope: api
+    method: POST
+    path: /api/posts
+    entity: Post
+    description: Create a post for an existing author
+
+  - kind: add_endpoint
+    scope: api
+    method: POST
+    path: /api/users
+    entity: User
+    description: Create a user
+
+  - kind: add_endpoint
+    scope: api
+    method: GET
+    path: /api/users/{id}
+    entity: User
+    description: Get a user with their posts

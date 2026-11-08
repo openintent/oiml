@@ -1,0 +1,19 @@
+id: ws1-documents
+tags: [tenancy, files, entity, rules]
+base: { fixture: workspace, through: WS-1 }
+intent:
+  title: Team documents
+  ask: >-
+    Teams keep documents: a title and an uploaded file (PDFs and images, up to 10 MB). Members of the
+    team see and upload them; admins delete them. Only signed-in users can read files at all.
+  acceptance:
+    - A non-member cannot see a team's documents
+expect:
+  entities: [Document]
+  fields: { Document: [title, "file|document|attachment|upload"] }
+  types: { "Document.file|document|attachment|upload": file }
+  relations: ["Document.* -> Team"]
+  rules: { Document: { read: "member:team_id", delete: "member:team_id:admin" } }
+  files: { read: authenticated }
+  resources: [documents]
+  scenarios: { min: 1, rejections: 1, statuses: [403] }

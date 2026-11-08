@@ -1,0 +1,22 @@
+id: empty-link-shortener
+tags: [entity, validation, actions, no-auth]
+base: { empty: links }
+intent:
+  title: Link shortener
+  ask: >-
+    A link shortener with no accounts. A link has a slug (3 to 32 lowercase letters, digits or dashes,
+    unique) and a target URL that must be a valid URL. Anyone can create a link and look one up by id.
+    Visiting a link is a public operation that records a hit and counts them; the API exposes the count.
+  acceptance:
+    - A slug with spaces or capitals is rejected
+    - A target that is not a URL is rejected
+    - Hitting a link twice shows a count of two
+expect:
+  entities: [Link]
+  fields: { Link: [slug, "url|target|target_url", "hits|hit_count|clicks|visits|click_count"] }
+  field_props: { Link.slug: { unique: true } }
+  types: { "Link.hits|hit_count|clicks|visits|click_count": "integer|bigint" }
+  resources: [links]
+  actions_on: { links: { scope: row, rule: public } }
+  auth: { none: true }
+  scenarios: { min: 1, rejections: 1, statuses: [400] }

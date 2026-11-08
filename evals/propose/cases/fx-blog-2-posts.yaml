@@ -1,0 +1,35 @@
+id: fx-blog-2-posts
+tags: [fixture, entity, relation, rules, events, scenario]
+base: { fixture: blog, through: FEAT-1 }
+oracle: fixtures/blog/intents/FEAT-2/diff.yaml
+intent:
+  title: Posts
+  ask: >-
+    Signed-in users write posts with a title and content. Posts start unpublished. Anyone can read
+    posts and see who wrote them; only the author can edit or delete a post. A user cannot have two
+    posts with the same title. When a post is created, run a handler so we can notify followers later.
+  acceptance:
+    - Another user editing or deleting my post gets 403
+    - Listing with published=true only returns published posts
+expect:
+  entities: [Post]
+  fields: { Post: [title, content, published, "author_id|user_id|owner_id"] }
+  types: { Post.published: boolean }
+  field_props: { Post.published: { default: false } }
+  relations: ["Post.* -> User"]
+  unique_together: { Post: ["author_id|user_id|owner_id", title] }
+  rules:
+    {
+      Post:
+        {
+          read: public,
+          update: "owner:author_id|owner:user_id|owner:owner_id",
+          delete: "owner:author_id|owner:user_id|owner:owner_id"
+        }
+    }
+  resources: [posts]
+  operations: { posts: [list, get, create, update, delete] }
+  list: { posts: { filters: [published] } }
+  events: [Post.created]
+  scenarios: { min: 1, rejections: 1, statuses: [403] }
+  touches: [posts]

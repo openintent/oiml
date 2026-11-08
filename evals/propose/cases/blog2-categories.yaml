@@ -1,0 +1,17 @@
+id: blog2-categories
+tags: [junction, entity, rules]
+base: { fixture: blog, through: FEAT-2 }
+intent:
+  title: Categories
+  ask: >-
+    Posts can be filed under any number of categories, and a category holds many posts. A category has a
+    unique name and a unique slug. Only admins manage categories; authors file their own posts.
+  acceptance:
+    - A member creating a category gets 403
+expect:
+  entities: [Category]
+  junction: [[Post, Category]]
+  field_props: { Category.name: { unique: true }, Category.slug: { unique: true } }
+  rules: { Category: { read: public, create: "role:admin", update: "role:admin", delete: "role:admin" } }
+  resources: [categories]
+  scenarios: { min: 1, rejections: 1, statuses: [403] }

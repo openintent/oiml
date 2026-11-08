@@ -1,0 +1,10 @@
+id: blog2-page-size-trap
+tags: [trap, list]
+base: { fixture: blog, through: FEAT-2 }
+intent:
+  title: Bigger pages
+  ask: Let readers fetch up to 500 posts per page.
+expect:
+  outcome: any
+  flags_limit: true
+notes: page_size is capped at 200 and no key raises it, so a correct answer declines or says so in not_delivered; the reference now states the cap.

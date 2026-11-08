@@ -1,0 +1,19 @@
+id: blog1-profile-avatar
+tags: [files, fields, rules]
+base: { fixture: blog, through: FEAT-1 }
+intent:
+  title: Profile bio and avatar
+  ask: >-
+    Users get an optional bio of up to 500 characters and an avatar image. Avatars are images only, at
+    most 2 MB. Users edit their own profile as before, and anyone can see avatars.
+  acceptance:
+    - Uploading a PDF as an avatar is rejected
+    - A profile comes back with the avatar's URL
+expect:
+  fields: { User: [bio, "avatar|avatar_image|photo|picture"] }
+  types: { "User.avatar|avatar_image|photo|picture": file, User.bio: "string|text" }
+  field_props: { User.bio: { max_length: 500 } }
+  file_accept: { "User.avatar|avatar_image|photo|picture": "image/" }
+  rules: { User: { update: "owner:id" } }
+  files: { read: public }
+  scenarios: { min: 1 }

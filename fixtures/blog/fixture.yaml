@@ -1,0 +1,3 @@
+name: blog
+description: Users with credentials auth, posts owned by their author, a rename and an added column.
+backends: [drizzle-next, gin-pgx, hono-trpc-vite]

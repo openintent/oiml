@@ -1,0 +1,53 @@
+version: 0.1.0
+applied_at: 2026-11-05T14:18:30Z
+status: success
+intents_processed: 7
+model: claude-opus-5-5
+template_used:
+  framework: drizzle
+  category: database
+  pack: osl://compat/osl-drizzle/1.0.0
+  version: 1.0.0
+  digest: sha256-f73a0885429de96cf7746a939539c72678b618963f4321147b93688384c2e5bf
+  compat:
+    osl: ">=0.1.0 <0.2.0"
+    drizzle-orm: ">=0.45.0 <1.0.0"
+    drizzle-kit: ">=0.31.0 <1.0.0"
+changes:
+  - file: drizzle.config.ts
+    action: created
+    description: drizzle-kit config for postgresql with schema lib/schema.ts and migrations in drizzle/
+  - file: lib/db.ts
+    action: created
+    description: node-postgres pool and Drizzle client with schema for relational queries
+  - file: lib/schema.ts
+    action: created
+    description: users and posts tables, posts.author_id FK with onDelete restrict, index, and relations
+  - file: lib/db-errors.ts
+    action: created
+    description: getDbErrorCode helper that unwraps DrizzleQueryError
+  - file: drizzle/0000_add_user_entity.sql
+    action: created
+    description: Migration creating the users table
+  - file: drizzle/0001_add_post_entity.sql
+    action: created
+    description: Migration creating the posts table
+  - file: drizzle/0002_add_post_user_relation.sql
+    action: created
+    description: Migration adding posts.author_id, its foreign key and index
+  - file: app/api/posts/route.ts
+    action: created
+    description: "GET lists posts with author; POST creates a post, 400 on unknown or malformed author_id"
+  - file: app/api/users/route.ts
+    action: created
+    description: POST creates a user, 409 on duplicate email
+  - file: "app/api/users/[id]/route.ts"
+    action: created
+    description: GET returns a user with posts, 404 when missing or malformed
+  - file: packages/types/index.ts
+    action: created
+    description: Types derived with $inferSelect and $inferInsert plus response types
+  - file: package.json
+    action: modified
+    description: Added drizzle-orm, pg, drizzle-kit, dotenv, @types/pg and db scripts
+errors: []

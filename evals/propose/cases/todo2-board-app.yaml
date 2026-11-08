@@ -1,0 +1,12 @@
+id: todo2-board-app
+tags: [app, no-auth]
+base: { fixture: todo, through: TODO-2 }
+full: false
+intent:
+  title: Board and sidebar
+  ask: Add a sidebar with a Tasks board grouped by status and a Projects page. There is no sign-in.
+expect:
+  pages:
+    tasks: { kind: resource, resource: tasks, layout: board, group_by: status }
+    projects: { kind: resource, resource: projects }
+  sidebar: [tasks, projects]

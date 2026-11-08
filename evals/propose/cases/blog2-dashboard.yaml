@@ -1,0 +1,14 @@
+id: blog2-dashboard
+tags: [app]
+base: { fixture: blog, through: FEAT-2 }
+full: false
+intent:
+  title: Home dashboard and posts table
+  ask: >-
+    Give the app a sidebar. Home is a dashboard with the number of posts, the number of published posts
+    and the five latest posts. Posts is a sortable table.
+expect:
+  pages:
+    "home|dashboard|overview": { kind: dashboard, tiles_min: 2 }
+    posts: { kind: resource, resource: posts, layout: table }
+  sidebar: ["home|dashboard|overview", posts]

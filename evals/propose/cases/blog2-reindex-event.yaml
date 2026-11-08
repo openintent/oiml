@@ -1,0 +1,9 @@
+id: blog2-reindex-event
+tags: [events]
+base: { fixture: blog, through: FEAT-2 }
+intent:
+  title: Reindex on update
+  ask: Whenever a post is updated, rebuild its search index in a background job, outside the request.
+expect:
+  events: ["Post.updated:queue"]
+  ops: { max: 2 }

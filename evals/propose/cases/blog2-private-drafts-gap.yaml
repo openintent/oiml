@@ -1,0 +1,12 @@
+id: blog2-private-drafts-gap
+tags: [gap, rules]
+base: { fixture: blog, through: FEAT-2 }
+intent:
+  title: Private drafts
+  ask: Unpublished posts are visible only to their author; published posts stay public.
+expect:
+  outcome: any
+  flags_limit: true
+notes: >-
+  Row visibility that depends on a field value cannot be expressed; the case records whether the agent
+  breaks public reading (owner read) or leaves a note. Judge by hand from the diff.

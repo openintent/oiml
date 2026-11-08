@@ -1,0 +1,89 @@
+osl: "1.0"
+summary: Project and Task with integer keys, enum status, decimal estimate, set-null project link
+ops:
+  - op: add_entity
+    name: Project
+    entity:
+      fields:
+        id: { type: integer, primary: true }
+        name: { type: string, max_length: 120, required: true, unique: true }
+        color: { type: string, max_length: 7, validate: { pattern: "^#[0-9a-f]{6}$" } }
+        created_at: { type: datetime, required: true, default: now }
+  - op: add_entity
+    name: Task
+    entity:
+      fields:
+        id: { type: integer, primary: true }
+        title: { type: string, max_length: 200, required: true }
+        status: { type: enum, enum_values: [todo, doing, done], required: true, default: todo }
+        estimate_hours: { type: decimal }
+        due_on: { type: date }
+        assignee: { type: string, max_length: 80 }
+        project_id: { type: integer, relation: { entity: Project, name: project, reverse: tasks, on_delete: set_null } }
+        created_at: { type: datetime, required: true, default: now }
+      indexes:
+        - { fields: [status] }
+  - op: add_resource
+    name: projects
+    resource:
+      entity: Project
+      operations: [list, get, create, update, delete]
+      get: { include: [tasks] }
+  - op: add_resource
+    name: tasks
+    resource:
+      entity: Task
+      operations: [list, get, create, update, delete]
+      list: { filters: [status, project_id], order: [[id, asc]], page_size: 50, include: [project] }
+      get: { include: [project] }
+  - op: add_scenario
+    scenario:
+      name: projects and tasks
+      steps:
+        - op: projects.create
+          body: { name: Home, color: "#aabbcc" }
+          expect: { status: 201, body: { data: { name: Home, color: "#aabbcc" } } }
+          capture: { project: data.id }
+        - op: projects.create
+          body: { name: Home }
+          expect: { status: 409 }
+        - op: projects.create
+          body: { name: Bad colour, color: red }
+          expect: { status: 400 }
+        - op: tasks.create
+          body: { title: Paint fence, estimate_hours: 2.5, due_on: "2026-12-01", project_id: "{project}" }
+          expect:
+            {
+              status: 201,
+              body: { data: { title: Paint fence, status: todo, estimate_hours: "2.5", due_on: "2026-12-01" } }
+            }
+          capture: { task: data.id }
+        - op: tasks.create
+          body: { title: Orphan, project_id: 999999 }
+          expect: { status: 400 }
+        - op: tasks.update
+          path: { id: "{task}" }
+          body: { status: doing, assignee: Sam }
+          expect: { status: 200, body: { data: { status: doing, assignee: Sam } } }
+        - op: tasks.update
+          path: { id: "{task}" }
+          body: { status: blocked }
+          expect: { status: 400 }
+        - op: tasks.list
+          query: { status: doing }
+          expect: { status: 200, body: { data: [{ title: Paint fence, project: { name: Home } }] } }
+        - op: projects.get
+          path: { id: "{project}" }
+          expect: { status: 200, body: { data: { name: Home, tasks: [{ title: Paint fence }] } } }
+        - op: tasks.get
+          path: { id: abc }
+          expect: { status: 404 }
+        - op: projects.delete
+          path: { id: "{project}" }
+          expect: { status: 204 }
+        - op: tasks.get
+          path: { id: "{task}" }
+          expect: { status: 200, body: { data: { title: Paint fence, project_id: null } } }
+        - op: tasks.delete
+          path: { id: "{task}" }
+          expect: { status: 204 }

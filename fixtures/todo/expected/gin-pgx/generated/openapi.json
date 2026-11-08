@@ -1,0 +1,1789 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "todo",
+    "version": "1.0.0",
+    "description": "No auth, integer keys, enums, decimals, a one-to-one profile, set-null deletes and a composite-key junction."
+  },
+  "tags": [
+    {
+      "name": "projects"
+    },
+    {
+      "name": "tasks"
+    },
+    {
+      "name": "labels"
+    },
+    {
+      "name": "notes"
+    }
+  ],
+  "paths": {
+    "/api/labels": {
+      "get": {
+        "tags": [
+          "labels"
+        ],
+        "operationId": "labels_list",
+        "description": "Open to everyone.",
+        "security": [],
+        "summary": "List labels",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "page"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "integer"
+                          },
+                          "name": {
+                            "type": "string",
+                            "maxLength": 40
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ]
+                      }
+                    },
+                    "page": {
+                      "type": "object",
+                      "required": [
+                        "page",
+                        "page_size",
+                        "total"
+                      ],
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "page_size": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "labels"
+        ],
+        "operationId": "labels_create",
+        "description": "Open to everyone.",
+        "security": [],
+        "summary": "Create one of labels",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 40
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Label"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/notes": {
+      "post": {
+        "tags": [
+          "notes"
+        ],
+        "operationId": "notes_create",
+        "description": "Open to everyone.",
+        "security": [],
+        "summary": "Create one of notes",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "task_id": {
+                    "type": "integer"
+                  },
+                  "body": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "task_id",
+                  "body"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/TaskNote"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/notes/{id}": {
+      "get": {
+        "tags": [
+          "notes"
+        ],
+        "operationId": "notes_get",
+        "description": "Open to everyone.",
+        "security": [],
+        "summary": "Get one of notes",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "integer"
+                        },
+                        "task_id": {
+                          "type": "integer"
+                        },
+                        "body": {
+                          "type": "string"
+                        },
+                        "task": {
+                          "oneOf": [
+                            {
+                              "$ref": "#/components/schemas/Task"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "task_id",
+                        "body",
+                        "task"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "notes"
+        ],
+        "operationId": "notes_delete",
+        "description": "Open to everyone.",
+        "security": [],
+        "summary": "Delete one of notes",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/projects": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "operationId": "projects_list",
+        "description": "Open to everyone.",
+        "security": [],
+        "summary": "List projects",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 20
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "name:asc",
+                "name:desc"
+              ]
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Matches name as a substring",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "page"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "integer"
+                          },
+                          "name": {
+                            "type": "string",
+                            "maxLength": 120
+                          },
+                          "color": {
+                            "oneOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 7,
+                                "pattern": "^#[0-9a-f]{6}$"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "created_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "color",
+                          "created_at"
+                        ]
+                      }
+                    },
+                    "page": {
+                      "type": "object",
+                      "required": [
+                        "page",
+                        "page_size",
+                        "total"
+                      ],
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "page_size": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "operationId": "projects_create",
+        "description": "Open to everyone.",
+        "security": [],
+        "summary": "Create one of projects",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 120
+                  },
+                  "color": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 7,
+                        "pattern": "^#[0-9a-f]{6}$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Project"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/projects/{id}": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "operationId": "projects_get",
+        "description": "Open to everyone.",
+        "security": [],
+        "summary": "Get one of projects",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "integer"
+                        },
+                        "name": {
+                          "type": "string",
+                          "maxLength": 120
+                        },
+                        "color": {
+                          "oneOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 7,
+                              "pattern": "^#[0-9a-f]{6}$"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "created_at": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "tasks": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Task"
+                          }
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "color",
+                        "created_at",
+                        "tasks"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "projects"
+        ],
+        "operationId": "projects_update",
+        "description": "Open to everyone.",
+        "security": [],
+        "summary": "Update one of projects",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 120
+                  },
+                  "color": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 7,
+                        "pattern": "^#[0-9a-f]{6}$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Project"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "projects"
+        ],
+        "operationId": "projects_delete",
+        "description": "Open to everyone.",
+        "security": [],
+        "summary": "Delete one of projects",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/tasks": {
+      "get": {
+        "tags": [
+          "tasks"
+        ],
+        "operationId": "tasks_list",
+        "description": "Open to everyone.",
+        "security": [],
+        "summary": "List tasks",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "todo",
+                "doing",
+                "done"
+              ]
+            }
+          },
+          {
+            "name": "project_id",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "page"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "integer"
+                          },
+                          "title": {
+                            "type": "string",
+                            "maxLength": 200
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "todo",
+                              "doing",
+                              "done"
+                            ]
+                          },
+                          "estimate_hours": {
+                            "oneOf": [
+                              {
+                                "type": "string",
+                                "description": "A decimal number as a string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "due_on": {
+                            "oneOf": [
+                              {
+                                "type": "string",
+                                "format": "date"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "assignee": {
+                            "oneOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 80
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "project_id": {
+                            "oneOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "created_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "project": {
+                            "oneOf": [
+                              {
+                                "$ref": "#/components/schemas/Project"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "title",
+                          "status",
+                          "estimate_hours",
+                          "due_on",
+                          "assignee",
+                          "project_id",
+                          "created_at",
+                          "project"
+                        ]
+                      }
+                    },
+                    "page": {
+                      "type": "object",
+                      "required": [
+                        "page",
+                        "page_size",
+                        "total"
+                      ],
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "page_size": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "tasks"
+        ],
+        "operationId": "tasks_create",
+        "description": "Open to everyone.",
+        "security": [],
+        "summary": "Create one of tasks",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "todo",
+                      "doing",
+                      "done"
+                    ]
+                  },
+                  "estimate_hours": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "description": "A decimal number as a string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "due_on": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "format": "date"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "assignee": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 80
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "project_id": {
+                    "oneOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "title"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Task"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/tasks/{id}": {
+      "get": {
+        "tags": [
+          "tasks"
+        ],
+        "operationId": "tasks_get",
+        "description": "Open to everyone.",
+        "security": [],
+        "summary": "Get one of tasks",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "integer"
+                        },
+                        "title": {
+                          "type": "string",
+                          "maxLength": 200
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "todo",
+                            "doing",
+                            "done"
+                          ]
+                        },
+                        "estimate_hours": {
+                          "oneOf": [
+                            {
+                              "type": "string",
+                              "description": "A decimal number as a string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "due_on": {
+                          "oneOf": [
+                            {
+                              "type": "string",
+                              "format": "date"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "assignee": {
+                          "oneOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 80
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "project_id": {
+                          "oneOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "created_at": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "project": {
+                          "oneOf": [
+                            {
+                              "$ref": "#/components/schemas/Project"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "note": {
+                          "oneOf": [
+                            {
+                              "$ref": "#/components/schemas/TaskNote"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "title",
+                        "status",
+                        "estimate_hours",
+                        "due_on",
+                        "assignee",
+                        "project_id",
+                        "created_at",
+                        "project",
+                        "note"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "tasks"
+        ],
+        "operationId": "tasks_update",
+        "description": "Open to everyone.",
+        "security": [],
+        "summary": "Update one of tasks",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "todo",
+                      "doing",
+                      "done"
+                    ]
+                  },
+                  "estimate_hours": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "description": "A decimal number as a string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "due_on": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "format": "date"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "assignee": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 80
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "project_id": {
+                    "oneOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Task"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "tasks"
+        ],
+        "operationId": "tasks_delete",
+        "description": "Open to everyone.",
+        "security": [],
+        "summary": "Delete one of tasks",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/tasks/{id}/complete": {
+      "post": {
+        "tags": [
+          "tasks"
+        ],
+        "operationId": "tasks_complete",
+        "summary": "Mark the task done",
+        "description": "Open to everyone.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Task"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/tasks/clear_done": {
+      "post": {
+        "tags": [
+          "tasks"
+        ],
+        "operationId": "tasks_clear_done",
+        "summary": "Delete every task that is done",
+        "description": "Open to everyone.",
+        "security": [],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "count": {
+                          "type": "integer"
+                        }
+                      },
+                      "additionalProperties": false,
+                      "required": [
+                        "count"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "details": {}
+            }
+          }
+        }
+      },
+      "Label": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 40
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "Project": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "color": {
+            "oneOf": [
+              {
+                "type": "string",
+                "maxLength": 7,
+                "pattern": "^#[0-9a-f]{6}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "color",
+          "created_at"
+        ]
+      },
+      "Task": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "todo",
+              "doing",
+              "done"
+            ]
+          },
+          "estimate_hours": {
+            "oneOf": [
+              {
+                "type": "string",
+                "description": "A decimal number as a string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "due_on": {
+            "oneOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "assignee": {
+            "oneOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "project_id": {
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "status",
+          "estimate_hours",
+          "due_on",
+          "assignee",
+          "project_id",
+          "created_at"
+        ]
+      },
+      "TaskLabel": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "integer"
+          },
+          "label_id": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "task_id",
+          "label_id"
+        ]
+      },
+      "TaskNote": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "task_id": {
+            "type": "integer"
+          },
+          "body": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "task_id",
+          "body"
+        ]
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Invalid input",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Sign in first",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Not allowed",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "No such row",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "Conflicts with an existing row",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    }
+  }
+}

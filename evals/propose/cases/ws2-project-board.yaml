@@ -1,0 +1,10 @@
+id: ws2-project-board
+tags: [app, tenancy]
+base: { fixture: workspace }
+full: false
+intent:
+  title: Projects board
+  ask: Show projects as a board grouped by their status instead of a list.
+expect:
+  pages: { projects: { kind: resource, resource: projects, layout: board, group_by: status } }
+  ops: { max: 2 }

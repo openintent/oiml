@@ -2,3 +2,7 @@
 build/
 dist/
 node_modules/
+legacy/
+**/drizzle/meta/
+fixtures/*/expected/
+evals/propose/runs/

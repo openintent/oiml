@@ -1,0 +1,9 @@
+id: blog2-vague
+tags: [vague]
+base: { fixture: blog, through: FEAT-2 }
+intent:
+  title: Better for readers
+  ask: Make the blog better for readers.
+expect:
+  ops: { max: 8 }
+notes: An open-ended ask should get a modest diff, not a rebuild. Read the diff for what the agent chose.

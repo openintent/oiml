@@ -1,0 +1,18 @@
+# Schema reference: https://github.com/openintent/oiml/blob/main/packages/schema/project/index.ts
+name: drizzly
+description: OSL sample app using Drizzle ORM with PostgreSQL
+version: 0.1.0
+api:
+  framework: next
+  language: typescript
+database:
+  type: postgres
+  framework: drizzle
+  schema: lib/schema.ts
+  connection: env:DATABASE_URL
+  autorun_migrations: true
+ui:
+  framework: next
+  language: typescript
+intents:
+  directory: .osl/intents

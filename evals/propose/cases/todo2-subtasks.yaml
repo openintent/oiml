@@ -1,0 +1,11 @@
+id: todo2-subtasks
+tags: [relation, self-relation, no-auth]
+base: { fixture: todo, through: TODO-2 }
+intent:
+  title: Subtasks
+  ask: A task can have subtasks. A subtask points at its parent task; deleting a parent deletes its subtasks. Filter tasks by parent.
+expect:
+  relations: ["Task.parent_id|parent_task_id -> Task:cascade"]
+  field_props: { "Task.parent_id|parent_task_id": { required: null } }
+  list: { tasks: { filters: ["parent_id|parent_task_id", status, project_id] } }
+  ops: { max: 3 }

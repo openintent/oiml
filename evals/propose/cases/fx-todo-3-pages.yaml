@@ -1,0 +1,17 @@
+id: fx-todo-3-pages
+tags: [fixture, app, no-auth]
+base: { fixture: todo, through: TODO-2 }
+oracle: fixtures/todo/intents/TODO-3/diff.yaml
+full: false
+intent:
+  title: Projects and tasks pages
+  ask: Add a sidebar with Projects and Tasks pages; there is no sign-in, so the footer only links to settings.
+  acceptance:
+    - The sidebar lists Projects and Tasks
+    - Tasks shows the list with its status and the selected task's details
+expect:
+  pages:
+    projects: { kind: resource, resource: projects }
+    tasks: { kind: resource, resource: tasks }
+  sidebar: [projects, tasks]
+  scenarios: { min: 0 }

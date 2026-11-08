@@ -1,0 +1,26 @@
+osl: "1.0"
+summary: Rename Post to Article and created_at to posted_at, add tags
+ops:
+  - op: rename_entity
+    from: Post
+    to: Article
+  - op: rename_field
+    entity: Article
+    from: created_at
+    to: posted_at
+  - op: add_field
+    entity: Article
+    name: tags
+    field: { type: array, array_type: string }
+  - op: add_scenario
+    scenario:
+      name: tagged articles
+      steps:
+        - as: bob
+          op: posts.create
+          body: { title: Tagged, content: With tags, tags: [go, ts] }
+          expect: { status: 201, body: { data: { tags: [go, ts] } } }
+          capture: { article: data.id }
+        - op: posts.get
+          path: { id: "{article}" }
+          expect: { status: 200, body: { data: { title: Tagged, tags: [go, ts], author: { name: Bob } } } }

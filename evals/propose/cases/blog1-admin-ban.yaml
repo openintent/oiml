@@ -1,0 +1,18 @@
+id: blog1-admin-ban
+tags: [actions, rules, fields]
+base: { fixture: blog, through: FEAT-1 }
+intent:
+  title: Banning users
+  ask: >-
+    Admins can ban a user, giving a reason. A banned user's profile shows that they are banned and when.
+    Nobody but an admin can ban.
+  acceptance:
+    - A member trying to ban someone gets 403
+    - An admin's ban succeeds and the profile then shows banned true
+expect:
+  fields: { User: ["banned|is_banned|banned_at"] }
+  actions_on: { users: { scope: row, rule: "role:admin", input: ["reason|ban_reason"] } }
+  actor_fields: { role: admin }
+  scenarios: { min: 1, rejections: 1, statuses: [403, 200] }
+  touches: [users]
+notes: Needs an actor with role admin (set_actors, repeating alice and bob) so the scenario shows the ban succeeding, not only refused.

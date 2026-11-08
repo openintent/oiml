@@ -1,0 +1,18 @@
+id: blog5-comments-page
+tags: [entity, relation, app, rules]
+base: { fixture: blog }
+intent:
+  title: Comments with a page
+  ask: >-
+    Signed-in readers comment on articles; a comment has a body and its author, and only the author can
+    delete it. Add a Comments page to the sidebar as a table with the newest first.
+  acceptance:
+    - An anonymous comment is rejected
+expect:
+  entities: [Comment]
+  relations: ["Comment.* -> Article", "Comment.* -> User"]
+  rules: { Comment: { delete: "owner:author_id|owner:user_id" } }
+  resources: [comments]
+  pages: { comments: { kind: resource, resource: comments, layout: table } }
+  sidebar: [comments]
+  scenarios: { min: 1, rejections: 1, statuses: [401] }

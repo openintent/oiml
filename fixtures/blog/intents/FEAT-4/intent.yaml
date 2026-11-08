@@ -1,0 +1,9 @@
+osl: "1.0"
+title: Sidebar app with posts and users pages
+ask: >-
+  Give the app a sidebar like a desktop app: Posts and Users pages with icons, an About page, and a
+  fixed footer that shows who is signed in and links to settings. Posts opens as a master/detail view.
+acceptance:
+  - The sidebar lists Posts, Users and About with icons
+  - Posts shows the list on the left and the selected article on the right, with create, edit and delete
+  - The footer shows the signed-in user with a sign-out menu and a settings link

@@ -1,0 +1,21 @@
+id: blog2-review-workflow
+tags: [fields, enum, actions, rules]
+base: { fixture: blog, through: FEAT-2 }
+intent:
+  title: Editorial review
+  ask: >-
+    Replace the published flag with a status: draft, in review, or published. Authors submit a draft for
+    review; a new reviewer role approves it, which publishes it. Lists filter by status instead of
+    published.
+  acceptance:
+    - A member who is not a reviewer approving a post gets 403
+    - Submitting moves a draft to in review
+expect:
+  fields: { Post: [status] }
+  absent_fields: { Post: [published] }
+  types: { Post.status: enum }
+  list: { posts: { filters: [status] } }
+  actions_on: { posts: { scope: row, rule: "role:reviewer" } }
+  actions: ["posts.submit|posts.submit_for_review|posts.request_review"]
+  scenarios: { min: 1, rejections: 1, statuses: [403] }
+notes: Needs update_field on User.role to add the reviewer value, an enum status, two row actions and filters.
