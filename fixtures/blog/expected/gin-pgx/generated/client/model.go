@@ -24,6 +24,7 @@ var Actors = map[string]Actor{
 	"admin": {Email: "admin@example.com", Password: "admin-pass-1", Fields: MustJSON("{\"name\":\"Admin\"}").(map[string]any), Provisioned: MustJSON("{\"role\":\"admin\"}").(map[string]any)},
 	"alice": {Email: "alice@example.com", Password: "alice-pass-1", Fields: MustJSON("{\"name\":\"Alice\"}").(map[string]any), Provisioned: nil},
 	"bob":   {Email: "bob@example.com", Password: "bob-pass-1", Fields: MustJSON("{\"name\":\"Bob\"}").(map[string]any), Provisioned: nil},
+	"dave":  {Email: "dave@example.com", Password: "dave-pass-1", Fields: MustJSON("{\"name\":\"Dave\"}").(map[string]any), Provisioned: nil},
 }
 
 // provision writes the actor's identity columns that register refuses (its role) straight into the database

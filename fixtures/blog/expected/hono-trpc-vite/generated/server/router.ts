@@ -6,6 +6,7 @@ import { filesRouter } from "./files-router";
 import { actionsRouter } from "./actions-router";
 import { usersRouter } from "./resources/users";
 import { postsRouter } from "./resources/posts";
+import { commentsRouter } from "./resources/comments";
 import { router } from "./trpc";
 
 export const appRouter = router({
@@ -13,7 +14,8 @@ export const appRouter = router({
   files: filesRouter,
   actions: actionsRouter,
   users: usersRouter,
-  posts: postsRouter
+  posts: postsRouter,
+  comments: commentsRouter
 });
 
 export type AppRouter = typeof appRouter;

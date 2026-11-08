@@ -1,0 +1,124 @@
+osl: "1.0"
+summary: Comments on articles, deletable by their author, the article's author or an admin; admins moderate articles
+ops:
+  - op: set_rules
+    entity: Article
+    rules:
+      read: public
+      create: "owner:author_id"
+      update: "owner:author_id or role:admin"
+      delete: "owner:author_id or role:admin"
+  - op: add_entity
+    name: Comment
+    entity:
+      fields:
+        id: { type: uuid, primary: true }
+        body: { type: text, required: true, validate: { min_length: 1 } }
+        article_id:
+          type: uuid
+          required: true
+          relation: { entity: Article, name: article, reverse: comments, on_delete: cascade }
+        author_id:
+          type: uuid
+          required: true
+          relation: { entity: User, name: author, on_delete: cascade }
+        created_at: { type: datetime, required: true, default: now }
+      rules:
+        read: public
+        create: "owner:author_id"
+        update: "owner:author_id"
+        delete: "owner:author_id or owner:article_id.author_id or role:admin"
+  - op: add_resource
+    name: comments
+    resource:
+      entity: Comment
+      operations: [list, get, create, update, delete]
+      list: { filters: [article_id], order: [[created_at, asc]], include: [author] }
+  - op: set_actors
+    actors:
+      alice: { email: alice@example.com, password: alice-pass-1, name: Alice }
+      bob: { email: bob@example.com, password: bob-pass-1, name: Bob }
+      dave: { email: dave@example.com, password: dave-pass-1, name: Dave }
+      admin: { email: admin@example.com, password: admin-pass-1, name: Admin, role: admin }
+  - op: add_scenario
+    scenario:
+      name: comments and moderation
+      steps:
+        - as: alice
+          op: posts.create
+          body: { title: Moderated, content: Worth discussing }
+          expect: { status: 201 }
+          capture: { article: data.id }
+        - op: comments.create
+          body: { article_id: "{article}", body: Anonymous }
+          expect: { status: 401 }
+        - as: bob
+          op: comments.create
+          body: { article_id: "{article}", body: Nice }
+          expect: { status: 201, body: { data: { body: Nice, author_id: "{actor.id}" } } }
+          capture: { comment: data.id }
+        - as: dave
+          op: comments.delete
+          path: { id: "{comment}" }
+          expect: { status: 403 }
+        - as: dave
+          op: comments.update
+          path: { id: "{comment}" }
+          body: { body: Hijacked }
+          expect: { status: 403 }
+        - as: bob
+          op: comments.update
+          path: { id: "{comment}" }
+          body: { body: Nicer }
+          expect: { status: 200, body: { data: { body: Nicer } } }
+        - as: alice
+          op: comments.delete
+          path: { id: "{comment}" }
+          expect: { status: 204 }
+        - as: bob
+          op: comments.create
+          body: { article_id: "{article}", body: Again }
+          expect: { status: 201 }
+          capture: { second: data.id }
+        - op: comments.list
+          query: { article_id: "{article}" }
+          expect: { status: 200, body: { data: [{ body: Again, author: { name: Bob } }], page: { total: 1 } } }
+        - as: bob
+          op: comments.delete
+          path: { id: "{second}" }
+          expect: { status: 204 }
+        - as: bob
+          op: comments.create
+          body: { article_id: "{article}", body: Third }
+          expect: { status: 201 }
+          capture: { third: data.id }
+        - as: admin
+          op: comments.delete
+          path: { id: "{third}" }
+          expect: { status: 204 }
+        - as: bob
+          op: posts.update
+          path: { id: "{article}" }
+          body: { title: Hijacked }
+          expect: { status: 403 }
+        - as: admin
+          op: posts.update
+          path: { id: "{article}" }
+          body: { title: Reviewed }
+          expect: { status: 200, body: { data: { title: Reviewed } } }
+        - as: dave
+          op: comments.create
+          body: { article_id: "{article}", body: Last }
+          expect: { status: 201 }
+          capture: { last: data.id }
+        - as: bob
+          op: posts.delete
+          path: { id: "{article}" }
+          expect: { status: 403 }
+        - as: admin
+          op: posts.delete
+          path: { id: "{article}" }
+          expect: { status: 204 }
+        - op: comments.get
+          path: { id: "{last}" }
+          expect: { status: 404 }

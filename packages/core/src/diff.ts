@@ -20,6 +20,8 @@ import {
   Scenario,
   SeedStep,
   Sidebar,
+  predicateParts,
+  rulePredicates,
   type Model as ModelType
 } from "./model.js";
 
@@ -192,13 +194,17 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
         const entity = entityOf(op.entity);
         if (!entity.fields[op.name]) fail(`field ${op.entity}.${op.name} does not exist`);
         if (entity.fields[op.name].primary) fail(`cannot remove primary key field ${op.name}`);
+        forEachRule(model, (rule, from, where) => {
+          mapRuleFields(model, from, rule, (e, f) => {
+            if (e === op.entity && f === op.name)
+              fail(`${where} still uses ${op.entity}.${op.name}; change the rules first`);
+            return f;
+          });
+          return rule;
+        });
         delete entity.fields[op.name];
         entity.indexes = entity.indexes?.filter(i => !i.fields.includes(op.name));
         entity.unique = entity.unique?.filter(cols => !cols.includes(op.name));
-        for (const action of ["read", "create", "update", "delete"] as const) {
-          if (entity.rules?.[action] === `owner:${op.name}`)
-            fail(`rule ${action} still uses owner:${op.name}; change the rules first`);
-        }
         for (const [resourceName, resource] of Object.entries(model.resources)) {
           if (resource.entity !== op.entity) continue;
           if (resource.list?.filters) resource.list.filters = resource.list.filters.filter(f => f !== op.name);
@@ -218,17 +224,16 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
         const entity = entityOf(op.entity);
         if (!entity.fields[op.from]) fail(`field ${op.entity}.${op.from} does not exist`);
         if (entity.fields[op.to]) fail(`field ${op.entity}.${op.to} already exists`);
+        // Rules name fields, on this entity and through relation paths from others: rewrite them before the fields move
+        forEachRule(model, (rule, from) =>
+          mapRuleFields(model, from, rule, (e, f) => (e === op.entity && f === op.from ? op.to : f))
+        );
         const rebuilt: Record<string, Field> = {};
         for (const [name, value] of Object.entries(entity.fields)) rebuilt[name === op.from ? op.to : name] = value;
         entity.fields = rebuilt;
         const swap = (name: string) => (name === op.from ? op.to : name);
         entity.indexes = entity.indexes?.map(i => ({ ...i, fields: i.fields.map(swap) }));
         entity.unique = entity.unique?.map(cols => cols.map(swap));
-        if (entity.rules) {
-          for (const action of ["read", "create", "update", "delete"] as const) {
-            if (entity.rules[action] === `owner:${op.from}`) entity.rules[action] = `owner:${op.to}`;
-          }
-        }
         for (const resource of Object.values(model.resources)) {
           if (resource.entity !== op.entity) continue;
           if (resource.list?.filters) resource.list.filters = resource.list.filters.map(swap);
@@ -411,6 +416,50 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
 }
 
 /** Resource pages whose resource is over the entity */
+/**
+ * Visit every rule in the model with the entity it is on (entity rules, and the rules of a resource's actions),
+ * replacing each with what `fn` returns.
+ */
+function forEachRule(model: ModelType, fn: (rule: string, entity: string, where: string) => string): void {
+  for (const [entityName, entity] of Object.entries(model.entities)) {
+    if (!entity.rules) continue;
+    for (const action of ["read", "create", "update", "delete"] as const) {
+      const rule = entity.rules[action];
+      if (rule) entity.rules[action] = fn(rule, entityName, `rule ${action} of ${entityName}`);
+    }
+  }
+  for (const [resourceName, resource] of Object.entries(model.resources)) {
+    for (const [actionName, action] of Object.entries(resource.actions ?? {})) {
+      if (action.rule) action.rule = fn(action.rule, resource.entity, `rule of action ${resourceName}.${actionName}`);
+    }
+  }
+}
+
+/**
+ * Rewrite the fields a rule names through `fn(entity, field)`: the fields of its owner and member predicates,
+ * following relation paths from `entityName` so a segment is resolved against the entity it is on.
+ */
+function mapRuleFields(
+  model: ModelType,
+  entityName: string,
+  rule: string,
+  fn: (entity: string, field: string) => string
+): string {
+  return rulePredicates(rule)
+    .map(predicate => {
+      const parts = predicateParts(predicate);
+      if (!parts) return predicate;
+      let current = entityName;
+      const path = parts.path.map((segment, i) => {
+        const mapped = fn(current, segment);
+        if (i < parts.path.length - 1) current = model.entities[current]?.fields[segment]?.relation?.entity ?? current;
+        return mapped;
+      });
+      return `${parts.kind}:${path.join(".")}${parts.role !== undefined ? `:${parts.role}` : ""}`;
+    })
+    .join(" or ");
+}
+
 function pagesOver(model: ModelType, entityName: string): Page[] {
   return Object.values(model.app?.pages ?? {}).filter(
     page => page.resource && model.resources[page.resource]?.entity === entityName

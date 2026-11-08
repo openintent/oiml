@@ -79,3 +79,30 @@ export const projectsUpdateInput = z
     status: z.enum(["active", "archived"]).optional()
   })
   .strict();
+
+export const tasksId = z.string().uuid();
+export const tasksListQuery = z
+  .object({
+    page: z.number().int().min(1).default(1),
+    page_size: z.number().int().min(1).max(200).default(20),
+    project_id: z.string().uuid().optional(),
+    done: z.boolean().optional(),
+    assignee_id: z.string().uuid().optional()
+  })
+  .strict();
+export const tasksCreateInput = z
+  .object({
+    project_id: z.string().uuid(),
+    title: z.string().min(1).max(200),
+    done: z.boolean().optional(),
+    assignee_id: z.string().uuid().nullish()
+  })
+  .strict();
+export const tasksUpdateInput = z
+  .object({
+    project_id: z.string().uuid().optional(),
+    title: z.string().min(1).max(200).optional(),
+    done: z.boolean().optional(),
+    assignee_id: z.string().uuid().nullish()
+  })
+  .strict();

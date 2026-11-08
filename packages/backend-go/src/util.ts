@@ -1,5 +1,5 @@
 import type { ColumnIR, EntityIR, IR, RelationIR, RuleIR, Scalar } from "@osl/core";
-import { toPascalCase } from "@osl/core";
+import { ruleKey, toPascalCase } from "@osl/core";
 
 /** Go string literal. JSON escapes are a subset of Go's interpreted string escapes. */
 export const q = (value: string): string => JSON.stringify(value);
@@ -323,17 +323,21 @@ export function keyedLiteral(open: string, entries: [string, string][]): string 
   return `${open}{\n${entries.map(([key, value]) => `\t${(key + ":").padEnd(width)} ${value},`).join("\n")}\n}`;
 }
 
-/** The access.Rule literal of a rule */
+/** The access.Rule literal of a rule; a path becomes its dotted key, which the handler resolves into the Row */
 export function ruleLiteral(rule: RuleIR): string {
   switch (rule.kind) {
     case "owner":
-      return `access.Rule{Kind: "owner", Field: ${q(rule.field)}}`;
+      return `access.Rule{Kind: "owner", Field: ${q(ruleKey(rule))}}`;
     case "role":
       return `access.Rule{Kind: "role", Value: ${q(rule.value)}}`;
     case "member":
       return rule.role
-        ? `access.Rule{Kind: "member", Field: ${q(rule.field)}, Role: ${q(rule.role)}}`
-        : `access.Rule{Kind: "member", Field: ${q(rule.field)}}`;
+        ? `access.Rule{Kind: "member", Field: ${q(ruleKey(rule))}, Role: ${q(rule.role)}}`
+        : `access.Rule{Kind: "member", Field: ${q(ruleKey(rule))}}`;
+    case "any":
+      return `access.Rule{Kind: "any", Any: []access.Rule{${rule.rules
+        .map(r => ruleLiteral(r).replace(/^access\.Rule/, ""))
+        .join(", ")}}}`;
     default:
       return `access.Rule{Kind: ${q(rule.kind)}}`;
   }

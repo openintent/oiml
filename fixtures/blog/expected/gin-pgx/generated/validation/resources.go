@@ -36,8 +36,31 @@ var PostsUpdateInput = Object{Fields: []Field{
 	{Name: "title", Type: String{MinLength: 1, MaxLength: 200}},
 	{Name: "content", Type: String{}},
 	{Name: "published", Type: Boolean{}},
+	{Name: "author_id", Type: UUID{}},
 	{Name: "tags", Nullable: true, Type: Array{Of: String{MaxLength: 255}}},
 	{Name: "cover", Nullable: true, Type: UUID{}},
+}}
+
+// CommentsID parses a comments id from the path.
+func CommentsID(raw string) (string, bool) {
+	return ParseUUIDID(raw)
+}
+
+// CommentsListQuery validates the GET /api/comments query string.
+var CommentsListQuery = Query{PageSize: 20, Filters: []Filter{
+	{Name: "article_id", Type: UUID{}},
+}}
+
+// CommentsCreateInput validates POST /api/comments bodies.
+var CommentsCreateInput = Object{Fields: []Field{
+	{Name: "body", Required: true, Type: String{MinLength: 1}},
+	{Name: "article_id", Required: true, Type: UUID{}},
+}}
+
+// CommentsUpdateInput validates PATCH /api/comments/{id} bodies.
+var CommentsUpdateInput = Object{Fields: []Field{
+	{Name: "body", Type: String{MinLength: 1}},
+	{Name: "article_id", Type: UUID{}},
 }}
 
 // PostsPublishInput validates POST /api/posts/{id}/publish bodies.

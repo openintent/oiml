@@ -10,16 +10,18 @@ intent:
     - A non-member cannot list or create a project's tasks
 expect:
   entities: [Task]
-  relations: ["Task.* -> Project", "Task.* -> Team"]
+  relations: ["Task.* -> Project"]
   rules:
     {
       Task:
         {
-          read: "member:team_id",
-          create: "member:team_id|member:team_id:member",
-          update: "member:team_id|member:team_id:member"
+          read: "member:project_id.team_id|member:team_id",
+          create: "member:project_id.team_id|member:project_id.team_id:member|member:team_id|member:team_id:member",
+          update: "member:project_id.team_id|member:project_id.team_id:member|member:team_id|member:team_id:member"
         }
     }
   resources: [tasks]
   scenarios: { min: 1, rejections: 1, statuses: [403] }
-notes: A member rule needs a relation to the tenant on the row itself, so Task needs team_id as well as project_id.
+notes: >-
+  A member rule may follow the relation to the project and test its team (member:project_id.team_id), so
+  Task needs only project_id; a copied team_id with a plain member rule also passes.

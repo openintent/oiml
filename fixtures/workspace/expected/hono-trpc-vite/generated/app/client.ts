@@ -62,6 +62,13 @@ export const client = {
     create: (input: Inputs["projects"]["create"]) => trpc.projects.create.mutate(input),
     update: (input: Inputs["projects"]["update"]) => trpc.projects.update.mutate(input),
     delete: (input: Inputs["projects"]["delete"]) => trpc.projects.delete.mutate(input)
+  },
+  tasks: {
+    list: (input: Inputs["tasks"]["list"]) => trpc.tasks.list.query(input),
+    get: (input: Inputs["tasks"]["get"]) => trpc.tasks.get.query(input),
+    create: (input: Inputs["tasks"]["create"]) => trpc.tasks.create.mutate(input),
+    update: (input: Inputs["tasks"]["update"]) => trpc.tasks.update.mutate(input),
+    delete: (input: Inputs["tasks"]["delete"]) => trpc.tasks.delete.mutate(input)
   }
 };
 

@@ -9,8 +9,13 @@ import {
   actionInputName,
   fileSpecsLiteral,
   fillEnums,
+  listRuleFilter,
   membershipType,
   membershipsLoader,
+  needsBodyCheck,
+  rowArg,
+  ruleLiteral,
+  ruleValuesSource,
   verdictSource,
   zodForColumn
 } from "@osl/ts-common";
@@ -553,10 +558,6 @@ console.log("worker running");
   };
 }
 
-function ruleLiteral(rule: RuleIR): string {
-  return JSON.stringify(rule);
-}
-
 function includeType(ir: IR, rel: RelationIR): string {
   const target = entityByName(ir, rel.target);
   return rel.kind === "many" ? `schema.${typeName(target)}[]` : `schema.${typeName(target)} | null`;
@@ -603,16 +604,38 @@ export function resourceRouterFile(ir: IR, resource: ResourceIR): string {
   const tenancy = ir.auth?.tenancy;
   const isTenant = tenancy?.entity === entity.name;
   const membershipTable = tenancy ? `${tableExport(entityByName(ir, tenancy.membership))}Table` : null;
+  const tableVar = (e: EntityIR) => `${tableExport(e)}Table`;
+  const me = `ctx.session!.user.${identityPk(ir)}`;
+  const listFilter = list
+    ? listRuleFilter(ir, entity, list.rule, {
+        ruleRef: "RULES.read",
+        session: "ctx.session",
+        me,
+        empty: "return { data: [], page: { page, page_size, total: 0 } };",
+        tableVar,
+        tenantCast: tenantIdsCast(ir),
+        indent: "    "
+      })
+    : null;
+  const ruleValues = ruleValuesSource(
+    ir,
+    [entity.rules.read, entity.rules.create, entity.rules.update, entity.rules.delete, ...actions.map(a => a.rule)],
+    tableVar
+  );
+  /** Tables the module imports beyond the entity's own: the membership table of a tenant, and the ones rules reach */
+  const extraTables = new Set<string>([...(listFilter?.tables ?? []), ...(ruleValues?.tables ?? [])]);
+  extraTables.delete(entity.name);
+  const hasConditions = Boolean(
+    list && (list.filters.length > 0 || listFilter!.lines.length > 0 || list.search.length > 0)
+  );
 
   const drizzleImports = new Set<string>();
-  if (get || update || remove || actions.some(a => a.scope === "row")) drizzleImports.add("eq");
+  if (get || update || remove || actions.some(a => a.scope === "row") || ruleValues) drizzleImports.add("eq");
   if (list) {
     drizzleImports.add("count");
-    if (list.filters.length || list.rule.kind === "owner" || list.rule.kind === "member" || list.search.length) {
-      drizzleImports.add("and");
-      drizzleImports.add("eq");
-    }
-    if (list.rule.kind === "member") drizzleImports.add("inArray");
+    if (hasConditions) drizzleImports.add("and");
+    if (list.filters.length) drizzleImports.add("eq");
+    for (const name of listFilter!.drizzle) drizzleImports.add(name);
     if (list.search.length) {
       drizzleImports.add("ilike");
       drizzleImports.add("or");
@@ -627,7 +650,7 @@ export function resourceRouterFile(ir: IR, resource: ResourceIR): string {
   const validationImports = new Set<string>([`${resource.name}Id`]);
   const errorImports = new Set<string>(["parseId", "toTRPCError"]);
   const accessImports = new Set<string>(["checkRule"]);
-  if (list?.rule.kind === "member") accessImports.add("memberTenantIds");
+  for (const name of listFilter?.access ?? []) accessImports.add(name);
   const usesEmit =
     ["created", "updated", "deleted"].some(a => events(a as "created").length > 0) ||
     actions.some(a => actionEvents(a.name).length > 0);
@@ -654,6 +677,7 @@ export function resourceRouterFile(ir: IR, resource: ResourceIR): string {
     );
   if (hasFiles)
     sections.push(`/** File fields and what they accept */\nconst FILE_FIELDS = ${fileSpecsLiteral(entity)} as const;`);
+  if (ruleValues) sections.push(ruleValues.source);
   if (list?.sortable.length)
     sections.push(`const SORTABLE = {\n${list.sortable.map(f => `  ${f}: ${table}.${f}`).join(",\n")}\n};`);
 
@@ -676,13 +700,7 @@ export function resourceRouterFile(ir: IR, resource: ResourceIR): string {
     const filterLines = list.filters.map(
       f => `    if (filters.${f} !== undefined) conditions.push(eq(${table}.${f}, filters.${f}));`
     );
-    if (list.rule.kind === "owner")
-      filterLines.push(`    conditions.push(eq(${table}.${list.rule.field}, ctx.session!.user.${identityPk(ir)}));`);
-    if (list.rule.kind === "member") {
-      filterLines.push(`    const tenants = memberTenantIds(ctx.session, ${list.rule.role ? q(list.rule.role) : "undefined"});
-    if (tenants.length === 0) return { data: [], page: { page, page_size, total: 0 } };
-    conditions.push(inArray(${table}.${list.rule.field}, tenants ${tenantIdsCast(ir)}));`);
-    }
+    filterLines.push(...listFilter!.lines);
     if (list.search.length) {
       filterLines.push(`    if (q) {
       const pattern = "%" + q.replace(/[\\\\%_]/g, "\\\\$&") + "%";
@@ -691,8 +709,6 @@ export function resourceRouterFile(ir: IR, resource: ResourceIR): string {
     }
     const defaultOrder = list.order.map(([col, dir]) => `${dir}(${table}.${col})`).join(", ");
     const orderBy = list.sortable.length ? `sort ? sortOrder(sort) : [${defaultOrder}]` : `[${defaultOrder}]`;
-    const hasConditions =
-      list.filters.length > 0 || list.rule.kind === "owner" || list.rule.kind === "member" || list.search.length > 0;
     const picks = [
       "page",
       "page_size",
@@ -737,16 +753,18 @@ ${whereLines}
       throw toTRPCError(err, "read");
     });
     if (!row) throw notFound();
-    checkRule(RULES.read, ctx.session, row);
+    checkRule(RULES.read, ctx.session, ${rowArg(get.rule, "row")});
     return presentGetRow(row);
   })`);
   }
 
   if (create) {
     validationImports.add(`${resource.name}CreateInput`);
-    const owner = create.ownerField ? `, ${create.ownerField}: ctx.session!.user.${identityPk(ir)}` : "";
+    const owner = create.ownerField ? `, ${create.ownerField}: ${me}` : "";
     const emitLines = events("created").map(e => `      await emit(${q(e.name)}, present${T}(row));`);
-    const bodyCheck = create.rule.kind === "member" ? ", input" : "";
+    const bodyCheck = needsBodyCheck(create.rule)
+      ? `, ${rowArg(create.rule, owner ? `{ ...input${owner} }` : "input")}`
+      : "";
     const insert =
       isTenant && tenancy && membershipTable
         ? `      const row = await db.transaction(async tx => {
@@ -783,7 +801,7 @@ ${emitLines.join("\n")}
         throw toTRPCError(err, "read");
       });
       if (!existing) throw notFound();
-      checkRule(RULES.update, ctx.session, existing);
+      checkRule(RULES.update, ctx.session, ${rowArg(update.rule, "existing")});
       const hookContext: HookContext = { session: ctx.session, req: ctx.req };
       try {
         const patch = await hooks.beforeUpdate(existing, ${resolveFiles("input.data")}, hookContext);
@@ -808,7 +826,7 @@ ${emitLines.map(l => "  " + l).join("\n")}
       throw toTRPCError(err, "read");
     });
     if (!existing) throw notFound();
-    checkRule(RULES.delete, ctx.session, existing);
+    checkRule(RULES.delete, ctx.session, ${rowArg(remove.rule, "existing")});
     const hookContext: HookContext = { session: ctx.session, req: ctx.req };
     try {
       await hooks.beforeDelete(existing, hookContext);
@@ -844,7 +862,14 @@ ${emitLines.join("\n")}
     ...(needsId ? [`import { z } from "zod";`] : []),
     `import { db } from "../../db/client";`,
     `import * as schema from "../../db/schema";`,
-    `import { ${tableExport(entity)} as ${table}${isTenant && membershipTable ? `, ${membershipTable.replace(/Table$/, "")} as ${membershipTable}` : ""} } from "../../db/schema";`,
+    `import { ${[
+      `${tableExport(entity)} as ${table}`,
+      ...(isTenant && membershipTable ? [`${membershipTable.replace(/Table$/, "")} as ${membershipTable}`] : []),
+      ...[...extraTables]
+        .filter(name => !(isTenant && tenancy && name === tenancy.membership))
+        .sort()
+        .map(name => `${tableExport(entityByName(ir, name))} as ${tableVar(entityByName(ir, name))}`)
+    ].join(", ")} } from "../../db/schema";`,
     ...(usesEmit ? [`import { emit } from "../../events";`] : []),
     ...(hasFiles ? [`import { resolveFileRefs } from "../../files";`] : []),
     `import { ${[...presents].sort().join(", ")} } from "../../present";`,
@@ -897,7 +922,7 @@ function actionProcedure(
       throw toTRPCError(err, "read");
     });
     if (!current) throw notFound();
-    checkRule(${rulesRef}, ctx.session, current);
+    checkRule(${rulesRef}, ctx.session, ${rowArg(action.rule, "current")});
     try {
       const result = await handlers.${action.handler}({ input, row: current, session: ctx.session, db });
 ${emitLines.join("\n")}

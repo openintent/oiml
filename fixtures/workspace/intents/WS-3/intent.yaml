@@ -1,0 +1,10 @@
+osl: "1.0"
+title: Project tasks
+ask: >-
+  Projects hold tasks: a title, a done flag and an optional assignee. Any member of the project's team can
+  create a task there. A task is visible to its assignee and to the team's admins; the assignee or a team
+  admin can update it, and only a team admin can delete it. Show tasks in the app.
+acceptance:
+  - A user outside the team cannot create, see or list a project's tasks
+  - A member sees only the tasks assigned to them; a team admin or owner sees all of the project's tasks
+  - A member cannot delete a task; an admin can

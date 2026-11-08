@@ -28,6 +28,13 @@ const COERCE: Record<string, Record<string, "int" | "number" | "boolean" | "stri
     "page_size": "int",
     "team_id": "string",
     "status": "string"
+  },
+  "tasks.list": {
+    "page": "int",
+    "page_size": "int",
+    "project_id": "string",
+    "done": "boolean",
+    "assignee_id": "string"
   }
 };
 

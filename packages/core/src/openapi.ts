@@ -2,7 +2,15 @@
  * An OpenAPI 3.1 document for the REST contract, as a pure function of the IR. Backends that speak REST
  * write it to generated/openapi.json and serve it at /api/openapi.json; the document is the same for all.
  */
-import type { ActionIR, ColumnIR, EntityIR, IR, OperationIR, ResourceIR } from "./ir.js";
+import {
+  ruleKey,
+  type ActionIR,
+  type ColumnIR,
+  type EntityIR,
+  type IR,
+  type OperationIR,
+  type ResourceIR
+} from "./ir.js";
 import { toTitleCase } from "./naming.js";
 
 type Schema = Record<string, unknown>;
@@ -166,11 +174,15 @@ function ruleNote(rule: OperationIR["rule"]): string {
     case "none":
       return "Not available.";
     case "owner":
-      return `Only the row's owner (${rule.field}).`;
+      return rule.via
+        ? `Only the owner of the row reached through ${ruleKey(rule)}.`
+        : `Only the row's owner (${rule.field}).`;
     case "role":
       return `Only users with role ${rule.value}.`;
     case "member":
-      return `Only members of the row's tenant (${rule.field})${rule.role ? ` with at least role ${rule.role}` : ""}.`;
+      return `Only members of the ${rule.via ? `tenant reached through ${ruleKey(rule)}` : `row's tenant (${rule.field})`}${rule.role ? ` with at least role ${rule.role}` : ""}.`;
+    case "any":
+      return `Any of: ${rule.rules.map(r => ruleNote(r).replace(/\.$/, "")).join("; ")}.`;
   }
 }
 

@@ -56,8 +56,8 @@ export const projects = {
     if (filters.team_id !== undefined) conditions.push(eq(projectsTable.team_id, filters.team_id));
     if (filters.status !== undefined) conditions.push(eq(projectsTable.status, filters.status));
     const tenants = memberTenantIds(session, undefined);
-      if (tenants.length === 0) return ok([], { page: { page, page_size, total: 0 } });
-      conditions.push(inArray(projectsTable.team_id, tenants as string[]));
+    if (tenants.length === 0) return ok([], { page: { page, page_size, total: 0 } });
+    conditions.push(inArray(projectsTable.team_id, tenants as string[]));
     if (q) {
         const pattern = "%" + q.replace(/[\\%_]/g, "\\$&") + "%";
         conditions.push(or(ilike(projectsTable.name, pattern))!);

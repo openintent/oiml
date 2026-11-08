@@ -9,7 +9,7 @@ import type {
   ResourceIR,
   RuleIR
 } from "@osl/core";
-import { actionsOf, globalActions } from "@osl/core";
+import { actionsOf, globalActions, rowRules, ruleAlternatives, ruleKey } from "@osl/core";
 import { actionParseFunc } from "./actions.js";
 import { fileSpecsLiteral } from "./auth.js";
 import { eventFunc } from "./events.js";
@@ -43,9 +43,144 @@ import {
 } from "./util.js";
 import { actionInputVar, idFunc, inputVar, queryVar } from "./validation.js";
 
-/** Go expression of the row's value the rule is about (the owner or the tenant), or nil when the rule is not about a row */
-function ruleValue(rule: RuleIR, row: string): string {
-  return rule.kind === "owner" || rule.kind === "member" ? `${row}.${exported(rule.field)}` : "nil";
+/** Whether checking the rule against a row needs values reached through relations */
+function hasVia(rule: RuleIR): boolean {
+  return rowRules(rule).some(r => Boolean(r.via?.length));
+}
+
+/** The columns a rule reads from the row itself: its plain fields, and the first column of each path */
+function baseColumns(rule: RuleIR): string[] {
+  return [...new Set(rowRules(rule).map(r => (r.via?.length ? r.via[0].column : r.field)))];
+}
+
+/**
+ * The columns the access.Row handed to a check must carry: the rule's own, plus the first column of every path
+ * the entity's rules follow when this rule has a path (ruleRow resolves all of them at once).
+ */
+function rowColumns(rule: RuleIR, allRules: RuleIR[]): string[] {
+  const out = new Set(baseColumns(rule));
+  if (hasVia(rule))
+    for (const other of allRules) for (const r of rowRules(other)) if (r.via?.length) out.add(r.via[0].column);
+  return [...out];
+}
+
+/** access.Row literal of the columns a check reads, from a loaded row struct */
+function rowFromStruct(columns: string[], rowVar: string): string {
+  if (columns.length === 0) return "nil";
+  return `access.Row{${columns.map(c => `${q(c)}: ${rowVar}.${exported(c)}`).join(", ")}}`;
+}
+
+/** access.Row literal of the columns a check reads, from a create body; a plain owner field comes from the session */
+function rowFromValues(columns: string[], ownerField: string | undefined, identityPk: string): string {
+  return `access.Row{${columns
+    .map(c => `${q(c)}: ${c === ownerField ? `session.User.${identityPk}` : `values[${q(c)}]`}`)
+    .join(", ")}}`;
+}
+
+/** A Go string expression concatenating raw literals and code */
+function goConcat(parts: (string | { code: string })[]): string {
+  const out: string[] = [];
+  let literal = "";
+  for (const part of parts) {
+    if (typeof part === "string") literal += part;
+    else {
+      if (literal) out.push(goRaw(literal));
+      literal = "";
+      out.push(part.code);
+    }
+  }
+  if (literal) out.push(goRaw(literal));
+  return out.join("+");
+}
+
+/**
+ * The lines that narrow a list to the rows its rule lets the session see: owner by column, member by the session's
+ * tenants, a path as a subquery through the relations, alternatives joined with OR unless one allows without a row.
+ */
+function listFilterLines(
+  ir: IR,
+  rule: RuleIR,
+  ruleVar: string,
+  identityPk: string,
+  empty: string,
+  pageExpr: (total: number) => string
+): string[] {
+  const rows = rowRules(rule);
+  if (rows.length === 0) return [];
+  const me = { code: `session.User.${identityPk}` };
+  const tenantsOf = (r: (typeof rows)[number]) =>
+    `access.MemberTenantIDs(session, ${q(r.kind === "member" ? (r.role ?? "") : "")})`;
+  const last = (r: (typeof rows)[number], tenants: string): (string | { code: string })[] =>
+    r.kind === "owner"
+      ? [`${quoteIdent(r.field)} = `, { code: `where.Param(${me.code})` }]
+      : [`${quoteIdent(r.field)} = ANY(`, { code: `where.Param(${tenants})` }, `)`];
+  const condition = (r: (typeof rows)[number], tenants: string): string => {
+    const hops = r.via ?? [];
+    if (hops.length === 0) return goConcat(last(r, tenants));
+    const inner = (i: number): (string | { code: string })[] => {
+      const hop = hops[i];
+      const table = { code: `models.${tableConst(entityByName(ir, hop.entity))}` };
+      const where =
+        i + 1 < hops.length ? [`${quoteIdent(hops[i + 1].column)} IN (`, ...inner(i + 1), `)`] : last(r, tenants);
+      return [`SELECT ${quoteIdent(hop.targetColumn)} FROM `, table, ` WHERE `, ...where];
+    };
+    return goConcat([`${quoteIdent(hops[0].column)} IN (`, ...inner(0), `)`]);
+  };
+  if (ruleAlternatives(rule).length === 1) {
+    const r = rows[0];
+    const lines: string[] = [];
+    if (r.kind === "member") {
+      lines.push(`\ttenants := ${tenantsOf(r)}`);
+      lines.push(`\tif len(tenants) == 0 {\n\t\thttpx.List(c, ${empty}, ${pageExpr(0)})\n\t\treturn\n\t}`);
+      if (!r.via?.length) lines.push(`\twhere.In(${goRaw(quoteIdent(r.field))}, tenants)`);
+      else lines.push(`\twhere.Raw(${condition(r, "tenants")})`);
+    } else if (!r.via?.length) lines.push(`\twhere.Eq(${goRaw(quoteIdent(r.field))}, ${me.code})`);
+    else lines.push(`\twhere.Raw(${condition(r, "tenants")})`);
+    return lines;
+  }
+  const lines: string[] = [`\tif !access.Satisfied(${ruleVar}, session) {`, `\t\talternatives := []string{}`];
+  for (const r of rows) {
+    if (r.kind === "owner") lines.push(`\t\talternatives = append(alternatives, ${condition(r, "")})`);
+    else
+      lines.push(
+        `\t\tif tenants := ${tenantsOf(r)}; len(tenants) > 0 {\n\t\t\talternatives = append(alternatives, ${condition(r, "tenants")})\n\t\t}`
+      );
+  }
+  lines.push(`\t\tif len(alternatives) == 0 {\n\t\t\thttpx.List(c, ${empty}, ${pageExpr(0)})\n\t\t\treturn\n\t\t}`);
+  lines.push(`\t\twhere.AnyOf(alternatives)`, `\t}`);
+  return lines;
+}
+
+/** The ruleRow method: adds to a Row the values the entity's rules reach through relations, under their dotted keys */
+function ruleRowMethod(ir: IR, handler: string, rules: RuleIR[]): string | null {
+  const paths = new Map<string, ReturnType<typeof rowRules>[number]>();
+  for (const rule of rules) for (const r of rowRules(rule)) if (r.via?.length) paths.set(ruleKey(r), r);
+  if (paths.size === 0) return null;
+  const blocks: string[] = [];
+  let n = 0;
+  for (const [key, r] of paths) {
+    const hops = r.via!;
+    const lines: string[] = [];
+    let source = `row[${q(hops[0].column)}]`;
+    hops.forEach((hop, i) => {
+      const hopEntity = entityByName(ir, hop.entity);
+      const next = i + 1 < hops.length ? hops[i + 1].column : r.field;
+      const type = rowGoType({ ...column(hopEntity, next), nullable: false });
+      const v = `v${n++}`;
+      lines.push(`\t\tvar ${v} *${type}`);
+      lines.push(
+        `\t\tif err := h.db.QueryRow(ctx, \`SELECT ${quoteIdent(next)} FROM \`+models.${tableConst(hopEntity)}+\` WHERE ${quoteIdent(hop.targetColumn)} = $1\`, ${source}).Scan(&${v}); err != nil && !errors.Is(err, pgx.ErrNoRows) {\n\t\t\treturn nil, err\n\t\t}`
+      );
+      source = v;
+    });
+    lines.push(`\t\trow[${q(key)}] = ${source}`);
+    blocks.push(`\t{\n${lines.join("\n")}\n\t}`);
+  }
+  return `// ruleRow adds to row the values the rules reach through relations, under their dotted keys.
+func (h *${handler}) ruleRow(ctx context.Context, row access.Row) (access.Row, error) {
+${blocks.join("\n")}
+	return row, nil
+}`;
 }
 
 function routePath(pathTemplate: string): string {
@@ -56,10 +191,14 @@ function fail(op: "read" | "write" | "delete"): string {
   return `\tif err != nil {\n\t\thttpx.HandleError(c, err, ${q(op)})\n\t\treturn\n\t}`;
 }
 
-const DENY = (ruleVar: string, rowExpr?: string) =>
-  rowExpr === undefined
-    ? `\tif verdict := access.Check(${ruleVar}, session); verdict != nil {\n\t\taccess.Deny(c, verdict)\n\t\treturn\n\t}`
-    : `\tif verdict := access.CheckRow(${ruleVar}, session, ${rowExpr}); verdict != nil {\n\t\taccess.Deny(c, verdict)\n\t\treturn\n\t}`;
+const DENY = (ruleVar: string) =>
+  `\tif verdict := access.Check(${ruleVar}, session); verdict != nil {\n\t\taccess.Deny(c, verdict)\n\t\treturn\n\t}`;
+
+/** Check a rule against a row literal; a rule with a path first resolves the related values through ruleRow */
+const DENY_ROW = (ruleVar: string, rule: RuleIR, rowLiteral: string, op: "read" | "write" | "delete") =>
+  hasVia(rule)
+    ? `\truleRow, err := h.ruleRow(ctx, ${rowLiteral})\n${fail(op)}\n\tif verdict := access.CheckRow(${ruleVar}, session, ruleRow); verdict != nil {\n\t\taccess.Deny(c, verdict)\n\t\treturn\n\t}`
+    : `\tif verdict := access.CheckRow(${ruleVar}, session, ${rowLiteral}); verdict != nil {\n\t\taccess.Deny(c, verdict)\n\t\treturn\n\t}`;
 
 const PARSE_ID = (idFn: string) =>
   `\tid, ok := validation.${idFn}(c.Param("id"))\n\tif !ok {\n\t\thttpx.Fail(c, httpx.NotFound())\n\t\treturn\n\t}`;
@@ -221,7 +360,8 @@ function actionHandlerMethod(
       `\trow, err := models.${scanFunc(row.entity)}(h.db.QueryRow(ctx, \`SELECT \`+models.${columnsConst(row.entity)}+\` FROM \`+models.${tableConst(row.entity)}+\` WHERE ${quoteIdent(pk.name)} = $1\`, id))`
     );
     lines.push(fail("write"));
-    lines.push(DENY(ruleVar, ruleValue(action.rule, "row")));
+    const allRules = [...Object.values(row.entity.rules), ...actionsOf(ir, row.resource.name).map(a => a.rule)];
+    lines.push(DENY_ROW(ruleVar, action.rule, rowFromStruct(rowColumns(action.rule, allRules), "row"), "write"));
     args.push("row");
   }
   lines.push(PARSE_BODY(`validation.${actionInputVar(action)}`, "values"));
@@ -293,6 +433,13 @@ export function resourceFile(ir: IR, resource: ResourceIR, modulePath: string): 
     imports.add(`${modulePath}/generated/actions`);
     imports.add(`${modulePath}/generated/actions/handlers`);
   }
+  const allRules = [...Object.values(entity.rules), ...actions.map(a => a.rule)];
+  const ruleRow = ruleRowMethod(ir, handler, allRules);
+  if (ruleRow) {
+    imports.add("context");
+    imports.add("errors");
+    imports.add("github.com/jackc/pgx/v5");
+  }
 
   const includes = new Map<string, Include>();
   const listIncludes = (list?.include ?? []).map(name => includeOf(ir, entity, name));
@@ -355,17 +502,16 @@ var ${prefix}FileFields = ${fileSpecsLiteral(files)}`);
     const filterLines = list.filters.map(
       f => `\tif v, ok := query.Filters[${q(f)}]; ok {\n\t\twhere.Eq(${goRaw(quoteIdent(f))}, v)\n\t}`
     );
-    if (list.rule.kind === "owner")
-      filterLines.push(`\twhere.Eq(${goRaw(quoteIdent(list.rule.field))}, session.User.${identityPk})`);
-    if (list.rule.kind === "member") {
-      const empty = listIncludes.length ? `[]${prefix}ListRow{}` : `models.${presentManyFunc(entity)}(nil)`;
-      filterLines.push(`\ttenants := access.MemberTenantIDs(session, ${q(list.rule.role ?? "")})
-	if len(tenants) == 0 {
-		httpx.List(c, ${empty}, httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: 0})
-		return
-	}
-	where.In(${goRaw(quoteIdent(list.rule.field))}, tenants)`);
-    }
+    filterLines.push(
+      ...listFilterLines(
+        ir,
+        list.rule,
+        ruleVar("read"),
+        identityPk,
+        listIncludes.length ? `[]${prefix}ListRow{}` : `models.${presentManyFunc(entity)}(nil)`,
+        (total: number) => `httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: ${total}}`
+      )
+    );
     if (list.search.length)
       filterLines.push(
         `\tif query.Q != "" {\n\t\twhere.Search([]string{${list.search.map(f => goRaw(quoteIdent(f))).join(", ")}}, query.Q)\n\t}`
@@ -428,7 +574,7 @@ ${DENY(ruleVar("read"))}
 ${PARSE_ID(idFunc(resource))}
 	row, err := ${scan}(h.db.QueryRow(ctx, \`SELECT \`+${columnsC}+\` FROM \`+${tableC}+\` WHERE ${pkIdent} = $1\`, id))
 ${fail("read")}
-${DENY(ruleVar("read"), ruleValue(entity.rules.read, "row"))}
+${DENY_ROW(ruleVar("read"), entity.rules.read, rowFromStruct(rowColumns(entity.rules.read, allRules), "row"), "read")}
 ${body}
 }`);
   }
@@ -436,8 +582,9 @@ ${body}
   if (create) {
     const emits = emitLines(eventsFor("created"), `${present}(row)`, "write");
     if (emits.length) imports.add(`${modulePath}/generated/events`);
-    const bodyCheck =
-      create.rule.kind === "member" ? `${DENY(ruleVar("create"), `values[${q(create.rule.field)}]`)}\n` : "";
+    const bodyCheck = rowRules(create.rule).some(r => r.kind === "member" || r.via?.length)
+      ? `${DENY_ROW(ruleVar("create"), create.rule, rowFromValues(rowColumns(create.rule, allRules), create.ownerField, identityPk), "write")}\n`
+      : "";
     const insert =
       isTenant && tenancy && membership
         ? `	tx, err := h.db.Begin(ctx)
@@ -488,7 +635,7 @@ ${DENY(ruleVar("update"))}
 ${PARSE_ID(idFunc(resource))}
 	existing, err := ${scan}(h.db.QueryRow(ctx, \`SELECT \`+${columnsC}+\` FROM \`+${tableC}+\` WHERE ${pkIdent} = $1\`, id))
 ${fail("write")}
-${DENY(ruleVar("update"), ruleValue(entity.rules.update, "existing"))}
+${DENY_ROW(ruleVar("update"), entity.rules.update, rowFromStruct(rowColumns(entity.rules.update, allRules), "existing"), "write")}
 ${PARSE_BODY(`validation.${inputVar(resource, "update")}`, "patch")}
 ${resolveFiles("patch")}	hookCtx := &hooks.Context{Gin: c, Session: session}
 	patch, err = ${hooksPkg}.BeforeUpdate(hookCtx, existing, patch)
@@ -520,7 +667,7 @@ ${DENY(ruleVar("delete"))}
 ${PARSE_ID(idFunc(resource))}
 	existing, err := ${scan}(h.db.QueryRow(ctx, \`SELECT \`+${columnsC}+\` FROM \`+${tableC}+\` WHERE ${pkIdent} = $1\`, id))
 ${fail("delete")}
-${DENY(ruleVar("delete"), ruleValue(entity.rules.delete, "existing"))}
+${DENY_ROW(ruleVar("delete"), entity.rules.delete, rowFromStruct(rowColumns(entity.rules.delete, allRules), "existing"), "delete")}
 	hookCtx := &hooks.Context{Gin: c, Session: session}
 	if err := ${hooksPkg}.BeforeDelete(hookCtx, existing); err != nil {
 		httpx.HandleError(c, err, "delete")
@@ -543,6 +690,7 @@ ${emits.length ? emits.join("\n") + "\n" : ""}	if err := ${hooksPkg}.AfterDelete
       actionHandlerMethod(ir, action, handler, actionRuleVar(action), imports, modulePath, { entity, resource })
     );
 
+  if (ruleRow) sections.push(ruleRow);
   for (const inc of [...includes.values()].sort((a, b) => a.rel.name.localeCompare(b.rel.name)))
     sections.push(loaderMethod(inc, entity, handler));
 

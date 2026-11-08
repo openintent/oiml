@@ -9,8 +9,10 @@ import {
   OAUTH_PRESETS,
   defaultPagePath,
   loadModel,
+  predicateParts,
   primaryKeyFields,
   resolveStepOp,
+  rulePredicates,
   type Action,
   type Entity,
   type Field,
@@ -84,14 +86,74 @@ export interface RelationIR {
   targetColumn: string;
 }
 
+/** One step of a rule that follows a relation: the column on the entity it starts from and the row it reaches */
+export interface RuleHopIR {
+  /** The relation column on the entity the hop starts from */
+  column: string;
+  /** The entity the column points at */
+  entity: string;
+  table: string;
+  /** The column it points at: that entity's primary key */
+  targetColumn: string;
+}
+
 export type RuleIR =
   | { kind: "public" }
   | { kind: "authenticated" }
   | { kind: "none" }
-  | { kind: "owner"; field: string }
+  /** The row's `field` is the session's user; with `via`, `field` is on the row the hops reach */
+  | { kind: "owner"; field: string; via?: RuleHopIR[] }
   | { kind: "role"; value: string }
-  /** The user has a membership of the tenant in `field` (with at least `role`, by the membership's enum order) */
-  | { kind: "member"; field: string; role?: string };
+  /** The user has a membership of the tenant in `field` (with at least `role`, by the membership's enum order); with `via`, `field` is on the row the hops reach */
+  | { kind: "member"; field: string; role?: string; via?: RuleHopIR[] }
+  /** Any of the alternatives allows */
+  | { kind: "any"; rules: RuleIR[] };
+
+export type RowRuleIR = Extract<RuleIR, { kind: "owner" | "member" }>;
+
+/** The alternatives of a rule: the rule itself, or the rules an `any` lists */
+export function ruleAlternatives(rule: RuleIR): RuleIR[] {
+  return rule.kind === "any" ? rule.rules.flatMap(ruleAlternatives) : [rule];
+}
+
+/** The alternatives that are about a row (owner and member), in order */
+export function rowRules(rule: RuleIR): RowRuleIR[] {
+  return ruleAlternatives(rule).filter((r): r is RowRuleIR => r.kind === "owner" || r.kind === "member");
+}
+
+/** The alternatives a session can satisfy without a row: public, authenticated and role */
+export function openRules(rule: RuleIR): RuleIR[] {
+  return ruleAlternatives(rule).filter(r => r.kind === "public" || r.kind === "authenticated" || r.kind === "role");
+}
+
+/** The key the generated code keeps a row rule's value under when it checks a row: the column, or the dotted path */
+export function ruleKey(rule: RowRuleIR): string {
+  return [...(rule.via ?? []).map(h => h.column), rule.field].join(".");
+}
+
+/** The field an owner alternative without a path names: set from the session on create, never written by a client */
+export function directOwnerOf(rule: RuleIR): string | undefined {
+  const owner = ruleAlternatives(rule).find(r => r.kind === "owner" && !r.via);
+  return owner?.kind === "owner" ? owner.field : undefined;
+}
+
+/** The rule as the model writes it */
+export function ruleText(rule: RuleIR): string {
+  switch (rule.kind) {
+    case "public":
+    case "authenticated":
+    case "none":
+      return rule.kind;
+    case "owner":
+      return `owner:${ruleKey(rule)}`;
+    case "role":
+      return `role:${rule.value}`;
+    case "member":
+      return `member:${ruleKey(rule)}${rule.role ? `:${rule.role}` : ""}`;
+    case "any":
+      return rule.rules.map(ruleText).join(" or ");
+  }
+}
 
 export interface EntityIR {
   name: string;
@@ -344,15 +406,33 @@ const SCALARS = new Set<string>([
   "bytes"
 ]);
 
-export function parseRule(rule: Rule | undefined, fallback: RuleIR): RuleIR {
+/**
+ * Parse a rule. `hops` resolves the relation fields an owner or member path follows (every segment but the
+ * last) from the entity the rule is on; without it a path is treated as a plain field.
+ */
+export function parseRule(rule: Rule | undefined, fallback: RuleIR, hops?: (path: string[]) => RuleHopIR[]): RuleIR {
   if (!rule) return fallback;
-  if (rule.startsWith("owner:")) return { kind: "owner", field: rule.slice(6) };
-  if (rule.startsWith("role:")) return { kind: "role", value: rule.slice(5) };
-  if (rule.startsWith("member:")) {
-    const [, field, role] = rule.split(":");
-    return role ? { kind: "member", field, role } : { kind: "member", field };
+  const predicates = rulePredicates(rule);
+  if (predicates.length > 1) return { kind: "any", rules: predicates.map(p => parsePredicate(p, hops)) };
+  return parsePredicate(predicates[0], hops);
+}
+
+function parsePredicate(predicate: string, hops?: (path: string[]) => RuleHopIR[]): RuleIR {
+  const parts = predicateParts(predicate);
+  if (parts) {
+    const field = parts.path[parts.path.length - 1];
+    const via = parts.path.length > 1 && hops ? hops(parts.path.slice(0, -1)) : [];
+    const out: RowRuleIR =
+      parts.kind === "owner"
+        ? { kind: "owner", field }
+        : parts.role !== undefined
+          ? { kind: "member", field, role: parts.role }
+          : { kind: "member", field };
+    if (via.length) out.via = via;
+    return out;
   }
-  return { kind: rule as "public" | "authenticated" | "none" };
+  if (predicate.startsWith("role:")) return { kind: "role", value: predicate.slice(5) };
+  return { kind: predicate as "public" | "authenticated" | "none" };
 }
 
 function enumTypeName(entityName: string, fieldName: string): string {
@@ -481,6 +561,17 @@ export function compile(input: Model): IR {
 
   const tableOf = (name: string) => allEntities[name].table ?? defaultTableName(name);
   const pkOf = (name: string) => primaryKeyFields(allEntities[name]);
+  /** The hops a rule path takes from `entityName` through its relation fields */
+  const hopsFrom = (entityName: string, path: string[]): RuleHopIR[] => {
+    const out: RuleHopIR[] = [];
+    let current = entityName;
+    for (const column of path) {
+      const target = allEntities[current].fields[column].relation!.entity;
+      out.push({ column, entity: target, table: tableOf(target), targetColumn: pkOf(target)[0] });
+      current = target;
+    }
+    return out;
+  };
   const providers = model.auth?.providers ?? (model.auth ? ["credentials"] : []);
   const hasCredentials = providers.includes("credentials");
 
@@ -590,10 +681,10 @@ export function compile(input: Model): IR {
       indexes,
       relations,
       rules: {
-        read: parseRule(entity.rules?.read, defaultRules.read),
-        create: parseRule(entity.rules?.create, defaultRules.create),
-        update: parseRule(entity.rules?.update, defaultRules.update),
-        delete: parseRule(entity.rules?.delete, defaultRules.delete)
+        read: parseRule(entity.rules?.read, defaultRules.read, path => hopsFrom(entityName, path)),
+        create: parseRule(entity.rules?.create, defaultRules.create, path => hopsFrom(entityName, path)),
+        update: parseRule(entity.rules?.update, defaultRules.update, path => hopsFrom(entityName, path)),
+        delete: parseRule(entity.rules?.delete, defaultRules.delete, path => hopsFrom(entityName, path))
       },
       display: displayColumn(columns, primaryKey, foreignKeys)
     };
@@ -742,7 +833,7 @@ export function compile(input: Model): IR {
           : `${resource.path}/${name}`
         : `/api/actions/${name}`,
       input: inputFields,
-      rule: parseRule(action.rule, fallback),
+      rule: parseRule(action.rule, fallback, resource ? path => hopsFrom(resource.entity.name, path) : undefined),
       returns,
       handler: owner
     };
@@ -787,14 +878,16 @@ export function compile(input: Model): IR {
           break;
         case "create": {
           const rule = entity.rules.create;
-          const ownerField = rule.kind === "owner" ? rule.field : undefined;
+          const ownerField = directOwnerOf(rule);
           const fields = (resource.create?.fields ?? writable).filter(f => f !== ownerField);
           operations.push({ kind, method: "POST", path, fields, ownerField, rule });
           break;
         }
         case "update": {
+          // A plain owner rule keeps the owner column out of update, so a row cannot be handed to someone else;
+          // with alternatives (an admin may reassign) the column stays writable
           const rule = entity.rules.update;
-          const ownerField = rule.kind === "owner" ? rule.field : undefined;
+          const ownerField = ruleAlternatives(rule).length === 1 ? directOwnerOf(rule) : undefined;
           const fields = (resource.update?.fields ?? writable).filter(f => f !== ownerField);
           operations.push({ kind, method: "PATCH", path: `${path}/{id}`, fields, rule });
           break;

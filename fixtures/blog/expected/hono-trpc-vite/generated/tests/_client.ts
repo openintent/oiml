@@ -19,6 +19,11 @@ const COERCE: Record<string, Record<string, "int" | "number" | "boolean" | "stri
     "page_size": "int",
     "published": "boolean",
     "author_id": "string"
+  },
+  "comments.list": {
+    "page": "int",
+    "page_size": "int",
+    "article_id": "string"
   }
 };
 
@@ -117,6 +122,7 @@ function assertNoHidden(value: unknown, path: string): void {
 export const ACTORS: Record<string, { email: string; password: string; fields: Record<string, unknown>; provisioned: Record<string, unknown> }> = {
   alice: { email: "alice@example.com", password: "alice-pass-1", fields: {"name":"Alice"}, provisioned: {} },
   bob: { email: "bob@example.com", password: "bob-pass-1", fields: {"name":"Bob"}, provisioned: {} },
+  dave: { email: "dave@example.com", password: "dave-pass-1", fields: {"name":"Dave"}, provisioned: {} },
   admin: { email: "admin@example.com", password: "admin-pass-1", fields: {"name":"Admin"}, provisioned: {"role":"admin"} }
 };
 

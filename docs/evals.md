@@ -134,8 +134,28 @@ admin-only and proven from both sides on all three backends, and the admin cases
 admin actor and a 200 next to the 403. A live run of those four right after the change produced a valid diff
 on the first attempt for each, every one declaring an admin actor and using it; their full runs then fail
 only on the action handler stubs, which is the bucket the report keeps apart (before the change three of
-them passed in full, because a stub satisfies a scenario that only shows the refusal). The agents' own
-`not_delivered` notes left three more model limits
-worth a construct: rules that follow a relation (`owner:project.user_id`, `member:project.team_id`), fields a
-client may never write (a `banned` flag that register would otherwise accept), and rules on the value being
-written (no admin may grant `owner`).
+them passed in full, because a stub satisfies a scenario that only shows the refusal).
+
+The agents' `not_delivered` notes then named the next constructs, and the corpus's two rule gaps closed in one
+round: a rule may now list alternatives (`update: "owner:author_id or role:admin"`, any of which allows), and an
+owner or member predicate may follow relation fields to the row it tests (`owner:article_id.author_id` on a
+comment, `member:project_id.team_id` on a task). Lists filter through the relations with subqueries, creates
+check the related row, and all three backends resolve the path before the check. The blog fixture gained
+comments whose deletion is allowed to the commenter, the article's author or an admin, and the workspace fixture
+gained tasks visible to their assignee or the team's admins; both are proven on every backend. In the corpus,
+`blog2-admin-moderation` is no longer a gap, `ws1-tasks-member-rules` accepts the path form, and three cases
+were added (`fx-blog-6-comments-moderation`, `fx-ws-3-tasks`, `ws2-project-notes`). The limits still open are
+fields a client may never write (a `banned` flag that register would otherwise accept) and rules on the value
+being written (no admin may grant `owner`).
+
+## Another model
+
+The same corpus on Claude Sonnet 5.5 (2026-11-08, before the rules round): 44 of 59 passed against Opus's 45, with
+97% valid diffs and 93% valid on the first attempt (Opus: 95% and 95%), two asks declined, at $1.45 against $2.69.
+Eleven of its fifteen failures were action handler stubs. The other four were worth reading: a junction entity
+with a two-column key exposed as a resource, which generation refuses and validation should have refused
+first; a scenario step reading one row without `path.id`, now diagnostic M072; a scenario expecting 403 from an
+operation whose rule is `none`, where the route does not exist at all, which the reference now says; and a
+self-relation whose include failed under Drizzle because the two relations between a table and itself were
+unnamed, fixed in the schema emitter. A smaller model is a cheaper way to find the places where the reference
+leaves room for a wrong guess.

@@ -49,26 +49,26 @@ export const taskNotes = pgTable("task_notes", {
 });
 
 export const projectsRelations = relations(projects, ({ many }) => ({
-  tasks: many(tasks)
+  tasks: many(tasks, { relationName: "project" })
 }));
 
 export const tasksRelations = relations(tasks, ({ one, many }) => ({
-  project: one(projects, { fields: [tasks.project_id], references: [projects.id] }),
-  task_labels: many(taskLabels),
+  project: one(projects, { fields: [tasks.project_id], references: [projects.id], relationName: "project" }),
+  task_labels: many(taskLabels, { relationName: "task" }),
   note: one(taskNotes)
 }));
 
 export const labelsRelations = relations(labels, ({ many }) => ({
-  task_labels: many(taskLabels)
+  task_labels: many(taskLabels, { relationName: "label" })
 }));
 
 export const taskLabelsRelations = relations(taskLabels, ({ one }) => ({
-  task: one(tasks, { fields: [taskLabels.task_id], references: [tasks.id] }),
-  label: one(labels, { fields: [taskLabels.label_id], references: [labels.id] })
+  task: one(tasks, { fields: [taskLabels.task_id], references: [tasks.id], relationName: "task" }),
+  label: one(labels, { fields: [taskLabels.label_id], references: [labels.id], relationName: "label" })
 }));
 
 export const taskNotesRelations = relations(taskNotes, ({ one }) => ({
-  task: one(tasks, { fields: [taskNotes.task_id], references: [tasks.id] })
+  task: one(tasks, { fields: [taskNotes.task_id], references: [tasks.id], relationName: "task" })
 }));
 
 export type Project = typeof projects.$inferSelect;

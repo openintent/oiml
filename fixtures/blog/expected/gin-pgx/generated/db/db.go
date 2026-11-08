@@ -57,6 +57,16 @@ func (w *Where) In(column string, values any) {
 	w.conditions = append(w.conditions, column+" = ANY("+w.Param(values)+")")
 }
 
+// Raw adds a condition the caller rendered, with placeholders from Param.
+func (w *Where) Raw(condition string) {
+	w.conditions = append(w.conditions, condition)
+}
+
+// AnyOf adds the conditions joined with OR as one condition.
+func (w *Where) AnyOf(conditions []string) {
+	w.conditions = append(w.conditions, "("+strings.Join(conditions, " OR ")+")")
+}
+
 // Search adds a case-insensitive substring match of text against any of the columns.
 func (w *Where) Search(columns []string, text string) {
 	pattern := w.Param("%" + EscapeLike(text) + "%")

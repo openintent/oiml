@@ -1,0 +1,30 @@
+id: fx-ws-3-tasks
+tags: [fixture, tenancy, rules, relation, entity, app]
+base: { fixture: workspace, through: WS-2 }
+oracle: fixtures/workspace/intents/WS-3/diff.yaml
+intent:
+  title: Project tasks
+  ask: >-
+    Projects hold tasks: a title, a done flag and an optional assignee. Any member of the project's team can
+    create a task there. A task is visible to its assignee and to the team's admins; the assignee or a team
+    admin can update it, and only a team admin can delete it. Show tasks in the app.
+  acceptance:
+    - A user outside the team cannot create, see or list a project's tasks
+    - A member sees only the tasks assigned to them; a team admin or owner sees all of the project's tasks
+    - A member cannot delete a task; an admin can
+expect:
+  entities: [Task]
+  fields: { Task: [title, "done|completed|is_done", "assignee_id|assigned_to|assigned_to_id"] }
+  relations: ["Task.* -> Project", "Task.* -> User"]
+  rules:
+    Task:
+      read: "owner:assignee_id or member:project_id.team_id:admin|owner:assigned_to or member:project_id.team_id:admin|owner:assigned_to_id or member:project_id.team_id:admin"
+      create: "member:project_id.team_id|member:project_id.team_id:member"
+      delete: "member:project_id.team_id:admin"
+  resources: [tasks]
+  pages: { tasks: { kind: resource, resource: tasks } }
+  scenarios: { min: 1, rejections: 1, statuses: [403] }
+  touches: [tasks]
+notes: >-
+  Rules through a relation: the task has no team column, so membership is tested on project_id.team_id,
+  and reading combines the assignee (owner) with the team's admins. Lists must filter the same way.

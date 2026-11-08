@@ -224,6 +224,64 @@ func PresentProjects(rows []*Project) []PublicProject {
 	return out
 }
 
+// TaskTable is the quoted table of Task.
+const TaskTable = `"tasks"`
+
+// TaskColumns lists the columns of Task in model order, for SELECT and RETURNING.
+const TaskColumns = `"id", "project_id", "title", "done", "assignee_id", "created_at"`
+
+// Task is a row of tasks.
+type Task struct {
+	ID         string    `json:"id"`
+	ProjectID  string    `json:"project_id"`
+	Title      string    `json:"title"`
+	Done       bool      `json:"done"`
+	AssigneeID *string   `json:"assignee_id"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// PublicTask is Task as the API returns it: hidden columns removed, dates rendered.
+type PublicTask struct {
+	ID         string  `json:"id"`
+	ProjectID  string  `json:"project_id"`
+	Title      string  `json:"title"`
+	Done       bool    `json:"done"`
+	AssigneeID *string `json:"assignee_id"`
+	CreatedAt  string  `json:"created_at"`
+}
+
+// ScanTask reads one Task from a row selected with TaskColumns.
+func ScanTask(row Scanner) (*Task, error) {
+	var r Task
+	if err := row.Scan(&r.ID, &r.ProjectID, &r.Title, &r.Done, &r.AssigneeID, &r.CreatedAt); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// PresentTask returns the public shape of a Task.
+func PresentTask(row *Task) PublicTask {
+	return PublicTask{ID: row.ID, ProjectID: row.ProjectID, Title: row.Title, Done: row.Done, AssigneeID: row.AssigneeID, CreatedAt: FormatDateTime(row.CreatedAt)}
+}
+
+// PresentTaskPtr presents an optional Task; nil stays nil.
+func PresentTaskPtr(row *Task) *PublicTask {
+	if row == nil {
+		return nil
+	}
+	out := PresentTask(row)
+	return &out
+}
+
+// PresentTasks presents a list of Task, never nil.
+func PresentTasks(rows []*Task) []PublicTask {
+	out := make([]PublicTask, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, PresentTask(row))
+	}
+	return out
+}
+
 // OslAuthTokenTable is the quoted table of OslAuthToken.
 const OslAuthTokenTable = `"osl_auth_tokens"`
 

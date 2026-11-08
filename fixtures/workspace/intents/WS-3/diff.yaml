@@ -1,0 +1,130 @@
+osl: "1.0"
+summary: Tasks in projects, ruled through the project's team; assignees see and update their own
+ops:
+  - op: add_entity
+    name: Task
+    entity:
+      fields:
+        id: { type: uuid, primary: true }
+        project_id:
+          {
+            type: uuid,
+            required: true,
+            relation: { entity: Project, name: project, reverse: tasks, on_delete: cascade }
+          }
+        title: { type: string, max_length: 200, required: true, validate: { min_length: 1 } }
+        done: { type: boolean, required: true, default: false }
+        assignee_id: { type: uuid, relation: { entity: User, name: assignee, on_delete: set_null } }
+        created_at: { type: datetime, required: true, default: now }
+      rules:
+        read: "owner:assignee_id or member:project_id.team_id:admin"
+        create: "member:project_id.team_id"
+        update: "owner:assignee_id or member:project_id.team_id:admin"
+        delete: "member:project_id.team_id:admin"
+  - op: add_resource
+    name: tasks
+    resource:
+      entity: Task
+      operations: [list, get, create, update, delete]
+      list: { filters: [project_id, done, assignee_id], order: [[created_at, asc]] }
+  - op: add_page
+    name: tasks
+    page: { resource: tasks, layout: table, columns: [title, done, assignee_id, project_id] }
+  - op: set_sidebar
+    sidebar:
+      items:
+        - { page: teams, icon: building }
+        - { page: projects, icon: folder-kanban }
+        - { page: tasks, icon: list-checks }
+        - { page: members, icon: users }
+      footer: { user: true, settings: true }
+  - op: add_scenario
+    scenario:
+      name: project tasks
+      steps:
+        - as: alice
+          op: teams.create
+          body: { name: Umbrella }
+          expect: { status: 201 }
+          capture: { team: data.id }
+        - as: alice
+          op: projects.create
+          body: { name: Rollout, team_id: "{team}" }
+          expect: { status: 201 }
+          capture: { project: data.id }
+        - as: bob
+          op: auth.me
+          expect: { status: 200 }
+          capture: { bob: data.id }
+        - as: alice
+          op: members.create
+          body: { team_id: "{team}", user_id: "{bob}" }
+          expect: { status: 201, body: { data: { role: member } } }
+        - op: tasks.create
+          body: { project_id: "{project}", title: Anonymous }
+          expect: { status: 401 }
+        - as: carol
+          op: tasks.create
+          body: { project_id: "{project}", title: Intruder }
+          expect: { status: 403 }
+        - as: bob
+          op: tasks.create
+          body: { project_id: "{project}", title: Write docs, assignee_id: "{bob}" }
+          expect: { status: 201, body: { data: { title: Write docs, done: false } } }
+          capture: { mine: data.id }
+        - as: alice
+          op: tasks.create
+          body: { project_id: "{project}", title: Plan launch }
+          expect: { status: 201 }
+          capture: { unassigned: data.id }
+        - as: bob
+          op: tasks.list
+          query: { project_id: "{project}" }
+          expect: { status: 200, body: { data: [{ title: Write docs }], page: { total: 1 } } }
+        - as: alice
+          op: tasks.list
+          query: { project_id: "{project}" }
+          expect: { status: 200, body: { page: { total: 2 } } }
+        - as: carol
+          op: tasks.list
+          query: { project_id: "{project}" }
+          expect: { status: 200, body: { page: { total: 0 } } }
+        - as: bob
+          op: tasks.get
+          path: { id: "{unassigned}" }
+          expect: { status: 403 }
+        - as: carol
+          op: tasks.get
+          path: { id: "{mine}" }
+          expect: { status: 403 }
+        - as: bob
+          op: tasks.update
+          path: { id: "{mine}" }
+          body: { done: true }
+          expect: { status: 200, body: { data: { done: true } } }
+        - as: bob
+          op: tasks.update
+          path: { id: "{unassigned}" }
+          body: { done: true }
+          expect: { status: 403 }
+        - as: alice
+          op: tasks.update
+          path: { id: "{unassigned}" }
+          body: { assignee_id: "{bob}" }
+          expect: { status: 200, body: { data: { assignee_id: "{bob}" } } }
+        - as: bob
+          op: tasks.get
+          path: { id: "{unassigned}" }
+          expect: { status: 200, body: { data: { title: Plan launch } } }
+        - as: bob
+          op: tasks.delete
+          path: { id: "{mine}" }
+          expect: { status: 403 }
+        - as: alice
+          op: tasks.delete
+          path: { id: "{mine}" }
+          expect: { status: 204 }
+        - as: alice
+          op: tasks.list
+          query: { project_id: "{project}" }
+          expect: { status: 200, body: { data: [{ title: Plan launch }], page: { total: 1 } } }

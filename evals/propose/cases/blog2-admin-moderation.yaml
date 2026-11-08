@@ -1,0 +1,17 @@
+id: blog2-admin-moderation
+tags: [rules, actors]
+base: { fixture: blog, through: FEAT-2 }
+intent:
+  title: Admin moderation
+  ask: Admins can edit or delete any post, not only their own. Authors keep editing their own posts.
+  acceptance:
+    - Another member editing someone's post still gets 403
+    - An admin editing or deleting someone's post succeeds
+expect:
+  rules: { Post: { read: public, update: "owner:author_id or role:admin", delete: "owner:author_id or role:admin" } }
+  actor_fields: { role: admin }
+  scenarios: { min: 1, rejections: 1, statuses: [403, 200] }
+  ops: { max: 4 }
+notes: >-
+  Rule alternatives: "owner:author_id or role:admin" keeps the author's access and adds the admin's. The
+  scenario needs an admin actor (set_actors, repeating alice and bob) to show the allowed side.

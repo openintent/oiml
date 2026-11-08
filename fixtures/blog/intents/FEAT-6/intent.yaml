@@ -1,0 +1,10 @@
+osl: "1.0"
+title: Comments and moderation
+ask: >-
+  Readers comment on articles. A comment has a body and shows who wrote it; anyone can read comments and the
+  commenter edits theirs. A comment can be deleted by its author, by the author of the article it is on, or
+  by an admin. Admins can also edit or delete any article. Deleting an article deletes its comments.
+acceptance:
+  - Another member editing or deleting someone's article gets 403; an admin succeeds
+  - A comment is deleted by the commenter, the article's author or an admin; anyone else gets 403
+  - Comments list per article, oldest first, and go with their article when it is deleted

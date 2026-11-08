@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { client, sessionUser, type Inputs, type Outputs, type SessionUser } from "../client";
-import { EmptyPane, ErrorNote, FieldRow, FileInput, FilePreview, FormRow, ListSkeleton, Pagination, Pane, PaneHeader, PaneSkeleton, formatDateTime, formatList, splitList, text, yesNo } from "../ui";
+import { EmptyPane, ErrorNote, FieldRow, FileInput, FilePreview, FormRow, ListSkeleton, Pagination, Pane, PaneHeader, PaneSkeleton, formatDateTime, formatList, selectClass, splitList, text, yesNo } from "../ui";
 
 type Row = Outputs["posts"]["list"]["data"][number];
 type Detail = Outputs["posts"]["get"];
@@ -32,11 +32,11 @@ function canCreate(user: SessionUser | null): boolean {
 }
 
 function canUpdate(user: SessionUser | null, row: Detail): boolean {
-  return user !== null && row.author_id === user.id;
+  return (user !== null && row.author_id === user.id || user !== null && (user as { role?: unknown }).role === "admin");
 }
 
 function canDelete(user: SessionUser | null, row: Detail): boolean {
-  return user !== null && row.author_id === user.id;
+  return (user !== null && row.author_id === user.id || user !== null && (user as { role?: unknown }).role === "admin");
 }
 
 function canPublish(user: SessionUser | null, row: Detail): boolean {
@@ -47,13 +47,14 @@ function canUnpublishAll(user: SessionUser | null): boolean {
   return user !== null && (user as { role?: unknown }).role === "admin";
 }
 
-const POSTS_FIELDS = ["title", "content", "published", "tags", "cover"] as const;
+const POSTS_FIELDS = ["title", "content", "published", "author_id", "tags", "cover"] as const;
 type PostsField = (typeof POSTS_FIELDS)[number];
 
 type PostsValues = {
   title: string;
   content: string;
   published: boolean;
+  author_id: string;
   tags: string;
   cover: string;
 };
@@ -62,6 +63,7 @@ const EMPTY_POSTS: PostsValues = {
   title: "",
   content: "",
   published: false,
+  author_id: "",
   tags: "",
   cover: ""
 };
@@ -78,13 +80,14 @@ function toPostsCreateInput(v: PostsValues): Input<"create"> {
   };
 }
 
-const POSTS_UPDATE: readonly PostsField[] = ["title", "content", "published", "tags", "cover"];
+const POSTS_UPDATE: readonly PostsField[] = ["title", "content", "published", "author_id", "tags", "cover"];
 
 function toPostsUpdateInput(v: PostsValues): Input<"update">["data"] {
   return {
     title: v.title,
     content: v.content,
     published: v.published,
+    author_id: v.author_id,
     tags: (v.tags === "" ? null : splitList(v.tags)),
     cover: (v.cover || null)
   };
@@ -95,9 +98,35 @@ function postsFromRow(row: Detail): PostsValues {
     title: text(row.title),
     content: text(row.content),
     published: row.published ?? false,
+    author_id: text(row.author_id),
     tags: formatList(row.tags),
     cover: row.cover?.id ?? ""
   };
+}
+
+/** Picks a User from the users resource */
+function AuthorIdPicker({
+  id,
+  value,
+  onChange,
+  allowEmpty
+}: {
+  id: string;
+  value: string;
+  onChange: (value: string) => void;
+  allowEmpty: boolean;
+}) {
+  const options = useQuery({ queryKey: ["users", "list", { page_size: 200 }], queryFn: () => client.users.list({ page_size: 200 }) });
+  return (
+    <select id={id} className={selectClass} value={value} onChange={e => onChange(e.target.value)}>
+      {allowEmpty ? <option value="">—</option> : null}
+      {(options.data?.data ?? []).map(item => (
+        <option key={text(item.id)} value={text(item.id)}>
+          {text(item.name)}
+        </option>
+      ))}
+    </select>
+  );
 }
 
 type PostsSetter = <K extends keyof PostsValues>(key: K, value: PostsValues[K]) => void;
@@ -122,6 +151,12 @@ function renderPostsField(field: PostsField, values: PostsValues, set: PostsSett
         <Checkbox id="published" checked={values.published} onCheckedChange={checked => set("published", checked)} />
         <Label htmlFor="published">Published</Label>
       </div>
+      );
+    case "author_id":
+      return (
+      <FormRow label="Author" htmlFor="author_id">
+        <AuthorIdPicker id="author_id" value={values.author_id} onChange={value => set("author_id", value)} allowEmpty={false} />
+      </FormRow>
       );
     case "tags":
       return (

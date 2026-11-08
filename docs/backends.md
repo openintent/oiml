@@ -40,7 +40,7 @@ Migrations are shared: every backend calls `migrationFiles(revisions, dir)` from
 | Envelopes      | List `{ data, page: { page, page_size, total } }`; get, create (201), update `{ data }`; delete 204. Errors `{ error: { code, message } }`. |
 | Status codes   | 400 validation, 401 unauthenticated, 403 forbidden, 404 not found (a malformed id is not found), 409 conflict.                              |
 | Validation     | From the IR columns: types, lengths, formats, patterns, ranges, enums. Unknown body keys are rejected.                                      |
-| Rules          | `public`, `authenticated`, `owner:<field>` (set from the session on create; filtered on list; 403 on mismatch), `role:<value>`.             |
+| Rules          | `public`, `authenticated`, `owner:<field>` (set from the session on create; filtered on list; 403 on mismatch), `role:<value>`; alternatives joined with `or`; owner and member paths through relations (`owner:article_id.author_id`), resolved before the check and as subqueries on lists. |
 | Auth           | Register, login, logout, me; cookie sessions signed with `OSL_SESSION_SECRET`; scrypt password hashes; the password column is hidden.       |
 | Hidden columns | Never serialized, not even inside included relations, and never accepted from a client.                                                     |
 | Events         | Handlers in user-owned files, called after create, update and delete.                                                                       |

@@ -14,14 +14,20 @@ import (
 	"workspace/generated/httpx"
 )
 
-// Rule is an access rule from the model: public, authenticated, none, owner (Field), role (Value)
-// or member (Field names the row's tenant column, Role the least privileged role allowed, or "").
+// Rule is an access rule from the model: public, authenticated, none, owner (Field), role (Value),
+// member (Field names the row's tenant column, Role the least privileged role allowed, or "") or any
+// (Any lists alternatives, one of which must allow). Field is a column, or the dotted path of a value
+// reached through relations, which the handler resolves into the Row before checking.
 type Rule struct {
 	Kind  string
 	Field string
 	Value string
 	Role  string
+	Any   []Rule
 }
+
+// Row holds the values of a row (or a create body) that rules look at, by column or dotted path.
+type Row map[string]any
 
 // Verdict is a denial; nil means allowed.
 type Verdict struct {
@@ -53,23 +59,62 @@ func Check(rule Rule, session *auth.Session) *Verdict {
 			return &Verdict{Status: http.StatusUnauthorized}
 		}
 		return nil
+	case "any":
+		return anyOf(rule.Any, func(alternative Rule) *Verdict { return Check(alternative, session) })
 	}
 	return &Verdict{Status: http.StatusForbidden}
 }
 
-// CheckRow evaluates a rule against a loaded row (or the body of a create): value is the row's value of the
-// rule's field, the owner for owner rules and the tenant for member rules.
-func CheckRow(rule Rule, session *auth.Session, value any) *Verdict {
+// CheckRow evaluates a rule against a loaded row (or the body of a create): row holds the values the
+// rule's fields name, the owner for owner rules and the tenant for member rules.
+func CheckRow(rule Rule, session *auth.Session, row Row) *Verdict {
+	if rule.Kind == "any" {
+		return anyOf(rule.Any, func(alternative Rule) *Verdict { return CheckRow(alternative, session, row) })
+	}
 	if verdict := Check(rule, session); verdict != nil {
 		return verdict
 	}
-	if rule.Kind == "owner" && !same(value, session.UserID()) {
+	if rule.Kind == "owner" && !same(row[rule.Field], session.UserID()) {
 		return &Verdict{Status: http.StatusForbidden}
 	}
-	if rule.Kind == "member" && !memberOf(session, value, rule.Role) {
+	if rule.Kind == "member" && !memberOf(session, row[rule.Field], rule.Role) {
 		return &Verdict{Status: http.StatusForbidden}
 	}
 	return nil
+}
+
+// Satisfied reports whether the rule allows the session whatever the row, so a list under it needs no row filter.
+func Satisfied(rule Rule, session *auth.Session) bool {
+	switch rule.Kind {
+	case "public":
+		return true
+	case "authenticated":
+		return session != nil
+	case "role":
+		return session != nil && session.Role() == rule.Value
+	case "any":
+		for _, alternative := range rule.Any {
+			if Satisfied(alternative, session) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// anyOf allows when any alternative does; otherwise it is 401 when every alternative was.
+func anyOf(alternatives []Rule, check func(Rule) *Verdict) *Verdict {
+	status := http.StatusUnauthorized
+	for _, alternative := range alternatives {
+		verdict := check(alternative)
+		if verdict == nil {
+			return nil
+		}
+		if verdict.Status != http.StatusUnauthorized {
+			status = http.StatusForbidden
+		}
+	}
+	return &Verdict{Status: status}
 }
 
 // Deny writes the response for a verdict.

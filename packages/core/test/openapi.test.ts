@@ -36,6 +36,8 @@ describe("openapi document", () => {
       "/api/auth/oauth/github/callback",
       "/api/auth/providers",
       "/api/auth/register",
+      "/api/comments",
+      "/api/comments/{id}",
       "/api/files",
       "/api/files/{id}",
       "/api/files/{id}/complete",
@@ -53,7 +55,7 @@ describe("openapi document", () => {
     expect(doc.paths["/api/posts/{id}/publish"].post.operationId).toBe("posts_publish");
     expect(Object.keys(doc.paths["/api/posts/{id}/publish"].post.responses)).toContain("200");
     expect(Object.keys(doc.paths["/api/posts/{id}"].delete.responses)).toContain("204");
-    expect(Object.keys(doc.components.schemas)).toEqual(["Article", "Error", "File", "User"]);
+    expect(Object.keys(doc.components.schemas)).toEqual(["Article", "Comment", "Error", "File", "User"]);
     expect(doc.components.securitySchemes).toBeDefined();
     // Stable: the same IR gives the same document
     expect(JSON.stringify(doc)).toBe(JSON.stringify(openapiDocument(await irFor("blog"))));

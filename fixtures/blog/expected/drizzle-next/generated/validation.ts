@@ -36,8 +36,30 @@ export const postsUpdateInput = z
     title: z.string().min(1).max(200).optional(),
     content: z.string().optional(),
     published: z.boolean().optional(),
+    author_id: z.string().uuid().optional(),
     tags: z.array(z.string().max(255)).nullish(),
     cover: z.string().uuid().nullish()
+  })
+  .strict();
+
+export const commentsId = z.string().uuid();
+export const commentsListQuery = z
+  .object({
+    page: z.coerce.number().int().min(1).default(1),
+    page_size: z.coerce.number().int().min(1).max(200).default(20),
+    article_id: z.string().uuid().optional()
+  })
+  .strict();
+export const commentsCreateInput = z
+  .object({
+    body: z.string().min(1),
+    article_id: z.string().uuid()
+  })
+  .strict();
+export const commentsUpdateInput = z
+  .object({
+    body: z.string().min(1).optional(),
+    article_id: z.string().uuid().optional()
   })
   .strict();
 

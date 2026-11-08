@@ -71,12 +71,22 @@ export function schemaFile(ir: IR, conv: TsConventions): string {
     const parts: string[] = [];
     for (const rel of entity.relations) {
       const target = entityByName(ir, rel.target);
+      // The forward side and a reverse many carry the forward relation's name, so two relations between the
+      // same tables (or a table and itself) stay apart for Drizzle; a reverse one takes no config, since
+      // Drizzle then requires fields, and resolves by the single relation pointing back
+      const forwardName =
+        rel.direction === "forward"
+          ? rel.name
+          : target.relations.find(r => r.direction === "forward" && r.column === rel.column && r.target === entity.name)
+              ?.name;
       if (rel.direction === "forward") {
         parts.push(
-          `  ${rel.name}: one(${tableExport(target)}, { fields: [${tableExport(entity)}.${rel.column}], references: [${tableExport(target)}.${rel.targetColumn}] })`
+          `  ${rel.name}: one(${tableExport(target)}, { fields: [${tableExport(entity)}.${rel.column}], references: [${tableExport(target)}.${rel.targetColumn}], relationName: ${q(rel.name)} })`
         );
       } else if (rel.kind === "many") {
-        parts.push(`  ${rel.name}: many(${tableExport(target)})`);
+        parts.push(
+          `  ${rel.name}: many(${tableExport(target)}${forwardName ? `, { relationName: ${q(forwardName)} }` : ""})`
+        );
       } else {
         parts.push(`  ${rel.name}: one(${tableExport(target)})`);
       }

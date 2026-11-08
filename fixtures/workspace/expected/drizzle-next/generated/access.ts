@@ -3,13 +3,15 @@
 
 import type { Session } from "./auth";
 
+/** A rule from the model. `field` is a column, or the dotted path of a value reached through relations. */
 export type Rule =
   | { kind: "public" }
   | { kind: "authenticated" }
   | { kind: "none" }
   | { kind: "owner"; field: string }
   | { kind: "role"; value: string }
-  | { kind: "member"; field: string; role?: string };
+  | { kind: "member"; field: string; role?: string }
+  | { kind: "any"; rules: Rule[] };
 
 export type Verdict = { ok: true } | { ok: false; status: 401 | 403 };
 
@@ -30,9 +32,37 @@ export function memberTenantIds(session: Session | null, role?: string): (string
     .map(m => m.tenant);
 }
 
-/** Check a rule for a session and, when the rule is about a row, that row (or the body of a create). */
+/** Whether the rule allows this session whatever the row, so a list under it needs no row filter. */
+export function satisfied(rule: Rule, session: Session | null): boolean {
+  switch (rule.kind) {
+    case "public":
+      return true;
+    case "authenticated":
+      return session !== null;
+    case "role":
+      return session !== null && (session.user as Record<string, unknown>).role === rule.value;
+    case "any":
+      return rule.rules.some(alternative => satisfied(alternative, session));
+    default:
+      return false;
+  }
+}
+
+/**
+ * Check a rule for a session and, when the rule is about a row, that row (or the body of a create). A rule
+ * with alternatives allows when any of them does; otherwise it answers 401 when every alternative did.
+ */
 export function verdict(rule: Rule, session: Session | null, row?: Record<string, unknown> | null): Verdict {
   switch (rule.kind) {
+    case "any": {
+      let status: 401 | 403 = 401;
+      for (const alternative of rule.rules) {
+        const result = verdict(alternative, session, row);
+        if (result.ok) return ALLOW;
+        if (result.status !== 401) status = 403;
+      }
+      return { ok: false, status };
+    }
     case "public":
       return ALLOW;
     case "none":

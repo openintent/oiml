@@ -29,6 +29,7 @@ func New(pool *pgxpool.Pool) *gin.Engine {
 	filesapi.New(pool, a).Routes(r)
 	resources.NewUsers(pool, a).Routes(r)
 	resources.NewPosts(pool, a).Routes(r)
+	resources.NewComments(pool, a).Routes(r)
 	resources.NewGlobalActions(pool, a).Routes(r)
 	return r
 }

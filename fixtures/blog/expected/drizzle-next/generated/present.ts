@@ -14,6 +14,11 @@ export function presentArticle(row: schema.Article): PublicArticle {
   return { id: row.id, title: row.title, content: row.content, published: row.published, author_id: row.author_id, posted_at: row.posted_at, tags: row.tags, cover: presentFileRef(row.cover) };
 }
 
+export type PublicComment = Pick<schema.Comment, "id" | "body" | "article_id" | "author_id" | "created_at">;
+export function presentComment(row: schema.Comment): PublicComment {
+  return { id: row.id, body: row.body, article_id: row.article_id, author_id: row.author_id, created_at: row.created_at };
+}
+
 export type PublicOslFile = Pick<schema.OslFile, "id" | "key" | "name" | "size" | "type" | "status" | "owner_id" | "created_at">;
 export function presentOslFile(row: schema.OslFile): PublicOslFile {
   return { id: row.id, key: row.key, name: row.name, size: row.size, type: row.type, status: row.status, owner_id: row.owner_id, created_at: row.created_at };

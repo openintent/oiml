@@ -78,3 +78,31 @@ var ProjectsUpdateInput = Object{Fields: []Field{
 	{Name: "name", Type: String{MinLength: 1, MaxLength: 120}},
 	{Name: "status", Type: Enum{Values: []string{"active", "archived"}}},
 }}
+
+// TasksID parses a tasks id from the path.
+func TasksID(raw string) (string, bool) {
+	return ParseUUIDID(raw)
+}
+
+// TasksListQuery validates the GET /api/tasks query string.
+var TasksListQuery = Query{PageSize: 20, Filters: []Filter{
+	{Name: "project_id", Type: UUID{}},
+	{Name: "done", Type: Boolean{}},
+	{Name: "assignee_id", Type: UUID{}},
+}}
+
+// TasksCreateInput validates POST /api/tasks bodies.
+var TasksCreateInput = Object{Fields: []Field{
+	{Name: "project_id", Required: true, Type: UUID{}},
+	{Name: "title", Required: true, Type: String{MinLength: 1, MaxLength: 200}},
+	{Name: "done", Type: Boolean{}},
+	{Name: "assignee_id", Nullable: true, Type: UUID{}},
+}}
+
+// TasksUpdateInput validates PATCH /api/tasks/{id} bodies.
+var TasksUpdateInput = Object{Fields: []Field{
+	{Name: "project_id", Type: UUID{}},
+	{Name: "title", Type: String{MinLength: 1, MaxLength: 200}},
+	{Name: "done", Type: Boolean{}},
+	{Name: "assignee_id", Nullable: true, Type: UUID{}},
+}}

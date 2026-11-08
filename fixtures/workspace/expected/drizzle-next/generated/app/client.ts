@@ -3,8 +3,8 @@
 
 import { QueryClient } from "@tanstack/react-query";
 import type { z } from "zod";
-import type { PublicProject, PublicTeam, PublicTeamMember, PublicUser } from "../present";
-import type { membersCreateInput, membersListQuery, membersUpdateInput, projectsCreateInput, projectsListQuery, projectsUpdateInput, teamsCreateInput, teamsListQuery, teamsUpdateInput, usersListQuery } from "../validation";
+import type { PublicProject, PublicTask, PublicTeam, PublicTeamMember, PublicUser } from "../present";
+import type { membersCreateInput, membersListQuery, membersUpdateInput, projectsCreateInput, projectsListQuery, projectsUpdateInput, tasksCreateInput, tasksListQuery, tasksUpdateInput, teamsCreateInput, teamsListQuery, teamsUpdateInput, usersListQuery } from "../validation";
 
 export class ApiError extends Error {
   constructor(
@@ -81,6 +81,13 @@ export type Inputs = {
     update: { id: string; data: z.input<typeof projectsUpdateInput> };
     delete: { id: string };
   };
+  tasks: {
+    list: z.input<typeof tasksListQuery>;
+    get: { id: string };
+    create: z.input<typeof tasksCreateInput>;
+    update: { id: string; data: z.input<typeof tasksUpdateInput> };
+    delete: { id: string };
+  };
 };
 
 export type Outputs = {
@@ -117,6 +124,13 @@ export type Outputs = {
     get: PublicProject;
     create: PublicProject;
     update: PublicProject;
+    delete: null;
+  };
+  tasks: {
+    list: { data: (PublicTask)[]; page: Page };
+    get: PublicTask;
+    create: PublicTask;
+    update: PublicTask;
     delete: null;
   };
 };
@@ -163,6 +177,13 @@ export const client = {
     create: (input: Inputs["projects"]["create"]) => call<PublicProject>("POST", "/api/projects", { body: input }),
     update: ({ id, data }: Inputs["projects"]["update"]) => call<PublicProject>("PATCH", "/api/projects" + "/" + id, { body: data }),
     delete: ({ id }: Inputs["projects"]["delete"]) => call<null>("DELETE", "/api/projects" + "/" + id)
+  },
+  tasks: {
+    list: (input: Inputs["tasks"]["list"]) => call<Outputs["tasks"]["list"]>("GET", "/api/tasks", { query: input as Record<string, unknown>, whole: true }),
+    get: ({ id }: Inputs["tasks"]["get"]) => call<Outputs["tasks"]["get"]>("GET", "/api/tasks" + "/" + id),
+    create: (input: Inputs["tasks"]["create"]) => call<PublicTask>("POST", "/api/tasks", { body: input }),
+    update: ({ id, data }: Inputs["tasks"]["update"]) => call<PublicTask>("PATCH", "/api/tasks" + "/" + id, { body: data }),
+    delete: ({ id }: Inputs["tasks"]["delete"]) => call<null>("DELETE", "/api/tasks" + "/" + id)
   }
 };
 

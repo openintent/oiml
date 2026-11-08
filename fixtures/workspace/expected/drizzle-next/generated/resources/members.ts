@@ -45,8 +45,8 @@ export const members = {
     if (filters.team_id !== undefined) conditions.push(eq(teamMembersTable.team_id, filters.team_id));
     if (filters.user_id !== undefined) conditions.push(eq(teamMembersTable.user_id, filters.user_id));
     const tenants = memberTenantIds(session, undefined);
-      if (tenants.length === 0) return ok([], { page: { page, page_size, total: 0 } });
-      conditions.push(inArray(teamMembersTable.team_id, tenants as string[]));
+    if (tenants.length === 0) return ok([], { page: { page, page_size, total: 0 } });
+    conditions.push(inArray(teamMembersTable.team_id, tenants as string[]));
       const where = conditions.length ? and(...conditions) : undefined;
       const [rows, [{ total }]] = await Promise.all([
         db.query.teamMembers.findMany({ where, with: { user: true }, orderBy: [desc(teamMembersTable.created_at)], limit: page_size, offset: (page - 1) * page_size }),

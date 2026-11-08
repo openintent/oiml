@@ -35,6 +35,18 @@ export const articles = pgTable(
   t => [unique("articles_author_id_title_key").on(t.author_id, t.title), index("articles_author_id_idx").on(t.author_id)]
 );
 
+export const comments = pgTable(
+  "comments",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    body: text().notNull(),
+    article_id: uuid().notNull().references(() => articles.id, { onDelete: "cascade" }),
+    author_id: uuid().notNull().references(() => users.id, { onDelete: "cascade" }),
+    created_at: timestamp({ withTimezone: true }).notNull().defaultNow()
+  },
+  t => [index("comments_article_id_idx").on(t.article_id), index("comments_author_id_idx").on(t.author_id)]
+);
+
 export const oslFiles = pgTable(
   "osl_files",
   {
@@ -83,25 +95,33 @@ export const oslAuthAccounts = pgTable(
 );
 
 export const usersRelations = relations(users, ({ many }) => ({
-  posts: many(articles)
+  posts: many(articles, { relationName: "author" })
 }));
 
-export const articlesRelations = relations(articles, ({ one }) => ({
-  author: one(users, { fields: [articles.author_id], references: [users.id] })
+export const articlesRelations = relations(articles, ({ one, many }) => ({
+  author: one(users, { fields: [articles.author_id], references: [users.id], relationName: "author" }),
+  comments: many(comments, { relationName: "article" })
+}));
+
+export const commentsRelations = relations(comments, ({ one }) => ({
+  article: one(articles, { fields: [comments.article_id], references: [articles.id], relationName: "article" }),
+  author: one(users, { fields: [comments.author_id], references: [users.id], relationName: "author" })
 }));
 
 export const oslFilesRelations = relations(oslFiles, ({ one }) => ({
-  owner: one(users, { fields: [oslFiles.owner_id], references: [users.id] })
+  owner: one(users, { fields: [oslFiles.owner_id], references: [users.id], relationName: "owner" })
 }));
 
 export const oslAuthAccountsRelations = relations(oslAuthAccounts, ({ one }) => ({
-  user: one(users, { fields: [oslAuthAccounts.user_id], references: [users.id] })
+  user: one(users, { fields: [oslAuthAccounts.user_id], references: [users.id], relationName: "user" })
 }));
 
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Article = typeof articles.$inferSelect;
 export type NewArticle = typeof articles.$inferInsert;
+export type Comment = typeof comments.$inferSelect;
+export type NewComment = typeof comments.$inferInsert;
 export type OslFile = typeof oslFiles.$inferSelect;
 export type NewOslFile = typeof oslFiles.$inferInsert;
 export type OslAuthToken = typeof oslAuthTokens.$inferSelect;

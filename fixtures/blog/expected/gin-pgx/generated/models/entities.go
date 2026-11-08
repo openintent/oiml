@@ -124,6 +124,62 @@ func PresentArticles(rows []*Article) []PublicArticle {
 	return out
 }
 
+// CommentTable is the quoted table of Comment.
+const CommentTable = `"comments"`
+
+// CommentColumns lists the columns of Comment in model order, for SELECT and RETURNING.
+const CommentColumns = `"id", "body", "article_id", "author_id", "created_at"`
+
+// Comment is a row of comments.
+type Comment struct {
+	ID        string    `json:"id"`
+	Body      string    `json:"body"`
+	ArticleID string    `json:"article_id"`
+	AuthorID  string    `json:"author_id"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// PublicComment is Comment as the API returns it: hidden columns removed, dates rendered.
+type PublicComment struct {
+	ID        string `json:"id"`
+	Body      string `json:"body"`
+	ArticleID string `json:"article_id"`
+	AuthorID  string `json:"author_id"`
+	CreatedAt string `json:"created_at"`
+}
+
+// ScanComment reads one Comment from a row selected with CommentColumns.
+func ScanComment(row Scanner) (*Comment, error) {
+	var r Comment
+	if err := row.Scan(&r.ID, &r.Body, &r.ArticleID, &r.AuthorID, &r.CreatedAt); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// PresentComment returns the public shape of a Comment.
+func PresentComment(row *Comment) PublicComment {
+	return PublicComment{ID: row.ID, Body: row.Body, ArticleID: row.ArticleID, AuthorID: row.AuthorID, CreatedAt: FormatDateTime(row.CreatedAt)}
+}
+
+// PresentCommentPtr presents an optional Comment; nil stays nil.
+func PresentCommentPtr(row *Comment) *PublicComment {
+	if row == nil {
+		return nil
+	}
+	out := PresentComment(row)
+	return &out
+}
+
+// PresentComments presents a list of Comment, never nil.
+func PresentComments(rows []*Comment) []PublicComment {
+	out := make([]PublicComment, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, PresentComment(row))
+	}
+	return out
+}
+
 // OslFileTable is the quoted table of OslFile.
 const OslFileTable = `"osl_files"`
 

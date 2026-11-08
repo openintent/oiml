@@ -3,6 +3,7 @@
  * is applied (and its IR, for rules and actions after defaults). Every failure is one line a reader can act on.
  */
 import type { Diff, IR, Model, RuleIR } from "@osl/core";
+import { ruleText as coreRuleText } from "@osl/core";
 import { Expect as ExpectSchema, type Expect } from "./cases.js";
 
 export interface Checked {
@@ -49,19 +50,18 @@ function pickField(model: Model, ref: string): { entity: string; field: string }
   return field ? { entity, field } : undefined;
 }
 
+/** A rule as the model writes it, with alternatives in a fixed order so two spellings compare equal */
 export function ruleText(rule: RuleIR): string {
-  switch (rule.kind) {
-    case "public":
-    case "authenticated":
-    case "none":
-      return rule.kind;
-    case "owner":
-      return `owner:${rule.field}`;
-    case "role":
-      return `role:${rule.value}`;
-    case "member":
-      return rule.role ? `member:${rule.field}:${rule.role}` : `member:${rule.field}`;
-  }
+  return normalizeRule(coreRuleText(rule));
+}
+
+/** Alternatives sorted, so "a or b" equals "b or a" */
+export function normalizeRule(text: string): string {
+  return text
+    .split(" or ")
+    .map(s => s.trim())
+    .sort()
+    .join(" or ");
 }
 
 /** Provider labels: credentials, magic_link, oauth:github, oauth:google, oauth:oidc, plus a bare "oauth" */
@@ -269,7 +269,7 @@ export function checkExpectations(expect: Expect, checked: Checked): string[] {
     }
     for (const [op, want] of Object.entries(rules)) {
       const actual = ruleText(irEntity.rules[op as keyof typeof irEntity.rules]);
-      if (!alts(want).includes(actual)) fail(`${entity}.rules.${op} is ${actual}, expected ${want}`);
+      if (!alts(want).map(normalizeRule).includes(actual)) fail(`${entity}.rules.${op} is ${actual}, expected ${want}`);
     }
   }
 
@@ -318,7 +318,7 @@ export function checkExpectations(expect: Expect, checked: Checked): string[] {
       where === "actions" ? a.scope === "global" : alts(where).includes(a.resource ?? "")
     );
     const match = candidates.find(a => {
-      if (want.rule && !alts(want.rule).includes(ruleText(a.rule))) return false;
+      if (want.rule && !alts(want.rule).map(normalizeRule).includes(ruleText(a.rule))) return false;
       if (want.scope && a.scope !== want.scope) return false;
       if (want.returns && a.returns.kind !== want.returns) return false;
       if (
@@ -392,9 +392,9 @@ export function checkExpectations(expect: Expect, checked: Checked): string[] {
 
   if (expect.files) {
     const have = ir.files ?? { upload: { kind: model.auth ? "authenticated" : "public" }, read: { kind: "public" } };
-    if (expect.files.read && !alts(expect.files.read).includes(ruleText(have.read)))
+    if (expect.files.read && !alts(expect.files.read).map(normalizeRule).includes(ruleText(have.read)))
       fail(`files.read is ${ruleText(have.read)}, expected ${expect.files.read}`);
-    if (expect.files.upload && !alts(expect.files.upload).includes(ruleText(have.upload)))
+    if (expect.files.upload && !alts(expect.files.upload).map(normalizeRule).includes(ruleText(have.upload)))
       fail(`files.upload is ${ruleText(have.upload)}, expected ${expect.files.upload}`);
   }
   for (const [ref, accept] of Object.entries(expect.file_accept ?? {})) {

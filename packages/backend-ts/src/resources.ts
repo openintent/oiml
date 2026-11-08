@@ -1,6 +1,14 @@
 import type { ActionIR, EntityIR, GeneratedFile, IR, OperationIR, RelationIR, ResourceIR, RuleIR } from "@osl/core";
 import { actionsOf, globalActions } from "@osl/core";
-import { actionInputName, fileSpecsLiteral } from "@osl/ts-common";
+import {
+  actionInputName,
+  fileSpecsLiteral,
+  listRuleFilter,
+  needsBodyCheck,
+  rowArg,
+  ruleLiteral,
+  ruleValuesSource
+} from "@osl/ts-common";
 import {
   HEADER,
   SCAFFOLD_HEADER,
@@ -13,10 +21,6 @@ import {
   tableExport,
   typeName
 } from "./util.js";
-
-function ruleLiteral(rule: RuleIR): string {
-  return JSON.stringify(rule);
-}
 
 function includeType(ir: IR, rel: RelationIR): string {
   const target = entityByName(ir, rel.target);
@@ -67,14 +71,35 @@ export function resourceFile(ir: IR, resource: ResourceIR): string {
   const tenancy = ir.auth?.tenancy;
   const isTenant = tenancy?.entity === entity.name;
   const membershipTable = tenancy ? `${tableExport(entityByName(ir, tenancy.membership))}Table` : null;
+  const tableVar = (e: EntityIR) => `${tableExport(e)}Table`;
+  const me = `session!.user.${identityPk(ir)}`;
+  const listFilter = list
+    ? listRuleFilter(ir, entity, list.rule, {
+        ruleRef: "RULES.read",
+        session: "session",
+        me,
+        empty: "return ok([], { page: { page, page_size, total: 0 } });",
+        tableVar,
+        tenantCast: tenantIdsCast(ir),
+        indent: "    "
+      })
+    : null;
+  const ruleValues = ruleValuesSource(
+    ir,
+    [entity.rules.read, entity.rules.create, entity.rules.update, entity.rules.delete, ...actions.map(a => a.rule)],
+    tableVar
+  );
+  /** Tables the module imports beyond the entity's own: the membership table of a tenant, and the ones rules reach */
+  const extraTables = new Set<string>([...(listFilter?.tables ?? []), ...(ruleValues?.tables ?? [])]);
+  extraTables.delete(entity.name);
 
   const drizzleImports = new Set<string>();
-  if (get || update || remove || actions.some(a => a.scope === "row")) drizzleImports.add("eq");
+  if (get || update || remove || actions.some(a => a.scope === "row") || ruleValues) drizzleImports.add("eq");
   if (list) {
     drizzleImports.add("count");
     drizzleImports.add("and");
-    if (list.filters.length || list.rule.kind === "owner" || list.rule.kind === "member") drizzleImports.add("eq");
-    if (list.rule.kind === "member") drizzleImports.add("inArray");
+    if (list.filters.length) drizzleImports.add("eq");
+    for (const name of listFilter!.drizzle) drizzleImports.add(name);
     if (list.search.length) {
       drizzleImports.add("ilike");
       drizzleImports.add("or");
@@ -89,7 +114,7 @@ export function resourceFile(ir: IR, resource: ResourceIR): string {
   const validationImports = new Set<string>([`${resource.name}Id`]);
   const httpImports = new Set<string>(["handleError", "notFound", "ok"]);
   const accessImports = new Set<string>(["checkRule", "denied"]);
-  if (list?.rule.kind === "member") accessImports.add("memberTenantIds");
+  for (const name of listFilter?.access ?? []) accessImports.add(name);
   const usesEmit =
     ["created", "updated", "deleted"].some(a => events(a as "created").length > 0) ||
     actions.some(a => actionEvents(a.name).length > 0);
@@ -112,6 +137,7 @@ export function resourceFile(ir: IR, resource: ResourceIR): string {
     );
   if (hasFiles)
     sections.push(`/** File fields and what they accept */\nconst FILE_FIELDS = ${fileSpecsLiteral(entity)} as const;`);
+  if (ruleValues) sections.push(ruleValues.source);
   if (list?.sortable.length) {
     sections.push(`const SORTABLE = {\n${list.sortable.map(f => `  ${f}: ${table}.${f}`).join(",\n")}\n};
 
@@ -142,13 +168,7 @@ function sortOrder(sort: string): SQL[] {
     const filterLines = list.filters.map(
       f => `    if (filters.${f} !== undefined) conditions.push(eq(${table}.${f}, filters.${f}));`
     );
-    if (list.rule.kind === "owner")
-      filterLines.push(`    conditions.push(eq(${table}.${list.rule.field}, session!.user.${identityPk(ir)}));`);
-    if (list.rule.kind === "member") {
-      filterLines.push(`    const tenants = memberTenantIds(session, ${list.rule.role ? q(list.rule.role) : "undefined"});
-      if (tenants.length === 0) return ok([], { page: { page, page_size, total: 0 } });
-      conditions.push(inArray(${table}.${list.rule.field}, tenants ${tenantIdsCast(ir)}));`);
-    }
+    filterLines.push(...listFilter!.lines);
     if (list.search.length) {
       filterLines.push(`    if (q) {
         const pattern = "%" + q.replace(/[\\\\%_]/g, "\\\\$&") + "%";
@@ -199,7 +219,7 @@ ${filterLines.join("\n")}
       if (!id.ok) return id.response;
       const row = await ${query}.findFirst({ where: eq(${table}.${pk}, id.data)${withClause(get.include)} });
       if (!row) return notFound();
-      const rowVerdict = checkRule(RULES.read, session, row);
+      const rowVerdict = checkRule(RULES.read, session, ${rowArg(get.rule, "row")});
       if (!rowVerdict.ok) return denied(rowVerdict);
       return ok(presentGetRow(row));
     } catch (err) {
@@ -212,13 +232,12 @@ ${filterLines.join("\n")}
     validationImports.add(`${resource.name}CreateInput`);
     httpImports.add("parseBody");
     httpImports.add("created");
-    const owner = create.ownerField ? `, ${create.ownerField}: session!.user.${identityPk(ir)}` : "";
+    const owner = create.ownerField ? `, ${create.ownerField}: ${me}` : "";
     const emitLines = events("created").map(e => `      await emit(${q(e.name)}, present${T}(row));`);
-    const bodyCheck =
-      create.rule.kind === "member"
-        ? `      const bodyVerdict = checkRule(RULES.create, session, body.data);
+    const bodyCheck = needsBodyCheck(create.rule)
+      ? `      const bodyVerdict = checkRule(RULES.create, session, ${rowArg(create.rule, owner ? `{ ...body.data${owner} }` : "body.data")});
       if (!bodyVerdict.ok) return denied(bodyVerdict);\n`
-        : "";
+      : "";
     const insert =
       isTenant && tenancy && membershipTable
         ? `      const row = await db.transaction(async tx => {
@@ -260,7 +279,7 @@ ${emitLines.join("\n")}
       if (!id.ok) return id.response;
       const existing = await ${query}.findFirst({ where: eq(${table}.${pk}, id.data) });
       if (!existing) return notFound();
-      const rowVerdict = checkRule(RULES.update, session, existing);
+      const rowVerdict = checkRule(RULES.update, session, ${rowArg(update.rule, "existing")});
       if (!rowVerdict.ok) return denied(rowVerdict);
       const body = await parseBody(${resource.name}UpdateInput, request);
       if (!body.ok) return body.response;
@@ -290,7 +309,7 @@ ${emitLines.join("\n")}
       if (!id.ok) return id.response;
       const existing = await ${query}.findFirst({ where: eq(${table}.${pk}, id.data) });
       if (!existing) return notFound();
-      const rowVerdict = checkRule(RULES.delete, session, existing);
+      const rowVerdict = checkRule(RULES.delete, session, ${rowArg(remove.rule, "existing")});
       if (!rowVerdict.ok) return denied(rowVerdict);
       const hookContext: HookContext = { request, session };
       await hooks.beforeDelete(existing, hookContext);
@@ -328,7 +347,14 @@ ${emitLines.join("\n")}
       : []),
     `import { db } from "../db/client";`,
     `import * as schema from "../db/schema";`,
-    `import { ${tableExport(entity)} as ${table}${isTenant && membershipTable ? `, ${membershipTable.replace(/Table$/, "")} as ${membershipTable}` : ""} } from "../db/schema";`,
+    `import { ${[
+      `${tableExport(entity)} as ${table}`,
+      ...(isTenant && membershipTable ? [`${membershipTable.replace(/Table$/, "")} as ${membershipTable}`] : []),
+      ...[...extraTables]
+        .filter(name => !(isTenant && tenancy && name === tenancy.membership))
+        .sort()
+        .map(name => `${tableExport(entityByName(ir, name))} as ${tableVar(entityByName(ir, name))}`)
+    ].join(", ")} } from "../db/schema";`,
     `import { ${[...accessImports].sort().join(", ")}, type Rule } from "../access";`,
     ...(actions.length ? [`import { handlers } from "../actions";`] : []),
     `import { getSession, type Session } from "../auth";`,
@@ -388,7 +414,7 @@ function actionHandler(
       if (!id.ok) return id.response;
       const current = await ${row.query}.findFirst({ where: eq(${row.table}.${row.pk}, id.data) });
       if (!current) return notFound();
-      const rowVerdict = checkRule(${rulesRef}, session, current);
+      const rowVerdict = checkRule(${rulesRef}, session, ${rowArg(action.rule, "current")});
       if (!rowVerdict.ok) return denied(rowVerdict);
       const body = await parseBody(${input}, request);
       if (!body.ok) return body.response;

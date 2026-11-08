@@ -22,8 +22,8 @@ export type HookContext = { session: Session | null; req: Request };
 const RULES = {
   read: {"kind":"public"} as Rule,
   create: {"kind":"owner","field":"author_id"} as Rule,
-  update: {"kind":"owner","field":"author_id"} as Rule,
-  delete: {"kind":"owner","field":"author_id"} as Rule
+  update: {"kind":"any","rules":[{"kind":"owner","field":"author_id"},{"kind":"role","value":"admin"}]} as Rule,
+  delete: {"kind":"any","rules":[{"kind":"owner","field":"author_id"},{"kind":"role","value":"admin"}]} as Rule
 };
 
 const ACTION_RULES = {

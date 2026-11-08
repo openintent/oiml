@@ -17,7 +17,7 @@ describe("blog fixture", () => {
   it("applies every intent, compiles IR and plans migrations with renames", async () => {
     const root = await freshProject();
     const ids = await listIntents(root);
-    expect(ids).toEqual(["FEAT-1", "FEAT-2", "FEAT-3", "FEAT-4", "FEAT-5"]);
+    expect(ids).toEqual(["FEAT-1", "FEAT-2", "FEAT-3", "FEAT-4", "FEAT-5", "FEAT-6"]);
 
     for (const id of ids) {
       const outcome = await applyIntent(root, id);
@@ -27,7 +27,7 @@ describe("blog fixture", () => {
     expect(again.status).toBe("noop");
 
     const project = await loadProject(root);
-    expect(project.lock.revisions).toHaveLength(5);
+    expect(project.lock.revisions).toHaveLength(6);
     const ir = project.ir;
 
     const article = ir.entities.find(e => e.name === "Article")!;
@@ -43,7 +43,7 @@ describe("blog fixture", () => {
       "cover"
     ]);
     expect(article.foreignKeys[0]).toMatchObject({ column: "author_id", targetTable: "users", onDelete: "cascade" });
-    expect(article.relations.map(r => r.name)).toEqual(["author"]);
+    expect(article.relations.map(r => r.name)).toEqual(["author", "comments"]);
     const user = ir.entities.find(e => e.name === "User")!;
     expect(user.relations).toEqual([
       { name: "posts", kind: "many", direction: "reverse", target: "Article", column: "author_id", targetColumn: "id" }
@@ -68,7 +68,8 @@ describe("blog fixture", () => {
       "publishing",
       "cover images",
       "search and sort",
-      "magic link"
+      "magic link",
+      "comments and moderation"
     ]);
     expect(ir.examples.seed.map(s => s.op)).toEqual(["posts.create", "posts.create"]);
     expect(ir.actions.map(a => `${a.resource ?? "actions"}.${a.name}:${a.scope}`)).toEqual([

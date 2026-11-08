@@ -27,6 +27,7 @@ func New(pool *pgxpool.Pool) *gin.Engine {
 	resources.NewTeams(pool, a).Routes(r)
 	resources.NewMembers(pool, a).Routes(r)
 	resources.NewProjects(pool, a).Routes(r)
+	resources.NewTasks(pool, a).Routes(r)
 	return r
 }
 

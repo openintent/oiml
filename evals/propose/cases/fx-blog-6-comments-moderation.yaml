@@ -1,0 +1,31 @@
+id: fx-blog-6-comments-moderation
+tags: [fixture, entity, relation, rules, actors, scenario]
+base: { fixture: blog, through: FEAT-5 }
+oracle: fixtures/blog/intents/FEAT-6/diff.yaml
+intent:
+  title: Comments and moderation
+  ask: >-
+    Readers comment on articles. A comment has a body and shows who wrote it; anyone can read comments and the
+    commenter edits theirs. A comment can be deleted by its author, by the author of the article it is on, or
+    by an admin. Admins can also edit or delete any article. Deleting an article deletes its comments.
+  acceptance:
+    - Another member editing or deleting someone's article gets 403; an admin succeeds
+    - A comment is deleted by the commenter, the article's author or an admin; anyone else gets 403
+    - Comments list per article, oldest first, and go with their article when it is deleted
+expect:
+  entities: [Comment]
+  fields: { Comment: ["body|content|text", "article_id|post_id", "author_id|user_id"] }
+  relations: ["Comment.article_id|post_id -> Article:cascade", "Comment.* -> User"]
+  rules:
+    Article: { update: "owner:author_id or role:admin", delete: "owner:author_id or role:admin" }
+    Comment:
+      read: public
+      delete: "owner:author_id or owner:article_id.author_id or role:admin|owner:user_id or owner:article_id.author_id or role:admin|owner:author_id or owner:post_id.author_id or role:admin|owner:user_id or owner:post_id.author_id or role:admin"
+  resources: [comments]
+  list: { comments: { filters: ["article_id|post_id"] } }
+  actor_fields: { role: admin }
+  scenarios: { min: 1, rejections: 1, statuses: [401, 403] }
+  touches: [comments]
+notes: >-
+  Both rule constructs at once: alternatives (owner or admin) and a path through the relation to the
+  article's author. The admin needs an actor carrying role admin; a third user shows the refused side.

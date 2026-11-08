@@ -134,7 +134,7 @@ func (h *Members) Get(c *gin.Context) {
 		httpx.HandleError(c, err, "read")
 		return
 	}
-	if verdict := access.CheckRow(membersReadRule, session, row.TeamID); verdict != nil {
+	if verdict := access.CheckRow(membersReadRule, session, access.Row{"team_id": row.TeamID}); verdict != nil {
 		access.Deny(c, verdict)
 		return
 	}
@@ -163,7 +163,7 @@ func (h *Members) Create(c *gin.Context) {
 		httpx.Fail(c, perr)
 		return
 	}
-	if verdict := access.CheckRow(membersCreateRule, session, values["team_id"]); verdict != nil {
+	if verdict := access.CheckRow(membersCreateRule, session, access.Row{"team_id": values["team_id"]}); verdict != nil {
 		access.Deny(c, verdict)
 		return
 	}
@@ -208,7 +208,7 @@ func (h *Members) Update(c *gin.Context) {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	if verdict := access.CheckRow(membersUpdateRule, session, existing.TeamID); verdict != nil {
+	if verdict := access.CheckRow(membersUpdateRule, session, access.Row{"team_id": existing.TeamID}); verdict != nil {
 		access.Deny(c, verdict)
 		return
 	}
@@ -267,7 +267,7 @@ func (h *Members) Delete(c *gin.Context) {
 		httpx.HandleError(c, err, "delete")
 		return
 	}
-	if verdict := access.CheckRow(membersDeleteRule, session, existing.TeamID); verdict != nil {
+	if verdict := access.CheckRow(membersDeleteRule, session, access.Row{"team_id": existing.TeamID}); verdict != nil {
 		access.Deny(c, verdict)
 		return
 	}

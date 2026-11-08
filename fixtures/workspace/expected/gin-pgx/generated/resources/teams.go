@@ -119,7 +119,7 @@ func (h *Teams) Get(c *gin.Context) {
 		httpx.HandleError(c, err, "read")
 		return
 	}
-	if verdict := access.CheckRow(teamsReadRule, session, row.ID); verdict != nil {
+	if verdict := access.CheckRow(teamsReadRule, session, access.Row{"id": row.ID}); verdict != nil {
 		access.Deny(c, verdict)
 		return
 	}
@@ -209,7 +209,7 @@ func (h *Teams) Update(c *gin.Context) {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	if verdict := access.CheckRow(teamsUpdateRule, session, existing.ID); verdict != nil {
+	if verdict := access.CheckRow(teamsUpdateRule, session, access.Row{"id": existing.ID}); verdict != nil {
 		access.Deny(c, verdict)
 		return
 	}
@@ -268,7 +268,7 @@ func (h *Teams) Delete(c *gin.Context) {
 		httpx.HandleError(c, err, "delete")
 		return
 	}
-	if verdict := access.CheckRow(teamsDeleteRule, session, existing.ID); verdict != nil {
+	if verdict := access.CheckRow(teamsDeleteRule, session, access.Row{"id": existing.ID}); verdict != nil {
 		access.Deny(c, verdict)
 		return
 	}

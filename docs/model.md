@@ -38,17 +38,24 @@ table: posts            # optional, default snake_case plural of the name
 description: optional
 fields:
   <name>: Field         # order matters for the generated code
-rules: { read, create, update, delete }   # each: public | authenticated | none | owner:<field> | role:<value> | member:<field>[:<role>]
+rules: { read, create, update, delete }   # each: a predicate, or several joined with " or " (any of them allows)
+# predicate: public | authenticated | none | owner:<field> | role:<value> | member:<field>[:<role>]; <field> may be a path (article_id.author_id)
 indexes: [{ fields: [a, b], unique: false, name: optional }]
 unique: [[a, b]]        # multi-column unique constraints
 ```
 
 Default rules: read public; create, update and delete are authenticated when auth exists, public otherwise.
-A rule is one predicate: there is no "owner or admin", and who may read a row cannot depend on a field's value
-(drafts visible to their author only). Say what is not expressible rather than approximating with a stricter rule.
+`none` leaves the operation out: its route does not exist, so a call answers 404, never 403.
+Alternatives: `update: "owner:author_id or role:admin"` lets the author edit their own post and an admin edit any one;
+when no alternative allows, anonymous callers get 401 and signed-in ones 403. Who may read a row still cannot depend on a
+field's value (drafts visible to their author only): say what is not expressible rather than approximating with a stricter rule.
 `owner:<field>` needs auth; the field must be a relation to the identity entity (or the identity's own primary key).
-On create with an owner rule, the owner field is set from the session and is not accepted from the client. With any other
-create rule the client sends the relation field itself, so a required relation must stay in `create.fields`.
+A path follows relation fields to a row that is not the one being accessed: `owner:article_id.author_id` on Comment is
+the author of the comment's article, `member:project_id.team_id` on Task is membership of the task's project's team.
+Every segment but the last must be a relation field of the entity reached so far. Lists are filtered through the relations.
+On create with a plain owner rule, the owner field is set from the session and is not accepted from the client. With any
+other create rule (a path, member, or alternatives without a plain owner) the client sends the relation field itself and
+the related row is checked, so a required relation must stay in `create.fields`.
 `role:<value>` needs a `role` field on the identity entity; an actor with `role: <value>` tests it from the allowed side.
 `member:<field>` needs `auth.tenancy`; the field is a relation to the tenant entity (or the tenant's own primary key):
 the user must have a membership of that tenant, with `member:<field>:<role>` at least that role (roles rank in the order

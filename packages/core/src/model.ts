@@ -120,12 +120,45 @@ export const Field = z
   });
 export type Field = z.infer<typeof Field>;
 
-export const RULE_PATTERN =
-  /^(public|authenticated|none|owner:[a-z][a-z0-9_]*|role:[A-Za-z0-9_-]+|member:[a-z][a-z0-9_]*(:[A-Za-z0-9_-]+)?)$/;
+/** One predicate of a rule; owner and member may follow a path of relation fields (project_id.owner_id) */
+const PREDICATE_SOURCE =
+  "(?:public|authenticated|none|owner:[a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)*|role:[A-Za-z0-9_-]+|member:[a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)*(?::[A-Za-z0-9_-]+)?)";
+/** A rule: one predicate, or alternatives joined with " or ", any of which allows */
+export const RULE_PATTERN = new RegExp(`^${PREDICATE_SOURCE}(?: or ${PREDICATE_SOURCE})*$`);
 export const Rule = z
   .string()
-  .regex(RULE_PATTERN, "public | authenticated | none | owner:<field> | role:<value> | member:<field>[:<role>]");
+  .regex(
+    RULE_PATTERN,
+    "public | authenticated | none | owner:<field> | role:<value> | member:<field>[:<role>]; <field> may follow relation fields (project_id.owner_id); alternatives are joined with ' or '"
+  );
 export type Rule = z.infer<typeof Rule>;
+
+/** The predicates of a rule: one, or the alternatives it joins with " or " */
+export function rulePredicates(rule: string): string[] {
+  return rule
+    .split(" or ")
+    .map(p => p.trim())
+    .filter(Boolean);
+}
+
+/** An owner or member predicate taken apart: the fields it follows (the last one is tested) and, for member, the least role */
+export function predicateParts(
+  predicate: string
+): { kind: "owner" | "member"; path: string[]; role?: string } | undefined {
+  const [kind, field, role] = predicate.split(":");
+  if (kind !== "owner" && kind !== "member") return undefined;
+  const path = field.split(".");
+  return role !== undefined ? { kind, path, role } : { kind, path };
+}
+
+/** The field an owner predicate without a path names, when the rule has one: on create it is set from the session */
+export function directOwnerField(rule: string | undefined): string | undefined {
+  for (const predicate of rulePredicates(rule ?? "")) {
+    const parts = predicateParts(predicate);
+    if (parts?.kind === "owner" && parts.path.length === 1) return parts.path[0];
+  }
+  return undefined;
+}
 
 export const Rules = z
   .object({ read: Rule.optional(), create: Rule.optional(), update: Rule.optional(), delete: Rule.optional() })
@@ -547,23 +580,39 @@ export function validateModel(model: Model): Diagnostic[] {
     return membership?.fields[tenancy.role_field]?.enum_values ?? [];
   };
 
-  /** A rule on `entity`, used by its operations or an action over it (`row` true) or by nothing row-shaped */
-  const checkRule = (rule: string, entityName: string | null, rpath: string, row: boolean) => {
-    const entity = entityName ? model.entities[entityName] : undefined;
-    const fieldNames = new Set(Object.keys(entity?.fields ?? {}));
-    if (rule.startsWith("owner:") || rule.startsWith("member:")) {
-      if (!row || !entity || !entityName) {
-        error("M027", `rule ${rule} needs a row; use public, authenticated or role here`, rpath);
+  /** One predicate of a rule on `entity` (see checkRule) */
+  const checkPredicate = (predicate: string, entityName: string | null, rpath: string, row: boolean) => {
+    const parts = predicateParts(predicate);
+    if (parts) {
+      if (!row || !entityName || !model.entities[entityName]) {
+        error("M027", `rule ${predicate} needs a row; use public, authenticated or role here`, rpath);
         return;
       }
-      const parts = rule.split(":");
-      const field = parts[1];
-      if (!fieldNames.has(field)) error("M020", `${parts[0]} field ${field} does not exist on ${entityName}`, rpath);
-      else if (!model.auth) error("M021", `${parts[0]} rules need auth to be configured`, rpath);
-      else if (parts[0] === "owner") {
-        const f = entity.fields[field];
+      // Follow the relation fields the path names; the last field is tested on the entity they reach
+      let current = entityName;
+      for (const segment of parts.path.slice(0, -1)) {
+        const f = model.entities[current].fields[segment];
+        if (!f) {
+          error("M020", `${parts.kind} field ${segment} does not exist on ${current}`, rpath);
+          return;
+        }
+        if (!f.relation || !model.entities[f.relation.entity]) {
+          error(
+            "M028",
+            `${parts.kind} path ${parts.path.join(".")}: ${segment} is not a relation field on ${current}`,
+            rpath
+          );
+          return;
+        }
+        current = f.relation.entity;
+      }
+      const field = parts.path[parts.path.length - 1];
+      const f = model.entities[current].fields[field];
+      if (!f) error("M020", `${parts.kind} field ${field} does not exist on ${current}`, rpath);
+      else if (!model.auth) error("M021", `${parts.kind} rules need auth to be configured`, rpath);
+      else if (parts.kind === "owner") {
         const pointsAtIdentity =
-          f.relation?.entity === model.auth.identity || (entityName === model.auth.identity && f.primary);
+          f.relation?.entity === model.auth.identity || (current === model.auth.identity && f.primary);
         if (!pointsAtIdentity)
           error(
             "M022",
@@ -575,27 +624,37 @@ export function validateModel(model: Model): Diagnostic[] {
           error("M024", `member rules need auth.tenancy`, rpath);
           return;
         }
-        const f = entity.fields[field];
-        const pointsAtTenant = f.relation?.entity === tenancy.entity || (entityName === tenancy.entity && f.primary);
+        const pointsAtTenant = f.relation?.entity === tenancy.entity || (current === tenancy.entity && f.primary);
         if (!pointsAtTenant)
           error(
             "M025",
             `member field ${field} must be a relation to ${tenancy.entity}, or the tenant's own primary key`,
             rpath
           );
-        const role = parts[2];
-        if (role !== undefined && !membershipRoles().includes(role))
-          error("M026", `member role ${role} is not a value of ${tenancy.membership}.${tenancy.role_field}`, rpath);
+        if (parts.role !== undefined && !membershipRoles().includes(parts.role))
+          error(
+            "M026",
+            `member role ${parts.role} is not a value of ${tenancy.membership}.${tenancy.role_field}`,
+            rpath
+          );
       }
       return;
     }
-    if ((rule === "authenticated" || rule.startsWith("role:")) && !model.auth)
-      error("M021", `rule ${rule} needs auth to be configured`, rpath);
-    if (rule.startsWith("role:") && model.auth) {
+    if ((predicate === "authenticated" || predicate.startsWith("role:")) && !model.auth)
+      error("M021", `rule ${predicate} needs auth to be configured`, rpath);
+    if (predicate.startsWith("role:") && model.auth) {
       const identity = model.entities[model.auth.identity];
       if (identity && !identity.fields.role)
         error("M023", `role rules need a role field on ${model.auth.identity}`, rpath);
     }
+  };
+
+  /** A rule on `entity`, used by its operations or an action over it (`row` true) or by nothing row-shaped */
+  const checkRule = (rule: string, entityName: string | null, rpath: string, row: boolean) => {
+    const predicates = rulePredicates(rule);
+    if (predicates.length > 1 && predicates.includes("public"))
+      warn("M029", `rule "${rule}": public allows everyone, so the other alternatives never matter`, rpath);
+    for (const predicate of new Set(predicates)) checkPredicate(predicate, entityName, rpath, row);
   };
 
   for (const [entityName, entity] of Object.entries(model.entities)) {
@@ -736,7 +795,7 @@ export function validateModel(model: Model): Diagnostic[] {
           if (
             resource.entity === tenancy.entity &&
             resource.operations.includes("create") &&
-            (tenant.rules?.create ?? "authenticated") === "public"
+            rulePredicates(tenant.rules?.create ?? "authenticated").includes("public")
           )
             error(
               "M114",
@@ -792,6 +851,12 @@ export function validateModel(model: Model): Diagnostic[] {
       error("M050", `resource entity ${resource.entity} does not exist`, base);
       continue;
     }
+    if (primaryKeyFields(entity).length !== 1)
+      error(
+        "M054",
+        `resource entity ${resource.entity} needs a single-column primary key; give the entity an id, or leave the link table without a resource`,
+        base
+      );
     const fieldNames = new Set(Object.keys(entity.fields));
     const relationNames = new Set(relationNamesOf(model, resource.entity));
     const ops = new Set(resource.operations);
@@ -832,7 +897,7 @@ export function validateModel(model: Model): Diagnostic[] {
     }
     if (resource.create?.fields && ops.has("create")) {
       const listed = new Set(resource.create.fields);
-      const ownerField = entity.rules?.create?.startsWith("owner:") ? entity.rules.create.slice("owner:".length) : null;
+      const ownerField = directOwnerField(entity.rules?.create) ?? null;
       for (const [name, field] of Object.entries(entity.fields)) {
         if (
           !field.required ||
@@ -954,9 +1019,16 @@ export function validateModel(model: Model): Diagnostic[] {
   }
 
   const actors = new Set(Object.keys(model.examples?.actors ?? {}));
-  const checkStep = (step: { as?: string; op: string }, spath: string) => {
+  const checkStep = (step: { as?: string; op: string; path?: Record<string, string> }, spath: string) => {
     if (step.as && !actors.has(step.as)) error("M070", `actor ${step.as} is not declared in examples.actors`, spath);
     const resolved = resolveStepOp(model, step.op);
+    const needsId =
+      (resolved.kind === "resource" && ["get", "update", "delete"].includes(resolved.operation)) ||
+      (resolved.kind === "action" &&
+        resolved.resource !== undefined &&
+        (model.resources[resolved.resource].actions?.[resolved.action]?.scope ?? "row") === "row") ||
+      (resolved.kind === "file" && resolved.operation === "get");
+    if (needsId && !step.path?.id) error("M072", `${step.op} is about one row and needs path: { id: ... }`, spath);
     if (resolved.kind === "unknown") error("M071", resolved.reason, spath);
     else if (resolved.kind === "auth" && !model.auth) error("M073", `auth steps need auth to be configured`, spath);
     else if (

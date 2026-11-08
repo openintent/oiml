@@ -49,9 +49,9 @@ var postsReadRule = access.Rule{Kind: "public"}
 
 var postsCreateRule = access.Rule{Kind: "owner", Field: "author_id"}
 
-var postsUpdateRule = access.Rule{Kind: "owner", Field: "author_id"}
+var postsUpdateRule = access.Rule{Kind: "any", Any: []access.Rule{{Kind: "owner", Field: "author_id"}, {Kind: "role", Value: "admin"}}}
 
-var postsDeleteRule = access.Rule{Kind: "owner", Field: "author_id"}
+var postsDeleteRule = access.Rule{Kind: "any", Any: []access.Rule{{Kind: "owner", Field: "author_id"}, {Kind: "role", Value: "admin"}}}
 
 var postsPublishActionRule = access.Rule{Kind: "owner", Field: "author_id"}
 
@@ -239,7 +239,7 @@ func (h *Posts) Update(c *gin.Context) {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	if verdict := access.CheckRow(postsUpdateRule, session, existing.AuthorID); verdict != nil {
+	if verdict := access.CheckRow(postsUpdateRule, session, access.Row{"author_id": existing.AuthorID}); verdict != nil {
 		access.Deny(c, verdict)
 		return
 	}
@@ -302,7 +302,7 @@ func (h *Posts) Delete(c *gin.Context) {
 		httpx.HandleError(c, err, "delete")
 		return
 	}
-	if verdict := access.CheckRow(postsDeleteRule, session, existing.AuthorID); verdict != nil {
+	if verdict := access.CheckRow(postsDeleteRule, session, access.Row{"author_id": existing.AuthorID}); verdict != nil {
 		access.Deny(c, verdict)
 		return
 	}
@@ -344,7 +344,7 @@ func (h *Posts) ActionPublish(c *gin.Context) {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	if verdict := access.CheckRow(postsPublishActionRule, session, row.AuthorID); verdict != nil {
+	if verdict := access.CheckRow(postsPublishActionRule, session, access.Row{"author_id": row.AuthorID}); verdict != nil {
 		access.Deny(c, verdict)
 		return
 	}

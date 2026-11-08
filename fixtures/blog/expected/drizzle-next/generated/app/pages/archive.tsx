@@ -33,11 +33,11 @@ function canCreate(user: SessionUser | null): boolean {
 }
 
 function canUpdate(user: SessionUser | null, row: Detail): boolean {
-  return user !== null && row.author_id === user.id;
+  return (user !== null && row.author_id === user.id || user !== null && (user as { role?: unknown }).role === "admin");
 }
 
 function canDelete(user: SessionUser | null, row: Detail): boolean {
-  return user !== null && row.author_id === user.id;
+  return (user !== null && row.author_id === user.id || user !== null && (user as { role?: unknown }).role === "admin");
 }
 
 function canPublish(user: SessionUser | null, row: Detail): boolean {
@@ -48,13 +48,14 @@ function canUnpublishAll(user: SessionUser | null): boolean {
   return user !== null && (user as { role?: unknown }).role === "admin";
 }
 
-const ARCHIVE_FIELDS = ["title", "content", "published", "tags", "cover"] as const;
+const ARCHIVE_FIELDS = ["title", "content", "published", "author_id", "tags", "cover"] as const;
 type ArchiveField = (typeof ARCHIVE_FIELDS)[number];
 
 type ArchiveValues = {
   title: string;
   content: string;
   published: boolean;
+  author_id: string;
   tags: string;
   cover: string;
 };
@@ -63,6 +64,7 @@ const EMPTY_ARCHIVE: ArchiveValues = {
   title: "",
   content: "",
   published: false,
+  author_id: "",
   tags: "",
   cover: ""
 };
@@ -79,13 +81,14 @@ function toArchiveCreateInput(v: ArchiveValues): Input<"create"> {
   };
 }
 
-const ARCHIVE_UPDATE: readonly ArchiveField[] = ["title", "content", "published", "tags", "cover"];
+const ARCHIVE_UPDATE: readonly ArchiveField[] = ["title", "content", "published", "author_id", "tags", "cover"];
 
 function toArchiveUpdateInput(v: ArchiveValues): Input<"update">["data"] {
   return {
     title: v.title,
     content: v.content,
     published: v.published,
+    author_id: v.author_id,
     tags: (v.tags === "" ? null : splitList(v.tags)),
     cover: (v.cover || null)
   };
@@ -96,9 +99,35 @@ function archiveFromRow(row: Detail): ArchiveValues {
     title: text(row.title),
     content: text(row.content),
     published: row.published ?? false,
+    author_id: text(row.author_id),
     tags: formatList(row.tags),
     cover: row.cover?.id ?? ""
   };
+}
+
+/** Picks a User from the users resource */
+function AuthorIdPicker({
+  id,
+  value,
+  onChange,
+  allowEmpty
+}: {
+  id: string;
+  value: string;
+  onChange: (value: string) => void;
+  allowEmpty: boolean;
+}) {
+  const options = useQuery({ queryKey: ["users", "list", { page_size: 200 }], queryFn: () => client.users.list({ page_size: 200 }) });
+  return (
+    <select id={id} className={selectClass} value={value} onChange={e => onChange(e.target.value)}>
+      {allowEmpty ? <option value="">—</option> : null}
+      {(options.data?.data ?? []).map(item => (
+        <option key={text(item.id)} value={text(item.id)}>
+          {text(item.name)}
+        </option>
+      ))}
+    </select>
+  );
 }
 
 type ArchiveSetter = <K extends keyof ArchiveValues>(key: K, value: ArchiveValues[K]) => void;
@@ -123,6 +152,12 @@ function renderArchiveField(field: ArchiveField, values: ArchiveValues, set: Arc
         <Checkbox id="published" checked={values.published} onCheckedChange={checked => set("published", checked)} />
         <Label htmlFor="published">Published</Label>
       </div>
+      );
+    case "author_id":
+      return (
+      <FormRow label="Author" htmlFor="author_id">
+        <AuthorIdPicker id="author_id" value={values.author_id} onChange={value => set("author_id", value)} allowEmpty={false} />
+      </FormRow>
       );
     case "tags":
       return (

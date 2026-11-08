@@ -1,0 +1,25 @@
+id: ws2-project-notes
+tags: [tenancy, rules, relation, entity]
+base: { fixture: workspace }
+intent:
+  title: Project notes
+  ask: >-
+    Members leave notes on a project: a body and who wrote it. Everyone in the project's team can read
+    them; only the writer or a team admin can delete one.
+  acceptance:
+    - A user outside the team cannot read a project's notes
+    - Another member deleting my note gets 403; a team admin succeeds
+expect:
+  entities: ["Note|ProjectNote"]
+  fields: { "Note|ProjectNote": ["body|content|text", project_id, "author_id|user_id"] }
+  relations: ["Note|ProjectNote.* -> Project", "Note|ProjectNote.* -> User"]
+  rules:
+    "Note|ProjectNote":
+      read: "member:project_id.team_id|member:project_id.team_id:member"
+      delete: "owner:author_id or member:project_id.team_id:admin|owner:user_id or member:project_id.team_id:admin"
+  resources: ["notes|project_notes"]
+  scenarios: { min: 1, rejections: 1, statuses: [403] }
+notes: >-
+  Without a team column on the note, the rules must follow project_id to the team; deletion combines the
+  writer (owner) with the team's admins. A diff that copies team_id onto the note and uses plain member
+  rules fails the rules check on purpose: the path is the construct under test.

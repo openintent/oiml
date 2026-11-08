@@ -43,8 +43,8 @@ export const teams = {
       const { page, page_size } = query.data;
       const conditions: SQL[] = [];
     const tenants = memberTenantIds(session, undefined);
-      if (tenants.length === 0) return ok([], { page: { page, page_size, total: 0 } });
-      conditions.push(inArray(teamsTable.id, tenants as string[]));
+    if (tenants.length === 0) return ok([], { page: { page, page_size, total: 0 } });
+    conditions.push(inArray(teamsTable.id, tenants as string[]));
       const where = conditions.length ? and(...conditions) : undefined;
       const [rows, [{ total }]] = await Promise.all([
         db.query.teams.findMany({ where, orderBy: [desc(teamsTable.created_at)], limit: page_size, offset: (page - 1) * page_size }),

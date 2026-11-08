@@ -4,8 +4,8 @@
 import { QueryClient } from "@tanstack/react-query";
 import type { z } from "zod";
 import type { FileRecord } from "../files";
-import type { PublicArticle, PublicUser } from "../present";
-import type { postsCreateInput, postsListQuery, postsPublishInput, postsUnpublishAllInput, postsUpdateInput, sendDigestInput, usersListQuery } from "../validation";
+import type { PublicArticle, PublicComment, PublicUser } from "../present";
+import type { commentsCreateInput, commentsListQuery, commentsUpdateInput, postsCreateInput, postsListQuery, postsPublishInput, postsUnpublishAllInput, postsUpdateInput, sendDigestInput, usersListQuery } from "../validation";
 
 export class ApiError extends Error {
   constructor(
@@ -78,6 +78,13 @@ export type Inputs = {
     publish: z.input<typeof postsPublishInput> & { id: string };
     unpublish_all: z.input<typeof postsUnpublishAllInput>;
   };
+  comments: {
+    list: z.input<typeof commentsListQuery>;
+    get: { id: string };
+    create: z.input<typeof commentsCreateInput>;
+    update: { id: string; data: z.input<typeof commentsUpdateInput> };
+    delete: { id: string };
+  };
 };
 
 export type Outputs = {
@@ -111,6 +118,13 @@ export type Outputs = {
     delete: null;
     publish: PublicArticle;
     unpublish_all: { count: number };
+  };
+  comments: {
+    list: { data: (PublicComment & { author: PublicUser | null })[]; page: Page };
+    get: PublicComment;
+    create: PublicComment;
+    update: PublicComment;
+    delete: null;
   };
 };
 
@@ -152,6 +166,13 @@ export const client = {
     delete: ({ id }: Inputs["posts"]["delete"]) => call<null>("DELETE", "/api/posts" + "/" + id),
     publish: ({ id, ...input }: Inputs["posts"]["publish"]) => call<PublicArticle>("POST", "/api/posts" + "/" + id + "/publish", { body: input }),
     unpublish_all: (input: Inputs["posts"]["unpublish_all"]) => call<{ count: number }>("POST", "/api/posts/unpublish_all", { body: input })
+  },
+  comments: {
+    list: (input: Inputs["comments"]["list"]) => call<Outputs["comments"]["list"]>("GET", "/api/comments", { query: input as Record<string, unknown>, whole: true }),
+    get: ({ id }: Inputs["comments"]["get"]) => call<Outputs["comments"]["get"]>("GET", "/api/comments" + "/" + id),
+    create: (input: Inputs["comments"]["create"]) => call<PublicComment>("POST", "/api/comments", { body: input }),
+    update: ({ id, data }: Inputs["comments"]["update"]) => call<PublicComment>("PATCH", "/api/comments" + "/" + id, { body: data }),
+    delete: ({ id }: Inputs["comments"]["delete"]) => call<null>("DELETE", "/api/comments" + "/" + id)
   }
 };
 

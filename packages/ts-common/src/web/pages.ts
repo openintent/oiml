@@ -75,9 +75,14 @@ export function rulePredicate(rule: RuleIR, user: string, row: string | null, id
     case "member":
       return `${user} !== null`;
     case "owner":
-      return row ? `${user} !== null && ${row}.${rule.field} === ${user}.${identityPkName}` : `${user} !== null`;
+      // A path is resolved by the API; the page only needs a signed-in user to offer the control
+      return row && !rule.via
+        ? `${user} !== null && ${row}.${rule.field} === ${user}.${identityPkName}`
+        : `${user} !== null`;
     case "role":
       return `${user} !== null && (${user} as { role?: unknown }).role === ${JSON.stringify(rule.value)}`;
+    case "any":
+      return `(${rule.rules.map(r => rulePredicate(r, user, row, identityPkName)).join(" || ")})`;
   }
 }
 
