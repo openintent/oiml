@@ -49,7 +49,8 @@ unique: [[a, b]]        # multi-column unique constraints
 Default rules: read public; create, update and delete are authenticated when auth exists, public otherwise.
 \`none\` leaves the operation out: its route does not exist, so a call answers 404, never 403.
 Alternatives: \`update: "owner:author_id or role:admin"\` lets the author edit their own post and an admin edit any one;
-when no alternative allows, anonymous callers get 401 and signed-in ones 403. Who may read a row still cannot depend on a
+when no alternative allows, anonymous callers get 401 and signed-in ones 403. Add an alternative only when the ask
+names it ("only the author" means owner alone). Who may read a row still cannot depend on a
 field's value (drafts visible to their author only): say what is not expressible rather than approximating with a stricter rule.
 \`owner:<field>\` needs auth; the field must be a relation to the identity entity (or the identity's own primary key).
 A path follows relation fields to a row that is not the one being accessed: \`owner:article_id.author_id\` on Comment is
@@ -238,6 +239,9 @@ scenario:
 
 Expected bodies match partially: every listed key must match, and every listed array element must match some element.
 Every scenario step has \`expect\` with at least a \`status\`; a step without one is invalid.
+All scenarios run in order against one database, each with every actor registered first, and the rows earlier
+scenarios and steps made are still there: expect a list exactly only through a filter, a search or a unique title
+that isolates what the scenario itself created, or check \`page.total\` on such a filter.
 \`{actor.id}\` is the acting user's id. Passwords must be at least 8 characters. An actor carries what register
 accepts (email, password, the identity's other writable fields) and may also set \`role\`, which register refuses:
 the harness and \`osl seed\` register the actor, then write that field straight into the database, so a scenario can

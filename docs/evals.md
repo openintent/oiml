@@ -148,6 +148,18 @@ were added (`fx-blog-6-comments-moderation`, `fx-ws-3-tasks`, `ws2-project-notes
 fields a client may never write (a `banned` flag that register would otherwise accept) and rules on the value
 being written (no admin may grant `owner`).
 
+The corpus after the rules round (62 cases, Opus 5.5, 2026-11-08) passed 46 of 62 against 45 of 59 before it,
+with 58 valid diffs (57 on the first attempt), four asks declined, every valid diff generating on all three
+backends, 38 of the 41 full runs without action stubs passing, at $3.10. The three new rule cases all passed:
+asked for admin moderation, the agent wrote `owner:author_id or role:admin`; asked for tasks ruled through
+their project, it wrote `member:project_id.team_id` and a read rule combining the assignee with the team's
+admins, unprompted by any example in the corpus. Twelve of the sixteen failures are action handler stubs. The
+other four were two scenarios whose list expectations forgot rows the same scenario had created earlier (the
+reference now says scenarios share one database and lists need a filter), a comments case where the agent,
+asked for "only the author can delete", added the article's author and admins as well (the reference now says
+to add an alternative only when the ask names it), and the admin-creates-accounts trap, which the agent this
+time declined rather than answering with a collection action.
+
 ## Another model
 
 The same corpus on Claude Sonnet 5.5 (2026-11-08, before the rules round): 44 of 59 passed against Opus's 45, with

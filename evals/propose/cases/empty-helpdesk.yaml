@@ -22,7 +22,10 @@ expect:
   rules:
     {
       Ticket:
-        { read: "member:organization_id|member:org_id", delete: "member:organization_id:admin|member:org_id:admin" }
+        {
+          read: "member:organization_id|member:org_id|member:organization_id:agent|member:org_id:agent",
+          delete: "member:organization_id:admin|member:org_id:admin"
+        }
     }
   resources: [tickets]
   actions_on: { tickets: { scope: row } }

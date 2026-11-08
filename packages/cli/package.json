@@ -1,6 +1,6 @@
 {
   "name": "@osl/cli",
-  "version": "1.0.0-alpha.1",
+  "version": "1.0.0-alpha.2",
   "description": "OSL command line: init, propose, apply, generate, migrate, verify, mcp",
   "license": "Apache-2.0",
   "type": "module",

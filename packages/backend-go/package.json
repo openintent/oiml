@@ -1,6 +1,6 @@
 {
   "name": "@osl/backend-gin-pgx",
-  "version": "1.0.0-alpha.1",
+  "version": "1.0.0-alpha.2",
   "description": "OSL backend: a Go module with Gin route handlers and pgx database access from IR",
   "license": "Apache-2.0",
   "type": "module",

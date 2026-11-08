@@ -117,17 +117,37 @@ export async function baseIntents(
     if (index === -1) throw new Error(`${c.id}: fixture ${c.base.fixture} has no intent ${c.base.through}`);
     ids = all.slice(0, index + 1);
   }
-  // The fixture's overlay (user-owned handlers) belongs to its final model; copy it only when the base is complete
-  return { name: c.base.fixture, ids, all, dir, overlay: ids.length === all.length };
+  // The fixture's overlay holds the user-owned handlers of its final model; copy it when the base declares the
+  // same actions, so a base that stops before an intent without actions still runs with working handlers
+  const overlay =
+    ids.length === all.length ||
+    handlersOf(await modelThrough(dir, c.base.fixture, ids)) ===
+      handlersOf(await modelThrough(dir, c.base.fixture, all));
+  return { name: c.base.fixture, ids, all, dir, overlay };
+}
+
+/** The action handlers a model declares, as one comparable string */
+function handlersOf(model: ModelType): string {
+  const names = Object.keys(model.actions ?? {}).map(a => `actions.${a}`);
+  for (const [resource, r] of Object.entries(model.resources ?? {}))
+    for (const a of Object.keys(r.actions ?? {})) names.push(`${resource}.${a}`);
+  return names.sort().join(",");
+}
+
+/** The fixture's model after the given intents, in order */
+async function modelThrough(dir: string, name: string, ids: string[]): Promise<ModelType> {
+  let model = Model.parse({ osl: "1.0", name, entities: {} });
+  for (const id of ids) {
+    const diff = parseDiff(fromYaml(await readFile(path.join(dir, "intents", id, "diff.yaml"), "utf8")));
+    model = applyDiff(model, diff).model;
+  }
+  return model;
 }
 
 export async function baseModel(repoRoot: string, c: Case): Promise<ModelType> {
   const { name, ids, dir } = await baseIntents(repoRoot, c);
   let model = Model.parse({ osl: "1.0", name, entities: {} });
-  for (const id of ids) {
-    const diff = parseDiff(fromYaml(await readFile(path.join(dir!, "intents", id, "diff.yaml"), "utf8")));
-    model = applyDiff(model, diff).model;
-  }
+  if (dir) model = await modelThrough(dir, name, ids);
   return model;
 }
 
