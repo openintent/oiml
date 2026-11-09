@@ -1,0 +1,24 @@
+id: fx-ws-4-archived-projects
+tags: [fixture, rules, tenancy, scenario]
+base: { fixture: workspace, through: WS-3 }
+oracle: fixtures/workspace/intents/WS-4/diff.yaml
+intent:
+  title: Archived projects
+  ask: >-
+    Archiving a project takes it out of the way: members no longer see it or edit it, while the team's admins still
+    see it and may edit it, to rename or restore it. A project cannot be created already archived.
+  acceptance:
+    - A member lists and opens only active projects; an admin sees archived ones too
+    - A member editing an archived project gets 403; an admin succeeds
+    - Creating a project with status archived is refused
+expect:
+  rules:
+    Project:
+      read: "member:team_id when status = active or member:team_id:admin|member:team_id when status = active or member:team_id:owner"
+      create: "member:team_id when status = active"
+      update: "member:team_id when status = active or member:team_id:admin|member:team_id when status = active or member:team_id:owner"
+  scenarios: { min: 1, rejections: 2, statuses: [403, 200] }
+  touches: [projects]
+notes: >-
+  Row conditions under tenancy: member alternatives carrying a when, an admin alternative without one, lists
+  filtered by the condition, and a create body checked with the field's default.

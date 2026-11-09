@@ -12,6 +12,7 @@ import {
   listRuleFilter,
   membershipType,
   membershipsLoader,
+  conditionDefaults,
   needsBodyCheck,
   rowArg,
   ruleLiteral,
@@ -762,8 +763,9 @@ ${whereLines}
     validationImports.add(`${resource.name}CreateInput`);
     const owner = create.ownerField ? `, ${create.ownerField}: ${me}` : "";
     const emitLines = events("created").map(e => `      await emit(${q(e.name)}, present${T}(row));`);
+    const defaults = conditionDefaults(entity, create.rule);
     const bodyCheck = needsBodyCheck(create.rule)
-      ? `, ${rowArg(create.rule, owner ? `{ ...input${owner} }` : "input")}`
+      ? `, ${rowArg(create.rule, owner || defaults ? `{ ${defaults}...input${owner} }` : "input")}`
       : "";
     const insert =
       isTenant && tenancy && membershipTable

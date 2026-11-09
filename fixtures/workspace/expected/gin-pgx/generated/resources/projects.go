@@ -37,11 +37,11 @@ func (h *Projects) Routes(r gin.IRouter) {
 	r.DELETE("/api/projects/:id", h.Delete)
 }
 
-var projectsReadRule = access.Rule{Kind: "member", Field: "team_id"}
+var projectsReadRule = access.Rule{Kind: "any", Any: []access.Rule{{Kind: "member", Field: "team_id", When: &access.Condition{Field: "status", Op: "eq", Value: "active"}}, {Kind: "member", Field: "team_id", Role: "admin"}}}
 
-var projectsCreateRule = access.Rule{Kind: "member", Field: "team_id"}
+var projectsCreateRule = access.Rule{Kind: "member", Field: "team_id", When: &access.Condition{Field: "status", Op: "eq", Value: "active"}}
 
-var projectsUpdateRule = access.Rule{Kind: "member", Field: "team_id"}
+var projectsUpdateRule = access.Rule{Kind: "any", Any: []access.Rule{{Kind: "member", Field: "team_id", When: &access.Condition{Field: "status", Op: "eq", Value: "active"}}, {Kind: "member", Field: "team_id", Role: "admin"}}}
 
 var projectsDeleteRule = access.Rule{Kind: "member", Field: "team_id", Role: "admin"}
 
@@ -69,12 +69,20 @@ func (h *Projects) List(c *gin.Context) {
 	if v, ok := query.Filters["status"]; ok {
 		where.Eq(`"status"`, v)
 	}
-	tenants := access.MemberTenantIDs(session, "")
-	if len(tenants) == 0 {
-		httpx.List(c, models.PresentProjects(nil), httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: 0})
-		return
+	if !access.Satisfied(projectsReadRule, session) {
+		alternatives := []string{}
+		if tenants := access.MemberTenantIDs(session, ""); len(tenants) > 0 {
+			alternatives = append(alternatives, "("+`"team_id" = ANY(`+where.Param(tenants)+`)`+" AND "+`"status" = `+where.Param("active")+")")
+		}
+		if tenants := access.MemberTenantIDs(session, "admin"); len(tenants) > 0 {
+			alternatives = append(alternatives, `"team_id" = ANY(`+where.Param(tenants)+`)`)
+		}
+		if len(alternatives) == 0 {
+			httpx.List(c, models.PresentProjects(nil), httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: 0})
+			return
+		}
+		where.AnyOf(alternatives)
 	}
-	where.In(`"team_id"`, tenants)
 	if query.Q != "" {
 		where.Search([]string{`"name"`}, query.Q)
 	}
@@ -124,7 +132,7 @@ func (h *Projects) Get(c *gin.Context) {
 		httpx.HandleError(c, err, "read")
 		return
 	}
-	if verdict := access.CheckRow(projectsReadRule, session, access.Row{"team_id": row.TeamID}); verdict != nil {
+	if verdict := access.CheckRow(projectsReadRule, session, access.Row{"team_id": row.TeamID, "status": row.Status}); verdict != nil {
 		access.Deny(c, verdict)
 		return
 	}
@@ -153,7 +161,7 @@ func (h *Projects) Create(c *gin.Context) {
 		httpx.Fail(c, perr)
 		return
 	}
-	if verdict := access.CheckRow(projectsCreateRule, session, access.Row{"team_id": values["team_id"]}); verdict != nil {
+	if verdict := access.CheckRow(projectsCreateRule, session, access.Row{"team_id": values["team_id"], "status": access.Default(values["status"], "active")}); verdict != nil {
 		access.Deny(c, verdict)
 		return
 	}
@@ -198,7 +206,7 @@ func (h *Projects) Update(c *gin.Context) {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	if verdict := access.CheckRow(projectsUpdateRule, session, access.Row{"team_id": existing.TeamID}); verdict != nil {
+	if verdict := access.CheckRow(projectsUpdateRule, session, access.Row{"team_id": existing.TeamID, "status": existing.Status}); verdict != nil {
 		access.Deny(c, verdict)
 		return
 	}

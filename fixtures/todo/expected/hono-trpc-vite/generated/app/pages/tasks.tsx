@@ -28,7 +28,7 @@ function canCreate(user: SessionUser | null): boolean {
 }
 
 function canUpdate(user: SessionUser | null, row: Detail): boolean {
-  return true;
+  return (true && String(row.status) !== "done");
 }
 
 function canDelete(user: SessionUser | null, row: Detail): boolean {
@@ -36,7 +36,7 @@ function canDelete(user: SessionUser | null, row: Detail): boolean {
 }
 
 function canComplete(user: SessionUser | null, row: Detail): boolean {
-  return true;
+  return (true && String(row.status) !== "done");
 }
 
 function canClearDone(user: SessionUser | null): boolean {
@@ -396,7 +396,6 @@ export function TasksDetail() {
   if (query.isPending) return <PaneSkeleton />;
   if (query.error) return <ErrorNote error={query.error} className="m-6" />;
   const row: Detail = query.data;
-  void row;
   return (
     <Pane
       title={text(row.title) || "Task " + text(row.id)}

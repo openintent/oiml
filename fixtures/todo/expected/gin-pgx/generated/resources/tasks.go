@@ -47,11 +47,11 @@ var tasksReadRule = access.Rule{Kind: "public"}
 
 var tasksCreateRule = access.Rule{Kind: "public"}
 
-var tasksUpdateRule = access.Rule{Kind: "public"}
+var tasksUpdateRule = access.Rule{Kind: "public", When: &access.Condition{Field: "status", Op: "ne", Value: "done"}}
 
 var tasksDeleteRule = access.Rule{Kind: "public"}
 
-var tasksCompleteActionRule = access.Rule{Kind: "public"}
+var tasksCompleteActionRule = access.Rule{Kind: "public", When: &access.Condition{Field: "status", Op: "ne", Value: "done"}}
 
 var tasksClearDoneActionRule = access.Rule{Kind: "public"}
 
@@ -224,7 +224,7 @@ func (h *Tasks) Update(c *gin.Context) {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	if verdict := access.CheckRow(tasksUpdateRule, session, nil); verdict != nil {
+	if verdict := access.CheckRow(tasksUpdateRule, session, access.Row{"status": existing.Status}); verdict != nil {
 		access.Deny(c, verdict)
 		return
 	}
@@ -325,7 +325,7 @@ func (h *Tasks) ActionComplete(c *gin.Context) {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	if verdict := access.CheckRow(tasksCompleteActionRule, session, nil); verdict != nil {
+	if verdict := access.CheckRow(tasksCompleteActionRule, session, access.Row{"status": row.Status}); verdict != nil {
 		access.Deny(c, verdict)
 		return
 	}

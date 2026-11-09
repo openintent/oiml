@@ -10,6 +10,7 @@ import {
   defaultPagePath,
   loadModel,
   predicateParts,
+  splitWhen,
   primaryKeyFields,
   resolveStepOp,
   rulePredicates,
@@ -99,19 +100,51 @@ export interface RuleHopIR {
   targetColumn: string;
 }
 
+/** A row condition on a predicate: it allows only rows whose `column` compares to `value` as `op` says */
+export interface RuleConditionIR {
+  column: string;
+  op: "eq" | "ne";
+  /** The literal, typed by the column: boolean, number, string (enum values included) or null */
+  value: string | number | boolean | null;
+}
+
 export type RuleIR =
-  | { kind: "public" }
-  | { kind: "authenticated" }
+  | { kind: "public"; when?: RuleConditionIR }
+  | { kind: "authenticated"; when?: RuleConditionIR }
   | { kind: "none" }
   /** The row's `field` is the session's user; with `via`, `field` is on the row the hops reach */
-  | { kind: "owner"; field: string; via?: RuleHopIR[] }
-  | { kind: "role"; value: string }
+  | { kind: "owner"; field: string; via?: RuleHopIR[]; when?: RuleConditionIR }
+  | { kind: "role"; value: string; when?: RuleConditionIR }
   /** The user has a membership of the tenant in `field` (with at least `role`, by the membership's enum order); with `via`, `field` is on the row the hops reach */
-  | { kind: "member"; field: string; role?: string; via?: RuleHopIR[] }
+  | { kind: "member"; field: string; role?: string; via?: RuleHopIR[]; when?: RuleConditionIR }
   /** Any of the alternatives allows */
   | { kind: "any"; rules: RuleIR[] };
 
 export type RowRuleIR = Extract<RuleIR, { kind: "owner" | "member" }>;
+/** An alternative that is not `any`: the predicates a rule is made of */
+export type PredicateIR = Exclude<RuleIR, { kind: "any" }>;
+/** A predicate that may carry a row condition */
+export type ConditionedRuleIR = Exclude<PredicateIR, { kind: "none" }>;
+
+/** The alternatives that carry a row condition, in order */
+export function conditionedRules(rule: RuleIR): ConditionedRuleIR[] {
+  return ruleAlternatives(rule).filter(
+    (r): r is ConditionedRuleIR => r.kind !== "any" && r.kind !== "none" && r.when !== undefined
+  );
+}
+
+/** The alternatives whose verdict needs the row: owner and member rules, and any predicate with a condition */
+export function rowDependentRules(rule: RuleIR): PredicateIR[] {
+  return ruleAlternatives(rule).filter(
+    (r): r is PredicateIR =>
+      r.kind === "owner" || r.kind === "member" || (r.kind !== "any" && r.kind !== "none" && r.when !== undefined)
+  );
+}
+
+/** ` when published = true`, as the model writes a condition */
+export function conditionText(when: RuleConditionIR): string {
+  return ` when ${when.column} ${when.op === "eq" ? "=" : "!="} ${when.value === null ? "null" : String(when.value)}`;
+}
 
 /** The alternatives of a rule: the rule itself, or the rules an `any` lists */
 export function ruleAlternatives(rule: RuleIR): RuleIR[] {
@@ -123,9 +156,11 @@ export function rowRules(rule: RuleIR): RowRuleIR[] {
   return ruleAlternatives(rule).filter((r): r is RowRuleIR => r.kind === "owner" || r.kind === "member");
 }
 
-/** The alternatives a session can satisfy without a row: public, authenticated and role */
+/** The alternatives a session can satisfy without a row: public, authenticated and role, without a condition */
 export function openRules(rule: RuleIR): RuleIR[] {
-  return ruleAlternatives(rule).filter(r => r.kind === "public" || r.kind === "authenticated" || r.kind === "role");
+  return ruleAlternatives(rule).filter(
+    r => (r.kind === "public" || r.kind === "authenticated" || r.kind === "role") && !r.when
+  );
 }
 
 /** The key the generated code keeps a row rule's value under when it checks a row: the column, or the dotted path */
@@ -141,17 +176,19 @@ export function directOwnerOf(rule: RuleIR): string | undefined {
 
 /** The rule as the model writes it */
 export function ruleText(rule: RuleIR): string {
+  const when = rule.kind !== "any" && rule.kind !== "none" && rule.when ? conditionText(rule.when) : "";
   switch (rule.kind) {
-    case "public":
-    case "authenticated":
     case "none":
       return rule.kind;
+    case "public":
+    case "authenticated":
+      return `${rule.kind}${when}`;
     case "owner":
-      return `owner:${ruleKey(rule)}`;
+      return `owner:${ruleKey(rule)}${when}`;
     case "role":
-      return `role:${rule.value}`;
+      return `role:${rule.value}${when}`;
     case "member":
-      return `member:${ruleKey(rule)}${rule.role ? `:${rule.role}` : ""}`;
+      return `member:${ruleKey(rule)}${rule.role ? `:${rule.role}` : ""}${when}`;
     case "any":
       return rule.rules.map(ruleText).join(" or ");
   }
@@ -412,14 +449,32 @@ const SCALARS = new Set<string>([
  * Parse a rule. `hops` resolves the relation fields an owner or member path follows (every segment but the
  * last) from the entity the rule is on; without it a path is treated as a plain field.
  */
-export function parseRule(rule: Rule | undefined, fallback: RuleIR, hops?: (path: string[]) => RuleHopIR[]): RuleIR {
+/** How a compile turns a when literal into a typed condition, knowing the entity's fields */
+export type ConditionParser = (field: string, op: "eq" | "ne", raw: string) => RuleConditionIR;
+
+export function parseRule(
+  rule: Rule | undefined,
+  fallback: RuleIR,
+  hops?: (path: string[]) => RuleHopIR[],
+  condition?: ConditionParser
+): RuleIR {
   if (!rule) return fallback;
   const predicates = rulePredicates(rule);
-  if (predicates.length > 1) return { kind: "any", rules: predicates.map(p => parsePredicate(p, hops)) };
-  return parsePredicate(predicates[0], hops);
+  if (predicates.length > 1) return { kind: "any", rules: predicates.map(p => parsePredicate(p, hops, condition)) };
+  return parsePredicate(predicates[0], hops, condition);
 }
 
-function parsePredicate(predicate: string, hops?: (path: string[]) => RuleHopIR[]): RuleIR {
+function parsePredicate(full: string, hops?: (path: string[]) => RuleHopIR[], condition?: ConditionParser): RuleIR {
+  const { base: predicate, when } = splitWhen(full);
+  const out = parseBase(predicate, hops);
+  if (when && out.kind !== "none" && out.kind !== "any")
+    out.when = condition
+      ? condition(when.field, when.op === "=" ? "eq" : "ne", when.value)
+      : { column: when.field, op: when.op === "=" ? "eq" : "ne", value: when.value };
+  return out;
+}
+
+function parseBase(predicate: string, hops?: (path: string[]) => RuleHopIR[]): RuleIR {
   const parts = predicateParts(predicate);
   if (parts) {
     const field = parts.path[parts.path.length - 1];
@@ -564,6 +619,17 @@ export function compile(input: Model): IR {
   const tableOf = (name: string) => allEntities[name].table ?? defaultTableName(name);
   const pkOf = (name: string) => primaryKeyFields(allEntities[name]);
   /** The hops a rule path takes from `entityName` through its relation fields */
+  /** A when literal typed by the field it tests: null, a boolean, a number, or the string as written */
+  const conditionOn =
+    (entityName: string): ConditionParser =>
+    (field, op, raw) => {
+      const f = allEntities[entityName]?.fields[field];
+      let value: RuleConditionIR["value"] = raw;
+      if (raw === "null") value = null;
+      else if (f?.type === "boolean") value = raw === "true";
+      else if (f && ["integer", "bigint", "float", "decimal"].includes(f.type)) value = Number(raw);
+      return { column: field, op, value };
+    };
   const hopsFrom = (entityName: string, path: string[]): RuleHopIR[] => {
     const out: RuleHopIR[] = [];
     let current = entityName;
@@ -684,10 +750,30 @@ export function compile(input: Model): IR {
       indexes,
       relations,
       rules: {
-        read: parseRule(entity.rules?.read, defaultRules.read, path => hopsFrom(entityName, path)),
-        create: parseRule(entity.rules?.create, defaultRules.create, path => hopsFrom(entityName, path)),
-        update: parseRule(entity.rules?.update, defaultRules.update, path => hopsFrom(entityName, path)),
-        delete: parseRule(entity.rules?.delete, defaultRules.delete, path => hopsFrom(entityName, path))
+        read: parseRule(
+          entity.rules?.read,
+          defaultRules.read,
+          path => hopsFrom(entityName, path),
+          conditionOn(entityName)
+        ),
+        create: parseRule(
+          entity.rules?.create,
+          defaultRules.create,
+          path => hopsFrom(entityName, path),
+          conditionOn(entityName)
+        ),
+        update: parseRule(
+          entity.rules?.update,
+          defaultRules.update,
+          path => hopsFrom(entityName, path),
+          conditionOn(entityName)
+        ),
+        delete: parseRule(
+          entity.rules?.delete,
+          defaultRules.delete,
+          path => hopsFrom(entityName, path),
+          conditionOn(entityName)
+        )
       },
       display: displayColumn(columns, primaryKey, foreignKeys)
     };
@@ -837,7 +923,12 @@ export function compile(input: Model): IR {
           : `${resource.path}/${name}`
         : `/api/actions/${name}`,
       input: inputFields,
-      rule: parseRule(action.rule, fallback, resource ? path => hopsFrom(resource.entity.name, path) : undefined),
+      rule: parseRule(
+        action.rule,
+        fallback,
+        resource ? path => hopsFrom(resource.entity.name, path) : undefined,
+        resource ? conditionOn(resource.entity.name) : undefined
+      ),
       returns,
       handler: owner
     };

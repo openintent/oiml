@@ -4,6 +4,7 @@ import {
   actionInputName,
   fileSpecsLiteral,
   listRuleFilter,
+  conditionDefaults,
   needsBodyCheck,
   rowArg,
   ruleLiteral,
@@ -234,8 +235,9 @@ ${filterLines.join("\n")}
     httpImports.add("created");
     const owner = create.ownerField ? `, ${create.ownerField}: ${me}` : "";
     const emitLines = events("created").map(e => `      await emit(${q(e.name)}, present${T}(row));`);
+    const defaults = conditionDefaults(entity, create.rule);
     const bodyCheck = needsBodyCheck(create.rule)
-      ? `      const bodyVerdict = checkRule(RULES.create, session, ${rowArg(create.rule, owner ? `{ ...body.data${owner} }` : "body.data")});
+      ? `      const bodyVerdict = checkRule(RULES.create, session, ${rowArg(create.rule, owner || defaults ? `{ ${defaults}...body.data${owner} }` : "body.data")});
       if (!bodyVerdict.ok) return denied(bodyVerdict);\n`
       : "";
     const insert =

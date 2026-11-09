@@ -1,0 +1,34 @@
+osl: "1.0"
+summary: A done task is frozen; whether a task may be updated depends on its status
+ops:
+  - op: set_rules
+    entity: Task
+    rules: { update: "public when status != done" }
+  - op: add_scenario
+    scenario:
+      name: frozen tasks
+      steps:
+        - op: tasks.create
+          body: { title: Freeze me }
+          expect: { status: 201, body: { data: { status: todo } } }
+          capture: { task: data.id }
+        - op: tasks.update
+          path: { id: "{task}" }
+          body: { title: Freeze me soon }
+          expect: { status: 200, body: { data: { title: Freeze me soon } } }
+        - op: tasks.complete
+          path: { id: "{task}" }
+          expect: { status: 200, body: { data: { title: Freeze me soon, status: done } } }
+        - op: tasks.update
+          path: { id: "{task}" }
+          body: { title: Thaw }
+          expect: { status: 403 }
+        - op: tasks.complete
+          path: { id: "{task}" }
+          expect: { status: 403 }
+        - op: tasks.get
+          path: { id: "{task}" }
+          expect: { status: 200, body: { data: { title: Freeze me soon, status: done } } }
+        - op: tasks.delete
+          path: { id: "{task}" }
+          expect: { status: 204 }

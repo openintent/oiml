@@ -1,0 +1,18 @@
+id: blog2-private-drafts
+tags: [rules]
+base: { fixture: blog, through: FEAT-2 }
+full: false
+intent:
+  title: Private drafts
+  ask: Unpublished posts are visible only to their author; published posts stay public.
+  acceptance:
+    - Another user or an anonymous reader opening a draft gets 403; the author sees it
+    - Lists show drafts only to their author
+expect:
+  rules: { Post: { read: "public when published = true or owner:author_id" } }
+  scenarios: { min: 1, rejections: 1, statuses: [403, 200] }
+  touches: [posts]
+notes: >-
+  Row visibility that depends on a field value: the read rule carries a when condition on the public alternative.
+  The base's own scenario opens a draft anonymously, which this change rightly refuses, so the case stops at the
+  checks (full: false) rather than failing on the base's expectation.

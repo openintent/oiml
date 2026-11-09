@@ -4,14 +4,17 @@
 import { TRPCError } from "@trpc/server";
 import type { Session } from "./auth";
 
+/** A row condition on a rule: it allows only rows whose `field` compares to `value` as `op` says */
+export type Condition = { field: string; op: "eq" | "ne"; value: unknown };
+
 /** A rule from the model. `field` is a column, or the dotted path of a value reached through relations. */
 export type Rule =
-  | { kind: "public" }
-  | { kind: "authenticated" }
+  | { kind: "public"; when?: Condition }
+  | { kind: "authenticated"; when?: Condition }
   | { kind: "none" }
-  | { kind: "owner"; field: string }
-  | { kind: "role"; value: string }
-  | { kind: "member"; field: string; role?: string }
+  | { kind: "owner"; field: string; when?: Condition }
+  | { kind: "role"; value: string; when?: Condition }
+  | { kind: "member"; field: string; role?: string; when?: Condition }
   | { kind: "any"; rules: Rule[] };
 
 export type Verdict = { ok: true } | { ok: false; status: 401 | 403 };
@@ -33,15 +36,23 @@ export function memberTenantIds(session: Session | null, role?: string): (string
     .map(m => m.tenant);
 }
 
+/** Whether a row (or create body) satisfies a condition; values compare as text, null only to null */
+export function holds(when: Condition, row: Record<string, unknown>): boolean {
+  const value = row[when.field];
+  const same =
+    value == null || when.value == null ? value == null && when.value == null : String(value) === String(when.value);
+  return when.op === "eq" ? same : !same;
+}
+
 /** Whether the rule allows this session whatever the row, so a list under it needs no row filter. */
 export function satisfied(rule: Rule, session: Session | null): boolean {
   switch (rule.kind) {
     case "public":
-      return true;
+      return !rule.when;
     case "authenticated":
-      return session !== null;
+      return session !== null && !rule.when;
     case "role":
-      return session !== null && (session.user as Record<string, unknown>).role === rule.value;
+      return session !== null && (session.user as Record<string, unknown>).role === rule.value && !rule.when;
     case "any":
       return rule.rules.some(alternative => satisfied(alternative, session));
     default:
@@ -52,8 +63,15 @@ export function satisfied(rule: Rule, session: Session | null): boolean {
 /**
  * Check a rule for a session and, when the rule is about a row, that row (or the body of a create). A rule
  * with alternatives allows when any of them does; otherwise it answers 401 when every alternative did.
+ * A condition is checked once the row is there; before that, the rule allows what its predicate allows.
  */
 export function verdict(rule: Rule, session: Session | null, row?: Record<string, unknown> | null): Verdict {
+  const base = predicateVerdict(rule, session, row);
+  if (!base.ok || rule.kind === "any" || rule.kind === "none" || !rule.when || !row) return base;
+  return holds(rule.when, row) ? ALLOW : { ok: false, status: 403 };
+}
+
+function predicateVerdict(rule: Rule, session: Session | null, row?: Record<string, unknown> | null): Verdict {
   switch (rule.kind) {
     case "any": {
       let status: 401 | 403 = 401;

@@ -1,0 +1,81 @@
+osl: "1.0"
+summary: Archived projects are read and edited by team admins only; projects start active
+ops:
+  - op: set_rules
+    entity: Project
+    rules:
+      read: "member:team_id when status = active or member:team_id:admin"
+      create: "member:team_id when status = active"
+      update: "member:team_id when status = active or member:team_id:admin"
+      delete: "member:team_id:admin"
+  - op: add_scenario
+    scenario:
+      name: archived projects
+      steps:
+        - as: alice
+          op: teams.create
+          body: { name: Archive Co }
+          expect: { status: 201 }
+          capture: { team: data.id }
+        - as: bob
+          op: auth.me
+          expect: { status: 200 }
+          capture: { bob_id: data.id }
+        - as: alice
+          op: members.create
+          body: { team_id: "{team}", user_id: "{bob_id}" }
+          expect: { status: 201, body: { data: { role: member } } }
+        - as: bob
+          op: projects.create
+          body: { name: Born archived, team_id: "{team}", status: archived }
+          expect: { status: 403 }
+        - as: bob
+          op: projects.create
+          body: { name: Current, team_id: "{team}" }
+          expect: { status: 201, body: { data: { status: active } } }
+          capture: { current: data.id }
+        - as: alice
+          op: projects.create
+          body: { name: Old, team_id: "{team}" }
+          expect: { status: 201 }
+          capture: { old: data.id }
+        - as: alice
+          op: projects.update
+          path: { id: "{old}" }
+          body: { status: archived }
+          expect: { status: 200, body: { data: { status: archived } } }
+        - as: bob
+          op: projects.list
+          query: { team_id: "{team}" }
+          expect: { status: 200, body: { data: [{ name: Current }], page: { total: 1 } } }
+        - as: alice
+          op: projects.list
+          query: { team_id: "{team}" }
+          expect: { status: 200, body: { page: { total: 2 } } }
+        - as: bob
+          op: projects.get
+          path: { id: "{old}" }
+          expect: { status: 403 }
+        - as: alice
+          op: projects.get
+          path: { id: "{old}" }
+          expect: { status: 200, body: { data: { name: Old, status: archived } } }
+        - as: bob
+          op: projects.update
+          path: { id: "{old}" }
+          body: { name: Not mine to touch }
+          expect: { status: 403 }
+        - as: bob
+          op: projects.update
+          path: { id: "{current}" }
+          body: { name: Current work }
+          expect: { status: 200, body: { data: { name: Current work } } }
+        - as: alice
+          op: projects.update
+          path: { id: "{old}" }
+          body: { status: active, name: Restored }
+          expect: { status: 200, body: { data: { name: Restored, status: active } } }
+        - as: bob
+          op: projects.get
+          path: { id: "{old}" }
+          expect: { status: 200, body: { data: { name: Restored } } }

@@ -9,7 +9,16 @@ import type {
   ResourceIR,
   RuleIR
 } from "@osl/core";
-import { actionsOf, globalActions, rowRules, ruleAlternatives, ruleKey } from "@osl/core";
+import {
+  actionsOf,
+  conditionedRules,
+  globalActions,
+  rowDependentRules,
+  rowRules,
+  ruleAlternatives,
+  ruleKey
+} from "@osl/core";
+import type { PredicateIR, RowRuleIR } from "@osl/core";
 import { actionParseFunc } from "./actions.js";
 import { fileSpecsLiteral } from "./auth.js";
 import { eventFunc } from "./events.js";
@@ -37,6 +46,7 @@ import {
   quoteIdent,
   relation,
   rowGoType,
+  conditionValue,
   ruleLiteral,
   singlePrimaryKey,
   typeName
@@ -48,9 +58,11 @@ function hasVia(rule: RuleIR): boolean {
   return rowRules(rule).some(r => Boolean(r.via?.length));
 }
 
-/** The columns a rule reads from the row itself: its plain fields, and the first column of each path */
+/** The columns a rule reads from the row itself: its plain fields, the first column of each path, and the ones its conditions test */
 function baseColumns(rule: RuleIR): string[] {
-  return [...new Set(rowRules(rule).map(r => (r.via?.length ? r.via[0].column : r.field)))];
+  const out = new Set(rowRules(rule).map(r => (r.via?.length ? r.via[0].column : r.field)));
+  for (const r of conditionedRules(rule)) out.add(r.when!.column);
+  return [...out];
 }
 
 /**
@@ -70,10 +82,24 @@ function rowFromStruct(columns: string[], rowVar: string): string {
   return `access.Row{${columns.map(c => `${q(c)}: ${rowVar}.${exported(c)}`).join(", ")}}`;
 }
 
-/** access.Row literal of the columns a check reads, from a create body; a plain owner field comes from the session */
-function rowFromValues(columns: string[], ownerField: string | undefined, identityPk: string): string {
+/**
+ * access.Row literal of the columns a check reads, from a create body; a plain owner field comes from the session,
+ * and a column with a literal default is read with that default, the value the row would get
+ */
+function rowFromValues(
+  columns: string[],
+  ownerField: string | undefined,
+  identityPk: string,
+  entity: EntityIR
+): string {
   return `access.Row{${columns
-    .map(c => `${q(c)}: ${c === ownerField ? `session.User.${identityPk}` : `values[${q(c)}]`}`)
+    .map(c => {
+      if (c === ownerField) return `${q(c)}: session.User.${identityPk}`;
+      const col = entity.columns.find(x => x.name === c);
+      if (col?.default?.kind === "literal")
+        return `${q(c)}: access.Default(values[${q(c)}], ${conditionValue(col.default.value)})`;
+      return `${q(c)}: values[${q(c)}]`;
+    })
     .join(", ")}}`;
 }
 
@@ -105,16 +131,40 @@ function listFilterLines(
   empty: string,
   pageExpr: (total: number) => string
 ): string[] {
-  const rows = rowRules(rule);
+  const rows = rowDependentRules(rule);
   if (rows.length === 0) return [];
   const me = { code: `session.User.${identityPk}` };
-  const tenantsOf = (r: (typeof rows)[number]) =>
+  const tenantsOf = (r: RowRuleIR) =>
     `access.MemberTenantIDs(session, ${q(r.kind === "member" ? (r.role ?? "") : "")})`;
-  const last = (r: (typeof rows)[number], tenants: string): (string | { code: string })[] =>
+  const last = (r: RowRuleIR, tenants: string): (string | { code: string })[] =>
     r.kind === "owner"
       ? [`${quoteIdent(r.field)} = `, { code: `where.Param(${me.code})` }]
       : [`${quoteIdent(r.field)} = ANY(`, { code: `where.Param(${tenants})` }, `)`];
-  const condition = (r: (typeof rows)[number], tenants: string): string => {
+  /** The SQL of a predicate's condition as a Go string expression, or null without one */
+  const whenSql = (r: PredicateIR): string | null => {
+    if (r.kind === "none" || !r.when) return null;
+    const col = quoteIdent(r.when.column);
+    if (r.when.value === null) return goRaw(`${col} IS ${r.when.op === "eq" ? "" : "NOT "}NULL`);
+    return goConcat([
+      `${col} ${r.when.op === "eq" ? "=" : "<>"} `,
+      { code: `where.Param(${conditionValue(r.when.value)})` }
+    ]);
+  };
+  /** The whole condition of an alternative: the row part, the when part, or both */
+  const alternative = (r: PredicateIR, tenants: string): string => {
+    const when = whenSql(r);
+    if (r.kind !== "owner" && r.kind !== "member") return when!;
+    const rowPart = condition(r, tenants);
+    return when ? `"("+${rowPart}+" AND "+${when}+")"` : rowPart;
+  };
+  /** The runtime guard before an open predicate's condition applies */
+  const guard = (r: PredicateIR): string | null =>
+    r.kind === "authenticated"
+      ? "session != nil"
+      : r.kind === "role"
+        ? `session != nil && session.Role() == ${q(r.value)}`
+        : null;
+  const condition = (r: RowRuleIR, tenants: string): string => {
     const hops = r.via ?? [];
     if (hops.length === 0) return goConcat(last(r, tenants));
     const inner = (i: number): (string | { code: string })[] => {
@@ -132,19 +182,29 @@ function listFilterLines(
     if (r.kind === "member") {
       lines.push(`\ttenants := ${tenantsOf(r)}`);
       lines.push(`\tif len(tenants) == 0 {\n\t\thttpx.List(c, ${empty}, ${pageExpr(0)})\n\t\treturn\n\t}`);
-      if (!r.via?.length) lines.push(`\twhere.In(${goRaw(quoteIdent(r.field))}, tenants)`);
-      else lines.push(`\twhere.Raw(${condition(r, "tenants")})`);
-    } else if (!r.via?.length) lines.push(`\twhere.Eq(${goRaw(quoteIdent(r.field))}, ${me.code})`);
-    else lines.push(`\twhere.Raw(${condition(r, "tenants")})`);
+      if (!r.via?.length && !r.when) lines.push(`\twhere.In(${goRaw(quoteIdent(r.field))}, tenants)`);
+      else lines.push(`\twhere.Raw(${alternative(r, "tenants")})`);
+    } else if (r.kind === "owner") {
+      if (!r.via?.length && !r.when) lines.push(`\twhere.Eq(${goRaw(quoteIdent(r.field))}, ${me.code})`);
+      else lines.push(`\twhere.Raw(${alternative(r, "tenants")})`);
+    } else lines.push(`\twhere.Raw(${alternative(r, "")})`);
     return lines;
   }
   const lines: string[] = [`\tif !access.Satisfied(${ruleVar}, session) {`, `\t\talternatives := []string{}`];
   for (const r of rows) {
-    if (r.kind === "owner") lines.push(`\t\talternatives = append(alternatives, ${condition(r, "")})`);
-    else
+    if (r.kind === "owner") lines.push(`\t\talternatives = append(alternatives, ${alternative(r, "")})`);
+    else if (r.kind === "member")
       lines.push(
-        `\t\tif tenants := ${tenantsOf(r)}; len(tenants) > 0 {\n\t\t\talternatives = append(alternatives, ${condition(r, "tenants")})\n\t\t}`
+        `\t\tif tenants := ${tenantsOf(r)}; len(tenants) > 0 {\n\t\t\talternatives = append(alternatives, ${alternative(r, "tenants")})\n\t\t}`
       );
+    else {
+      const g = guard(r);
+      lines.push(
+        g
+          ? `\t\tif ${g} {\n\t\t\talternatives = append(alternatives, ${alternative(r, "")})\n\t\t}`
+          : `\t\talternatives = append(alternatives, ${alternative(r, "")})`
+      );
+    }
   }
   lines.push(`\t\tif len(alternatives) == 0 {\n\t\t\thttpx.List(c, ${empty}, ${pageExpr(0)})\n\t\t\treturn\n\t\t}`);
   lines.push(`\t\twhere.AnyOf(alternatives)`, `\t}`);
@@ -582,9 +642,10 @@ ${body}
   if (create) {
     const emits = emitLines(eventsFor("created"), `${present}(row)`, "write");
     if (emits.length) imports.add(`${modulePath}/generated/events`);
-    const bodyCheck = rowRules(create.rule).some(r => r.kind === "member" || r.via?.length)
-      ? `${DENY_ROW(ruleVar("create"), create.rule, rowFromValues(rowColumns(create.rule, allRules), create.ownerField, identityPk), "write")}\n`
-      : "";
+    const bodyCheck =
+      rowRules(create.rule).some(r => r.kind === "member" || r.via?.length) || conditionedRules(create.rule).length > 0
+        ? `${DENY_ROW(ruleVar("create"), create.rule, rowFromValues(rowColumns(create.rule, allRules), create.ownerField, identityPk, entity), "write")}\n`
+        : "";
     const insert =
       isTenant && tenancy && membership
         ? `	tx, err := h.db.Begin(ctx)

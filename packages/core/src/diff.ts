@@ -21,6 +21,7 @@ import {
   SeedStep,
   Sidebar,
   predicateParts,
+  splitWhen,
   rulePredicates,
   type Model as ModelType
 } from "./model.js";
@@ -446,16 +447,19 @@ function mapRuleFields(
   fn: (entity: string, field: string) => string
 ): string {
   return rulePredicates(rule)
-    .map(predicate => {
+    .map(full => {
+      const { base: predicate, when } = splitWhen(full);
+      // The condition names a field of the entity itself
+      const tail = when ? ` when ${fn(entityName, when.field)} ${when.op} ${when.value}` : "";
       const parts = predicateParts(predicate);
-      if (!parts) return predicate;
+      if (!parts) return `${predicate}${tail}`;
       let current = entityName;
       const path = parts.path.map((segment, i) => {
         const mapped = fn(current, segment);
         if (i < parts.path.length - 1) current = model.entities[current]?.fields[segment]?.relation?.entity ?? current;
         return mapped;
       });
-      return `${parts.kind}:${path.join(".")}${parts.role !== undefined ? `:${parts.role}` : ""}`;
+      return `${parts.kind}:${path.join(".")}${parts.role !== undefined ? `:${parts.role}` : ""}${tail}`;
     })
     .join(" or ");
 }

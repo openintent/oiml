@@ -64,6 +64,25 @@ export function normalizeRule(text: string): string {
     .join(" or ");
 }
 
+/** The rule without its row conditions, so an expectation that names none still matches a rule the agent qualified */
+function stripConditions(text: string): string {
+  return text
+    .split(" or ")
+    .map(p => p.replace(/ when .*$/, ""))
+    .join(" or ");
+}
+
+/**
+ * Whether a rule matches one of the expected alternatives (`|`). An expectation that carries no condition
+ * accepts a rule whose predicates match once their conditions are dropped: qualifying a rule is never wrong here.
+ */
+export function ruleMatches(want: string, actual: RuleIR): boolean {
+  const options = alts(want).map(normalizeRule);
+  if (options.includes(ruleText(actual))) return true;
+  if (options.some(o => o.includes(" when "))) return false;
+  return options.includes(normalizeRule(stripConditions(coreRuleText(actual))));
+}
+
 /** Provider labels: credentials, magic_link, oauth:github, oauth:google, oauth:oidc, plus a bare "oauth" */
 function providerLabels(model: Model): string[] {
   if (!model.auth) return [];
@@ -268,8 +287,8 @@ export function checkExpectations(expect: Expect, checked: Checked): string[] {
       continue;
     }
     for (const [op, want] of Object.entries(rules)) {
-      const actual = ruleText(irEntity.rules[op as keyof typeof irEntity.rules]);
-      if (!alts(want).map(normalizeRule).includes(actual)) fail(`${entity}.rules.${op} is ${actual}, expected ${want}`);
+      const rule = irEntity.rules[op as keyof typeof irEntity.rules];
+      if (!ruleMatches(want, rule)) fail(`${entity}.rules.${op} is ${ruleText(rule)}, expected ${want}`);
     }
   }
 
@@ -318,7 +337,7 @@ export function checkExpectations(expect: Expect, checked: Checked): string[] {
       where === "actions" ? a.scope === "global" : alts(where).includes(a.resource ?? "")
     );
     const match = candidates.find(a => {
-      if (want.rule && !alts(want.rule).map(normalizeRule).includes(ruleText(a.rule))) return false;
+      if (want.rule && !ruleMatches(want.rule, a.rule)) return false;
       if (want.scope && a.scope !== want.scope) return false;
       if (want.returns && a.returns.kind !== want.returns) return false;
       if (
@@ -392,9 +411,9 @@ export function checkExpectations(expect: Expect, checked: Checked): string[] {
 
   if (expect.files) {
     const have = ir.files ?? { upload: { kind: model.auth ? "authenticated" : "public" }, read: { kind: "public" } };
-    if (expect.files.read && !alts(expect.files.read).map(normalizeRule).includes(ruleText(have.read)))
+    if (expect.files.read && !ruleMatches(expect.files.read, have.read))
       fail(`files.read is ${ruleText(have.read)}, expected ${expect.files.read}`);
-    if (expect.files.upload && !alts(expect.files.upload).map(normalizeRule).includes(ruleText(have.upload)))
+    if (expect.files.upload && !ruleMatches(expect.files.upload, have.upload))
       fail(`files.upload is ${ruleText(have.upload)}, expected ${expect.files.upload}`);
   }
   for (const [ref, accept] of Object.entries(expect.file_accept ?? {})) {

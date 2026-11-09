@@ -20,12 +20,12 @@ export type HookContext = { session: Session | null; req: Request };
 const RULES = {
   read: {"kind":"public"} as Rule,
   create: {"kind":"public"} as Rule,
-  update: {"kind":"public"} as Rule,
+  update: {"kind":"public","when":{"field":"status","op":"ne","value":"done"}} as Rule,
   delete: {"kind":"public"} as Rule
 };
 
 const ACTION_RULES = {
-  complete: {"kind":"public"} as Rule,
+  complete: {"kind":"public","when":{"field":"status","op":"ne","value":"done"}} as Rule,
   clear_done: {"kind":"public"} as Rule
 };
 

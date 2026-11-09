@@ -5,7 +5,7 @@ import { and, asc, count, desc, eq, ilike, inArray, or, type SQL } from "drizzle
 import { db } from "../db/client";
 import * as schema from "../db/schema";
 import { projects as projectsTable } from "../db/schema";
-import { checkRule, denied, memberTenantIds, type Rule } from "../access";
+import { checkRule, denied, memberTenantIds, satisfied, type Rule } from "../access";
 import { getSession, type Session } from "../auth";
 import { created, handleError, noContent, notFound, ok, parseBody, parseId, parseQuery } from "../http";
 import { presentProject } from "../present";
@@ -16,9 +16,9 @@ export type RouteContext = { params: Promise<{ id: string }> };
 export type HookContext = { request: Request; session: Session | null };
 
 const RULES = {
-  read: {"kind":"member","field":"team_id"} as Rule,
-  create: {"kind":"member","field":"team_id"} as Rule,
-  update: {"kind":"member","field":"team_id"} as Rule,
+  read: {"kind":"any","rules":[{"kind":"member","field":"team_id","when":{"field":"status","op":"eq","value":"active"}},{"kind":"member","field":"team_id","role":"admin"}]} as Rule,
+  create: {"kind":"member","field":"team_id","when":{"field":"status","op":"eq","value":"active"}} as Rule,
+  update: {"kind":"any","rules":[{"kind":"member","field":"team_id","when":{"field":"status","op":"eq","value":"active"}},{"kind":"member","field":"team_id","role":"admin"}]} as Rule,
   delete: {"kind":"member","field":"team_id","role":"admin"} as Rule
 };
 
@@ -55,9 +55,15 @@ export const projects = {
       const conditions: SQL[] = [];
     if (filters.team_id !== undefined) conditions.push(eq(projectsTable.team_id, filters.team_id));
     if (filters.status !== undefined) conditions.push(eq(projectsTable.status, filters.status));
-    const tenants = memberTenantIds(session, undefined);
-    if (tenants.length === 0) return ok([], { page: { page, page_size, total: 0 } });
-    conditions.push(inArray(projectsTable.team_id, tenants as string[]));
+    if (!satisfied(RULES.read, session)) {
+      const alternatives: SQL[] = [];
+      const tenants = memberTenantIds(session, undefined);
+      if (tenants.length > 0) alternatives.push(and(inArray(projectsTable.team_id, tenants as string[]), eq(projectsTable.status, "active"))!);
+      const tenants2 = memberTenantIds(session, "admin");
+      if (tenants2.length > 0) alternatives.push(inArray(projectsTable.team_id, tenants2 as string[]));
+      if (alternatives.length === 0) return ok([], { page: { page, page_size, total: 0 } });
+      conditions.push(alternatives.length === 1 ? alternatives[0] : or(...alternatives)!);
+    }
     if (q) {
         const pattern = "%" + q.replace(/[\\%_]/g, "\\$&") + "%";
         conditions.push(or(ilike(projectsTable.name, pattern))!);
@@ -97,7 +103,7 @@ export const projects = {
       if (!verdict.ok) return denied(verdict);
       const body = await parseBody(projectsCreateInput, request);
       if (!body.ok) return body.response;
-      const bodyVerdict = checkRule(RULES.create, session, body.data);
+      const bodyVerdict = checkRule(RULES.create, session, { status: "active", ...body.data });
       if (!bodyVerdict.ok) return denied(bodyVerdict);
       const hookContext: HookContext = { request, session };
       const values = await hooks.beforeCreate({ ...body.data }, hookContext);

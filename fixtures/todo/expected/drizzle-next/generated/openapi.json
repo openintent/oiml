@@ -1275,7 +1275,7 @@
           "tasks"
         ],
         "operationId": "tasks_update",
-        "description": "Open to everyone.",
+        "description": "Open to everyone, only when status != done.",
         "security": [],
         "summary": "Update one of tasks",
         "parameters": [
@@ -1439,7 +1439,7 @@
         ],
         "operationId": "tasks_complete",
         "summary": "Mark the task done",
-        "description": "Open to everyone.",
+        "description": "Open to everyone, only when status != done.",
         "security": [],
         "parameters": [
           {

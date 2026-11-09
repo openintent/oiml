@@ -50,8 +50,13 @@ Default rules: read public; create, update and delete are authenticated when aut
 \`none\` leaves the operation out: its route does not exist, so a call answers 404, never 403.
 Alternatives: \`update: "owner:author_id or role:admin"\` lets the author edit their own post and an admin edit any one;
 when no alternative allows, anonymous callers get 401 and signed-in ones 403. Add an alternative only when the ask
-names it ("only the author" means owner alone). Who may read a row still cannot depend on a
-field's value (drafts visible to their author only): say what is not expressible rather than approximating with a stricter rule.
+names it ("only the author" means owner alone).
+A predicate may carry a row condition: \`read: "public when published = true or owner:author_id"\` lets anyone read
+published rows and authors their drafts; \`update: "owner:author_id when status = draft"\` freezes a row once it
+leaves draft. \`when <field> = <value>\` (or \`!=\`) names a field of the entity itself and a literal: true or false, a
+number, an enum value, a string without spaces, or null. Lists are filtered by it, get, update and delete check the
+row, and on create the body (with the field's default) must satisfy it. What a client may write into a field still
+cannot depend on who they are (no "only owners may grant owner"): say so in not_delivered rather than approximating.
 \`owner:<field>\` needs auth; the field must be a relation to the identity entity (or the identity's own primary key).
 A path follows relation fields to a row that is not the one being accessed: \`owner:article_id.author_id\` on Comment is
 the author of the comment's article, \`member:project_id.team_id\` on Task is membership of the task's project's team.

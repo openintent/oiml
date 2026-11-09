@@ -247,3 +247,24 @@ captured names and `{actor.id}` resolve. The fixture-6 case also ran the blog's 
 because the runner copied the fixture overlay only when the base declared the same actions as the whole fixture,
 which FEAT-7 ended; it now keeps the overlay handlers for the actions the base declares and writes the rest. The
 remaining failure is the comments case where the agent again adds alternatives the ask did not name.
+
+## Row conditions
+
+The last gap the corpus named closed on 2026-11-09: a predicate may carry a row condition, `when <field> = <value>`
+or `!=`, on a field of the entity itself. `read: "public when published = true or owner:author_id"` is the drafts
+case; `update: "member:team_id when status = active or member:team_id:admin"` lets members edit active projects and
+admins any; `update: "public when status != done"` freezes a finished task. Lists filter by the condition (ANDed
+with the owner or tenant part of its alternative, OR across alternatives), get, update, delete and row actions
+check the loaded row, and a create checks the body with the field's default filled in, so a project cannot be born
+archived. Validation refuses a condition on `none`, on an unknown field or with a literal that does not fit the
+field (M032, M033), and renaming a field rewrites the conditions that test it. The todo fixture (TODO-5, frozen
+tasks, no auth) and the workspace fixture (WS-4, archived projects under tenancy) prove it on every backend.
+
+The three condition cases ran live with `--implement` (run 8, 2026-11-09, five cases): `blog2-private-drafts` (no
+longer a gap), `fx-todo-5-frozen-tasks` and `fx-ws-4-archived-projects` all passed on the first attempt, and the
+agent wrote the fixtures' rules verbatim from the reference text, including the member-with-condition-or-admin
+shape. In `blog2-review-workflow` it qualified the reviewer's approve action with `when status = in_review` and the
+author's submit with `when status = draft`, which the case had not anticipated; the grader now lets an expectation
+without a condition accept a rule the agent qualified with one, since a tighter rule that still matches the ask is
+not a mistake. What a client may write into a field still cannot depend on who they are (no "only owners may grant
+owner"); the reference says to report that in `not_delivered`.

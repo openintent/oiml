@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { applyDiff, compile, fromYaml, parseDiff } from "@osl/core";
 import { loadCases, type Case } from "../src/cases.js";
-import { checkExpectations, scenarioMetrics } from "../src/checks.js";
+import { checkExpectations, ruleMatches, scenarioMetrics } from "../src/checks.js";
 import { baseModel } from "../src/runner.js";
 import { normalizeProblem } from "../src/report.js";
 
@@ -22,7 +22,7 @@ describe("eval corpus", () => {
     const cases = await loadCases(CASES);
     expect(cases.length).toBeGreaterThan(40);
     const oracles = cases.filter(c => c.oracle);
-    expect(oracles.length).toBe(14);
+    expect(oracles.length).toBe(16);
     for (const c of oracles) {
       const yaml = await readFile(path.join(REPO, c.oracle!), "utf8");
       const checked = await checkedWith(c, yaml);
@@ -101,5 +101,26 @@ describe("eval corpus", () => {
     expect(normalizeProblem('entities.Comment.fields.post_id: Unrecognized key(s) in object: "entity"')).toBe(
       normalizeProblem('entities.Like.fields.user_id: Unrecognized key(s) in object: "reverse"')
     );
+  });
+
+  it("lets an expectation without a condition accept a rule the agent qualified with one", () => {
+    const conditioned = {
+      kind: "any" as const,
+      rules: [
+        { kind: "public" as const, when: { column: "published", op: "eq" as const, value: true } },
+        { kind: "owner" as const, field: "author_id" }
+      ]
+    };
+    expect(ruleMatches("owner:author_id or public", conditioned)).toBe(true);
+    expect(ruleMatches("public when published = true or owner:author_id", conditioned)).toBe(true);
+    expect(ruleMatches("public when published = false or owner:author_id", conditioned)).toBe(false);
+    expect(ruleMatches("owner:author_id", conditioned)).toBe(false);
+    expect(
+      ruleMatches("role:reviewer|role:editor", {
+        kind: "role",
+        value: "reviewer",
+        when: { column: "status", op: "eq", value: "in_review" }
+      })
+    ).toBe(true);
   });
 });

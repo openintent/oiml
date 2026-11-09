@@ -1,0 +1,19 @@
+id: fx-todo-5-frozen-tasks
+tags: [fixture, rules, no-auth, scenario]
+base: { fixture: todo, through: TODO-4 }
+oracle: fixtures/todo/intents/TODO-5/diff.yaml
+intent:
+  title: Done tasks are frozen
+  ask: >-
+    Once a task is done it cannot be edited or completed again. It can still be deleted, and clearing done tasks
+    keeps working.
+  acceptance:
+    - Editing or completing a done task is refused with 403
+    - An open task can still be edited and completed, and a done task deleted
+expect:
+  rules: { Task: { update: "public when status != done" } }
+  scenarios: { min: 1, rejections: 1, statuses: [403, 200] }
+  touches: [tasks]
+notes: >-
+  A row condition without auth: the update rule, and so the complete action that defaults to it, depends on
+  the task's status.

@@ -1,0 +1,9 @@
+osl: "1.0"
+title: Archived projects
+ask: >-
+  Archiving a project takes it out of the way: members no longer see it or edit it, while the team's admins still
+  see it and may edit it, to rename or restore it. A project cannot be created already archived.
+acceptance:
+  - A member lists and opens only active projects; an admin sees archived ones too
+  - A member editing an archived project gets 403; an admin succeeds
+  - Creating a project with status archived is refused

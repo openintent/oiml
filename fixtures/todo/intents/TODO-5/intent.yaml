@@ -1,0 +1,8 @@
+osl: "1.0"
+title: Done tasks are frozen
+ask: >-
+  Once a task is done it cannot be edited or completed again. It can still be deleted, and clearing done tasks keeps
+  working.
+acceptance:
+  - Editing or completing a done task is refused with 403
+  - An open task can still be edited and completed, and a done task deleted

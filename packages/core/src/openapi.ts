@@ -9,7 +9,8 @@ import {
   type EntityIR,
   type IR,
   type OperationIR,
-  type ResourceIR
+  type ResourceIR,
+  conditionText
 } from "./ir.js";
 import { toTitleCase } from "./naming.js";
 
@@ -166,6 +167,12 @@ function openapiPath(path: string): string {
 }
 
 function ruleNote(rule: OperationIR["rule"]): string {
+  const note = baseNote(rule);
+  if (rule.kind === "any" || rule.kind === "none" || !rule.when) return note;
+  return `${note.replace(/\.$/, "")}, only${conditionText(rule.when)}.`;
+}
+
+function baseNote(rule: OperationIR["rule"]): string {
   switch (rule.kind) {
     case "public":
       return "Open to everyone.";

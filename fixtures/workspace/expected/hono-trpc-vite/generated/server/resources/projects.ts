@@ -8,7 +8,7 @@ import * as schema from "../../db/schema";
 import { projects as projectsTable } from "../../db/schema";
 import { presentProject } from "../../present";
 import { projectsCreateInput, projectsId, projectsListQuery, projectsUpdateInput } from "../../validation";
-import { checkRule, memberTenantIds, type Rule } from "../access";
+import { checkRule, memberTenantIds, satisfied, type Rule } from "../access";
 import type { Session } from "../auth";
 import { notFound, parseId, toTRPCError } from "../errors";
 import { publicProcedure, router } from "../trpc";
@@ -17,9 +17,9 @@ import { hooks } from "@/extensions/projects";
 export type HookContext = { session: Session | null; req: Request };
 
 const RULES = {
-  read: {"kind":"member","field":"team_id"} as Rule,
-  create: {"kind":"member","field":"team_id"} as Rule,
-  update: {"kind":"member","field":"team_id"} as Rule,
+  read: {"kind":"any","rules":[{"kind":"member","field":"team_id","when":{"field":"status","op":"eq","value":"active"}},{"kind":"member","field":"team_id","role":"admin"}]} as Rule,
+  create: {"kind":"member","field":"team_id","when":{"field":"status","op":"eq","value":"active"}} as Rule,
+  update: {"kind":"any","rules":[{"kind":"member","field":"team_id","when":{"field":"status","op":"eq","value":"active"}},{"kind":"member","field":"team_id","role":"admin"}]} as Rule,
   delete: {"kind":"member","field":"team_id","role":"admin"} as Rule
 };
 
@@ -55,9 +55,15 @@ export const projectsRouter = router({
     const conditions: SQL[] = [];
     if (filters.team_id !== undefined) conditions.push(eq(projectsTable.team_id, filters.team_id));
     if (filters.status !== undefined) conditions.push(eq(projectsTable.status, filters.status));
-    const tenants = memberTenantIds(ctx.session, undefined);
-    if (tenants.length === 0) return { data: [], page: { page, page_size, total: 0 } };
-    conditions.push(inArray(projectsTable.team_id, tenants as string[]));
+    if (!satisfied(RULES.read, ctx.session)) {
+      const alternatives: SQL[] = [];
+      const tenants = memberTenantIds(ctx.session, undefined);
+      if (tenants.length > 0) alternatives.push(and(inArray(projectsTable.team_id, tenants as string[]), eq(projectsTable.status, "active"))!);
+      const tenants2 = memberTenantIds(ctx.session, "admin");
+      if (tenants2.length > 0) alternatives.push(inArray(projectsTable.team_id, tenants2 as string[]));
+      if (alternatives.length === 0) return { data: [], page: { page, page_size, total: 0 } };
+      conditions.push(alternatives.length === 1 ? alternatives[0] : or(...alternatives)!);
+    }
     if (q) {
       const pattern = "%" + q.replace(/[\\%_]/g, "\\$&") + "%";
       conditions.push(or(ilike(projectsTable.name, pattern))!);
@@ -86,7 +92,7 @@ export const projectsRouter = router({
   }),
 
   create: publicProcedure.input(projectsCreateInput).mutation(async ({ ctx, input }) => {
-    checkRule(RULES.create, ctx.session, input);
+    checkRule(RULES.create, ctx.session, { status: "active", ...input });
     const hookContext: HookContext = { session: ctx.session, req: ctx.req };
     try {
       const values = await hooks.beforeCreate({ ...input }, hookContext);

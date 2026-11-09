@@ -64,6 +64,18 @@ export function idInputZod(pk: ColumnIR): string {
 
 /** A client-side predicate for a rule, over the signed-in user and (for row rules) the row. */
 export function rulePredicate(rule: RuleIR, user: string, row: string | null, identityPkName: string): string {
+  const base = basePredicate(rule, user, row, identityPkName);
+  if (rule.kind === "any" || rule.kind === "none" || !rule.when || !row) return base;
+  // The condition is on the row the page shows; values compare as text, null only to null
+  const col = `${row}.${rule.when.column}`;
+  const test =
+    rule.when.value === null
+      ? `${col} ${rule.when.op === "eq" ? "==" : "!="} null`
+      : `String(${col}) ${rule.when.op === "eq" ? "===" : "!=="} ${JSON.stringify(String(rule.when.value))}`;
+  return `(${base} && ${test})`;
+}
+
+function basePredicate(rule: RuleIR, user: string, row: string | null, identityPkName: string): string {
   switch (rule.kind) {
     case "public":
       return "true";

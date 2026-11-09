@@ -325,20 +325,31 @@ export function keyedLiteral(open: string, entries: [string, string][]): string 
 
 /** The access.Rule literal of a rule; a path becomes its dotted key, which the handler resolves into the Row */
 export function ruleLiteral(rule: RuleIR): string {
+  const when =
+    rule.kind !== "any" && rule.kind !== "none" && rule.when
+      ? `, When: &access.Condition{Field: ${q(rule.when.column)}, Op: ${q(rule.when.op)}, Value: ${conditionValue(rule.when.value)}}`
+      : "";
   switch (rule.kind) {
     case "owner":
-      return `access.Rule{Kind: "owner", Field: ${q(ruleKey(rule))}}`;
+      return `access.Rule{Kind: "owner", Field: ${q(ruleKey(rule))}${when}}`;
     case "role":
-      return `access.Rule{Kind: "role", Value: ${q(rule.value)}}`;
+      return `access.Rule{Kind: "role", Value: ${q(rule.value)}${when}}`;
     case "member":
       return rule.role
-        ? `access.Rule{Kind: "member", Field: ${q(ruleKey(rule))}, Role: ${q(rule.role)}}`
-        : `access.Rule{Kind: "member", Field: ${q(ruleKey(rule))}}`;
+        ? `access.Rule{Kind: "member", Field: ${q(ruleKey(rule))}, Role: ${q(rule.role)}${when}}`
+        : `access.Rule{Kind: "member", Field: ${q(ruleKey(rule))}${when}}`;
     case "any":
       return `access.Rule{Kind: "any", Any: []access.Rule{${rule.rules
         .map(r => ruleLiteral(r).replace(/^access\.Rule/, ""))
         .join(", ")}}}`;
     default:
-      return `access.Rule{Kind: ${q(rule.kind)}}`;
+      return `access.Rule{Kind: ${q(rule.kind)}${when}}`;
   }
+}
+
+/** The Go literal of a condition's value, or of a column default */
+export function conditionValue(value: string | number | boolean | null): string {
+  if (value === null) return "nil";
+  if (typeof value === "string") return q(value);
+  return String(value);
 }

@@ -242,13 +242,45 @@ func memberOf(session *auth.Session, tenant any, role string) bool {
     `// Rule is an access rule from the model: public, authenticated, none, owner (Field), role (Value),
 // member (Field names the row's tenant column, Role the least privileged role allowed, or "") or any
 // (Any lists alternatives, one of which must allow). Field is a column, or the dotted path of a value
-// reached through relations, which the handler resolves into the Row before checking.
+// reached through relations, which the handler resolves into the Row before checking. When, if set,
+// allows only rows whose column compares to its value as it says.
 type Rule struct {
 	Kind  string
 	Field string
 	Value string
 	Role  string
 	Any   []Rule
+	When  *Condition
+}
+
+// Condition is a row condition: the column, "eq" or "ne", and the literal from the model.
+type Condition struct {
+	Field string
+	Op    string
+	Value any
+}
+
+// holds reports whether the row satisfies the condition; values compare as text, nil only to nil.
+func holds(when *Condition, row Row) bool {
+	value := deref(row[when.Field])
+	var same bool
+	if value == nil || when.Value == nil {
+		same = value == nil && when.Value == nil
+	} else {
+		same = fmt.Sprint(value) == fmt.Sprint(when.Value)
+	}
+	if when.Op == "ne" {
+		return !same
+	}
+	return same
+}
+
+// Default answers value, or fallback when the value is missing: the default a create body would get.
+func Default(value any, fallback any) any {
+	if value == nil {
+		return fallback
+	}
+	return value
 }
 
 // Row holds the values of a row (or a create body) that rules look at, by column or dotted path.
@@ -297,6 +329,9 @@ func CheckRow(rule Rule, session *auth.Session, row Row) *Verdict {
 	if rule.Kind == "owner" && !same(row[rule.Field], session.UserID()) {
 		return &Verdict{Status: http.StatusForbidden}
 	}${memberRow}
+	if rule.When != nil && !holds(rule.When, row) {
+		return &Verdict{Status: http.StatusForbidden}
+	}
 	return nil
 }
 
@@ -304,11 +339,11 @@ func CheckRow(rule Rule, session *auth.Session, row Row) *Verdict {
 func Satisfied(rule Rule, session *auth.Session) bool {
 	switch rule.Kind {
 	case "public":
-		return true
+		return rule.When == nil
 	case "authenticated":
-		return session != nil
+		return session != nil && rule.When == nil
 	case "role":
-		return session != nil && session.Role() == rule.Value
+		return session != nil && session.Role() == rule.Value && rule.When == nil
 	case "any":
 		for _, alternative := range rule.Any {
 			if Satisfied(alternative, session) {

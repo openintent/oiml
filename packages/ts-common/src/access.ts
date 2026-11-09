@@ -1,5 +1,5 @@
-import type { EntityIR, IR, RowRuleIR, RuleHopIR, RuleIR } from "@osl/core";
-import { ruleAlternatives, ruleKey, rowRules } from "@osl/core";
+import type { EntityIR, IR, PredicateIR, RowRuleIR, RuleHopIR, RuleIR } from "@osl/core";
+import { conditionedRules, rowDependentRules, ruleAlternatives, ruleKey, rowRules } from "@osl/core";
 import { entityByName, q, tableExport, typeName } from "./conventions.js";
 
 /** `memberships` on the session, when the model has tenancy */
@@ -15,14 +15,17 @@ export function membershipType(ir: IR): string {
 export function verdictSource(ir: IR): string {
   const pk = ir.auth ? entityByName(ir, ir.auth.identity).primaryKey[0] : "id";
   const roles = ir.auth?.tenancy?.roles ?? [];
-  return `/** A rule from the model. \`field\` is a column, or the dotted path of a value reached through relations. */
+  return `/** A row condition on a rule: it allows only rows whose \`field\` compares to \`value\` as \`op\` says */
+export type Condition = { field: string; op: "eq" | "ne"; value: unknown };
+
+/** A rule from the model. \`field\` is a column, or the dotted path of a value reached through relations. */
 export type Rule =
-  | { kind: "public" }
-  | { kind: "authenticated" }
+  | { kind: "public"; when?: Condition }
+  | { kind: "authenticated"; when?: Condition }
   | { kind: "none" }
-  | { kind: "owner"; field: string }
-  | { kind: "role"; value: string }
-  | { kind: "member"; field: string; role?: string }
+  | { kind: "owner"; field: string; when?: Condition }
+  | { kind: "role"; value: string; when?: Condition }
+  | { kind: "member"; field: string; role?: string; when?: Condition }
   | { kind: "any"; rules: Rule[] };
 
 export type Verdict = { ok: true } | { ok: false; status: 401 | 403 };
@@ -44,15 +47,23 @@ export function memberTenantIds(session: Session | null, role?: string): (string
     .map(m => m.tenant);
 }
 
+/** Whether a row (or create body) satisfies a condition; values compare as text, null only to null */
+export function holds(when: Condition, row: Record<string, unknown>): boolean {
+  const value = row[when.field];
+  const same =
+    value == null || when.value == null ? value == null && when.value == null : String(value) === String(when.value);
+  return when.op === "eq" ? same : !same;
+}
+
 /** Whether the rule allows this session whatever the row, so a list under it needs no row filter. */
 export function satisfied(rule: Rule, session: Session | null): boolean {
   switch (rule.kind) {
     case "public":
-      return true;
+      return !rule.when;
     case "authenticated":
-      return session !== null;
+      return session !== null && !rule.when;
     case "role":
-      return session !== null && (session.user as Record<string, unknown>).role === rule.value;
+      return session !== null && (session.user as Record<string, unknown>).role === rule.value && !rule.when;
     case "any":
       return rule.rules.some(alternative => satisfied(alternative, session));
     default:
@@ -63,8 +74,15 @@ export function satisfied(rule: Rule, session: Session | null): boolean {
 /**
  * Check a rule for a session and, when the rule is about a row, that row (or the body of a create). A rule
  * with alternatives allows when any of them does; otherwise it answers 401 when every alternative did.
+ * A condition is checked once the row is there; before that, the rule allows what its predicate allows.
  */
 export function verdict(rule: Rule, session: Session | null, row?: Record<string, unknown> | null): Verdict {
+  const base = predicateVerdict(rule, session, row);
+  if (!base.ok || rule.kind === "any" || rule.kind === "none" || !rule.when || !row) return base;
+  return holds(rule.when, row) ? ALLOW : { ok: false, status: 403 };
+}
+
+function predicateVerdict(rule: Rule, session: Session | null, row?: Record<string, unknown> | null): Verdict {
   switch (rule.kind) {
     case "any": {
       let status: 401 | 403 = 401;
@@ -108,17 +126,25 @@ export function membershipsLoader(ir: IR, userExpr: string): string {
 
 /** The runtime shape of a rule for the generated code: alternatives kept, a path flattened to its dotted key */
 export function runtimeRule(rule: RuleIR): unknown {
+  const when =
+    rule.kind !== "any" && rule.kind !== "none" && rule.when
+      ? { when: { field: rule.when.column, op: rule.when.op, value: rule.when.value } }
+      : {};
   switch (rule.kind) {
     case "owner":
-      return { kind: "owner", field: ruleKey(rule) };
+      return { kind: "owner", field: ruleKey(rule), ...when };
     case "member":
       return rule.role
-        ? { kind: "member", field: ruleKey(rule), role: rule.role }
-        : { kind: "member", field: ruleKey(rule) };
+        ? { kind: "member", field: ruleKey(rule), role: rule.role, ...when }
+        : { kind: "member", field: ruleKey(rule), ...when };
     case "any":
       return { kind: "any", rules: rule.rules.map(runtimeRule) };
-    default:
+    case "role":
+      return { kind: "role", value: rule.value, ...when };
+    case "none":
       return rule;
+    default:
+      return { kind: rule.kind, ...when };
   }
 }
 
@@ -172,11 +198,31 @@ export interface ListFilter {
  */
 export function listRuleFilter(ir: IR, entity: EntityIR, rule: RuleIR, o: ListFilterOptions): ListFilter {
   const out: ListFilter = { lines: [], drizzle: new Set(), access: new Set(), tables: new Set() };
-  const rows = rowRules(rule);
+  const rows = rowDependentRules(rule);
   if (rows.length === 0) return out;
   const table = o.tableVar(entity);
   const tenantsOf = (r: RowRuleIR) =>
     `memberTenantIds(${o.session}, ${r.kind === "member" && r.role ? q(r.role) : "undefined"})`;
+  /** The SQL of a predicate's condition on the listed table, or null without one */
+  const whenSql = (r: PredicateIR): string | null => {
+    if (r.kind === "none" || !r.when) return null;
+    const col = `${table}.${r.when.column}`;
+    if (r.when.value === null) {
+      const fn = r.when.op === "eq" ? "isNull" : "isNotNull";
+      out.drizzle.add(fn);
+      return `${fn}(${col})`;
+    }
+    const fn = r.when.op === "eq" ? "eq" : "ne";
+    out.drizzle.add(fn);
+    return `${fn}(${col}, ${JSON.stringify(r.when.value)})`;
+  };
+  /** The runtime guard before an open predicate's condition applies: the session or the role it needs */
+  const guard = (r: PredicateIR): string | null => {
+    if (r.kind === "authenticated") return `${o.session} !== null`;
+    if (r.kind === "role")
+      return `${o.session} !== null && (${o.session}.user as Record<string, unknown>).role === ${q(r.value)}`;
+    return null;
+  };
   const last = (r: RowRuleIR, t: string, tenants: string) => {
     if (r.kind === "owner") {
       out.drizzle.add("eq");
@@ -200,6 +246,15 @@ export function listRuleFilter(ir: IR, entity: EntityIR, rule: RuleIR, o: ListFi
     };
     return `inArray(${table}.${hops[0].column}, ${inner(0)})`;
   };
+  /** The whole condition of an alternative: the row part, the when part, or both */
+  const alternative = (r: PredicateIR, tenants: string): string => {
+    const when = whenSql(r);
+    if (r.kind !== "owner" && r.kind !== "member") return when!;
+    const rowPart = condition(r, tenants);
+    if (!when) return rowPart;
+    out.drizzle.add("and");
+    return `and(${rowPart}, ${when})!`;
+  };
   const single = ruleAlternatives(rule).length === 1;
   const ind = o.indent;
   if (single) {
@@ -207,8 +262,8 @@ export function listRuleFilter(ir: IR, entity: EntityIR, rule: RuleIR, o: ListFi
     if (r.kind === "member") {
       out.access.add("memberTenantIds");
       out.lines.push(`${ind}const tenants = ${tenantsOf(r)};`, `${ind}if (tenants.length === 0) ${o.empty}`);
-      out.lines.push(`${ind}conditions.push(${condition(r, "tenants")});`);
-    } else out.lines.push(`${ind}conditions.push(${condition(r, "tenants")});`);
+      out.lines.push(`${ind}conditions.push(${alternative(r, "tenants")});`);
+    } else out.lines.push(`${ind}conditions.push(${alternative(r, "tenants")});`);
     return out;
   }
   out.access.add("satisfied");
@@ -216,13 +271,20 @@ export function listRuleFilter(ir: IR, entity: EntityIR, rule: RuleIR, o: ListFi
   out.lines.push(`${ind}  const alternatives: SQL[] = [];`);
   let memberCount = 0;
   for (const r of rows) {
-    if (r.kind === "owner") out.lines.push(`${ind}  alternatives.push(${condition(r, "")});`);
-    else {
+    if (r.kind === "owner") out.lines.push(`${ind}  alternatives.push(${alternative(r, "")});`);
+    else if (r.kind === "member") {
       out.access.add("memberTenantIds");
       const name = memberCount === 0 ? "tenants" : `tenants${memberCount + 1}`;
       memberCount++;
       out.lines.push(`${ind}  const ${name} = ${tenantsOf(r)};`);
-      out.lines.push(`${ind}  if (${name}.length > 0) alternatives.push(${condition(r, name)});`);
+      out.lines.push(`${ind}  if (${name}.length > 0) alternatives.push(${alternative(r, name)});`);
+    } else {
+      const g = guard(r);
+      out.lines.push(
+        g
+          ? `${ind}  if (${g}) alternatives.push(${alternative(r, "")});`
+          : `${ind}  alternatives.push(${alternative(r, "")});`
+      );
     }
   }
   out.lines.push(`${ind}  if (alternatives.length === 0) ${o.empty}`);
@@ -273,9 +335,23 @@ ${blocks.join("\n")}
   };
 }
 
-/** Whether a create must check the rule against the body: a member or a path alternative reads the related row */
+/** Whether a create must check the rule against the body: a member or a path alternative reads the related row, a condition the body */
 export function needsBodyCheck(rule: RuleIR): boolean {
-  return rowRules(rule).some(r => r.kind === "member" || Boolean(r.via?.length));
+  return rowRules(rule).some(r => r.kind === "member" || Boolean(r.via?.length)) || conditionedRules(rule).length > 0;
+}
+
+/**
+ * The literal defaults of the columns the rule's conditions test, as object-literal entries to spread a create
+ * body over (`published: false, `), so a body that leaves the column out is checked with the value it will get.
+ */
+export function conditionDefaults(entity: EntityIR, rule: RuleIR): string {
+  const parts: string[] = [];
+  for (const r of conditionedRules(rule)) {
+    const col = entity.columns.find(c => c.name === r.when!.column);
+    if (col?.default?.kind === "literal" && !parts.some(p => p.startsWith(`${col.name}:`)))
+      parts.push(`${col.name}: ${JSON.stringify(col.default.value)}`);
+  }
+  return parts.length ? `${parts.join(", ")}, ` : "";
 }
 
 /** The expression the generated code hands to checkRule for a row (or body): resolved through relations when needed */

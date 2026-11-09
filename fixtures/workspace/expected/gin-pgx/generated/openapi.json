@@ -866,7 +866,7 @@
           "projects"
         ],
         "operationId": "projects_list",
-        "description": "Only members of the row's tenant (team_id).",
+        "description": "Any of: Only members of the row's tenant (team_id), only when status = active; Only members of the row's tenant (team_id) with at least role admin.",
         "security": [
           {
             "cookieAuth": []
@@ -1031,7 +1031,7 @@
           "projects"
         ],
         "operationId": "projects_create",
-        "description": "Only members of the row's tenant (team_id).",
+        "description": "Only members of the row's tenant (team_id), only when status = active.",
         "security": [
           {
             "cookieAuth": []
@@ -1114,7 +1114,7 @@
           "projects"
         ],
         "operationId": "projects_get",
-        "description": "Only members of the row's tenant (team_id).",
+        "description": "Any of: Only members of the row's tenant (team_id), only when status = active; Only members of the row's tenant (team_id) with at least role admin.",
         "security": [
           {
             "cookieAuth": []
@@ -1206,7 +1206,7 @@
           "projects"
         ],
         "operationId": "projects_update",
-        "description": "Only members of the row's tenant (team_id).",
+        "description": "Any of: Only members of the row's tenant (team_id), only when status = active; Only members of the row's tenant (team_id) with at least role admin.",
         "security": [
           {
             "cookieAuth": []

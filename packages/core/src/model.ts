@@ -127,17 +127,56 @@ export const Field = z
 export type Field = z.infer<typeof Field>;
 
 /** One predicate of a rule; owner and member may follow a path of relation fields (project_id.owner_id) */
-const PREDICATE_SOURCE =
+const BASE_PREDICATE =
   "(?:public|authenticated|none|owner:[a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)*|role:[A-Za-z0-9_-]+|member:[a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)*(?::[A-Za-z0-9_-]+)?)";
+/** A row condition a predicate may carry: `when <field> = <value>` or `!=`, on a field of the entity itself */
+const WHEN_CLAUSE = "(?: when [a-z][a-z0-9_]* (?:=|!=) [A-Za-z0-9_.+-]+)?";
+const PREDICATE_SOURCE = `${BASE_PREDICATE}${WHEN_CLAUSE}`;
 /** A rule: one predicate, or alternatives joined with " or ", any of which allows */
 export const RULE_PATTERN = new RegExp(`^${PREDICATE_SOURCE}(?: or ${PREDICATE_SOURCE})*$`);
 export const Rule = z
   .string()
   .regex(
     RULE_PATTERN,
-    "public | authenticated | none | owner:<field> | role:<value> | member:<field>[:<role>]; <field> may follow relation fields (project_id.owner_id); alternatives are joined with ' or '"
+    "public | authenticated | none | owner:<field> | role:<value> | member:<field>[:<role>], each optionally followed by ' when <field> = <value>' (or !=); <field> may follow relation fields (project_id.owner_id); alternatives are joined with ' or '"
   );
 export type Rule = z.infer<typeof Rule>;
+
+/** The row condition of a predicate, as written: `when published = true` */
+export interface RuleCondition {
+  field: string;
+  op: "=" | "!=";
+  /** The literal as written: true, false, null, a number, an enum value or a string without spaces */
+  value: string;
+}
+
+/** A predicate split into its base and its when condition, when it has one */
+export function splitWhen(predicate: string): { base: string; when?: RuleCondition } {
+  const m = predicate.match(/^(.*?) when ([a-z][a-z0-9_]*) (=|!=) (\S+)$/);
+  return m ? { base: m[1], when: { field: m[2], op: m[3] as "=" | "!=", value: m[4] } } : { base: predicate };
+}
+
+/** Why a when literal does not fit the field it tests, or undefined when it does */
+export function conditionProblem(field: Field, raw: string): string | undefined {
+  if (raw === "null") return field.required || field.primary ? "the field is never null" : undefined;
+  switch (field.type) {
+    case "boolean":
+      return raw === "true" || raw === "false" ? undefined : "must be true or false";
+    case "integer":
+    case "bigint":
+      return /^-?\d+$/.test(raw) ? undefined : "must be an integer";
+    case "float":
+    case "decimal":
+      return /^-?\d+(\.\d+)?$/.test(raw) ? undefined : "must be a number";
+    case "enum":
+      return field.enum_values!.includes(raw) ? undefined : `must be one of ${field.enum_values!.join(", ")}`;
+    case "string":
+    case "text":
+      return undefined;
+    default:
+      return `when conditions compare boolean, number, enum and string fields, not ${field.type}`;
+  }
+}
 
 /** The predicates of a rule: one, or the alternatives it joins with " or " */
 export function rulePredicates(rule: string): string[] {
@@ -151,7 +190,7 @@ export function rulePredicates(rule: string): string[] {
 export function predicateParts(
   predicate: string
 ): { kind: "owner" | "member"; path: string[]; role?: string } | undefined {
-  const [kind, field, role] = predicate.split(":");
+  const [kind, field, role] = splitWhen(predicate).base.split(":");
   if (kind !== "owner" && kind !== "member") return undefined;
   const path = field.split(".");
   return role !== undefined ? { kind, path, role } : { kind, path };
@@ -592,7 +631,21 @@ export function validateModel(model: Model): Diagnostic[] {
   };
 
   /** One predicate of a rule on `entity` (see checkRule) */
-  const checkPredicate = (predicate: string, entityName: string | null, rpath: string, row: boolean) => {
+  const checkPredicate = (full: string, entityName: string | null, rpath: string, row: boolean) => {
+    const { base: predicate, when } = splitWhen(full);
+    if (when) {
+      if (!row || !entityName || !model.entities[entityName])
+        error("M032", `rule ${full}: a when condition needs a row; drop it here`, rpath);
+      else if (predicate === "none") error("M032", `none takes no when condition`, rpath);
+      else {
+        const f = model.entities[entityName].fields[when.field];
+        if (!f) error("M032", `when field ${when.field} does not exist on ${entityName}`, rpath);
+        else {
+          const problem = conditionProblem(f, when.value);
+          if (problem) error("M033", `when ${when.field} ${when.op} ${when.value}: ${problem}`, rpath);
+        }
+      }
+    }
     const parts = predicateParts(predicate);
     if (parts) {
       if (!row || !entityName || !model.entities[entityName]) {

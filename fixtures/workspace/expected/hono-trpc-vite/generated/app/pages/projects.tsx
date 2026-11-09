@@ -29,7 +29,7 @@ function canCreate(user: SessionUser | null): boolean {
 }
 
 function canUpdate(user: SessionUser | null, row: Detail): boolean {
-  return user !== null;
+  return ((user !== null && String(row.status) === "active") || user !== null);
 }
 
 function canDelete(user: SessionUser | null, row: Detail): boolean {
@@ -330,7 +330,6 @@ export function ProjectsDetail() {
   if (query.isPending) return <PaneSkeleton />;
   if (query.error) return <ErrorNote error={query.error} className="m-6" />;
   const row: Detail = query.data;
-  void row;
   return (
     <Pane
       title={text(row.name) || "Project " + text(row.id)}
