@@ -31,6 +31,9 @@ import {
 import { drizzleNextBackend } from "@osl/backend-drizzle-next";
 import { ginPgxBackend } from "@osl/backend-gin-pgx";
 import { honoTrpcViteBackend } from "@osl/backend-hono-trpc-vite";
+import { runWalks, WALKS, type WalkName } from "./walks.js";
+
+export { runWalks, WALKS, type WalkName, type WalkContext, type WalkResult } from "./walks.js";
 
 export const BACKENDS: Record<string, Backend> = {
   [drizzleNextBackend.name]: drizzleNextBackend,
@@ -44,6 +47,8 @@ export interface Fixture {
   /** Backends this fixture is expected to pass on */
   backends: string[];
   dir: string;
+  /** The seed of the fuzz walk's generator (`walks: { seed }` in fixture.yaml), so a failure replays */
+  seed?: number;
 }
 
 export interface StepResult {
@@ -82,16 +87,28 @@ export interface RunOptions {
    * the step's detail. The eval runner writes the action handlers here.
    */
   afterInstall?: (dir: string, backendName: string) => Promise<string | void>;
+  /** Run the conformance walks after the tests (default true); `false` skips them */
+  walks?: boolean;
+  /** Run only these walks; every walk when empty */
+  walkSet?: WalkName[];
+  /** Skip the scenario tests and run the walks alone */
+  walksOnly?: boolean;
+  /** The fuzz walk's seed, over the fixture's own */
+  seed?: number;
   log?: (line: string) => void;
 }
 
 export async function loadFixture(dir: string): Promise<Fixture> {
-  const raw = fromYaml<{ name: string; description?: string; backend?: string; backends?: string[] }>(
-    await readFile(path.join(dir, "fixture.yaml"), "utf8")
-  );
+  const raw = fromYaml<{
+    name: string;
+    description?: string;
+    backend?: string;
+    backends?: string[];
+    walks?: { seed?: number };
+  }>(await readFile(path.join(dir, "fixture.yaml"), "utf8"));
   const backends = raw.backends ?? (raw.backend ? [raw.backend] : []);
   if (backends.length === 0) throw new Error(`${dir}/fixture.yaml names no backends`);
-  return { name: raw.name, description: raw.description, backends, dir };
+  return { name: raw.name, description: raw.description, backends, dir, seed: raw.walks?.seed };
 }
 
 export async function listFixtures(root: string): Promise<Fixture[]> {
@@ -269,12 +286,44 @@ export async function runFixture(
     });
     if (!started) return finish(result, options);
 
-    await step("tests", async () => {
-      // The tests reach the database too: actors that carry a role are provisioned there after registering
-      const cmd = runtime.test(`http://localhost:${port}`);
-      const out = await exec({ ...cmd, env: { ...cmd.env, DATABASE_URL: databaseUrl } }, dir);
-      return out.match(/Tests\s+(.+)/)?.[1]?.trim() ?? out.match(/^(ok|PASS).*$/m)?.[0]?.trim();
-    });
+    if (!options.walksOnly)
+      await step("tests", async () => {
+        // The tests reach the database too: actors that carry a role are provisioned there after registering
+        const cmd = runtime.test(`http://localhost:${port}`);
+        const out = await exec({ ...cmd, env: { ...cmd.env, DATABASE_URL: databaseUrl } }, dir);
+        return out.match(/Tests\s+(.+)/)?.[1]?.trim() ?? out.match(/^(ok|PASS).*$/m)?.[0]?.trim();
+      });
+
+    if (options.walks !== false) {
+      // The walks: what the IR predicts for every operation and caller, checked against the running app
+      const which = new Set<string>(options.walkSet?.length ? options.walkSet : WALKS);
+      let walkResults: Awaited<ReturnType<typeof runWalks>> = [];
+      const ran = await step("walks", async () => {
+        const project = await loadProject(dir);
+        walkResults = await runWalks(
+          {
+            ir: project.ir,
+            backend: backend.name,
+            baseUrl: `http://localhost:${port}`,
+            databaseUrl,
+            projectDir: dir,
+            seed: options.seed ?? fixture.seed ?? 1,
+            log
+          },
+          which
+        );
+        return `${walkResults.length} walks`;
+      });
+      if (ran)
+        for (const w of walkResults) {
+          steps.push({ step: `walk:${w.name}`, ok: w.ok, detail: w.detail, ms: w.ms });
+          if (w.ok) log(`  ok   walk:${w.name} (${w.detail})`);
+          else {
+            log(`  FAIL walk:${w.name}\n${indent(w.detail)}`);
+            result.ok = false;
+          }
+        }
+    }
   } finally {
     if (server) {
       (server as ChildProcess).kill("SIGTERM");
@@ -368,7 +417,7 @@ export function formatResult(result: FixtureResult): string {
   const lines = [`${result.ok ? "PASS" : "FAIL"} ${result.fixture} on ${result.backend}`];
   for (const s of result.steps)
     lines.push(
-      `  ${s.ok ? "ok  " : "FAIL"} ${s.step.padEnd(10)} ${String(s.ms).padStart(6)}ms${s.detail && s.ok ? `  ${s.detail}` : ""}`
+      `  ${s.ok ? "ok  " : "FAIL"} ${s.step.padEnd(14)} ${String(s.ms).padStart(6)}ms${s.detail && s.ok ? `  ${s.detail}` : ""}`
     );
   if (!result.ok) lines.push(`  kept at ${result.dir}`);
   return lines.join("\n");

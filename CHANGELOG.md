@@ -3,6 +3,18 @@
 Versions are alpha releases of 1.0.0 until the road in `docs/roadmap.md` ends. Each construct is proven by a
 fixture intent on all three backends before it is listed here.
 
+## Unreleased
+
+- The conformance walks (round A1 of the road to 1.0.0): five checks the harness runs over every fixture after the
+  scenarios, as steps `walk:rule`, `walk:tenant`, `walk:leak`, `walk:fuzz` and `walk:contract`. The rule walk
+  compares every operation and action, as every actor and anonymously, with what the IR's rules predict; the
+  tenant walk proves a member of another team reaches nothing; the leak walk scans every response for hidden and
+  hash columns; the fuzz walk sends wrong types, lengths, keys and ids from a seed kept in the fixture; the
+  contract walk requires every breaking change between revisions' OpenAPI documents to be explained by a diff op
+  (`diffOpenApi` and `explainedBy` in core) and lists migrations that rewrite a table (`MigrationPlan.rewrites`).
+  `--walks`, `--walks rule,fuzz`, `--no-walks` and `--seed` on `pnpm conformance`; the eval runner's full runs
+  inherit them.
+
 ## 1.0.0-alpha.3 (2026-11-09)
 
 - Read-only fields: `read_only: true` marks a field the API returns and never accepts; register, create and update
@@ -11,8 +23,8 @@ fixture intent on all three backends before it is listed here.
 - `osl implement`: writes each action handler still at its stub from the action's declaration, the scenarios that
   call it and the backend's own files, checked by the backend's compiler and retried with its output.
 - The gap-mining loop: `pnpm evals:generate` and `pnpm evals:round` generate and run rounds of intents, `pnpm
-  evals:gaps` clusters what agents could not express, the backlog lives in `evals/propose/gaps.yaml`, `pnpm
-  evals:next` prints the brief for the top open gap, `--resume` regrades a saved run; a nightly round under a cost
+evals:gaps` clusters what agents could not express, the backlog lives in `evals/propose/gaps.yaml`, `pnpm
+evals:next` prints the brief for the top open gap, `--resume` regrades a saved run; a nightly round under a cost
   cap.
 - Row conditions on rules: `when <field> = <value>` (or `!=`) on any predicate; lists filter by it, row checks test
   it, creates check the body.

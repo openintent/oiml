@@ -13,6 +13,7 @@ import {
   conditionText
 } from "./ir.js";
 import { toTitleCase } from "./naming.js";
+import type { DiffOp } from "./diff.js";
 
 type Schema = Record<string, unknown>;
 
@@ -600,3 +601,215 @@ function actionOperationId(action: ActionIR): string {
 }
 
 export type { ResourceIR as OpenapiResource };
+
+/**
+ * A change between two OpenAPI documents that a client written against the first would notice: something it
+ * could call, send or read is gone or narrower, or a request now needs more.
+ */
+export interface OpenApiChange {
+  kind:
+    | "removed_path"
+    | "removed_operation"
+    | "removed_parameter"
+    | "removed_schema"
+    | "removed_property"
+    | "narrowed_type"
+    | "added_required";
+  path?: string;
+  method?: string;
+  schema?: string;
+  property?: string;
+  detail: string;
+}
+
+type Doc = Record<string, unknown>;
+
+/** The breaking changes from `before` to `after`; additions are never breaking */
+export function diffOpenApi(before: Doc, after: Doc): OpenApiChange[] {
+  const out: OpenApiChange[] = [];
+  const pathsOf = (doc: Doc) => (doc.paths ?? {}) as Record<string, Record<string, Schema>>;
+  const beforePaths = pathsOf(before);
+  const afterPaths = pathsOf(after);
+  for (const [p, methods] of Object.entries(beforePaths)) {
+    const next = afterPaths[p];
+    if (!next) {
+      out.push({ kind: "removed_path", path: p, detail: `${p} was removed` });
+      continue;
+    }
+    for (const [m, op] of Object.entries(methods)) {
+      const nextOp = next[m];
+      const where = `${m.toUpperCase()} ${p}`;
+      if (!nextOp) {
+        out.push({ kind: "removed_operation", path: p, method: m, detail: `${where} was removed` });
+        continue;
+      }
+      const params = (o: Schema) => ((o.parameters as Schema[] | undefined) ?? []).map(x => `${x.in}:${x.name}`);
+      const nextParams = params(nextOp);
+      for (const name of params(op))
+        if (!nextParams.includes(name))
+          out.push({
+            kind: "removed_parameter",
+            path: p,
+            method: m,
+            property: name.split(":")[1],
+            detail: `${where} lost the parameter ${name.split(":")[1]}`
+          });
+      const body = (o: Schema): Schema | undefined =>
+        ((o.requestBody as Schema | undefined)?.content as Record<string, Schema> | undefined)?.["application/json"]
+          ?.schema as Schema | undefined;
+      diffSchemas(body(op), body(nextOp), `the body of ${where}`, { path: p, method: m }, true, out);
+    }
+  }
+  const schemasOf = (doc: Doc) => ((doc.components as Schema | undefined)?.schemas ?? {}) as Record<string, Schema>;
+  const afterSchemas = schemasOf(after);
+  for (const [name, schema] of Object.entries(schemasOf(before))) {
+    const next = afterSchemas[name];
+    if (!next) {
+      out.push({ kind: "removed_schema", schema: name, detail: `the schema ${name} was removed` });
+      continue;
+    }
+    diffSchemas(schema, next, `the schema ${name}`, { schema: name }, false, out);
+  }
+  return out;
+}
+
+function diffSchemas(
+  before: Schema | undefined,
+  after: Schema | undefined,
+  where: string,
+  at: Pick<OpenApiChange, "path" | "method" | "schema">,
+  isInput: boolean,
+  out: OpenApiChange[]
+): void {
+  if (!before || !after) return;
+  const props = (s: Schema) => (s.properties ?? {}) as Record<string, Schema>;
+  const beforeProps = props(before);
+  const afterProps = props(after);
+  for (const [name, prop] of Object.entries(beforeProps)) {
+    const next = afterProps[name];
+    if (!next) {
+      out.push({ ...at, kind: "removed_property", property: name, detail: `${where} lost the property ${name}` });
+      continue;
+    }
+    const narrowed = narrowing(prop, next);
+    if (narrowed) out.push({ ...at, kind: "narrowed_type", property: name, detail: `${where}: ${name} ${narrowed}` });
+  }
+  if (isInput) {
+    const required = (s: Schema) => (s.required as string[] | undefined) ?? [];
+    const was = required(before);
+    for (const name of required(after))
+      if (!was.includes(name))
+        out.push({ ...at, kind: "added_required", property: name, detail: `${where} now requires ${name}` });
+  }
+}
+
+/** How a property's schema got narrower, or null when it did not */
+function narrowing(before: Schema, after: Schema): string | null {
+  const typeOf = (s: Schema) => JSON.stringify(s.type ?? s.$ref ?? s.oneOf ?? s.anyOf ?? null);
+  if (typeOf(before) !== typeOf(after)) return `changed type from ${typeOf(before)} to ${typeOf(after)}`;
+  if (before.format !== after.format && before.format !== undefined)
+    return `changed format from ${before.format} to ${after.format}`;
+  const values = (s: Schema) => (s.enum as unknown[] | undefined) ?? null;
+  const was = values(before);
+  const now = values(after);
+  if (was && now) {
+    const lost = was.filter(v => !now.some(n => JSON.stringify(n) === JSON.stringify(v)));
+    if (lost.length) return `lost the values ${lost.map(v => JSON.stringify(v)).join(", ")}`;
+  } else if (!was && now) return `is now limited to ${now.length} values`;
+  const max = (s: Schema) => s.maxLength as number | undefined;
+  if (max(after) !== undefined && (max(before) === undefined || max(after)! < max(before)!))
+    return `shortened to ${max(after)} characters`;
+  const items = (s: Schema) => s.items as Schema | undefined;
+  if (items(before) && items(after)) {
+    const inner = narrowing(items(before)!, items(after)!);
+    if (inner) return `items ${inner}`;
+  }
+  return null;
+}
+
+/** What a change is about, read from its path or schema against the IR the document came from */
+interface ChangeSubject {
+  entities: Set<string>;
+  resources: Set<string>;
+  actions: Set<string>;
+  auth: boolean;
+  files: boolean;
+}
+
+function subjectOf(change: OpenApiChange, ir: IR): ChangeSubject {
+  const subject: ChangeSubject = {
+    entities: new Set(),
+    resources: new Set(),
+    actions: new Set(),
+    auth: false,
+    files: false
+  };
+  if (change.schema) {
+    subject.entities.add(change.schema);
+    for (const r of ir.resources) if (r.entity === change.schema) subject.resources.add(r.name);
+  }
+  if (change.path) {
+    const p = change.path;
+    if (p.startsWith("/api/auth")) subject.auth = true;
+    else if (p.startsWith("/api/files")) subject.files = true;
+    for (const action of ir.actions)
+      if (openapiPath(action.path) === p) {
+        subject.actions.add(`${action.resource ?? ""}:${action.name}`);
+        if (action.resource) subject.resources.add(action.resource);
+        if (action.entity) subject.entities.add(action.entity);
+      }
+    for (const r of ir.resources)
+      if (p === openapiPath(r.path) || p.startsWith(`${openapiPath(r.path)}/`)) {
+        subject.resources.add(r.name);
+        subject.entities.add(r.entity);
+      }
+  }
+  if (ir.auth && (subject.auth || subject.entities.has(ir.auth.identity))) {
+    subject.auth = true;
+    subject.entities.add(ir.auth.identity);
+  }
+  return subject;
+}
+
+/**
+ * Whether one of a diff's ops accounts for a breaking change: an op on the same entity, resource or action, the
+ * auth block for the auth routes, the files block for the file routes. A change no op explains is a compiler
+ * regression, not a model change.
+ */
+export function explainedBy(change: OpenApiChange, ops: DiffOp[], before: IR): boolean {
+  const subject = subjectOf(change, before);
+  return ops.some(op => {
+    switch (op.op) {
+      case "remove_entity":
+        return subject.entities.has(op.name);
+      case "rename_entity":
+        return subject.entities.has(op.from) || subject.entities.has(op.to);
+      case "add_field":
+      case "update_field":
+      case "remove_field":
+      case "set_rules":
+        return subject.entities.has(op.entity);
+      case "rename_field":
+        return subject.entities.has(op.entity);
+      case "add_resource":
+      case "update_resource":
+      case "remove_resource":
+        return subject.resources.has(op.name);
+      case "add_action":
+      case "update_action":
+      case "remove_action":
+        return (
+          subject.actions.has(`${op.resource ?? ""}:${op.name}`) ||
+          (op.resource !== undefined && subject.resources.has(op.resource))
+        );
+      case "set_auth":
+      case "remove_auth":
+        return subject.auth;
+      case "set_files":
+      case "remove_files":
+        return subject.files;
+      default:
+        return false;
+    }
+  });
+}

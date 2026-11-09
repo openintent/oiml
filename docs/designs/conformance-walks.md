@@ -1,8 +1,23 @@
 # Design: conformance walks
 
-**Status: proposed 2026-11-09.** Not yet built. Not a construct: five checks the harness runs over every fixture and
-every backend without a scenario naming them. The design to review before the build; nothing here changes the
-grammar.
+**Status: built 2026-11-09** (round A1 of the road to 1.0.0). What changed from the design below while building:
+the contract diff compares consecutive revisions of the fixture's lock rather than the committed snapshot, since
+the snapshot step already proves the committed document byte for byte and the lock holds every revision's IR; the
+leak walk scans the walks' own responses (the scenarios' bodies are asserted by the generated clients, which
+already refuse hidden columns); the two hooks for the second tenant pass wait for the isolation round (C5); the
+rule walk makes one row per actor the create rule allows and retries an allowed create that conflicts (a
+membership the creator already holds) with another actor as the related user, and its detail counts what the
+predictions said (on workspace: 317 calls, 152 allowed, 78 as 403, 76 as 401, 9 as 404) so the coverage is
+visible. The harness got its own transport clients (REST and tRPC) in `packages/conformance/src/client.ts`, a rule
+evaluator that resolves path values and memberships from the database in `rules.ts`, a seeded body generator in
+`bodies.ts`, and the walks in `walks.ts`; core got `diffOpenApi`, `explainedBy` and `MigrationPlan.rewrites`.
+Proof: all three fixtures on all three backends pass the five walks with no change to the fixtures (blog 351 rule
+calls and 600 fuzz probes per backend, workspace 317 and 676 with ten home-team rows checked against an outsider,
+todo 15 and 79), the blog's eleven revisions show one breaking change (the Post to Article rename) explained by
+its op, and the oracle eval corpus runs through the walks. The first run's only findings were the harness's own:
+an update probe that left a required field out, which a partial body may, and the conflicting membership above.
+Not a construct: five checks the harness runs over every fixture and every backend without a scenario naming
+them; nothing here changes the grammar.
 
 Scenarios prove what a fixture's author thought to write. The hand-written applications surveyed for these notes
 learned that the properties worth proving are the ones nobody writes a test for per entity: every procedure records

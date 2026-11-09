@@ -28,6 +28,19 @@ export type MigrationStep =
 export interface MigrationPlan {
   steps: MigrationStep[];
   warnings: string[];
+  /** Steps that rewrite every row of a table: a type change, or NOT NULL on a column without a default */
+  rewrites: MigrationStep[];
+}
+
+/** Whether a step rewrites its table rather than adding to it */
+export function isRewrite(step: MigrationStep, next: IR): boolean {
+  if (step.kind === "alter_column_type") return true;
+  if (step.kind === "set_not_null" && step.notNull) {
+    const entity = next.entities.find(e => e.table === step.table);
+    const column = entity?.columns.find(c => c.name === step.column);
+    return column?.default === undefined;
+  }
+  return false;
 }
 
 const EMPTY_RENAMES: Renames = { entities: {}, fields: {} };
@@ -167,7 +180,8 @@ export function planMigration(prev: IR | null, next: IR, renames: Renames = EMPT
     if (!next.enums.some(e => e.name === old.name)) late.push({ kind: "drop_enum", name: old.name });
   }
 
-  return { steps: [...early, ...tables, ...alters, ...dropsConstraints, ...dropsColumns, ...adds, ...late], warnings };
+  const steps = [...early, ...tables, ...alters, ...dropsConstraints, ...dropsColumns, ...adds, ...late];
+  return { steps, warnings, rewrites: steps.filter(step => isRewrite(step, next)) };
 }
 
 export function sqlType(column: ColumnIR): string {

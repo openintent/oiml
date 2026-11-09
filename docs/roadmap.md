@@ -32,10 +32,10 @@ CRUD with actions, auth with providers, files, jobs. What the research says, in 
   are chat logs and editors that stay custom. Two gaps appear in all three apps, pages with parameters and
   membership through any relation, and neither came from a round.
 
-1.0.0 is the version where OSL generates the applications people actually ship: a second membership shape, pages
-at their own addresses, ordered and many-to-many data, the server-owned patterns the survey found, and an agent
-surface. It is measured the way the loop measures everything: the exercises' partial and out intents become yes,
-fresh rounds stop reporting the clusters, and the kits at the end are proven prefixes.
+  1.0.0 is the version where OSL generates the applications people actually ship: a second membership shape, pages
+  at their own addresses, ordered and many-to-many data, the server-owned patterns the survey found, and an agent
+  surface. It is measured the way the loop measures everything: the exercises' partial and out intents become yes,
+  fresh rounds stop reporting the clusters, and the kits at the end are proven prefixes.
 
 ## The rounds
 
@@ -46,13 +46,13 @@ and scheduling rounds the largest).
 
 ### Milestone A: access (`1.0.0-alpha.4`)
 
-| # | Round | Design | Evidence | Size |
-| --- | --- | --- | --- | --- |
-| A1 | Conformance walks: the rule, cross-tenant, leak, fuzz and contract-diff walks over every fixture | `designs/conformance-walks.md` | the survey; raises every later proof | smaller than any construct |
-| A2 | Membership through any relation: `member:` ending in a membership relation, `ranked: true` | `designs/membership-through-any-relation.md`, approved | three exercises (Slack in four intents) | the relations round |
-| A3 | Pages with parameters and sections, with a tenant context: a page over one row at its own address, sections from other resources filtered by the parameter, `{tenant.id}` and a switcher | to write | three exercises, 2 cases, the top open page gap | the pages round |
-| A4 | Invites: email invites with a role, acceptance that creates the account, auto-accept on every sign-in path | `designs/invites.md` | 3 cases, the top of the backlog; the SaaS kit needs it | the hidden-rows round plus web work |
-| A5 | Rules and time: `when actor.<field> = <value>`, `when created_at > now-15m` on predicates and as range filters, timers before a date and on date fields | to write | two exercises, three one-off cases | smaller than the relations round |
+| #   | Round                                                                                                                                                                                    | Design                                                 | Evidence                                               | Size                                |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------ | ----------------------------------- |
+| A1  | Conformance walks: the rule, cross-tenant, leak, fuzz and contract-diff walks over every fixture                                                                                         | `designs/conformance-walks.md`                         | the survey; raises every later proof                   | smaller than any construct          |
+| A2  | Membership through any relation: `member:` ending in a membership relation, `ranked: true`                                                                                               | `designs/membership-through-any-relation.md`, approved | three exercises (Slack in four intents)                | the relations round                 |
+| A3  | Pages with parameters and sections, with a tenant context: a page over one row at its own address, sections from other resources filtered by the parameter, `{tenant.id}` and a switcher | to write                                               | three exercises, 2 cases, the top open page gap        | the pages round                     |
+| A4  | Invites: email invites with a role, acceptance that creates the account, auto-accept on every sign-in path                                                                               | `designs/invites.md`                                   | 3 cases, the top of the backlog; the SaaS kit needs it | the hidden-rows round plus web work |
+| A5  | Rules and time: `when actor.<field> = <value>`, `when created_at > now-15m` on predicates and as range filters, timers before a date and on date fields                                  | to write                                               | two exercises, three one-off cases                     | smaller than the relations round    |
 
 Why this order: the walks first, so A2 onward are proven against the leak and cross-tenant walks without
 writing those scenarios; membership before pages, because the channel page is the proof of both; invites after
@@ -61,13 +61,13 @@ small rules round last, when the three before it have settled what a predicate c
 
 ### Milestone B: data (`1.0.0-alpha.5`)
 
-| # | Round | Design | Evidence | Size |
-| --- | --- | --- | --- | --- |
-| B1 | Many-to-many relations and ordered collections, on one new fixture (`music`): an entity-level relation through a junction, `position` within a parent, a `move` action, drag to reorder | to write | two exercises each, 1 case each | the pages round, shared proof |
-| B2 | Archive and counts: `archive: true`, `count_of` kept by triggers | `designs/archive-and-counts.md` | 2 cases, three exercises on counts | smaller than scheduling |
-| B3 | State machines: `transitions` on a read-only enum, the guard as a conditional update, boards that drag only allowed moves | `designs/state-machines.md` | the review-workflow cases of the corpus | smaller than scheduling |
-| B4 | Field-level visibility: `read:` on a field, absent when it refuses, `expect.absent` in scenarios | `designs/field-visibility.md` | the survey | the hidden-rows round |
-| B5 | Field kinds: sequences, money, sealed fields, typed JSON with a shape per enum value (the conditional-validation gap) | `designs/field-kinds.md`, extended | 1 case (sequences), Notion's blocks, the survey | the pages round, pieces ship alone |
+| #   | Round                                                                                                                                                                                   | Design                             | Evidence                                        | Size                               |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- | ----------------------------------------------- | ---------------------------------- |
+| B1  | Many-to-many relations and ordered collections, on one new fixture (`music`): an entity-level relation through a junction, `position` within a parent, a `move` action, drag to reorder | to write                           | two exercises each, 1 case each                 | the pages round, shared proof      |
+| B2  | Archive and counts: `archive: true`, `count_of` kept by triggers                                                                                                                        | `designs/archive-and-counts.md`    | 2 cases, three exercises on counts              | smaller than scheduling            |
+| B3  | State machines: `transitions` on a read-only enum, the guard as a conditional update, boards that drag only allowed moves                                                               | `designs/state-machines.md`        | the review-workflow cases of the corpus         | smaller than scheduling            |
+| B4  | Field-level visibility: `read:` on a field, absent when it refuses, `expect.absent` in scenarios                                                                                        | `designs/field-visibility.md`      | the survey                                      | the hidden-rows round              |
+| B5  | Field kinds: sequences, money, sealed fields, typed JSON with a shape per enum value (the conditional-validation gap)                                                                   | `designs/field-kinds.md`, extended | 1 case (sequences), Notion's blocks, the survey | the pages round, pieces ship alone |
 
 Why this order: B1 is the largest new design and the music fixture the exercises asked for; counts need reverse
 relations, which B1 settles; transitions and archive before audit, which records them; visibility before audit and
@@ -76,13 +76,13 @@ only one a round has asked for.
 
 ### Milestone C: surfaces (`1.0.0-alpha.6`)
 
-| # | Round | Design | Evidence | Size |
-| --- | --- | --- | --- | --- |
-| C1 | File access per field: `file: { read: <rule> }` defaulting to the row's read rule, Range on the local path | to write | 1 case, two exercises | smaller than the relations round |
-| C2 | Lists at scale: `paging: cursor` anchored on the order columns, `search: { mode: full_text }` with ranking | to write | Slack and Notion; the survey's message tables | the relations round |
-| C3 | Audit and webhooks: one entry per mutation in the transaction, signed deliveries with retries | `designs/audit-and-webhooks.md` | the survey; Slack and Notion partials | the scheduling round |
-| C4 | API keys and the MCP surface: scoped keys, idempotency, one tool per operation | `designs/agent-surface.md` | the survey; the loop's own agents are the first users | the pages round, keys first |
-| C5 | Tenant isolation backstop: policies derived from relations, composite keys, two database roles, the second pass of the cross-tenant walk | `designs/tenant-isolation-backstop.md` | the survey | the scheduling round, mostly migrations |
+| #   | Round                                                                                                                                    | Design                                 | Evidence                                              | Size                                    |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- | ----------------------------------------------------- | --------------------------------------- |
+| C1  | File access per field: `file: { read: <rule> }` defaulting to the row's read rule, Range on the local path                               | to write                               | 1 case, two exercises                                 | smaller than the relations round        |
+| C2  | Lists at scale: `paging: cursor` anchored on the order columns, `search: { mode: full_text }` with ranking                               | to write                               | Slack and Notion; the survey's message tables         | the relations round                     |
+| C3  | Audit and webhooks: one entry per mutation in the transaction, signed deliveries with retries                                            | `designs/audit-and-webhooks.md`        | the survey; Slack and Notion partials                 | the scheduling round                    |
+| C4  | API keys and the MCP surface: scoped keys, idempotency, one tool per operation                                                           | `designs/agent-surface.md`             | the survey; the loop's own agents are the first users | the pages round, keys first             |
+| C5  | Tenant isolation backstop: policies derived from relations, composite keys, two database roles, the second pass of the cross-tenant walk | `designs/tenant-isolation-backstop.md` | the survey                                            | the scheduling round, mostly migrations |
 
 Why this order: files and lists are small and unblock the exercises' remaining partials; audit after transitions
 and archive exist to be recorded; the agent surface after the operations it exposes are all there; isolation
@@ -91,11 +91,11 @@ alternatives on tenant tables, which is a diagnostic worth adding only once the 
 
 ### Milestone D: kits and the release (`1.0.0`)
 
-| # | Round | What it is |
-| --- | --- | --- |
-| D1 | Kits: `osl init --kit saas` (tenancy, invites, roles, audit, API keys) and `--kit publishing` (posts, comments, moderation, scheduled publishing), each a proven model prefix with its own fixture | the loop's planned third step, once gaps thin |
-| D2 | The reference and docs: `architecture.md` "What 1.0.0 added", the README table rows, `backends.md` mapping rows, the `CHANGELOG.md` continued from the checkpoint | release work |
-| D3 | An `osl verify` that runs the walks against a user's project | the walks note's deferred item |
+| #   | Round                                                                                                                                                                                              | What it is                                    |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| D1  | Kits: `osl init --kit saas` (tenancy, invites, roles, audit, API keys) and `--kit publishing` (posts, comments, moderation, scheduled publishing), each a proven model prefix with its own fixture | the loop's planned third step, once gaps thin |
+| D2  | The reference and docs: `architecture.md` "What 1.0.0 added", the README table rows, `backends.md` mapping rows, the `CHANGELOG.md` continued from the checkpoint                                  | release work                                  |
+| D3  | An `osl verify` that runs the walks against a user's project                                                                                                                                       | the walks note's deferred item                |
 
 ## Dependencies, in one picture
 
@@ -112,14 +112,14 @@ A4 invites, C3 audit, C4 keys ──► D1 saas kit
 
 ## What 1.0.0 leaves for 1.1, with the evidence that would pull it forward
 
-| Gap | Why it waits | Pulls it forward |
-| --- | --- | --- |
-| Rules inherited through a tree, tree queries, navigation from data | the largest construct an exercise named, with one app behind it; needs A3 | a round asking twice, or a wiki or folder exercise |
-| Role changes (what a client may write depends on who they are) | a second grammar for before-and-after values | two more cases |
-| Search across resources | a custom page composes the per-resource searches | two cases |
-| Dashboard panels beyond counts, sums and averages | a trigger per numeric type and a null policy | two cases each |
-| Shared secrets and access codes, sign-in flow settings, uniqueness beyond `unique` | one case each | a second case |
-| Cascading archive, incoming webhooks, rate limits, import and export | declined in their design notes with a sentence | a round that asks twice |
+| Gap                                                                                | Why it waits                                                              | Pulls it forward                                   |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | -------------------------------------------------- |
+| Rules inherited through a tree, tree queries, navigation from data                 | the largest construct an exercise named, with one app behind it; needs A3 | a round asking twice, or a wiki or folder exercise |
+| Role changes (what a client may write depends on who they are)                     | a second grammar for before-and-after values                              | two more cases                                     |
+| Search across resources                                                            | a custom page composes the per-resource searches                          | two cases                                          |
+| Dashboard panels beyond counts, sums and averages                                  | a trigger per numeric type and a null policy                              | two cases each                                     |
+| Shared secrets and access codes, sign-in flow settings, uniqueness beyond `unique` | one case each                                                             | a second case                                      |
+| Cascading archive, incoming webhooks, rate limits, import and export               | declined in their design notes with a sentence                            | a round that asks twice                            |
 
 Declined and staying declined: realtime and live updates, payments and billing, user-defined schemas (the
 boundary the Notion exercise wrote down), handlers left to implement.
@@ -144,6 +144,12 @@ design to backlog flip, with the harness as the judge; at that pace the version 
 construct work plus the exercises and the release, with the design reviews between them as the human checkpoints
 the loop requires. Each round's full eval regrade costs about five dollars; a milestone with its exercise and the
 Sonnet comparison about twenty.
+
+## Progress
+
+| Round                | Status                                                                                                                                                                                    |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A1 conformance walks | built 2026-11-09: five walks as harness steps, all fixtures on all backends passing them unchanged; the first run's only findings were the harness's own (`designs/conformance-walks.md`) |
 
 ## Decisions, as made on 2026-11-09
 

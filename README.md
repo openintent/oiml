@@ -14,7 +14,7 @@ Code generation by an LLM is fast to start and slow to trust. The same prompt yi
 
 - **The model is the state.** One machine-written file declares what the application has. Intents change it; nothing else does. A hand edit is detected.
 - **Deterministic from there on.** The same model history and backend version produce byte-identical files. Migrations are a pure function of the history, and renames stay renames.
-- **Proved by running.** The scenarios in the model become contract tests. The conformance harness runs every backend against every fixture on a real database before it ships.
+- **Proved by running.** The scenarios in the model become contract tests. The conformance harness runs every backend against every fixture on a real database before it ships, then walks every operation as every actor against what the rules predict, fuzzes every input, and scans every response for leaks.
 - **Stack-neutral in the middle.** The IR is the contract. A backend is a pure function from IR to files, plus the commands to run what it generated.
 
 ## Quick start
