@@ -4,30 +4,71 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-
+import { FolderKanban, ListChecks } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { client, type Inputs } from "../client";
+import { client, type Inputs, type Outputs, type SessionUser } from "../client";
 import { ErrorNote, Tile, formatDateTime, text } from "../ui";
 
+/** One tile per Project, counting tasks by project_id */
+function GroupTiles4({ user }: { user: SessionUser | null }) {
+  const rows = useQuery({ queryKey: ["projects", "list", { page: 1, page_size: 200 }], queryFn: () => client.projects.list({ page: 1, page_size: 200 } as Inputs["projects"]["list"]), refetchInterval: 30000 });
+  if (rows.isPending) return <Skeleton className="h-24 w-full" />;
+  if (rows.error) return <ErrorNote error={rows.error} />;
+  return (
+    <>
+      {rows.data.data.map(row => (
+        <GroupTile4 key={text(row.id)} id={row.id} label={text(row.name)} user={user} />
+      ))}
+    </>
+  );
+}
+
+function GroupTile4({ id, label, user }: { id: Outputs["projects"]["list"]["data"][number]["id"]; label: string; user: SessionUser | null }) {
+  void user;
+  const input = { page: 1, page_size: 1, project_id: id } as Inputs["tasks"]["list"];
+  const count = useQuery({ queryKey: ["tasks", "list", input], queryFn: () => client.tasks.list(input), refetchInterval: 30000 });
+  return (
+        <Link to="/tasks" className="block">
+          <Tile label={"Per project: " + label} value={count.data?.page.total ?? null} icon={<FolderKanban className="size-4 text-muted-foreground" />} />
+        </Link>
+  );
+}
+
 export function HomePage() {
-  const tile0 = useQuery({ queryKey: ["tasks", "list", {"page":1,"page_size":1}], queryFn: () => client.tasks.list({"page":1,"page_size":1} as Inputs["tasks"]["list"]) });
-  const tile1 = useQuery({ queryKey: ["tasks", "list", {"page":1,"page_size":1,"status":"doing"}], queryFn: () => client.tasks.list({"page":1,"page_size":1,"status":"doing"} as Inputs["tasks"]["list"]) });
-  const tile2 = useQuery({ queryKey: ["projects", "list", {"page":1,"page_size":1}], queryFn: () => client.projects.list({"page":1,"page_size":1} as Inputs["projects"]["list"]) });
-  const recent0 = useQuery({ queryKey: ["tasks", "list", {"page":1,"page_size":5}], queryFn: () => client.tasks.list({"page":1,"page_size":5} as Inputs["tasks"]["list"]) });
+  const user: SessionUser | null = null;
+  void user;
+  const tile0Input = { page: 1, page_size: 1 } as Inputs["tasks"]["list"];
+  const tile0 = useQuery({ queryKey: ["tasks", "list", tile0Input], queryFn: () => client.tasks.list(tile0Input), refetchInterval: 30000 });
+  const tile1Input = { page: 1, page_size: 1, status: "todo" } as Inputs["tasks"]["list"];
+  const tile1 = useQuery({ queryKey: ["tasks", "list", tile1Input], queryFn: () => client.tasks.list(tile1Input), refetchInterval: 30000 });
+  const tile2Input = { page: 1, page_size: 1, status: "doing" } as Inputs["tasks"]["list"];
+  const tile2 = useQuery({ queryKey: ["tasks", "list", tile2Input], queryFn: () => client.tasks.list(tile2Input), refetchInterval: 30000 });
+  const tile3Input = { page: 1, page_size: 1, status: "done" } as Inputs["tasks"]["list"];
+  const tile3 = useQuery({ queryKey: ["tasks", "list", tile3Input], queryFn: () => client.tasks.list(tile3Input), refetchInterval: 30000 });
+  const tile5Input = { page: 1, page_size: 1 } as Inputs["projects"]["list"];
+  const tile5 = useQuery({ queryKey: ["projects", "list", tile5Input], queryFn: () => client.projects.list(tile5Input), refetchInterval: 30000 });
+  const recent0 = useQuery({ queryKey: ["tasks", "list", {"page":1,"page_size":5}], queryFn: () => client.tasks.list({"page":1,"page_size":5} as Inputs["tasks"]["list"]), refetchInterval: 30000 });
   void formatDateTime;
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-6">
       <h1 className="text-2xl font-semibold tracking-tight">Home</h1>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Link to="/tasks" className="block">
-          <Tile label="Tasks" value={tile0.data?.page.total ?? null} />
+          <Tile label="Tasks" value={tile0.data?.page.total ?? null} icon={<ListChecks className="size-4 text-muted-foreground" />} />
         </Link>
         <Link to="/tasks" className="block">
-          <Tile label="Doing" value={tile1.data?.page.total ?? null} />
+          <Tile label="By status: Todo" value={tile1.data?.page.total ?? null} />
         </Link>
+        <Link to="/tasks" className="block">
+          <Tile label="By status: Doing" value={tile2.data?.page.total ?? null} />
+        </Link>
+        <Link to="/tasks" className="block">
+          <Tile label="By status: Done" value={tile3.data?.page.total ?? null} />
+        </Link>
+        <GroupTiles4 user={user} />
         <Link to="/projects" className="block">
-          <Tile label="Projects" value={tile2.data?.page.total ?? null} />
+          <Tile label="Projects" value={tile5.data?.page.total ?? null} icon={<FolderKanban className="size-4 text-muted-foreground" />} />
         </Link>
       </div>
       <div className="grid gap-4 lg:grid-cols-2">

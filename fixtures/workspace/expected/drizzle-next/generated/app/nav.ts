@@ -9,18 +9,30 @@ import type { SessionUser } from "./client";
 /** Every route the app has; a sidebar item or page can only point at one of these */
 export type RoutePath = string;
 
+/** Who may open a page: the page's access rule, as the shell evaluates it */
+export type NavAccess = { kind: "public" } | { kind: "authenticated" } | { kind: "role"; role: string };
+
 export interface NavPage {
   name: string;
   kind: "resource" | "dashboard" | "custom";
   path: RoutePath;
   title: string;
   description?: string;
+  access: NavAccess;
 }
 
 export interface NavItem {
   label: string;
   path: RoutePath;
   icon: LucideIcon | null;
+  access: NavAccess;
+}
+
+/** Whether the signed-in user (null when anonymous) may open a page with this access */
+export function canOpen(access: NavAccess, user: SessionUser | null): boolean {
+  if (access.kind === "public") return true;
+  if (user === null) return false;
+  return access.kind === "authenticated" || (user as { role?: unknown }).role === access.role;
 }
 
 export interface NavSidebar {
@@ -33,18 +45,18 @@ export const APP_TITLE = "Workspace";
 export const AUTH = true;
 
 export const PAGES: readonly NavPage[] = [
-  { name: "teams", kind: "resource", path: "/teams", title: "Teams" },
-  { name: "projects", kind: "resource", path: "/projects", title: "Projects" },
-  { name: "members", kind: "resource", path: "/members", title: "Members" },
-  { name: "tasks", kind: "resource", path: "/tasks", title: "Tasks" }
+  { name: "teams", kind: "resource", path: "/teams", title: "Teams", access: { kind: "authenticated" } },
+  { name: "projects", kind: "resource", path: "/projects", title: "Projects", access: { kind: "authenticated" } },
+  { name: "members", kind: "resource", path: "/members", title: "Members", access: { kind: "authenticated" } },
+  { name: "tasks", kind: "resource", path: "/tasks", title: "Tasks", access: { kind: "authenticated" } }
 ];
 
 export const SIDEBAR: NavSidebar | null = {
   items: [
-    { label: "Teams", path: "/teams", icon: Building },
-    { label: "Projects", path: "/projects", icon: FolderKanban },
-    { label: "Tasks", path: "/tasks", icon: ListChecks },
-    { label: "Members", path: "/members", icon: Users }
+    { label: "Teams", path: "/teams", icon: Building, access: { kind: "authenticated" } },
+    { label: "Projects", path: "/projects", icon: FolderKanban, access: { kind: "authenticated" } },
+    { label: "Tasks", path: "/tasks", icon: ListChecks, access: { kind: "authenticated" } },
+    { label: "Members", path: "/members", icon: Users, access: { kind: "authenticated" } }
   ],
   footer: { user: true, settings: true }
 };

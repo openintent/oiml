@@ -403,6 +403,12 @@ export function checkExpectations(expect: Expect, checked: Checked): string[] {
       fail(`page ${pageName} resource is ${page.resource ?? "none"}, expected ${want.resource}`);
     if (want.tiles_min !== undefined && page.tiles.length < want.tiles_min)
       fail(`page ${pageName} has ${page.tiles.length} tiles, expected at least ${want.tiles_min}`);
+    if (want.access && !alts(want.access).includes(ruleText(page.access)))
+      fail(`page ${pageName} access is ${ruleText(page.access)}, expected ${want.access}`);
+    if (want.path && page.path !== want.path) fail(`page ${pageName} path is ${page.path}, expected ${want.path}`);
+    for (const key of want.filter ?? [])
+      if (!pick(key, Object.keys(page.filter ?? {}))) fail(`page ${pageName} lacks filter ${key}`);
+    if (want.refresh && !page.refresh) fail(`page ${pageName} has no refresh`);
   }
   if (expect.sidebar) {
     const items = (model.app?.sidebar?.items ?? []).map(i => i.page);

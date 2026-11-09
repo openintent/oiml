@@ -227,15 +227,16 @@ export function TasksLayout() {
 }
 
 const BOARD_INPUT = { page: 1, page_size: PAGE_SIZE } as Inputs["tasks"]["list"];
-const BOARD_KEY = [...KEY, "list", BOARD_INPUT] as const;
 const COLUMNS = ["todo", "doing", "done"] as const;
 type Column = (typeof COLUMNS)[number];
 
 export function TasksIndex() {
-  const list = useQuery({ queryKey: BOARD_KEY, queryFn: () => client.tasks.list(BOARD_INPUT) });
   const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
   const user = sessionUser(session.data);
   void user;
+  const boardInput = { ...BOARD_INPUT } as Inputs["tasks"]["list"];
+  const boardKey = [...KEY, "list", boardInput] as const;
+  const list = useQuery({ queryKey: boardKey, queryFn: () => client.tasks.list(boardInput) });
   const [openAction, setOpenAction] = useState<string | null>(null);
   void openAction;
   void setOpenAction;
@@ -251,10 +252,10 @@ export function TasksIndex() {
   const move = useMutation({
     mutationFn: ({ id, status }: { id: Row["id"]; status: Column }) => client.tasks.update({ id, data: { status } }),
     onMutate: async ({ id, status }) => {
-      await queryClient.cancelQueries({ queryKey: BOARD_KEY });
-      const previous = queryClient.getQueryData<Outputs["tasks"]["list"]>(BOARD_KEY);
+      await queryClient.cancelQueries({ queryKey: boardKey });
+      const previous = queryClient.getQueryData<Outputs["tasks"]["list"]>(boardKey);
       if (previous) {
-        queryClient.setQueryData<Outputs["tasks"]["list"]>(BOARD_KEY, {
+        queryClient.setQueryData<Outputs["tasks"]["list"]>(boardKey, {
           ...previous,
           data: previous.data.map(row => (row.id === id ? { ...row, status } : row))
         });
@@ -262,7 +263,7 @@ export function TasksIndex() {
       return { previous };
     },
     onError: (_error, _input, context) => {
-      if (context?.previous) queryClient.setQueryData(BOARD_KEY, context.previous);
+      if (context?.previous) queryClient.setQueryData(boardKey, context.previous);
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: KEY })
   });

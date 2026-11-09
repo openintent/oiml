@@ -10,12 +10,18 @@ export function pageComponent(page: PageIR): string {
 
 /** TanStack flat route file base name for a path: /posts -> posts, /admin/users -> admin.users */
 export function routeFileBase(path: string): string {
-  return path.split("/").filter(Boolean).join(".");
+  return path.split("/").filter(Boolean).join(".") || "index";
 }
 
-/** Next.js app directory folder for a path: /admin/users -> admin/users */
+/** Next.js app directory folder for a path: /admin/users -> admin/users; / -> "" */
 export function nextFolder(path: string): string {
   return path.split("/").filter(Boolean).join("/");
+}
+
+/** The Next.js page file of a path under the app shell: / -> app/(app)/page.tsx */
+export function nextPageFile(path: string): string {
+  const folder = nextFolder(path);
+  return `app/(app)/${folder ? `${folder}/` : ""}page.tsx`;
 }
 
 /** The route files of a resource page (generated, rewritten) */
@@ -98,7 +104,7 @@ export const Route = createFileRoute(${JSON.stringify(page.path)})({ component: 
     };
   }
   return {
-    path: `app/(app)/${nextFolder(page.path)}/page.tsx`,
+    path: nextPageFile(page.path),
     content: `${conv.header(`Page ${page.path}; the component lives in generated/app/pages/${page.name}.tsx.`)}
 import { ${Comp}Page } from "${module}";
 
@@ -134,7 +140,7 @@ ${body}
     };
   }
   return {
-    path: `app/(app)/${nextFolder(page.path)}/page.tsx`,
+    path: nextPageFile(page.path),
     mode: "scaffold",
     content: `${conv.scaffoldHeader(`The ${page.title} page, declared as a custom page in the model.`)}
 export default ${body}

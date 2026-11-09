@@ -1,0 +1,24 @@
+id: fx-blog-8-home-and-access
+tags: [fixture, app, rules, scenario]
+base: { fixture: blog, through: FEAT-7 }
+oracle: fixtures/blog/intents/FEAT-8/diff.yaml
+intent:
+  title: Home page, my articles and a moderation page
+  ask: >-
+    The app opens on a public home page at the root: how many articles there are, how many are published, one
+    count per author, how many users, and the latest articles, refreshing every half minute so a screen left open
+    stays current. Signed-in writers get a "My articles" page listing only their own. Admins get a moderation
+    page over all comments that nobody else can open or see in the sidebar.
+  acceptance:
+    - A visitor who is not signed in can open the home page and sees the counts
+    - My articles shows only the signed-in writer's articles
+    - The moderation page is listed and opens only for admins
+expect:
+  pages:
+    "overview|home": { kind: dashboard, path: "/", access: public, refresh: true, tiles_min: 3 }
+    "my_posts|my_articles|mine": { kind: resource, resource: posts, access: authenticated, filter: [author_id] }
+    "moderation|comments": { kind: resource, resource: comments, access: "role:admin" }
+  sidebar: ["moderation|comments", "my_posts|my_articles|mine"]
+notes: >-
+  Every page construct at once: the landing path, a public page, a page filtered by the signed-in user, a
+  role-gated page, refresh, and a tile grouped by a relation (one per author).

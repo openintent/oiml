@@ -5,8 +5,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useMatchRoute, useNavigate, useParams } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
-import { Fragment, useEffect, useState, type FormEvent } from "react";
+import { Fragment, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { client, sessionUser, type Inputs, type Outputs, type SessionUser } from "../client";
@@ -33,6 +34,42 @@ function canUpdate(user: SessionUser | null, row: Detail): boolean {
 
 function canDelete(user: SessionUser | null, row: Detail): boolean {
   return user !== null;
+}
+
+/** Who may open this page */
+function canOpen(user: SessionUser | null): boolean {
+  return user !== null;
+}
+
+function AccessGate({ user }: { user: SessionUser | null }) {
+  return (
+    <div className="mx-auto max-w-md p-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>{user ? "No access" : "Sign in required"}</CardTitle>
+          <CardDescription>{user ? "Your account cannot open this page." : "Sign in to open this page."}</CardDescription>
+        </CardHeader>
+        {user ? null : (
+          <CardContent>
+            <Link to="/login" className={buttonVariants()}>
+              Sign in
+            </Link>
+          </CardContent>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+/** Waits for the session, then renders the page or the gate */
+function guarded<P extends object>(Component: (props: P) => ReactNode) {
+  return function Guarded(props: P) {
+    const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
+    if (session.isPending) return <PaneSkeleton />;
+    const user = sessionUser(session.data);
+    if (!canOpen(user)) return <AccessGate user={user} />;
+    return <Component {...props} />;
+  };
 }
 
 const TEAMS_FIELDS = ["name"] as const;
@@ -130,16 +167,16 @@ function TeamsForm({
   );
 }
 
-export function TeamsLayout() {
+function TeamsLayoutInner() {
   const [page, setPage] = useState(1);
   const [openAction, setOpenAction] = useState<string | null>(null);
   void openAction;
   void setOpenAction;
-  const input = { page, page_size: PAGE_SIZE } as Inputs["teams"]["list"];
-  const list = useQuery({ queryKey: [...KEY, "list", input], queryFn: () => client.teams.list(input) });
   const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
   const user = sessionUser(session.data);
   void user;
+  const input = { page, page_size: PAGE_SIZE } as Inputs["teams"]["list"];
+  const list = useQuery({ queryKey: [...KEY, "list", input], queryFn: () => client.teams.list(input) });
   const matchRoute = useMatchRoute();
   const queryClient = useQueryClient();
 
@@ -187,11 +224,11 @@ export function TeamsLayout() {
   );
 }
 
-export function TeamsIndex() {
+function TeamsIndexInner() {
   return <EmptyPane>Select a team from the list, or create one.</EmptyPane>;
 }
 
-export function TeamsNew() {
+function TeamsNewInner() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const createRow = useMutation({
@@ -215,7 +252,7 @@ export function TeamsNew() {
   );
 }
 
-export function TeamsDetail() {
+function TeamsDetailInner() {
   const { id: rawId } = useParams({ from: "/teams/$id" });
   const id = idOf(rawId);
   const navigate = useNavigate();
@@ -305,3 +342,8 @@ export function TeamsDetail() {
     </Pane>
   );
 }
+
+export const TeamsLayout = guarded(TeamsLayoutInner);
+export const TeamsIndex = guarded(TeamsIndexInner);
+export const TeamsNew = guarded(TeamsNewInner);
+export const TeamsDetail = guarded(TeamsDetailInner);

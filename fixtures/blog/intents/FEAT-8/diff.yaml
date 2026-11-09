@@ -1,0 +1,45 @@
+osl: "1.0"
+summary: A public home dashboard at the root with per-author tiles and refresh, a My articles page filtered by the signed-in user, an admin-only moderation page
+ops:
+  - op: update_page
+    name: overview
+    page:
+      kind: dashboard
+      path: /
+      title: Home
+      access: public
+      refresh: 30
+      tiles:
+        - { resource: posts, label: Articles, icon: file-text }
+        - { resource: posts, label: Published, filter: { published: true }, icon: check }
+        - { resource: posts, label: By author, group_by: author_id, icon: users }
+        - { resource: users, label: Users, icon: users }
+      recent: [{ resource: posts, limit: 5 }]
+  - op: add_page
+    name: my_posts
+    page:
+      resource: posts
+      title: My articles
+      access: authenticated
+      filter: { author_id: "{actor.id}" }
+      columns: [title, published, posted_at]
+      fields: [title, content, published, cover, tags, posted_at]
+  - op: add_page
+    name: moderation
+    page:
+      resource: comments
+      layout: table
+      title: Moderation
+      access: "role:admin"
+      columns: [body, article_id, author_id, created_at]
+  - op: set_sidebar
+    sidebar:
+      items:
+        - { page: overview, icon: house }
+        - { page: my_posts, icon: pen-line }
+        - { page: posts, icon: file-text }
+        - { page: archive, icon: archive }
+        - { page: moderation, icon: shield }
+        - { page: users, icon: users }
+        - { page: about, icon: info }
+      footer: { user: true, settings: true }

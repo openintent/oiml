@@ -1,0 +1,23 @@
+id: ws2-public-roadmap
+tags: [app, rules, tenancy, generated-origin]
+base: { fixture: workspace }
+intent:
+  title: Public project roadmap
+  ask: >-
+    A team can mark a project as public. A public project gets a roadmap page anyone can open without signing in,
+    showing its tasks grouped into to do and done with a count for each. Projects that are not public stay as
+    they are, and logged-out visitors cannot change anything.
+  acceptance:
+    - A logged-out visitor opens the roadmap of a public project and sees the task counts
+    - A logged-out visitor opening a project that is not public is refused
+    - A logged-out visitor cannot create or change tasks
+expect:
+  outcome: any
+  fields: { Project: ["public|is_public|visibility"] }
+  pages:
+    "roadmap|public_roadmap|status|public_projects": { access: public }
+  scenarios: { min: 1, rejections: 1 }
+notes: >-
+  Promoted from generated round 2 (gen-r2-05). Needs a public page (access: public) over data the read rule opens
+  with a row condition (public when public = true), or an honest not_delivered; outcome any accepts both, the
+  page expectation grades the construct when a diff is produced.

@@ -50,7 +50,13 @@ export const PageExpect = z
     layout: z.enum(["split", "table", "board"]).optional(),
     group_by: z.string().optional(),
     resource: z.string().optional(),
-    tiles_min: z.number().int().optional()
+    tiles_min: z.number().int().optional(),
+    /** Who may open the page, with alternatives ("public", "role:admin|role:staff") */
+    access: z.string().optional(),
+    path: z.string().optional(),
+    /** Filter keys the page must carry, with alternatives */
+    filter: Names.optional(),
+    refresh: z.boolean().optional()
   })
   .strict();
 

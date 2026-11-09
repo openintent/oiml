@@ -9,6 +9,7 @@ import { Plus } from "lucide-react";
 import { Fragment, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -46,6 +47,42 @@ function canPublish(user: SessionUser | null, row: Detail): boolean {
 
 function canUnpublishAll(user: SessionUser | null): boolean {
   return user !== null && (user as { role?: unknown }).role === "admin";
+}
+
+/** Who may open this page */
+function canOpen(user: SessionUser | null): boolean {
+  return user !== null;
+}
+
+function AccessGate({ user }: { user: SessionUser | null }) {
+  return (
+    <div className="mx-auto max-w-md p-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>{user ? "No access" : "Sign in required"}</CardTitle>
+          <CardDescription>{user ? "Your account cannot open this page." : "Sign in to open this page."}</CardDescription>
+        </CardHeader>
+        {user ? null : (
+          <CardContent>
+            <Link href="/login" className={buttonVariants()}>
+              Sign in
+            </Link>
+          </CardContent>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+/** Waits for the session, then renders the page or the gate */
+function guarded<P extends object>(Component: (props: P) => ReactNode) {
+  return function Guarded(props: P) {
+    const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
+    if (session.isPending) return <PaneSkeleton />;
+    const user = sessionUser(session.data);
+    if (!canOpen(user)) return <AccessGate user={user} />;
+    return <Component {...props} />;
+  };
 }
 
 const POSTS_FIELDS = ["title", "content", "published", "author_id", "tags", "cover"] as const;
@@ -225,16 +262,16 @@ function PostsForm({
   );
 }
 
-export function PostsLayout({ children }: { children: ReactNode }) {
+function PostsLayoutInner({ children }: { children: ReactNode }) {
   const [page, setPage] = useState(1);
   const [openAction, setOpenAction] = useState<string | null>(null);
   void openAction;
   void setOpenAction;
-  const input = { page, page_size: PAGE_SIZE } as Inputs["posts"]["list"];
-  const list = useQuery({ queryKey: [...KEY, "list", input], queryFn: () => client.posts.list(input) });
   const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
   const user = sessionUser(session.data);
   void user;
+  const input = { page, page_size: PAGE_SIZE } as Inputs["posts"]["list"];
+  const list = useQuery({ queryKey: [...KEY, "list", input], queryFn: () => client.posts.list(input) });
   const pathname = usePathname();
   const queryClient = useQueryClient();
   const unpublish_allAction = useMutation({
@@ -293,11 +330,11 @@ export function PostsLayout({ children }: { children: ReactNode }) {
   );
 }
 
-export function PostsIndex() {
+function PostsIndexInner() {
   return <EmptyPane>Select an article from the list, or create one.</EmptyPane>;
 }
 
-export function PostsNew() {
+function PostsNewInner() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const createRow = useMutation({
@@ -321,7 +358,7 @@ export function PostsNew() {
   );
 }
 
-export function PostsDetail() {
+function PostsDetailInner() {
   const { id: rawId } = useParams<{ id: string }>();
   const id = idOf(rawId);
   const router = useRouter();
@@ -429,3 +466,8 @@ export function PostsDetail() {
     </Pane>
   );
 }
+
+export const PostsLayout = guarded(PostsLayoutInner);
+export const PostsIndex = guarded(PostsIndexInner);
+export const PostsNew = guarded(PostsNewInner);
+export const PostsDetail = guarded(PostsDetailInner);

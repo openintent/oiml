@@ -200,18 +200,24 @@ pages:
   posts:                           # page name, snake_case
     kind: resource                 # resource (default) | custom
     resource: posts                # resource pages: a resource with list and get operations
-    path: /posts                   # default /<name>; /, /login and /settings are reserved for the shell
+    path: /posts                   # default /<name>; /login and /settings are reserved; one dashboard or custom page may take /
     title: Posts                   # default: the name in Title Case
     layout: split                  # split (list beside the selected row, default) | table (sortable, filterable, with a detail page) | board
     columns: [title, published]    # master list columns; default: the first few short columns
     fields: [title, content, published]   # detail pane fields; default: every output field (read_only ones show here, never in the form)
+    access: authenticated          # public | authenticated | role:<value>: who may open the page (sidebar and route); default authenticated with auth, else public
+    filter: { author_id: "{actor.id}" }   # resource pages: equality filters the list always carries, from list.filters; "{actor.id}" is the signed-in user (not on a public page)
+    refresh: 15                    # seconds; the page refetches its data on this interval while open (polling; there is no push)
   tasks:
     resource: tasks
     layout: board                  # cards grouped by an enum field; dragging a card updates it
     group_by: status
   home:
     kind: dashboard
-    tiles: [{ resource: posts, label: Published, filter: { published: true }, icon: file-text }]   # count tiles from list filters
+    tiles:                         # count tiles from list filters; group_by makes one tile per enum value or per row of a related resource
+      - { resource: posts, label: Published, filter: { published: true }, icon: file-text }
+      - { resource: posts, label: By author, group_by: author_id }
+      - { resource: tasks, label: Mine, filter: { assignee_id: "{actor.id}" } }
     recent: [{ resource: posts, limit: 5 }]                                                         # newest rows, linked
   about:
     kind: custom                   # scaffolded once as a route for you to fill in
@@ -226,6 +232,13 @@ sidebar:
 A resource page is a master/detail view: the list on the left (with a New action when the resource allows create),
 the selected row on the right with edit and delete when the resource allows them. Hidden and binary fields cannot be
 listed. Removing a resource that a page shows fails; remove the page first.
+Boards show the count of cards in each column header. The detail pane renders the rows of every reverse relation the
+get operation includes. Anonymous visitors see every page whose resource is publicly readable; \`access\` narrows who
+may open a page, it never widens what the API returns, so a public page needs a publicly readable resource (M092) and
+a page filtered by \`{actor.id}\` cannot be public. A dashboard or custom page may take \`path: /\` as the landing
+page; a resource page cannot. Filters are equality only: "due before today" or "starting after now" is not
+expressible in a page, a tile or a list filter; say so in not_delivered. Pages scoped to one team, live push and
+charts have no construct either (use \`refresh\` for polling; a custom page for the rest).
 
 ## Examples
 

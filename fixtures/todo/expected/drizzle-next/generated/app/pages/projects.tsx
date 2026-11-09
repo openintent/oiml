@@ -159,6 +159,9 @@ export function ProjectsIndex() {
     setFilters(current => ({ ...current, [key]: value }));
     setPage(1);
   };
+  const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
+  const user = sessionUser(session.data);
+  void user;
   const input = {
     page,
     page_size: PAGE_SIZE,
@@ -166,9 +169,6 @@ export function ProjectsIndex() {
     q: q || undefined
   } as Inputs["projects"]["list"];
   const list = useQuery({ queryKey: [...KEY, "list", input], queryFn: () => client.projects.list(input) });
-  const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
-  const user = sessionUser(session.data);
-  void user;
   const router = useRouter();
   const queryClient = useQueryClient();
 

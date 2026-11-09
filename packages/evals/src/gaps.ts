@@ -36,6 +36,15 @@ const TOPICS: [topic: string, pattern: RegExp][] = [
     "server-owned fields",
     /\b(read[- ]?only|server[- ]owned|only the (server|system) (may|can|sets?)|set by the (system|server)|not (editable|settable) by (the )?client|clients? (cannot|can't|may not) (set|write|change|edit)|never accepted from)/i
   ],
+  ["invites and onboarding", /\b(invit|onboard|join link|accept(ing)? (an? )?invitation|pending member)/i],
+  [
+    "role changes",
+    /\b(promot|demot|(change|changing|set|setting|assign|assigning|grant|granting) .{0,24}\brole\b|role .{0,16}(must|can only) be (set|changed)|become an? (admin|editor|owner|staff))/i
+  ],
+  [
+    "conditional validation",
+    /\b(required? .{0,40}only (when|for|if)|only required (when|for|if)|must be (set|present|filled) when|cannot be empty when|mandatory (when|for|if)|validation .{0,24}depends on)/i
+  ],
   [
     "rule conjunctions",
     /\b(both at once|not both|at the same time as|two conditions|conjunction|require both|requires? .{0,40} and (also )?(bind|check|be |a |the )|membership and (the |a )?(owner|author|writer|creator))/i
@@ -46,7 +55,7 @@ const TOPICS: [topic: string, pattern: RegExp][] = [
   ],
   [
     "rules on a field's value",
-    /\b(depend(s|ing)? on (a |the |its |their )?(field|value|status|state|flag|row|column|published)|(a |the )?(field|column|row)'?s? (value|state|status)|look at .{0,24}value|value of (a|the) (field|row|column)|conditional|only when|status is|draft|own (unpublished|private)|visib|(not|is|marked|flagged) public|public flag|cannot (stop|prevent|forbid)|their own (role|membership)|grant(ing)? .{0,20}(role|owner)|promot|demot|deactivated|disabled account|banned user|by (its|their|the row's) (status|state|value))/i
+    /\b(depend(s|ing)? on (a |the |its |their )?(field|value|status|state|flag|row|column|published)|(a |the )?(field|column|row)'?s? (value|state|status)|look at .{0,24}value|value of (a|the) (field|row|column)|conditional|only when|status is|draft|own (unpublished|private)|visib|(not|is|marked|flagged) public|public flag|cannot (stop|prevent|forbid)|their own (role|membership)|grant(ing)? .{0,20}(role|owner)|deactivated|disabled account|banned user|by (its|their|the row's) (status|state|value))/i
   ],
   ["realtime and live updates", /\b(real[- ]?time|websocket|live update|subscri|push notif|presence|stream)/i],
   [
@@ -69,7 +78,6 @@ const TOPICS: [topic: string, pattern: RegExp][] = [
   ],
   ["ordering and positions", /\b(reorder|drag.{0,20}order|position|rank order|sort order|manual order)/i],
   ["history, versions and audit", /\b(histor|version|audit|revision|undo|log of changes|changelog|track changes)/i],
-  ["invites and onboarding", /\b(invit|onboard|join link|accept(ing)? (an? )?invitation|pending member)/i],
   ["files and media", /\b(thumbnail|resize|image process|video|transcod|multiple files|gallery|attachment limit)/i],
   [
     "pages beyond master-detail",

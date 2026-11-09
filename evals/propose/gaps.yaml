@@ -5,7 +5,7 @@ gaps:
     kind: not_delivered
     status: built
     first_seen: run6-rules-opus-5-5
-    last_seen: r3
+    last_seen: run
     cases: 6
     construct: row conditions on rules (when <field> = <value>, a7b0817)
     version: unreleased
@@ -13,11 +13,14 @@ gaps:
       todo TODO-5 and workspace WS-4.
   - key: pages beyond master-detail
     kind: not_delivered
-    status: open
+    status: built
     first_seen: run6-rules-opus-5-5
-    last_seen: run
+    last_seen: r3
     cases: 5
-    note: Landing routes, pages outside the signed-in shell, views that refresh themselves, charts.
+    construct: page access, filter with {actor.id}, refresh, tile group_by, a dashboard or custom page at /
+    version: unreleased
+    note: Built 2026-11-09 with blog FEAT-8 and todo TODO-6; round r4 used the constructs 20 times and
+      no longer reported the cluster.
   - key: scheduled and recurring work
     kind: not_delivered
     status: open
@@ -45,7 +48,7 @@ gaps:
     kind: not_delivered
     status: declined
     first_seen: run6-rules-opus-5-5
-    last_seen: gen-r1-opus-5-5
+    last_seen: run
     cases: 2
     note: Out of scope for the schema; a handler written with osl implement calls the provider.
   - key: realtime and live updates
@@ -68,7 +71,7 @@ gaps:
     kind: not_delivered
     status: built
     first_seen: run4-admin-opus-5-5
-    last_seen: run5-sonnet-5-5
+    last_seen: run
     cases: 3
     construct: rules with or, owner and member paths through relations
     version: 1.0.0-alpha.2
@@ -82,5 +85,23 @@ gaps:
     kind: not_delivered
     status: open
     first_seen: r3
+    last_seen: run
+    cases: 1
+  - key: files and media
+    kind: not_delivered
+    status: open
+    first_seen: r4
+    last_seen: run
+    cases: 1
+  - key: role changes
+    kind: not_delivered
+    status: open
+    first_seen: run
+    last_seen: run
+    cases: 2
+  - key: conditional validation
+    kind: not_delivered
+    status: open
+    first_seen: run
     last_seen: run
     cases: 1

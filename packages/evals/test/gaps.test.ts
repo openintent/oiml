@@ -113,11 +113,16 @@ describe("gap report", () => {
     expect(gapTopic("The rules can't require both team membership and a writer taken from the session")).toBe(
       "rule conjunctions"
     );
-    expect(gapTopic("The rule cannot stop an owner from changing their own membership's role")).toBe(
-      "rules on a field's value"
-    );
+    expect(gapTopic("The rule cannot stop an owner from changing their own membership's role")).toBe("role changes");
     expect(gapTopic("A signed-out visitor opening the roadmap of a project that is not public")).toBe(
       "rules on a field's value"
+    );
+    expect(gapTopic("No construct lets office staff promote a user to the office role")).toBe("role changes");
+    expect(gapTopic("Invitations are direct adds by an owner or editor; there is no invite-and-accept flow")).toBe(
+      "invites and onboarding"
+    );
+    expect(gapTopic("The model cannot require go_live_at only for cards whose status is scheduled")).toBe(
+      "conditional validation"
     );
     expect(
       gapTopic("The article appearing in the public list at its scheduled time depends on that automatic publishing")

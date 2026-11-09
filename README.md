@@ -56,7 +56,7 @@ osl verify --base-url http://localhost:3000   # generated files current, typeche
 | Files               | `file` fields with accepted types and size limits                                                                                                                                                         | Upload flow, local or S3-compatible storage, snapshots, signed URLs                                                              |
 | Tenancy             | Teams with memberships and ranked roles; `member:<field>[:<role>]` rules                                                                                                                                  | Membership-scoped lists and checks, auto-membership for creators                                                                 |
 | Providers           | Credentials, magic links, OAuth (GitHub, Google, OIDC)                                                                                                                                                    | Token and state tables, email adapter, sign-in routes                                                                            |
-| App                 | Pages over resources (split, table, board), dashboards, custom pages, a sidebar with a footer                                                                                                             | Sidebar shell, routes and pages (`hono-trpc-vite`, `drizzle-next`)                                                               |
+| App                 | Pages over resources (split, table, board), dashboards with grouped tiles, custom pages, a landing page at `/`, page access rules, fixed filters by the signed-in user, refresh, a sidebar with a footer  | Sidebar shell, routes and pages (`hono-trpc-vite`, `drizzle-next`)                                                               |
 | Tooling             | Queued events, seed steps                                                                                                                                                                                 | pg-boss or River worker, OpenAPI document, Docker files, `osl seed`                                                              |
 
 ## Repository
@@ -89,7 +89,7 @@ Node 22+ and pnpm 10. The conformance run needs PostgreSQL for a throwaway datab
 
 ## Status
 
-OSL 1.1 is an alpha. All three backends pass all three fixtures end to end on a real database, and the conformance snapshots are committed as proof. See the plan in the docs for the boundary rule and what is deliberately out of scope: generated handlers beyond the five standard operations, pages beyond master/detail over a resource, and any construct without a deterministic mapping.
+OSL 1.1 is an alpha. All three backends pass all three fixtures end to end on a real database, and the conformance snapshots are committed as proof. See the plan in the docs for the boundary rule and what is deliberately out of scope: live push, charts and layouts beyond the page kinds the model declares, and any construct without a deterministic mapping; action handlers are the model's to write through `osl implement`, never the compiler's.
 
 ## License
 

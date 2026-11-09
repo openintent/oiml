@@ -5,9 +5,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useNavigate, useParams } from "@tanstack/react-router";
 import { ArrowLeft, Plus } from "lucide-react";
-import { Fragment, useEffect, useState, type FormEvent } from "react";
+import { Fragment, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { client, sessionUser, type Inputs, type Outputs, type SessionUser } from "../client";
@@ -34,6 +35,42 @@ function canUpdate(user: SessionUser | null, row: Detail): boolean {
 
 function canDelete(user: SessionUser | null, row: Detail): boolean {
   return user !== null;
+}
+
+/** Who may open this page */
+function canOpen(user: SessionUser | null): boolean {
+  return user !== null;
+}
+
+function AccessGate({ user }: { user: SessionUser | null }) {
+  return (
+    <div className="mx-auto max-w-md p-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>{user ? "No access" : "Sign in required"}</CardTitle>
+          <CardDescription>{user ? "Your account cannot open this page." : "Sign in to open this page."}</CardDescription>
+        </CardHeader>
+        {user ? null : (
+          <CardContent>
+            <Link to="/login" className={buttonVariants()}>
+              Sign in
+            </Link>
+          </CardContent>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+/** Waits for the session, then renders the page or the gate */
+function guarded<P extends object>(Component: (props: P) => ReactNode) {
+  return function Guarded(props: P) {
+    const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
+    if (session.isPending) return <PaneSkeleton />;
+    const user = sessionUser(session.data);
+    if (!canOpen(user)) return <AccessGate user={user} />;
+    return <Component {...props} />;
+  };
 }
 
 const PROJECTS_FIELDS = ["team_id", "name", "status"] as const;
@@ -181,11 +218,11 @@ function ProjectsForm({
   );
 }
 
-export function ProjectsLayout() {
+function ProjectsLayoutInner() {
   return <div className="h-full min-h-0 overflow-hidden"><Outlet /></div>;
 }
 
-export function ProjectsIndex() {
+function ProjectsIndexInner() {
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState<string | undefined>(undefined);
   const [search, setSearch] = useState("");
@@ -198,6 +235,9 @@ export function ProjectsIndex() {
     setFilters(current => ({ ...current, [key]: value }));
     setPage(1);
   };
+  const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
+  const user = sessionUser(session.data);
+  void user;
   const input = {
     page,
     page_size: PAGE_SIZE,
@@ -206,9 +246,6 @@ export function ProjectsIndex() {
     team_id: filters.team_id || undefined, status: filters.status || undefined
   } as Inputs["projects"]["list"];
   const list = useQuery({ queryKey: [...KEY, "list", input], queryFn: () => client.projects.list(input) });
-  const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
-  const user = sessionUser(session.data);
-  void user;
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -273,7 +310,7 @@ export function ProjectsIndex() {
   );
 }
 
-export function ProjectsNew() {
+function ProjectsNewInner() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const createRow = useMutation({
@@ -299,7 +336,7 @@ export function ProjectsNew() {
   );
 }
 
-export function ProjectsDetail() {
+function ProjectsDetailInner() {
   const { id: rawId } = useParams({ from: "/projects/$id" });
   const id = idOf(rawId);
   const navigate = useNavigate();
@@ -382,3 +419,8 @@ export function ProjectsDetail() {
     </Pane>
   );
 }
+
+export const ProjectsLayout = guarded(ProjectsLayoutInner);
+export const ProjectsIndex = guarded(ProjectsIndexInner);
+export const ProjectsNew = guarded(ProjectsNewInner);
+export const ProjectsDetail = guarded(ProjectsDetailInner);

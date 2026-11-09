@@ -1,0 +1,16 @@
+id: fx-todo-6-home-dashboard
+tags: [fixture, app, no-auth]
+base: { fixture: todo, through: TODO-5 }
+oracle: fixtures/todo/intents/TODO-6/diff.yaml
+intent:
+  title: Home at the root with counts per status and per project
+  ask: >-
+    The app should open straight on the home dashboard. Besides the totals, show one count per task status and
+    one per project, and keep the numbers fresh while the page is open.
+  acceptance:
+    - Opening the app at / shows the home dashboard
+    - There is a count tile for each status and one for each project
+expect:
+  pages:
+    home: { kind: dashboard, path: "/", refresh: true, tiles_min: 3 }
+notes: Tiles grouped by an enum (status) and by a relation (project), with the dashboard at the root, in an app without auth.

@@ -17,7 +17,7 @@ describe("blog fixture", () => {
   it("applies every intent, compiles IR and plans migrations with renames", async () => {
     const root = await freshProject();
     const ids = await listIntents(root);
-    expect(ids).toEqual(["FEAT-1", "FEAT-2", "FEAT-3", "FEAT-4", "FEAT-5", "FEAT-6", "FEAT-7"]);
+    expect(ids).toEqual(["FEAT-1", "FEAT-2", "FEAT-3", "FEAT-4", "FEAT-5", "FEAT-6", "FEAT-7", "FEAT-8"]);
 
     for (const id of ids) {
       const outcome = await applyIntent(root, id);
@@ -27,7 +27,7 @@ describe("blog fixture", () => {
     expect(again.status).toBe("noop");
 
     const project = await loadProject(root);
-    expect(project.lock.revisions).toHaveLength(7);
+    expect(project.lock.revisions).toHaveLength(8);
     const ir = project.ir;
 
     const article = ir.entities.find(e => e.name === "Article")!;

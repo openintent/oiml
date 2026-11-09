@@ -68,9 +68,11 @@ describe("app section", () => {
     const about = ir.app!.pages.find(p => p.name === "about")!;
     expect(about).toMatchObject({ kind: "custom", path: "/about", title: "About", columns: [], fields: [] });
     expect(ir.app!.sidebar!.items.map(i => [i.label, i.path, i.icon])).toEqual([
-      ["Overview", "/overview", "layout-dashboard"],
+      ["Home", "/", "house"],
+      ["My articles", "/my-posts", "pen-line"],
       ["Posts", "/posts", "file-text"],
       ["Archive", "/archive", "archive"],
+      ["Moderation", "/moderation", "shield"],
       ["Users", "/users", "users"],
       ["About", "/about", "info"]
     ]);
@@ -81,6 +83,7 @@ describe("app section", () => {
     expect(overview.tiles.map(t => [t.label, t.filter])).toEqual([
       ["Articles", {}],
       ["Published", { published: true }],
+      ["By author", {}],
       ["Users", {}]
     ]);
     expect(overview.recent).toEqual([{ resource: "posts", limit: 5 }]);
@@ -142,5 +145,95 @@ describe("app section", () => {
     ).model;
     expect(removed.app!.sidebar!.items).toEqual([]);
     expect(compile(removed).app!.pages).toEqual([]);
+  });
+
+  it("compiles page access, fixed filters, refresh and grouped tiles", async () => {
+    const { ir } = await compiled("blog");
+    const overview = ir.app!.pages.find(p => p.name === "overview")!;
+    expect(overview).toMatchObject({ kind: "dashboard", path: "/", refresh: 30, access: { kind: "public" } });
+    expect(overview.tiles.map(t => t.label)).toEqual(["Articles", "Published", "By author", "Users"]);
+    expect(overview.tiles[2].groupBy).toEqual({
+      field: "author_id",
+      kind: "relation",
+      resource: "users",
+      entity: "User",
+      key: "id",
+      display: "name"
+    });
+    const mine = ir.app!.pages.find(p => p.name === "my_posts")!;
+    expect(mine).toMatchObject({ kind: "resource", resource: "posts", access: { kind: "authenticated" } });
+    expect(mine.filter).toEqual({ author_id: { actor: "id" } });
+    const moderation = ir.app!.pages.find(p => p.name === "moderation")!;
+    expect(moderation.access).toEqual({ kind: "role", value: "admin" });
+    expect(ir.app!.sidebar!.items.find(i => i.page === "moderation")!.access).toEqual({ kind: "role", value: "admin" });
+    expect(ir.app!.sidebar!.items[0]).toMatchObject({ page: "overview", path: "/" });
+
+    const { ir: todo } = await compiled("todo");
+    const home = todo.app!.pages.find(p => p.name === "home")!;
+    expect(home.path).toBe("/");
+    expect(home.tiles.map(t => t.groupBy?.kind ?? "none")).toEqual(["none", "enum", "relation", "none"]);
+    expect(home.tiles[1].groupBy).toMatchObject({ kind: "enum", values: ["todo", "doing", "done"] });
+    expect(home.access).toEqual({ kind: "public" });
+  });
+
+  it("refuses public pages over private data, user filters on public pages and bad tile groups", () => {
+    const bad = parseModel({
+      osl: "1.0",
+      name: "shop",
+      entities: {
+        User: {
+          fields: {
+            id: { type: "uuid", primary: true },
+            email: { type: "string", required: true, unique: true },
+            name: { type: "string", required: true }
+          },
+          rules: { read: "authenticated" }
+        },
+        Product: {
+          fields: {
+            id: { type: "uuid", primary: true },
+            name: { type: "string", required: true },
+            published: { type: "boolean", required: true, default: false },
+            owner_id: { type: "uuid", required: true, relation: { entity: "User" } }
+          },
+          rules: { create: "owner:owner_id" }
+        }
+      },
+      auth: { identity: "User", provider: "credentials" },
+      resources: {
+        products: {
+          entity: "Product",
+          operations: ["list", "get", "create"],
+          list: { filters: ["published", "owner_id"] }
+        },
+        users: { entity: "User", operations: ["list", "get"] }
+      },
+      app: {
+        pages: {
+          people: { resource: "users", access: "public" },
+          mine: { resource: "products", access: "public", filter: { owner_id: "{actor.id}" } },
+          odd: { resource: "products", filter: { name: "x" } },
+          staff: { resource: "products", access: "role:admin" },
+          home: {
+            kind: "dashboard",
+            path: "/",
+            tiles: [
+              { resource: "products", label: "By name", group_by: "name" },
+              { resource: "products", label: "By owner", group_by: "owner_id" }
+            ]
+          }
+        }
+      }
+    } as never);
+    const codes = validateModel(bad).map(d => `${d.code}:${d.path}`);
+    expect(codes).toContain("M092:app.pages.people.resource");
+    expect(codes).toContain("M092:app.pages.mine.filter");
+    expect(codes).toContain("M089:app.pages.odd.filter");
+    expect(codes).toContain("M091:app.pages.staff.access");
+    expect(codes).toContain("M089:app.pages.home.tiles[0]");
+    expect(codes.filter(c => c.startsWith("M089:app.pages.home.tiles[1]"))).toEqual([]);
+    expect(() => model({ app: { pages: { landing: { resource: "products", path: "/" } } } } as Partial<Model>)).toThrow(
+      /resource page cannot take/
+    );
   });
 });

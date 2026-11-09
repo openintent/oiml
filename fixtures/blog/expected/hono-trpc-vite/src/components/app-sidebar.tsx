@@ -27,10 +27,12 @@ import {
   SidebarTrigger
 } from "@/components/ui/sidebar";
 import { client, sessionUser } from "@generated/app/client";
-import { APP_TITLE, SIDEBAR, userInitials, userName, userSubtitle } from "@generated/app/nav";
+import { APP_TITLE, SIDEBAR, canOpen, userInitials, userName, userSubtitle } from "@generated/app/nav";
 
 export function AppSidebar() {
   const matchRoute = useMatchRoute();
+  const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
+  const user = sessionUser(session.data);
   if (!SIDEBAR) return null;
   return (
     <Sidebar collapsible="icon">
@@ -49,7 +51,7 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {SIDEBAR.items.map(item => (
+              {SIDEBAR.items.filter(item => canOpen(item.access, user)).map(item => (
                 <SidebarMenuItem key={item.path}>
                   <SidebarMenuButton
                     render={<Link to={item.path} />}

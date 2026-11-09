@@ -9,6 +9,7 @@ import { ArrowLeft, Plus } from "lucide-react";
 import { Fragment, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { client, sessionUser, type Inputs, type Outputs, type SessionUser } from "../client";
@@ -35,6 +36,42 @@ function canUpdate(user: SessionUser | null, row: Detail): boolean {
 
 function canDelete(user: SessionUser | null, row: Detail): boolean {
   return user !== null;
+}
+
+/** Who may open this page */
+function canOpen(user: SessionUser | null): boolean {
+  return user !== null;
+}
+
+function AccessGate({ user }: { user: SessionUser | null }) {
+  return (
+    <div className="mx-auto max-w-md p-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>{user ? "No access" : "Sign in required"}</CardTitle>
+          <CardDescription>{user ? "Your account cannot open this page." : "Sign in to open this page."}</CardDescription>
+        </CardHeader>
+        {user ? null : (
+          <CardContent>
+            <Link href="/login" className={buttonVariants()}>
+              Sign in
+            </Link>
+          </CardContent>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+/** Waits for the session, then renders the page or the gate */
+function guarded<P extends object>(Component: (props: P) => ReactNode) {
+  return function Guarded(props: P) {
+    const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
+    if (session.isPending) return <PaneSkeleton />;
+    const user = sessionUser(session.data);
+    if (!canOpen(user)) return <AccessGate user={user} />;
+    return <Component {...props} />;
+  };
 }
 
 const MEMBERS_FIELDS = ["team_id", "user_id", "role"] as const;
@@ -208,11 +245,11 @@ function MembersForm({
   );
 }
 
-export function MembersLayout({ children }: { children: ReactNode }) {
+function MembersLayoutInner({ children }: { children: ReactNode }) {
   return <div className="h-full min-h-0 overflow-hidden">{children}</div>;
 }
 
-export function MembersIndex() {
+function MembersIndexInner() {
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState<string | undefined>(undefined);
   void setSort;
@@ -225,15 +262,15 @@ export function MembersIndex() {
     setFilters(current => ({ ...current, [key]: value }));
     setPage(1);
   };
+  const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
+  const user = sessionUser(session.data);
+  void user;
   const input = {
     page,
     page_size: PAGE_SIZE,
     team_id: filters.team_id || undefined, user_id: filters.user_id || undefined
   } as Inputs["members"]["list"];
   const list = useQuery({ queryKey: [...KEY, "list", input], queryFn: () => client.members.list(input) });
-  const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
-  const user = sessionUser(session.data);
-  void user;
   const router = useRouter();
   const queryClient = useQueryClient();
 
@@ -286,7 +323,7 @@ export function MembersIndex() {
   );
 }
 
-export function MembersNew() {
+function MembersNewInner() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const createRow = useMutation({
@@ -312,7 +349,7 @@ export function MembersNew() {
   );
 }
 
-export function MembersDetail() {
+function MembersDetailInner() {
   const { id: rawId } = useParams<{ id: string }>();
   const id = idOf(rawId);
   const router = useRouter();
@@ -396,3 +433,8 @@ export function MembersDetail() {
     </Pane>
   );
 }
+
+export const MembersLayout = guarded(MembersLayoutInner);
+export const MembersIndex = guarded(MembersIndexInner);
+export const MembersNew = guarded(MembersNewInner);
+export const MembersDetail = guarded(MembersDetailInner);

@@ -1,0 +1,11 @@
+osl: "1.0"
+title: Home page, my articles and a moderation page
+ask: >-
+  The app opens on a public home page at the root: how many articles there are, how many are published, one
+  count per author, how many users, and the latest articles, refreshing every half minute so a screen left open
+  stays current. Signed-in writers get a "My articles" page listing only their own. Admins get a moderation
+  page over all comments that nobody else can open or see in the sidebar.
+acceptance:
+  - A visitor who is not signed in can open the home page and sees the counts
+  - My articles shows only the signed-in writer's articles
+  - The moderation page is listed and opens only for admins

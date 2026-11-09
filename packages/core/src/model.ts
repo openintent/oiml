@@ -412,19 +412,30 @@ export const IconName = z.string().regex(/^[a-z][a-z0-9-]*$/, "lucide icon name 
 /** A URL path for a page: lower-case segments, no trailing slash */
 export const PagePath = z
   .string()
-  .regex(/^\/[a-z0-9][a-z0-9_-]*(\/[a-z0-9][a-z0-9_-]*)*$/, "a path like /posts or /admin/users");
+  .regex(
+    /^(\/|\/[a-z0-9][a-z0-9_-]*(\/[a-z0-9][a-z0-9_-]*)*)$/,
+    "a path like /posts or /admin/users, or / for the landing page"
+  );
+
+/** Who may open a page: a plain predicate; owner and member need a row, which a page does not have */
+export const PageAccess = z
+  .string()
+  .regex(/^(public|authenticated|role:[A-Za-z0-9_-]+)$/, "public | authenticated | role:<value>");
+export type PageAccess = z.infer<typeof PageAccess>;
 
 /** Paths the app shell owns: the home page, sign-in and settings are scaffolds, never pages. */
-export const RESERVED_PAGE_PATHS = ["/", "/login", "/settings"] as const;
+export const RESERVED_PAGE_PATHS = ["/login", "/settings"] as const;
 
 export const DashboardTile = z
   .object({
     resource: ResourceName,
     /** Default: the resource's title */
     label: z.string().min(1).optional(),
-    /** Equality filters from the resource's list filters, e.g. { published: true } */
+    /** Equality filters from the resource's list filters, e.g. { published: true }; "{actor.id}" is the signed-in user */
     filter: z.record(Identifier, z.union([z.string(), z.number(), z.boolean()])).optional(),
-    icon: IconName.optional()
+    icon: IconName.optional(),
+    /** One tile per value of an enum list filter, or per row of the related resource for a relation list filter */
+    group_by: Identifier.optional()
   })
   .strict();
 export type DashboardTile = z.infer<typeof DashboardTile>;
@@ -456,12 +467,24 @@ export const Page = z
     /** Columns of the master list; resource pages only. Default: the first few short columns. */
     columns: z.array(Identifier).min(1).optional(),
     /** Fields shown and edited on the detail pane; resource pages only. Default: every output field. */
-    fields: z.array(Identifier).min(1).optional()
+    fields: z.array(Identifier).min(1).optional(),
+    /** Who may open the page (sidebar and route); default authenticated when auth exists, public otherwise */
+    access: PageAccess.optional(),
+    /** Resource pages: equality filters the list always carries, from the resource's list filters; "{actor.id}" is the signed-in user */
+    filter: z.record(Identifier, z.union([z.string(), z.number(), z.boolean()])).optional(),
+    /** Refetch the page's data every this many seconds while it is open (polling) */
+    refresh: z.number().int().min(5).max(3600).optional()
   })
   .strict()
   .superRefine((page, ctx) => {
     if (page.kind === "resource" && !page.resource)
       ctx.addIssue({ code: "custom", message: "resource pages need a resource" });
+    if (page.kind === "resource" && page.path === "/")
+      ctx.addIssue({ code: "custom", message: "a resource page cannot take /; a dashboard or custom page can" });
+    if (page.kind !== "resource" && page.filter)
+      ctx.addIssue({ code: "custom", message: "filter applies to resource pages; tiles carry their own" });
+    if (page.kind === "custom" && page.refresh)
+      ctx.addIssue({ code: "custom", message: "refresh applies to resource and dashboard pages" });
     if (page.kind !== "resource" && (page.resource || page.columns || page.fields || page.layout || page.group_by))
       ctx.addIssue({
         code: "custom",
@@ -1038,6 +1061,55 @@ export function validateModel(model: Model): Diagnostic[] {
       const taken = seenPaths.get(pagePath);
       if (taken) error("M085", `path ${pagePath} is already used by page ${taken}`, `${base}.path`);
       seenPaths.set(pagePath, pageName);
+      // Who may open the page: public pages can only show publicly readable data
+      const access = page.access ?? (model.auth ? "authenticated" : "public");
+      if (access !== "public" && !model.auth)
+        error("M091", `page ${pageName} has access ${access}, which needs auth to be configured`, `${base}.access`);
+      if (access.startsWith("role:") && model.auth && !model.entities[model.auth.identity]?.fields.role)
+        error(
+          "M091",
+          `page ${pageName} has access ${access}, which needs a role field on ${model.auth.identity}`,
+          `${base}.access`
+        );
+      const publicPage = access === "public";
+      const readable = (resourceName: string, where: string) => {
+        const resource = model.resources[resourceName];
+        const entity = resource && model.entities[resource.entity];
+        if (!entity || !publicPage) return;
+        const read = entity.rules?.read ?? "public";
+        if (!rulePredicates(read).some(p => /^public\b/.test(p)))
+          error(
+            "M092",
+            `page ${pageName} is public but ${resourceName} is not publicly readable (read: ${read}); give the page access: authenticated or open the read rule`,
+            where
+          );
+      };
+      const checkFilter = (resourceName: string, filter: Record<string, unknown> | undefined, where: string) => {
+        const resource = model.resources[resourceName];
+        const entity = resource && model.entities[resource.entity];
+        if (!resource || !entity) return;
+        for (const [key, value] of Object.entries(filter ?? {})) {
+          if (!(resource.list?.filters ?? []).includes(key)) {
+            error("M089", `filter ${key} is not a list filter of ${resourceName}`, where);
+            continue;
+          }
+          if (value !== "{actor.id}") continue;
+          const field = entity.fields[key];
+          const toIdentity =
+            model.auth &&
+            field &&
+            (field.relation?.entity === model.auth.identity ||
+              (resource.entity === model.auth.identity && primaryKeyFields(entity).includes(key)));
+          if (!toIdentity)
+            error("M089", `filter ${key} cannot be {actor.id}: it is not a relation to the identity entity`, where);
+          if (publicPage)
+            error(
+              "M092",
+              `page ${pageName} filters by {actor.id} but is public; give it access: authenticated or a role`,
+              where
+            );
+        }
+      };
       if (page.kind === "dashboard") {
         for (const [ti, tile] of (page.tiles ?? []).entries()) {
           const tpath = `${base}.tiles[${ti}]`;
@@ -1046,15 +1118,32 @@ export function validateModel(model: Model): Diagnostic[] {
           else if (!resource.operations.includes("list"))
             error("M088", `tile resource ${tile.resource} needs a list operation`, tpath);
           else {
-            for (const key of Object.keys(tile.filter ?? {}))
-              if (!(resource.list?.filters ?? []).includes(key))
-                error("M089", `tile filter ${key} is not a list filter of ${tile.resource}`, tpath);
+            checkFilter(tile.resource, tile.filter, tpath);
+            readable(tile.resource, tpath);
+            if (tile.group_by) {
+              const entity = model.entities[resource.entity];
+              const field = entity?.fields[tile.group_by];
+              if (!field) error("M089", `tile group_by ${tile.group_by} does not exist on ${resource.entity}`, tpath);
+              else if (!(resource.list?.filters ?? []).includes(tile.group_by))
+                error("M089", `tile group_by ${tile.group_by} must be a list filter of ${tile.resource}`, tpath);
+              else if (field.relation) {
+                const target = field.relation.entity;
+                if (!Object.values(model.resources).some(r => r.entity === target && r.operations.includes("list")))
+                  error(
+                    "M089",
+                    `tile group_by ${tile.group_by} points at ${target}, which has no resource with a list operation`,
+                    tpath
+                  );
+              } else if (field.type !== "enum")
+                error("M089", `tile group_by ${tile.group_by} must be an enum or a relation field`, tpath);
+            }
           }
         }
         for (const [ri, recent] of (page.recent ?? []).entries()) {
           const resource = model.resources[recent.resource];
           if (!resource || !resource.operations.includes("list"))
             error("M088", `recent resource ${recent.resource} needs a list operation`, `${base}.recent[${ri}]`);
+          else readable(recent.resource, `${base}.recent[${ri}]`);
         }
         continue;
       }
@@ -1066,6 +1155,8 @@ export function validateModel(model: Model): Diagnostic[] {
       }
       if (!resource.operations.includes("list") || !resource.operations.includes("get"))
         error("M082", `resource ${page.resource} needs list and get operations for a page`, `${base}.resource`);
+      readable(page.resource!, `${base}.resource`);
+      checkFilter(page.resource!, page.filter, `${base}.filter`);
       const entity = model.entities[resource.entity];
       if (!entity) continue;
       if (entity.rules?.read === "none")

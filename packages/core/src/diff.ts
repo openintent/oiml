@@ -15,6 +15,7 @@ import {
   Index,
   Model,
   Page,
+  DashboardTile,
   Resource,
   Rules,
   Scenario,
@@ -217,6 +218,11 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
         for (const page of pagesOver(model, op.entity)) {
           if (page.columns) page.columns = page.columns.filter(f => f !== op.name);
           if (page.fields) page.fields = page.fields.filter(f => f !== op.name);
+          if (page.filter) delete page.filter[op.name];
+        }
+        for (const tile of tilesOver(model, op.entity)) {
+          if (tile.filter) delete tile.filter[op.name];
+          if (tile.group_by === op.name) delete tile.group_by;
         }
         break;
       }
@@ -242,9 +248,16 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
           if (resource.create?.fields) resource.create.fields = resource.create.fields.map(swap);
           if (resource.update?.fields) resource.update.fields = resource.update.fields.map(swap);
         }
+        const swapKeys = <V>(record: Record<string, V>) =>
+          Object.fromEntries(Object.entries(record).map(([k, v]) => [swap(k), v]));
         for (const page of pagesOver(model, op.entity)) {
           if (page.columns) page.columns = page.columns.map(swap);
           if (page.fields) page.fields = page.fields.map(swap);
+          if (page.filter) page.filter = swapKeys(page.filter);
+        }
+        for (const tile of tilesOver(model, op.entity)) {
+          if (tile.filter) tile.filter = swapKeys(tile.filter);
+          if (tile.group_by) tile.group_by = swap(tile.group_by);
         }
         if (model.auth?.identity === op.entity && model.auth.email_field === op.from) model.auth.email_field = op.to;
         const forEntity = (renames.fields[op.entity] ??= {});
@@ -462,6 +475,13 @@ function mapRuleFields(
       return `${parts.kind}:${path.join(".")}${parts.role !== undefined ? `:${parts.role}` : ""}${tail}`;
     })
     .join(" or ");
+}
+
+/** Dashboard tiles whose resource is over the entity */
+function tilesOver(model: ModelType, entityName: string): DashboardTile[] {
+  return Object.values(model.app?.pages ?? {}).flatMap(page =>
+    (page.tiles ?? []).filter(tile => model.resources[tile.resource]?.entity === entityName)
+  );
 }
 
 function pagesOver(model: ModelType, entityName: string): Page[] {

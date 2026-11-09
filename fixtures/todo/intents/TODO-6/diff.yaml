@@ -1,0 +1,16 @@
+osl: "1.0"
+summary: The home dashboard takes the root path, with one tile per status and per project, refreshing every 30 seconds
+ops:
+  - op: update_page
+    name: home
+    page:
+      kind: dashboard
+      path: /
+      title: Home
+      refresh: 30
+      tiles:
+        - { resource: tasks, label: Tasks, icon: list-checks }
+        - { resource: tasks, label: By status, group_by: status }
+        - { resource: tasks, label: Per project, group_by: project_id, icon: folder-kanban }
+        - { resource: projects, label: Projects, icon: folder-kanban }
+      recent: [{ resource: tasks, limit: 5 }]

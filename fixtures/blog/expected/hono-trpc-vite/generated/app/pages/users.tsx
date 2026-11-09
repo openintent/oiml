@@ -4,9 +4,10 @@
 "use client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useMatchRoute, useParams } from "@tanstack/react-router";
-import { Fragment, useEffect, useState, type FormEvent } from "react";
+import { Fragment, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { client, sessionUser, type Inputs, type Outputs, type SessionUser } from "../client";
@@ -29,6 +30,42 @@ function canUpdate(user: SessionUser | null, row: Detail): boolean {
 
 function canBan(user: SessionUser | null, row: Detail): boolean {
   return user !== null && (user as { role?: unknown }).role === "admin";
+}
+
+/** Who may open this page */
+function canOpen(user: SessionUser | null): boolean {
+  return user !== null;
+}
+
+function AccessGate({ user }: { user: SessionUser | null }) {
+  return (
+    <div className="mx-auto max-w-md p-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>{user ? "No access" : "Sign in required"}</CardTitle>
+          <CardDescription>{user ? "Your account cannot open this page." : "Sign in to open this page."}</CardDescription>
+        </CardHeader>
+        {user ? null : (
+          <CardContent>
+            <Link to="/login" className={buttonVariants()}>
+              Sign in
+            </Link>
+          </CardContent>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+/** Waits for the session, then renders the page or the gate */
+function guarded<P extends object>(Component: (props: P) => ReactNode) {
+  return function Guarded(props: P) {
+    const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
+    if (session.isPending) return <PaneSkeleton />;
+    const user = sessionUser(session.data);
+    if (!canOpen(user)) return <AccessGate user={user} />;
+    return <Component {...props} />;
+  };
 }
 
 const USERS_FIELDS = ["name"] as const;
@@ -199,16 +236,16 @@ function UsersBanForm({
   );
 }
 
-export function UsersLayout() {
+function UsersLayoutInner() {
   const [page, setPage] = useState(1);
   const [openAction, setOpenAction] = useState<string | null>(null);
   void openAction;
   void setOpenAction;
-  const input = { page, page_size: PAGE_SIZE } as Inputs["users"]["list"];
-  const list = useQuery({ queryKey: [...KEY, "list", input], queryFn: () => client.users.list(input) });
   const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
   const user = sessionUser(session.data);
   void user;
+  const input = { page, page_size: PAGE_SIZE } as Inputs["users"]["list"];
+  const list = useQuery({ queryKey: [...KEY, "list", input], queryFn: () => client.users.list(input) });
   const matchRoute = useMatchRoute();
   const queryClient = useQueryClient();
 
@@ -252,11 +289,11 @@ export function UsersLayout() {
   );
 }
 
-export function UsersIndex() {
+function UsersIndexInner() {
   return <EmptyPane>Select an user from the list.</EmptyPane>;
 }
 
-export function UsersDetail() {
+function UsersDetailInner() {
   const { id: rawId } = useParams({ from: "/users/$id" });
   const id = idOf(rawId);
   const queryClient = useQueryClient();
@@ -349,3 +386,7 @@ export function UsersDetail() {
     </Pane>
   );
 }
+
+export const UsersLayout = guarded(UsersLayoutInner);
+export const UsersIndex = guarded(UsersIndexInner);
+export const UsersDetail = guarded(UsersDetailInner);

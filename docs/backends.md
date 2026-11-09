@@ -89,7 +89,7 @@ The `hono-trpc-vite` contract tests speak tRPC's HTTP transport but assert the s
 | OpenAPI | `generated/openapi.json`, `GET /api/openapi.json` | not applicable (tRPC) | the same as REST |
 | Seed | `tsx generated/seed.ts` replays `examples.seed` over HTTP; `osl seed` | the same over tRPC | a Go program |
 | Docker | `Dockerfile`, `docker-compose.yml` with postgres and, with queued events, a worker service | the same | the same |
-| App pages | `app/(app)/…` with the sidebar shell, React Query over the REST client | `src/routes/…` with TanStack Router over the tRPC client | none |
+| App pages | `app/(app)/…` with the sidebar shell, React Query over the REST client; page access gates, fixed filters, refresh intervals and grouped tiles | `src/routes/…` with TanStack Router over the tRPC client; the same | none |
 
 Every one of these is proven by the fixtures: `blog` (actions, files, search and sort, magic link and GitHub providers, table and dashboard pages, a queued event, seed), `todo` (actions, board and table pages, a dashboard, seed) and `workspace` (teams, memberships with ranked roles, member rules, auto-membership, magic link). A fixture may ship the user-owned code its scenarios depend on under `fixtures/<name>/overlay/<backend>/`; the harness copies it over the generated project before installing. Snapshots cover generated files only.
 

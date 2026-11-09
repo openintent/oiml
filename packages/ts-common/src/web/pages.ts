@@ -2,7 +2,20 @@
  * The generated pages: a resource page in its split, table or board layout (list, new, detail) and
  * a dashboard. Pages are the same code on every backend; the client module and the router differ.
  */
-import type { ActionIR, ColumnIR, EntityIR, IR, OperationIR, PageIR, RelationIR, ResourceIR, RuleIR } from "@osl/core";
+import type {
+  ActionIR,
+  ColumnIR,
+  EntityIR,
+  IR,
+  OperationIR,
+  PageFilterValue,
+  PageIR,
+  RelationIR,
+  ResourceIR,
+  RuleIR,
+  TileGroupIR,
+  TileIR
+} from "@osl/core";
 import { actionsOf, toPascalCase, toTitleCase } from "@osl/core";
 import { entityByName, q, singlePrimaryKey, type TsConventions } from "../conventions.js";
 import { pageComponent } from "./routes.js";
@@ -689,6 +702,27 @@ function idOf(raw: string) {
   if (perms.length) use(ctx, "client", "SessionUser");
   const usesRow = perms.some(p => p.includes("row."));
   if (perms.length) sections.push(perms.join("\n\n"));
+  if (page.filter) {
+    use(ctx, "client", "SessionUser");
+    sections.push(fixedFilterDecl(page.filter, target, idPk));
+  }
+  const gated = page.access.kind !== "public";
+  if (gated) {
+    use(ctx, "client", "SessionUser");
+    use(ctx, "client", "client");
+    use(ctx, "client", "sessionUser");
+    use(ctx, "query", "useQuery");
+    use(ctx, "react", "ReactNode");
+    use(ctx, "ui", "PaneSkeleton");
+    ctx.imports.router.link = true;
+    shadcn(ctx, "card", "Card");
+    shadcn(ctx, "card", "CardContent");
+    shadcn(ctx, "card", "CardDescription");
+    shadcn(ctx, "card", "CardHeader");
+    shadcn(ctx, "card", "CardTitle");
+    shadcn(ctx, "button", "buttonVariants");
+    sections.push(accessGateDecl(page.access, target, idPk));
+  }
 
   // The row form
   if (create || update) {
@@ -781,8 +815,9 @@ function idOf(raw: string) {
   use(ctx, "ui", "ErrorNote");
   use(ctx, "ui", "EmptyPane");
   const sessionQuery = `useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() })`;
+  const { queryOpts, fixedSpread } = listQueryOptions(page);
   const listQueryDecl = (inputExpr: string) =>
-    `useQuery({ queryKey: [...KEY, "list", ${inputExpr}], queryFn: () => client.${R}.list(${inputExpr}) })`;
+    `useQuery({ queryKey: [...KEY, "list", ${inputExpr}], queryFn: () => client.${R}.list(${inputExpr})${queryOpts} })`;
   const detailLink = (idExpr: string) => linkAttrs(page.path, idExpr);
 
   if (layout === "split") {
@@ -793,11 +828,11 @@ function idOf(raw: string) {
   const [openAction, setOpenAction] = useState<string | null>(null);
   void openAction;
   void setOpenAction;
-  const input = { page, page_size: PAGE_SIZE } as Inputs[${q(R)}]["list"];
-  const list = ${listQueryDecl("input")};
   const session = ${sessionQuery};
   const user = sessionUser(session.data);
   void user;
+  const input = { page, page_size: PAGE_SIZE${fixedSpread} } as Inputs[${q(R)}]["list"];
+  const list = ${listQueryDecl("input")};
   ${target.activeDecl}${mutations ? "\n  const queryClient = useQueryClient();" : ""}
 ${collectionActionDecls.join("\n")}
   return (
@@ -1082,11 +1117,13 @@ ${detailBody}
   );
   imports.push(`import { ${[...ctx.imports.ui].sort().join(", ")} } from "../ui";`);
 
-  return `${conv.header(`The ${title} page: ${layout === "split" ? "a master list" : layout === "table" ? "a table" : "a board"} of ${entity.name} rows and a detail pane for the selected one.`)}
+  const body = sections.join("\n\n");
+  const source = `${conv.header(`The ${title} page: ${layout === "split" ? "a master list" : layout === "table" ? "a table" : "a board"} of ${entity.name} rows and a detail pane for the selected one.`)}
 ${imports.join("\n")}
 
-${sections.join("\n\n")}
+${body}
 `;
+  return gated ? guardExports(source, [`${Comp}Layout`, `${Comp}Index`, `${Comp}New`, `${Comp}Detail`]) : source;
 }
 
 function backLink(ctx: Ctx): string {
@@ -1114,6 +1151,7 @@ function tableIndex(
   const columns = page.columns.map(name => entity.columns.find(c => c.name === name)!);
   const listIncludes = list.include.map(name => entity.relations.find(r => r.name === name)!);
   const filters = filterControls(ctx, list);
+  const { queryOpts } = listQueryOptions(page);
   shadcn(ctx, "table", "Table");
   shadcn(ctx, "table", "TableBody");
   shadcn(ctx, "table", "TableCell");
@@ -1157,14 +1195,14 @@ ${
     setFilters(current => ({ ...current, [key]: value }));
     setPage(1);
   };
-  const input = {
-    page,
-    page_size: PAGE_SIZE${list.sortable.length ? ",\n    sort" : ""}${list.search.length ? ",\n    q: q || undefined" : ""}${filters.toInput ? `,\n    ${filters.toInput}` : ""}
-  } as Inputs[${q(R)}]["list"];
-  const list = useQuery({ queryKey: [...KEY, "list", input], queryFn: () => client.${R}.list(input) });
   const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
   const user = sessionUser(session.data);
   void user;
+  const input = {
+    page,
+    page_size: PAGE_SIZE${list.sortable.length ? ",\n    sort" : ""}${list.search.length ? ",\n    q: q || undefined" : ""}${filters.toInput ? `,\n    ${filters.toInput}` : ""}${page.filter ? ",\n    ...fixedFilter(user)" : ""}
+  } as Inputs[${q(R)}]["list"];
+  const list = useQuery({ queryKey: [...KEY, "list", input], queryFn: () => client.${R}.list(input)${queryOpts} });
   ${target.navigateDecl}${mutations ? "\n  const queryClient = useQueryClient();" : ""}
 ${actionDecls.join("\n")}
   return (
@@ -1227,6 +1265,7 @@ function boardIndex(
   const R = resource.name;
   const pk = ctx.pk.name;
   const groupBy = page.groupBy!;
+  const { queryOpts, fixedSpread } = listQueryOptions(page);
   const groupCol = entity.columns.find(c => c.name === groupBy)!;
   const values = enumValues(ctx, groupCol);
   const columns = page.columns.map(name => entity.columns.find(c => c.name === name)!).filter(c => c.name !== groupBy);
@@ -1242,15 +1281,16 @@ function boardIndex(
   use(ctx, "client", "Outputs");
   void update;
   return `const BOARD_INPUT = { page: 1, page_size: PAGE_SIZE } as Inputs[${q(R)}]["list"];
-const BOARD_KEY = [...KEY, "list", BOARD_INPUT] as const;
 const COLUMNS = [${values.map(q).join(", ")}] as const;
 type Column = (typeof COLUMNS)[number];
 
 export function ${Comp}Index() {
-  const list = useQuery({ queryKey: BOARD_KEY, queryFn: () => client.${R}.list(BOARD_INPUT) });
   const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
   const user = sessionUser(session.data);
   void user;
+  const boardInput = { ...BOARD_INPUT${fixedSpread} } as Inputs[${q(R)}]["list"];
+  const boardKey = [...KEY, "list", boardInput] as const;
+  const list = useQuery({ queryKey: boardKey, queryFn: () => client.${R}.list(boardInput)${queryOpts} });
   const [openAction, setOpenAction] = useState<string | null>(null);
   void openAction;
   void setOpenAction;
@@ -1260,10 +1300,10 @@ ${actionDecls.join("\n")}
   const move = useMutation({
     mutationFn: ({ id, ${groupBy} }: { id: Row[${q(pk)}]; ${groupBy}: Column }) => client.${R}.update({ id, data: { ${groupBy} } }),
     onMutate: async ({ id, ${groupBy} }) => {
-      await queryClient.cancelQueries({ queryKey: BOARD_KEY });
-      const previous = queryClient.getQueryData<Outputs[${q(R)}]["list"]>(BOARD_KEY);
+      await queryClient.cancelQueries({ queryKey: boardKey });
+      const previous = queryClient.getQueryData<Outputs[${q(R)}]["list"]>(boardKey);
       if (previous) {
-        queryClient.setQueryData<Outputs[${q(R)}]["list"]>(BOARD_KEY, {
+        queryClient.setQueryData<Outputs[${q(R)}]["list"]>(boardKey, {
           ...previous,
           data: previous.data.map(row => (row.${pk} === id ? { ...row, ${groupBy} } : row))
         });
@@ -1271,7 +1311,7 @@ ${actionDecls.join("\n")}
       return { previous };
     },
     onError: (_error, _input, context) => {
-      if (context?.previous) queryClient.setQueryData(BOARD_KEY, context.previous);
+      if (context?.previous) queryClient.setQueryData(boardKey, context.previous);
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: KEY })
   });
@@ -1347,22 +1387,91 @@ export function dashboardPageFile(ir: IR, page: PageIR, target: WebTarget, conv:
     Object.fromEntries(
       Object.entries(filter).map(([k, v]) => [k, target.kind === "next" && typeof v === "boolean" ? String(v) : v])
     );
-  const tileDecls = page.tiles.map((tile, i) => {
-    const input = { page: 1, page_size: 1, ...filterValues(tile.filter) };
-    return `  const tile${i} = useQuery({ queryKey: [${q(tile.resource)}, "list", ${JSON.stringify(input)}], queryFn: () => client.${tile.resource}.list(${JSON.stringify(input)} as Inputs[${q(tile.resource)}]["list"]) });`;
+  void filterValues;
+  const idPk = ir.auth ? entityByName(ir, ir.auth.identity).primaryKey[0] : "id";
+  const refetch = page.refresh ? `, refetchInterval: ${page.refresh * 1000}` : "";
+  const gated = page.access.kind !== "public";
+  // Enum groups expand into one tile per value here; relation groups render at runtime, one tile per related row
+  type Flat = TileIR & { group?: Extract<TileGroupIR, { kind: "relation" }> };
+  const flat: Flat[] = page.tiles.flatMap((tile): Flat[] => {
+    if (tile.groupBy?.kind === "enum") {
+      const field = tile.groupBy.field;
+      return tile.groupBy.values.map(v => ({
+        ...tile,
+        label: `${tile.label}: ${toTitleCase(v)}`,
+        filter: { ...tile.filter, [field]: v },
+        groupBy: undefined
+      }));
+    }
+    if (tile.groupBy?.kind === "relation") return [{ ...tile, group: tile.groupBy, groupBy: undefined }];
+    return [tile];
   });
-  const tileJsx = page.tiles.map((tile, i) => {
+  const hasGroup = flat.some(t => t.group);
+  const needsUser = gated || hasGroup || flat.some(t => usesActor(t.filter));
+  const inputExpr = (tile: Flat, extra = "") => {
+    const parts = [
+      "page: 1",
+      "page_size: 1",
+      ...Object.entries(tile.filter).map(([k, v]) => `${k}: ${fixedValue(v, target, "user", idPk)}`)
+    ];
+    if (extra) parts.push(extra);
+    return `{ ${parts.join(", ")} } as Inputs[${q(tile.resource)}]["list"]`;
+  };
+  const tileOpts = (tile: Flat) => `${refetch}${usesActor(tile.filter) ? ", enabled: user !== null" : ""}`;
+  const tileDecls = flat
+    .map((tile, i) =>
+      tile.group
+        ? ""
+        : `  const tile${i}Input = ${inputExpr(tile)};\n  const tile${i} = useQuery({ queryKey: [${q(tile.resource)}, "list", tile${i}Input], queryFn: () => client.${tile.resource}.list(tile${i}Input)${tileOpts(tile)} });`
+    )
+    .filter(Boolean);
+  const iconJsx = (tile: Flat) => {
     const icon = tile.icon ? iconExport(tile.icon) : null;
     if (icon) lucide.add(icon);
+    return icon ? ` icon={<${icon} className="size-4 text-muted-foreground" />}` : "";
+  };
+  const wrapLink = (tile: Flat, body: string) => {
     const link = pageFor(tile.resource);
-    const body = `<Tile label=${q(tile.label)} value={tile${i}.data?.page.total ?? null}${icon ? ` icon={<${icon} className="size-4 text-muted-foreground" />}` : ""} />`;
     return link
       ? `        <Link ${target.linkAttrs(link.path)} className="block">\n          ${body}\n        </Link>`
       : `        ${body}`;
-  });
+  };
+  const tileJsx = flat.map((tile, i) =>
+    tile.group
+      ? `        <GroupTiles${i} user={user} />`
+      : wrapLink(tile, `<Tile label=${q(tile.label)} value={tile${i}.data?.page.total ?? null}${iconJsx(tile)} />`)
+  );
+  const groupComponents = flat
+    .map((tile, i) => {
+      if (!tile.group) return "";
+      const g = tile.group;
+      return `/** One tile per ${g.entity}, counting ${tile.resource} by ${g.field} */
+function GroupTiles${i}({ user }: { user: SessionUser | null }) {
+  const rows = useQuery({ queryKey: [${q(g.resource)}, "list", { page: 1, page_size: 200 }], queryFn: () => client.${g.resource}.list({ page: 1, page_size: 200 } as Inputs[${q(g.resource)}]["list"])${refetch} });
+  if (rows.isPending) return <Skeleton className="h-24 w-full" />;
+  if (rows.error) return <ErrorNote error={rows.error} />;
+  return (
+    <>
+      {rows.data.data.map(row => (
+        <GroupTile${i} key={text(row.${g.key})} id={row.${g.key}} label={text(row.${g.display})} user={user} />
+      ))}
+    </>
+  );
+}
+
+function GroupTile${i}({ id, label, user }: { id: Outputs[${q(g.resource)}]["list"]["data"][number][${q(g.key)}]; label: string; user: SessionUser | null }) {
+  void user;
+  const input = ${inputExpr(tile, `${g.field}: id`)};
+  const count = useQuery({ queryKey: [${q(tile.resource)}, "list", input], queryFn: () => client.${tile.resource}.list(input)${tileOpts(tile)} });
+  return (
+${wrapLink(tile, `<Tile label={${JSON.stringify(`${tile.label}: `)} + label} value={count.data?.page.total ?? null}${iconJsx(tile)} />`)}
+  );
+}`;
+    })
+    .filter(Boolean);
   const recentDecls = page.recent.map((recent, i) => {
     const input = { page: 1, page_size: recent.limit };
-    return `  const recent${i} = useQuery({ queryKey: [${q(recent.resource)}, "list", ${JSON.stringify(input)}], queryFn: () => client.${recent.resource}.list(${JSON.stringify(input)} as Inputs[${q(recent.resource)}]["list"]) });`;
+    return `  const recent${i} = useQuery({ queryKey: [${q(recent.resource)}, "list", ${JSON.stringify(input)}], queryFn: () => client.${recent.resource}.list(${JSON.stringify(input)} as Inputs[${q(recent.resource)}]["list"])${refetch} });`;
   });
   const recentJsx = page.recent.map((recent, i) => {
     const resource = ir.resources.find(r => r.name === recent.resource)!;
@@ -1396,18 +1505,34 @@ export function dashboardPageFile(ir: IR, page: PageIR, target: WebTarget, conv:
           </CardContent>
         </Card>`;
   });
-  const needsLink = page.tiles.some(t => pageFor(t.resource)) || page.recent.some(r => pageFor(r.resource));
-  return `${conv.header(`The ${page.title} dashboard: counts and recent rows.`)}
+  const needsLink = gated || page.tiles.some(t => pageFor(t.resource)) || page.recent.some(r => pageFor(r.resource));
+  const userDecl = !needsUser
+    ? ""
+    : ir.auth
+      ? `  const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
+  const user = sessionUser(session.data);
+  void user;`
+      : `  const user: SessionUser | null = null;
+  void user;`;
+  const clientImports = [
+    "client",
+    ...(needsUser && ir.auth ? ["sessionUser"] : []),
+    "type Inputs",
+    ...(hasGroup ? ["type Outputs"] : []),
+    ...(needsUser ? ["type SessionUser"] : [])
+  ];
+  const source = `${conv.header(`The ${page.title} dashboard: counts and recent rows.`)}
 "use client";
 import { useQuery } from "@tanstack/react-query";
 ${target.routerImports({ link: needsLink }).join("\n")}
-${lucide.size ? `import { ${[...lucide].sort().join(", ")} } from "lucide-react";` : ""}
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+${lucide.size ? `import { ${[...lucide].sort().join(", ")} } from "lucide-react";` : ""}${gated ? `\nimport type { ReactNode } from "react";\nimport { buttonVariants } from "@/components/ui/button";` : ""}
+import { Card, CardContent, ${gated ? "CardDescription, " : ""}CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { client, type Inputs } from "../client";
-import { ErrorNote, Tile, formatDateTime, text } from "../ui";
-
+import { ${clientImports.join(", ")} } from "../client";
+import { ErrorNote, ${gated ? "PaneSkeleton, " : ""}Tile, formatDateTime, text } from "../ui";
+${gated ? `\n${accessGateDecl(page.access, target, idPk)}\n` : ""}${groupComponents.length ? `\n${groupComponents.join("\n\n")}\n` : ""}
 export function ${Comp}Page() {
+${userDecl}
 ${tileDecls.join("\n")}
 ${recentDecls.join("\n")}
   void formatDateTime;
@@ -1420,6 +1545,90 @@ ${recentDecls.join("\n")}
   );
 }
 `;
+  return gated ? guardExports(source, [`${Comp}Page`]) : source;
+}
+
+/** The literal of a fixed filter value for the list input; the REST contract reads booleans as "true" | "false" */
+function fixedValue(value: PageFilterValue, target: WebTarget, userExpr: string, idPk: string): string {
+  if (typeof value === "object") return `${userExpr}?.${idPk} ?? ""`;
+  if (target.kind === "next" && typeof value === "boolean") return JSON.stringify(String(value));
+  return JSON.stringify(value);
+}
+
+/** Whether a filter names the signed-in user, so its query waits for the session */
+function usesActor(filter: Record<string, PageFilterValue> | undefined): boolean {
+  return Object.values(filter ?? {}).some(v => typeof v === "object");
+}
+
+/** The list query options a page adds: a refetch interval, and waiting for the session when a filter names the user */
+function listQueryOptions(page: PageIR): { queryOpts: string; fixedSpread: string } {
+  const queryOpts = `${page.refresh ? `, refetchInterval: ${page.refresh * 1000}` : ""}${usesActor(page.filter) ? ", enabled: user !== null" : ""}`;
+  return { queryOpts, fixedSpread: page.filter ? ", ...fixedFilter(user)" : "" };
+}
+
+/** `function fixedFilter(user)` for a page's fixed filter */
+function fixedFilterDecl(filter: Record<string, PageFilterValue>, target: WebTarget, idPk: string): string {
+  const entries = Object.entries(filter).map(([k, v]) => `${k}: ${fixedValue(v, target, "user", idPk)}`);
+  return `/** Filters this page always applies */
+function fixedFilter(user: SessionUser | null) {
+  void user;
+  return { ${entries.join(", ")} };
+}`;
+}
+
+/**
+ * The access gate of a page whose access is not public: `canOpen`, the gate card, and `guarded`, which wraps a
+ * page component so it waits for the session and then renders the page or the gate.
+ */
+function accessGateDecl(access: RuleIR, target: WebTarget, idPk: string): string {
+  return `/** Who may open this page */
+function canOpen(user: SessionUser | null): boolean {
+  return ${rulePredicate(access, "user", null, idPk)};
+}
+
+function AccessGate({ user }: { user: SessionUser | null }) {
+  return (
+    <div className="mx-auto max-w-md p-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>{user ? "No access" : "Sign in required"}</CardTitle>
+          <CardDescription>{user ? "Your account cannot open this page." : "Sign in to open this page."}</CardDescription>
+        </CardHeader>
+        {user ? null : (
+          <CardContent>
+            <Link ${target.linkAttrs("/login")} className={buttonVariants()}>
+              Sign in
+            </Link>
+          </CardContent>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+/** Waits for the session, then renders the page or the gate */
+function guarded<P extends object>(Component: (props: P) => ReactNode) {
+  return function Guarded(props: P) {
+    const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
+    if (session.isPending) return <PaneSkeleton />;
+    const user = sessionUser(session.data);
+    if (!canOpen(user)) return <AccessGate user={user} />;
+    return <Component {...props} />;
+  };
+}`;
+}
+
+/** Rename the exported page components to inner ones and export guarded versions */
+function guardExports(source: string, names: string[]): string {
+  let out = source;
+  const exported: string[] = [];
+  for (const name of names) {
+    const pattern = new RegExp(`export function ${name}\\(`);
+    if (!pattern.test(out)) continue;
+    out = out.replace(pattern, `function ${name}Inner(`);
+    exported.push(`export const ${name} = guarded(${name}Inner);`);
+  }
+  return `${out.trimEnd()}\n\n${exported.join("\n")}\n`;
 }
 
 /** lucide icon name in kebab-case to its PascalCase export: file-text -> FileText */

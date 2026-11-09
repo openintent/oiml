@@ -1,0 +1,19 @@
+id: blog5-staff-board
+tags: [app, rules]
+base: { fixture: blog, through: FEAT-5 }
+intent:
+  title: A staff-only articles page
+  ask: >-
+    Give admins their own page listing every article, with the author and whether it is published, that other
+    users cannot open and do not see in the sidebar. Everyone else keeps the pages they have.
+  acceptance:
+    - A member does not see the staff page in the sidebar and cannot open it
+    - An admin opens it and sees every article
+expect:
+  pages:
+    "staff|staff_posts|admin_posts|all_articles|articles_admin":
+      { kind: resource, resource: posts, access: "role:admin" }
+  sidebar: ["staff|staff_posts|admin_posts|all_articles|articles_admin"]
+  touches: []
+  ops: { forbid: [set_rules] }
+notes: A page access rule alone; the API rules must stay as they are, since the ask is about the page, not the data.

@@ -359,11 +359,20 @@ export interface ExamplesIR {
   seed: SeedStepIR[];
 }
 
+/** A fixed filter value on a page or tile; `{ actor: "id" }` is the signed-in user's id, resolved by the page */
+export type PageFilterValue = string | number | boolean | { actor: "id" };
+
+/** One tile per value of an enum, or per row of a related resource, each counting with that filter */
+export type TileGroupIR =
+  | { field: string; kind: "enum"; values: string[] }
+  | { field: string; kind: "relation"; resource: string; entity: string; key: string; display: string };
+
 export interface TileIR {
   resource: string;
   label: string;
-  filter: Record<string, string | number | boolean>;
+  filter: Record<string, PageFilterValue>;
   icon?: string;
+  groupBy?: TileGroupIR;
 }
 
 export interface PageIR {
@@ -386,6 +395,12 @@ export interface PageIR {
   /** Dashboard pages */
   tiles: TileIR[];
   recent: { resource: string; limit: number }[];
+  /** Who may open the page: public, authenticated or role */
+  access: RuleIR;
+  /** Resource pages: filters the list always carries */
+  filter?: Record<string, PageFilterValue>;
+  /** Refetch interval in seconds while the page is open */
+  refresh?: number;
 }
 
 export interface SidebarItemIR {
@@ -394,6 +409,8 @@ export interface SidebarItemIR {
   label: string;
   /** lucide icon name in kebab-case */
   icon?: string;
+  /** The page's access, so the sidebar lists only what the user may open */
+  access: RuleIR;
 }
 
 export interface SidebarIR {
@@ -1126,6 +1143,13 @@ export function compile(input: Model): IR {
   let app: AppIR | undefined;
   if (model.app) {
     const titleOf = (resourceName: string) => toTitleCase(resourceName);
+    const filterIR = (filter: Record<string, string | number | boolean> | undefined) =>
+      Object.fromEntries(
+        Object.entries(filter ?? {}).map(([k, v]): [string, PageFilterValue] => [
+          k,
+          v === "{actor.id}" ? { actor: "id" } : v
+        ])
+      );
     const pages: PageIR[] = Object.entries(model.app.pages).map(([name, page]) => {
       const common = {
         name,
@@ -1134,7 +1158,9 @@ export function compile(input: Model): IR {
         title: page.title ?? toTitleCase(name),
         description: page.description,
         tiles: [] as TileIR[],
-        recent: [] as PageIR["recent"]
+        recent: [] as PageIR["recent"],
+        access: parseRule(page.access ?? (model.auth ? "authenticated" : "public"), { kind: "public" }),
+        ...(page.refresh ? { refresh: page.refresh } : {})
       };
       if (page.kind === "custom") return { ...common, columns: [], fields: [] };
       if (page.kind === "dashboard") {
@@ -1146,9 +1172,36 @@ export function compile(input: Model): IR {
             const tile: TileIR = {
               resource: t.resource,
               label: t.label ?? titleOf(t.resource),
-              filter: t.filter ?? {}
+              filter: filterIR(t.filter)
             };
             if (t.icon) tile.icon = t.icon;
+            if (t.group_by) {
+              const tileResource = resources.find(r => r.name === t.resource)!;
+              const tileEntity = entityByName(tileResource.entity);
+              const column = tileEntity.columns.find(c => c.name === t.group_by)!;
+              if (column.type.kind === "enum") {
+                const enumName = column.type.name;
+                tile.groupBy = {
+                  field: t.group_by,
+                  kind: "enum",
+                  values: enums.find(e => e.name === enumName)!.values
+                };
+              } else {
+                const fk = tileEntity.foreignKeys.find(f => f.column === t.group_by)!;
+                const target = entityByName(fk.targetEntity);
+                const targetResource = resources.find(
+                  r => r.entity === fk.targetEntity && r.operations.some(o => o.kind === "list")
+                )!;
+                tile.groupBy = {
+                  field: t.group_by,
+                  kind: "relation",
+                  resource: targetResource.name,
+                  entity: fk.targetEntity,
+                  key: fk.targetColumn,
+                  display: target.display
+                };
+              }
+            }
             return tile;
           }),
           recent: (page.recent ?? []).map(r => ({ resource: r.resource, limit: r.limit }))
@@ -1165,6 +1218,7 @@ export function compile(input: Model): IR {
         fields: page.fields ?? resource.outputFields
       };
       if (page.group_by) out.groupBy = page.group_by;
+      if (page.filter && Object.keys(page.filter).length) out.filter = filterIR(page.filter);
       return out;
     });
     app = { title: model.app.title ?? model.name, pages };
@@ -1172,7 +1226,12 @@ export function compile(input: Model): IR {
       app.sidebar = {
         items: model.app.sidebar.items.map(item => {
           const page = pages.find(p => p.name === item.page)!;
-          const out: SidebarItemIR = { page: page.name, path: page.path, label: item.label ?? page.title };
+          const out: SidebarItemIR = {
+            page: page.name,
+            path: page.path,
+            label: item.label ?? page.title,
+            access: page.access
+          };
           if (item.icon) out.icon = item.icon;
           return out;
         }),

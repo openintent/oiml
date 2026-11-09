@@ -3,7 +3,7 @@
  * home, sign-in, settings). Scaffolds are written once and read generated/app/nav.ts, so later intents
  * that add pages need no edits.
  */
-import type { GeneratedFile, IR } from "@osl/core";
+import type { GeneratedFile, IR, RuleIR } from "@osl/core";
 import { entityByName, q, type TsConventions } from "../conventions.js";
 import { iconExport } from "./pages.js";
 import type { WebTarget } from "./target.js";
@@ -16,13 +16,16 @@ export function navFile(ir: IR, target: WebTarget, conv: TsConventions): string 
     .sort();
   const pages = (app?.pages ?? []).map(
     p =>
-      `  { name: ${q(p.name)}, kind: ${q(p.kind)}, path: ${q(p.path)}, title: ${q(p.title)}${p.description ? `, description: ${q(p.description)}` : ""} }`
+      `  { name: ${q(p.name)}, kind: ${q(p.kind)}, path: ${q(p.path)}, title: ${q(p.title)}${p.description ? `, description: ${q(p.description)}` : ""}, access: ${accessLiteral(p.access)} }`
   );
   const sidebar = app?.sidebar
     ? `{
   items: [
 ${app.sidebar.items
-  .map(i => `    { label: ${q(i.label)}, path: ${q(i.path)}, icon: ${i.icon ? iconExport(i.icon) : "null"} }`)
+  .map(
+    i =>
+      `    { label: ${q(i.label)}, path: ${q(i.path)}, icon: ${i.icon ? iconExport(i.icon) : "null"}, access: ${accessLiteral(i.access)} }`
+  )
   .join(",\n")}
   ],
   footer: { user: ${app.sidebar.footer.user}, settings: ${app.sidebar.footer.settings} }
@@ -78,18 +81,30 @@ import type { SessionUser } from "./client";
 /** Every route the app has; a sidebar item or page can only point at one of these */
 export type RoutePath = ${target.routePathType};
 
+/** Who may open a page: the page's access rule, as the shell evaluates it */
+export type NavAccess = { kind: "public" } | { kind: "authenticated" } | { kind: "role"; role: string };
+
 export interface NavPage {
   name: string;
   kind: "resource" | "dashboard" | "custom";
   path: RoutePath;
   title: string;
   description?: string;
+  access: NavAccess;
 }
 
 export interface NavItem {
   label: string;
   path: RoutePath;
   icon: LucideIcon | null;
+  access: NavAccess;
+}
+
+/** Whether the signed-in user (null when anonymous) may open a page with this access */
+export function canOpen(access: NavAccess, user: SessionUser | null): boolean {
+  if (access.kind === "public") return true;
+  if (user === null) return false;
+  return access.kind === "authenticated" || (user as { role?: unknown }).role === access.role;
 }
 
 export interface NavSidebar {
@@ -109,6 +124,13 @@ export const SIDEBAR: NavSidebar | null = ${sidebar};
 
 ${userHelpers}
 `;
+}
+
+/** The nav literal of a page's access rule */
+function accessLiteral(rule: RuleIR): string {
+  if (rule.kind === "role") return `{ kind: "role", role: ${q(rule.value)} }`;
+  if (rule.kind === "authenticated") return `{ kind: "authenticated" }`;
+  return `{ kind: "public" }`;
 }
 
 /** The scaffolds every target shares: shell, sidebar, home, settings, sign-in. Paths depend on the target. */
@@ -187,12 +209,14 @@ export function AppShell({ children }: { children: ReactNode }) {
     content: sidebarScaffold(ir, target, conv)
   });
 
-  files.push(
-    page(
-      "/",
-      "index",
-      "HomePage",
-      `function HomePage() {
+  // The home scaffold, unless a page of the model takes the root path
+  if (!ir.app?.pages.some(p => p.path === "/")) {
+    files.push(
+      page(
+        "/",
+        "index",
+        "HomePage",
+        `function HomePage() {
   return (
     <div className="mx-auto max-w-3xl p-6">
       <h1 className="text-2xl font-semibold tracking-tight">{APP_TITLE}</h1>
@@ -219,15 +243,15 @@ export function AppShell({ children }: { children: ReactNode }) {
     </div>
   );
 }`,
-      "The home page.",
-      [
-        ...target.routerImports({ link: true }),
-        `import { Card, CardDescription, CardHeader, CardTitle } from "${ui("card")}";`,
-        `import { APP_TITLE, PAGES } from "${nav}";`
-      ]
-    )
-  );
-
+        "The home page.",
+        [
+          ...target.routerImports({ link: true }),
+          `import { Card, CardDescription, CardHeader, CardTitle } from "${ui("card")}";`,
+          `import { APP_TITLE, PAGES } from "${nav}";`
+        ]
+      )
+    );
+  }
   files.push(
     page(
       "/settings",
@@ -540,10 +564,17 @@ import {
   SidebarRail,
   SidebarTrigger
 } from "${ui("sidebar")}";
-${ir.auth ? `import { client, sessionUser } from "${client}";\nimport { APP_TITLE, SIDEBAR, userInitials, userName, userSubtitle } from "${nav}";` : `import { APP_TITLE, SIDEBAR } from "${nav}";`}
+${ir.auth ? `import { client, sessionUser } from "${client}";\nimport { APP_TITLE, SIDEBAR, canOpen, userInitials, userName, userSubtitle } from "${nav}";` : `import { APP_TITLE, SIDEBAR, canOpen } from "${nav}";`}
 
 export function AppSidebar() {
-  ${activeDecl}
+  ${activeDecl}${
+    ir.auth
+      ? `
+  const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
+  const user = sessionUser(session.data);`
+      : `
+  const user = null;`
+  }
   if (!SIDEBAR) return null;
   return (
     <Sidebar collapsible="icon">
@@ -562,7 +593,7 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {SIDEBAR.items.map(item => (
+              {SIDEBAR.items.filter(item => canOpen(item.access, user)).map(item => (
                 <SidebarMenuItem key={item.path}>
                   <SidebarMenuButton
                     render={<Link ${linkTo("item.path")} />}

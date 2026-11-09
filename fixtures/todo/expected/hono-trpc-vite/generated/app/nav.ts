@@ -9,18 +9,30 @@ import type { SessionUser } from "./client";
 /** Every route the app has; a sidebar item or page can only point at one of these */
 export type RoutePath = FileRouteTypes["to"];
 
+/** Who may open a page: the page's access rule, as the shell evaluates it */
+export type NavAccess = { kind: "public" } | { kind: "authenticated" } | { kind: "role"; role: string };
+
 export interface NavPage {
   name: string;
   kind: "resource" | "dashboard" | "custom";
   path: RoutePath;
   title: string;
   description?: string;
+  access: NavAccess;
 }
 
 export interface NavItem {
   label: string;
   path: RoutePath;
   icon: LucideIcon | null;
+  access: NavAccess;
+}
+
+/** Whether the signed-in user (null when anonymous) may open a page with this access */
+export function canOpen(access: NavAccess, user: SessionUser | null): boolean {
+  if (access.kind === "public") return true;
+  if (user === null) return false;
+  return access.kind === "authenticated" || (user as { role?: unknown }).role === access.role;
 }
 
 export interface NavSidebar {
@@ -33,16 +45,16 @@ export const APP_TITLE = "todo";
 export const AUTH = false;
 
 export const PAGES: readonly NavPage[] = [
-  { name: "projects", kind: "resource", path: "/projects", title: "Projects" },
-  { name: "tasks", kind: "resource", path: "/tasks", title: "Board" },
-  { name: "home", kind: "dashboard", path: "/home", title: "Home" }
+  { name: "projects", kind: "resource", path: "/projects", title: "Projects", access: { kind: "public" } },
+  { name: "tasks", kind: "resource", path: "/tasks", title: "Board", access: { kind: "public" } },
+  { name: "home", kind: "dashboard", path: "/", title: "Home", access: { kind: "public" } }
 ];
 
 export const SIDEBAR: NavSidebar | null = {
   items: [
-    { label: "Home", path: "/home", icon: House },
-    { label: "Board", path: "/tasks", icon: Kanban },
-    { label: "Projects", path: "/projects", icon: FolderKanban }
+    { label: "Home", path: "/", icon: House, access: { kind: "public" } },
+    { label: "Board", path: "/tasks", icon: Kanban, access: { kind: "public" } },
+    { label: "Projects", path: "/projects", icon: FolderKanban, access: { kind: "public" } }
   ],
   footer: { user: false, settings: true }
 };

@@ -148,6 +148,18 @@ flagged was the report's, not the construct's. That is the loop's first full tur
 rounds, a construct built against the harness, and the next round no longer reporting it. The top open gaps
 are now pages beyond master-detail and scheduled work, with uniqueness constraints new in the backlog.
 
+The loop's second turn followed the first within the day. The gap report after round 3 named pages beyond
+master-detail next; the design (`docs/designs/pages-beyond-master-detail.md`) turned eleven agent lines into five
+constructs (a dashboard or custom page at `/`, page `access`, fixed `filter` with `{actor.id}`, `refresh`, tile
+`group_by`), three reference sentences for things that already worked, and four declines. Blog FEAT-8 and todo
+TODO-6 prove them on both web backends. Round 3 re-graded on the new compiler with `--resume` kept all ten cases,
+and round 4 (seed 23, ten intents, `--no-full`, $1.49) had ten valid diffs on the first attempt that used `access`
+thirteen times, `filter` four, `path: /`, `refresh` and `group_by` twice each, with the pages cluster gone from the
+table. The two regressions that round flagged were the report's own: "promote a user" and "an owner or editor"
+had been filed under built rule topics by keyword, so role changes and invites now come first and have their own
+topics, and a third wording, a field required only when another has a value, got a topic of its own. The top
+open gaps are now scheduled work, conditional validation and computed fields.
+
 ### One command per round
 
 `pnpm evals:round [--round name] [--count n] [--seed n] [--no-full] [--max-cost usd]` is the unit the loop repeats:
