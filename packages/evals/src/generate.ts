@@ -9,7 +9,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod/v4";
 import { toYaml, type Model } from "@osl/core";
-import { DEFAULT_MODEL, type ProposeUsage } from "@osl/cli/propose";
+import { DEFAULT_MODEL, isParseFailure, type ProposeUsage } from "@osl/cli/propose";
 import { Case } from "./cases.js";
 import { baseModel } from "./runner.js";
 
@@ -173,13 +173,16 @@ export async function generateRound(options: GenerateOptions): Promise<GenerateR
     summaries[base] = summarizeModel(model);
   }
   const client = new Anthropic({ maxRetries: 4 });
-  const response = await client.messages.parse({
-    model: options.model ?? DEFAULT_MODEL,
-    max_tokens: 16000,
-    output_config: { effort: "medium", format: zodOutputFormat(GeneratedIntents) },
-    system: systemPrompt(),
-    messages: [{ role: "user", content: userPrompt(round, summaries) }]
-  });
+  const ask = () =>
+    client.messages.parse({
+      model: options.model ?? DEFAULT_MODEL,
+      max_tokens: 16000,
+      output_config: { effort: "medium", format: zodOutputFormat(GeneratedIntents) },
+      system: systemPrompt(),
+      messages: [{ role: "user", content: userPrompt(round, summaries) }]
+    });
+  // A structured output the SDK cannot parse gets one more try; anything else is an error
+  const response = await ask().catch(error => (isParseFailure(error) ? ask() : Promise.reject(error)));
   if (response.stop_reason === "max_tokens") throw new Error("the generated intents were cut off; ask for fewer");
   const generated = response.parsed_output;
   if (!generated) throw new Error("Claude returned no intents");

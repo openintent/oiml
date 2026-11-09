@@ -18,6 +18,8 @@ pnpm evals --compare evals/propose/runs/<earlier run>   # per-case differences a
 pnpm evals --resume evals/propose/runs/<earlier run>    # reuse that run's proposals, re-validated; grade and run them again
 pnpm evals:generate --round r1 --count 10    # a round of generated intents under evals/propose/generated/r1
 pnpm evals:gaps evals/propose/runs/<run>     # gaps.md: what the agents could not express, clustered and ranked
+pnpm evals:round --count 10                  # one turn of the loop: generate, run with handlers, gaps, backlog, compare with the last round
+pnpm evals:next                              # the brief for the top open gap in evals/propose/gaps.yaml
 ```
 
 `ANTHROPIC_API_KEY` and `OSL_TEST_DATABASE_URL` are read from the environment, `.env.local` and `.env`.
@@ -126,6 +128,56 @@ sign-in in a scenario). Over runs 6 and 7 and this round together the same three
 at thirteen cases, so that is the next construct. One line in the round named a second rule gap worth its own
 case: a create rule cannot require membership and bind the author to the session at once, because rules have
 alternatives but no conjunction.
+
+The second round (r2, seed 7, five intents, `pnpm evals:round --no-full`) cost $0.79 and took seven minutes:
+four valid diffs and one case not graded, because the SDK could not parse the model's structured output (an
+unterminated string), which the proposer now treats as a failed attempt and retries. The comparison with round
+1 showed computed and aggregate fields as the new cluster (a running total per company, a counter a handler must
+decrement) and the value-rule cluster at zero on this sample, while two of its lines were filed as one-offs until
+their wordings ("not public", "deactivated") joined the topic. The recurring validation shape across both rounds
+was M083 on page `fields` naming a read-only field: three agents wanted a status, a stamp or a flag shown on the
+detail pane, which is legitimate, so that check was wrong and is gone; read-only fields show in the pane and stay
+out of the form.
+
+### One command per round
+
+`pnpm evals:round [--round name] [--count n] [--seed n] [--no-full] [--max-cost usd]` is the unit the loop repeats:
+it generates the round (or reuses the cases already in its folder, so a round can be graded again after a compiler
+change), runs it with full runs and handlers written by the model on by default, writes `gaps.md`, folds the
+clusters into the backlog, and compares with the previous round in `compare-gaps.md` (clusters new, grown,
+shrunk, gone). Everything is in `evals/propose/generated/<round>/`: `cases/`, `run/` (the usual results, summary
+and per-case folders), `gaps.md`, `compare-gaps.md` and `round.yaml` with the seed, the cost, the top gaps and
+any regression. `--max-cost` (default 15) stops proposing and writing handlers once the round has spent that
+much; the cases after the cap are recorded as not graded. The command exits 1 when a gap marked built is
+reported again.
+
+### The backlog
+
+`evals/propose/gaps.yaml` is the loop's state and is committed: one entry per `not_delivered` cluster with a
+`status` the tooling never changes by itself. `pnpm evals:gaps` and `pnpm evals:round` append new clusters as
+`open` and refresh `cases` and `last_seen`; a person marks a gap `built` (with `construct` and `version`) once the
+construct ships, or `declined` (with a `note`, usually the reference sentence that now says what to do instead).
+The gap table shows each cluster's status and age, and a built gap that comes back is a regression: the report
+names it and the commands exit 1. Failures, invalid attempts and failed handlers are reported but not tracked
+here; they are bugs or missing reference sentences, fixed rather than carried. A cluster keyed by a one-off
+line's wording (no topic matched it) enters the backlog only once two cases share it; when such a line recurs,
+the fix is a new topic in `packages/evals/src/gaps.ts`.
+
+### The next construct
+
+`pnpm evals:next [--gap key] [--from <round or run>]` prints the brief for the top open gap: the lines agents
+wrote, the cases that hit it, the design questions to settle (where in the grammar, which diagnostics, what each
+backend emits, and whether every backend has a deterministic mapping at all), and what done looks like (a fixture
+with scenarios on all three backends, an eval case with the fixture's diff as oracle, the previous round graded
+again with `--resume` losing nothing, a fresh round no longer reporting the cluster, then `built` in the
+backlog). It makes no model call; the design decision is a person's, because the grammar is permanent.
+
+### Nightly
+
+`.github/workflows/nightly-round.yml` runs `pnpm evals:round --count 10 --max-cost 15` every night (and on
+demand) against a Postgres service, with `ANTHROPIC_API_KEY` as a repository secret; the gap table and the
+comparison go to the job summary and the round folder plus the updated backlog are uploaded as an artifact.
+A night costs about five to ten dollars with full runs and handlers written.
 
 ## Changing the prompt or the reference
 

@@ -1080,8 +1080,6 @@ export function validateModel(model: Model): Diagnostic[] {
           if (!field) error("M083", `${key} field ${f} does not exist on ${resource.entity}`, `${base}.${key}`);
           else if (field.hidden || field.type === "bytes")
             error("M083", `${key} field ${f} is never returned by the API`, `${base}.${key}`);
-          else if (key === "fields" && field.read_only)
-            error("M083", `${key} field ${f} is read_only, so a form cannot submit it`, `${base}.${key}`);
         }
       }
       if (page.group_by) {

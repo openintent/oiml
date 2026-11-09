@@ -1,0 +1,78 @@
+# The gap backlog: what agents could not express, by cluster. pnpm evals:gaps appends new clusters as open and
+# refreshes cases and last_seen; a person sets built (with construct and version) or declined (with the note).
+gaps:
+  - key: rules on a field's value
+    kind: not_delivered
+    status: open
+    first_seen: run6-rules-opus-5-5
+    last_seen: run7b-implement-opus-5-5
+    cases: 6
+    note: Drafts visible only to their author, approval states, unpublished pieces hidden from readers;
+      the largest cluster in every run.
+  - key: pages beyond master-detail
+    kind: not_delivered
+    status: open
+    first_seen: run6-rules-opus-5-5
+    last_seen: r2
+    cases: 1
+    note: Landing routes, pages outside the signed-in shell, views that refresh themselves, charts.
+  - key: scheduled and recurring work
+    kind: not_delivered
+    status: open
+    first_seen: gen-r1-opus-5-5
+    last_seen: r2
+    cases: 1
+    note: Going live at a time, daily checks, locking after inactivity; today a handler called by an
+      external scheduler.
+  - key: invites and onboarding
+    kind: not_delivered
+    status: open
+    first_seen: run6-rules-opus-5-5
+    last_seen: gen-r1-opus-5-5
+    cases: 3
+    note: Where the SaaS set starts; needs an invitation that an account not yet registered can accept.
+  - key: rule conjunctions
+    kind: not_delivered
+    status: open
+    first_seen: gen-r1-opus-5-5
+    last_seen: run7b-implement-opus-5-5
+    cases: 1
+    note: A create rule cannot require membership and bind the author to the session at once; rules have
+      alternatives, not conjunctions.
+  - key: payments and billing
+    kind: not_delivered
+    status: declined
+    first_seen: run6-rules-opus-5-5
+    last_seen: gen-r1-opus-5-5
+    cases: 2
+    note: Out of scope for the schema; a handler written with osl implement calls the provider.
+  - key: realtime and live updates
+    kind: not_delivered
+    status: declined
+    first_seen: run6-rules-opus-5-5
+    last_seen: run7b-implement-opus-5-5
+    cases: 1
+    note: No push or subscriptions in the model; the reference says so.
+  - key: server-owned fields
+    kind: not_delivered
+    status: built
+    first_seen: run4-admin-opus-5-5
+    last_seen: run6-rules-opus-5-5
+    cases: 1
+    construct: read_only
+    version: unreleased
+    note: A banned flag register would otherwise accept; built 2026-11-09 with blog FEAT-7.
+  - key: rule alternatives and paths
+    kind: not_delivered
+    status: built
+    first_seen: run4-admin-opus-5-5
+    last_seen: run5-sonnet-5-5
+    cases: 3
+    construct: rules with or, owner and member paths through relations
+    version: 1.0.0-alpha.2
+  - key: computed and aggregate fields
+    kind: not_delivered
+    status: open
+    first_seen: r2
+    last_seen: r2
+    cases: 2

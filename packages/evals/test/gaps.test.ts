@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { clusterGaps, collectGaps, gapReport, gapTopic, normalizeGapText } from "../src/gaps.js";
+import {
+  clusterGaps,
+  collectGaps,
+  compareGaps,
+  compareMarkdown,
+  gapReport,
+  gapTopic,
+  normalizeGapText
+} from "../src/gaps.js";
 import type { CaseResult, RunResult } from "../src/runner.js";
 
 const usage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
@@ -96,9 +104,64 @@ describe("gap report", () => {
     expect(clusters.find(c => c.kind === "validation")?.key).toBe("relation target Entity does not exist");
   });
 
+  it("files server-owned fields and conjunctions under their own topics", () => {
+    expect(gapTopic("The banned flag must be read-only for clients")).toBe("server-owned fields");
+    expect(
+      gapTopic("A create rule cannot require membership and bind the author at the same time as checking the team")
+    ).toBe("rule conjunctions");
+    expect(gapTopic("Deletion by the owner or an admin needs an alternative rule")).toBe("rule alternatives and paths");
+    expect(gapTopic("The rules can't require both team membership and a writer taken from the session")).toBe(
+      "rule conjunctions"
+    );
+    expect(gapTopic("The rule cannot stop an owner from changing their own membership's role")).toBe(
+      "rules on a field's value"
+    );
+    expect(gapTopic("A signed-out visitor opening the roadmap of a project that is not public")).toBe(
+      "rules on a field's value"
+    );
+  });
+
+  it("compares two reports: new, grown, shrunk and gone clusters", () => {
+    const previous = clusterGaps(collectGaps([run]));
+    const next = clusterGaps(
+      collectGaps([
+        {
+          ...run,
+          id: "gen-r2",
+          cases: [
+            caseResult("e-feed", { not_delivered: ["A live feed of new posts over websockets"] }),
+            caseResult("f-drafts", { not_delivered: ["Drafts visible only to their author"] }),
+            caseResult("g-invoices", { not_delivered: ["Invite teammates by email before they have an account"] })
+          ]
+        }
+      ])
+    );
+    const changes = compareGaps(previous, next);
+    expect(changes[0]).toMatchObject({ key: "invites and onboarding", change: "new", before: 0, after: 1 });
+    expect(changes.find(c => c.key === "rules on a field's value")).toMatchObject({
+      change: "shrunk",
+      before: 3,
+      after: 1
+    });
+    expect(changes.find(c => c.key === "realtime and live updates")).toMatchObject({
+      change: "shrunk",
+      before: 2,
+      after: 1
+    });
+    expect(
+      changes
+        .filter(c => c.change === "gone")
+        .map(c => c.kind)
+        .sort()
+    ).toEqual(["check", "handler", "run", "validation"]);
+    const md = compareMarkdown("gen-r1", "gen-r2", changes);
+    expect(md).toContain("| new | invites and onboarding | not_delivered | 0 | 1 |");
+    expect(md).toContain("1 new, 0 grown, 2 shrunk, 4 gone, 0 unchanged");
+  });
+
   it("writes a ranked table with examples", () => {
     const { markdown } = gapReport([run]);
-    expect(markdown).toContain("| 1 | rules on a field's value | not_delivered | 3 | 3 | yes |");
+    expect(markdown).toContain("| 1 | rules on a field's value | not_delivered | 3 | 3 | known |");
     expect(markdown).toContain("## 1. rules on a field's value");
     expect(markdown).toContain("> Drafts visible only to their author");
     expect(markdown).toContain("4 case results");

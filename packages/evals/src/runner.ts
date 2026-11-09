@@ -54,6 +54,8 @@ export interface RunOptions {
    * without asking Claude again, so a compiler or harness change can be measured on the same diffs
    */
   resumeFrom?: string;
+  /** Stop proposing and writing handlers once the run's proposals and handlers have cost this much */
+  maxCostUsd?: number;
   log: (line: string) => void;
 }
 
@@ -387,7 +389,19 @@ export async function runCase(c: Case, options: RunOptions): Promise<CaseResult>
   return result;
 }
 
-export async function runFull(c: Case, result: CaseResult, options: RunOptions): Promise<void> {
+/** What a run has spent so far on proposals and handlers */
+export function spentUsd(results: Iterable<CaseResult>): number {
+  let total = 0;
+  for (const r of results) total += (r.cost_usd ?? 0) + (r.implement?.cost_usd ?? 0);
+  return total;
+}
+
+export async function runFull(
+  c: Case,
+  result: CaseResult,
+  options: RunOptions,
+  spent: () => number = () => 0
+): Promise<void> {
   const caseDir = path.join(options.outDir, "cases", c.id);
   const fixtureDir = path.join(caseDir, "fixture");
   if (result.status !== "ok" || !existsSync(fixtureDir)) return;
@@ -412,6 +426,8 @@ export async function runFull(c: Case, result: CaseResult, options: RunOptions):
     afterInstall:
       options.implement && hasActions
         ? async dir => {
+            if (options.maxCostUsd !== undefined && spent() >= options.maxCostUsd)
+              return `skipped: the cost cap of $${options.maxCostUsd} is reached, handlers stay stubs`;
             const done = await implementActions(dir, BACKENDS[options.backend], {
               model: options.model,
               onAttempt: (handler, attempt, problems) =>
@@ -463,29 +479,38 @@ export async function runAll(cases: Case[], options: RunOptions): Promise<RunRes
     return run;
   };
 
+  const errorResult = (c: Case, error: string): CaseResult => ({
+    id: c.id,
+    tags: c.tags,
+    base: "empty" in c.base ? "empty" : `${c.base.fixture}@${c.base.through ?? "all"}`,
+    status: "error",
+    error,
+    expected_outcome: c.expect.outcome,
+    not_delivered: [],
+    pass: false,
+    attempts: 0,
+    ms: 0,
+    usage: emptyUsage(),
+    cost_usd: null,
+    ops: 0,
+    op_kinds: [],
+    adds_actions: false,
+    attempt_log: [],
+    failures: [],
+    metrics: null,
+    generate: {}
+  });
+  const spent = () => spentUsd(results.values());
+
   await mapLimit(cases, options.jobs, async c => {
+    if (options.maxCostUsd !== undefined && spent() >= options.maxCostUsd) {
+      results.set(c.id, errorResult(c, `skipped: the cost cap of $${options.maxCostUsd} was reached before this case`));
+      options.log(`skip ${c.id}: cost cap reached`);
+      await saveAll();
+      return;
+    }
     const result = await runCase(c, options).catch(
-      (error): CaseResult => ({
-        id: c.id,
-        tags: c.tags,
-        base: "empty" in c.base ? "empty" : `${c.base.fixture}@${c.base.through ?? "all"}`,
-        status: "error",
-        error: error instanceof Error ? (error.stack ?? error.message) : String(error),
-        expected_outcome: c.expect.outcome,
-        not_delivered: [],
-        pass: false,
-        attempts: 0,
-        ms: 0,
-        usage: emptyUsage(),
-        cost_usd: null,
-        ops: 0,
-        op_kinds: [],
-        adds_actions: false,
-        attempt_log: [],
-        failures: [],
-        metrics: null,
-        generate: {}
-      })
+      (error): CaseResult => errorResult(c, error instanceof Error ? (error.stack ?? error.message) : String(error))
     );
     results.set(c.id, result);
     options.log(describe(result));
@@ -498,7 +523,7 @@ export async function runAll(cases: Case[], options: RunOptions): Promise<RunRes
       options.fullJobs,
       async c => {
         const result = results.get(c.id)!;
-        await runFull(c, result, options).catch(error => {
+        await runFull(c, result, options, spent).catch(error => {
           result.full = {
             backend: options.backend,
             ok: false,

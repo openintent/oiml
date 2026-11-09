@@ -1,0 +1,64 @@
+name: Nightly round
+
+# One turn of the loop each night: a round of generated intents proposed, generated, run with handlers written
+# by the model, and the gap report as the job summary. Needs the ANTHROPIC_API_KEY secret; stops at the cost cap.
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+    inputs:
+      count:
+        description: Intents in the round
+        default: "10"
+      max_cost:
+        description: Cost cap in USD for proposals and handlers
+        default: "15"
+
+jobs:
+  round:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Run the round
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OSL_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+        run: |
+          pnpm evals:round --round "nightly-$(date -u +%Y%m%d)" --count "${{ inputs.count || '10' }}" --max-cost "${{ inputs.max_cost || '15' }}" | tee round.log
+      - name: Gap report as the job summary
+        if: always()
+        run: |
+          for f in evals/propose/generated/nightly-*/gaps.md; do [ -f "$f" ] && cat "$f" >> "$GITHUB_STEP_SUMMARY"; done
+          for f in evals/propose/generated/nightly-*/compare-gaps.md; do [ -f "$f" ] && cat "$f" >> "$GITHUB_STEP_SUMMARY"; done
+          echo '```' >> "$GITHUB_STEP_SUMMARY"; tail -20 round.log >> "$GITHUB_STEP_SUMMARY"; echo '```' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: round
+          path: |
+            evals/propose/generated/nightly-*
+            evals/propose/gaps.yaml
+            round.log
+          retention-days: 30

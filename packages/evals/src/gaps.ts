@@ -33,8 +33,20 @@ export interface GapCluster {
 /** Topics a not_delivered line can belong to, matched on keywords; the first match wins */
 const TOPICS: [topic: string, pattern: RegExp][] = [
   [
+    "server-owned fields",
+    /\b(read[- ]?only|server[- ]owned|only the (server|system) (may|can|sets?)|set by the (system|server)|not (editable|settable) by (the )?client|clients? (cannot|can't|may not) (set|write|change|edit)|never accepted from)/i
+  ],
+  [
+    "rule conjunctions",
+    /\b(both at once|not both|at the same time as|two conditions|conjunction|require both|requires? .{0,40} and (also )?(bind|check|be |a |the )|membership and (the |a )?(owner|author|writer|creator))/i
+  ],
+  [
+    "rule alternatives and paths",
+    /\b(either .{0,40} or |alternative rule|or an admin|owner or |admins? or (the )?(owner|author)|through (a|the) (parent|related|linked|owning) |of the (parent|owning|related) (row|record|item))/i
+  ],
+  [
     "rules on a field's value",
-    /\b(value|values|depend|depending|conditional|only when|status is|draft|own (unpublished|private)|visib)/i
+    /\b(value|values|depend|depending|conditional|only when|status is|draft|own (unpublished|private)|visib|(not|is|marked|flagged) public|public flag|cannot (stop|prevent|forbid)|their own (role|membership)|grant(ing)? .{0,20}(role|owner)|promot|demot|deactivated|disabled account|banned user)/i
   ],
   ["realtime and live updates", /\b(real[- ]?time|websocket|live update|subscri|push notif|presence|stream)/i],
   [
@@ -85,6 +97,11 @@ const TOPICS: [topic: string, pattern: RegExp][] = [
     /\b(many[- ]to[- ]many|self[- ]referen|polymorphic|tree|hierarch|nested|parent.{0,20}child|ancestor)/i
   ]
 ];
+
+/** Whether a cluster key is one of the named topics (rather than the normalized text of a one-off line) */
+export function isTopic(key: string): boolean {
+  return TOPICS.some(([topic]) => topic === key);
+}
 
 /** The topic a not_delivered line belongs to, or its normalized text when none matches */
 export function gapTopic(text: string): string {
@@ -204,22 +221,82 @@ const KIND_ACTION: Record<GapKind, string> = {
   validation: "a reference sentence where the agent guessed"
 };
 
-export function gapsMarkdown(runs: RunResult[], clusters: GapCluster[]): string {
+/** What a round changed against the previous one, per cluster */
+export interface GapChange {
+  key: string;
+  kind: GapKind;
+  before: number;
+  after: number;
+  change: "new" | "gone" | "grown" | "shrunk" | "same";
+}
+
+const CHANGE_ORDER: GapChange["change"][] = ["new", "grown", "shrunk", "gone", "same"];
+
+/** Compare two reports' clusters by cases hit; new ones first, then grown, shrunk, gone, unchanged */
+export function compareGaps(previous: GapCluster[], current: GapCluster[]): GapChange[] {
+  const id = (c: Pick<GapCluster, "key" | "kind">) => `${c.kind}\u0000${c.key}`;
+  const before = new Map(previous.map(c => [id(c), c.cases.length]));
+  const after = new Map(current.map(c => [id(c), c.cases.length]));
+  const changes: GapChange[] = [];
+  for (const c of current) {
+    const b = before.get(id(c)) ?? 0;
+    const a = c.cases.length;
+    changes.push({
+      key: c.key,
+      kind: c.kind,
+      before: b,
+      after: a,
+      change: b === 0 ? "new" : a > b ? "grown" : a < b ? "shrunk" : "same"
+    });
+  }
+  for (const c of previous)
+    if (!after.has(id(c))) changes.push({ key: c.key, kind: c.kind, before: c.cases.length, after: 0, change: "gone" });
+  return changes.sort(
+    (x, y) =>
+      CHANGE_ORDER.indexOf(x.change) - CHANGE_ORDER.indexOf(y.change) ||
+      Math.abs(y.after - y.before) - Math.abs(x.after - x.before) ||
+      y.after - x.after ||
+      x.key.localeCompare(y.key)
+  );
+}
+
+export function compareMarkdown(previousId: string, currentId: string, changes: GapChange[]): string {
+  const lines = [`# Gap changes: ${previousId} to ${currentId}`, ""];
+  if (changes.length === 0) {
+    lines.push("Neither report has clusters.", "");
+    return lines.join("\n");
+  }
+  const counts = Object.fromEntries(CHANGE_ORDER.map(c => [c, changes.filter(x => x.change === c).length]));
+  lines.push(
+    `${counts.new} new, ${counts.grown} grown, ${counts.shrunk} shrunk, ${counts.gone} gone, ${counts.same} unchanged (by cases hit).`,
+    ""
+  );
+  lines.push("| Change | Cluster | Kind | Before | After |", "| --- | --- | --- | --- | --- |");
+  for (const c of changes) lines.push(`| ${c.change} | ${c.key} | ${c.kind} | ${c.before} | ${c.after} |`);
+  lines.push("");
+  return lines.join("\n");
+}
+
+/** How the report labels a cluster: its backlog status, or "known" when a gap or trap case hits it */
+export type StatusLookup = (cluster: GapCluster) => string | undefined;
+
+export function gapsMarkdown(runs: RunResult[], clusters: GapCluster[], status?: StatusLookup): string {
   const lines: string[] = [];
   const cases = runs.reduce((n, r) => n + r.cases.length, 0);
   lines.push("# Gap report", "");
   lines.push(
     `From ${runs.length} run${runs.length === 1 ? "" : "s"} (${runs.map(r => r.id).join(", ")}), ${cases} case results. ` +
-      "Clusters are ranked by how many cases hit them; a known cluster already has a case tagged gap or trap in the corpus.",
+      "Clusters are ranked by how many cases hit them. Status comes from the backlog (evals/propose/gaps.yaml); known means a case tagged gap or trap already covers it.",
     ""
   );
   if (clusters.length === 0) {
     lines.push("Nothing to report: no not_delivered lines, failures or invalid attempts.", "");
     return lines.join("\n");
   }
-  lines.push("| # | Cluster | Kind | Cases | Hits | Known |", "| --- | --- | --- | --- | --- | --- |");
+  const label = (c: GapCluster) => status?.(c) ?? (c.known ? "known" : "");
+  lines.push("| # | Cluster | Kind | Cases | Hits | Status |", "| --- | --- | --- | --- | --- | --- |");
   clusters.forEach((c, i) =>
-    lines.push(`| ${i + 1} | ${c.key} | ${c.kind} | ${c.cases.length} | ${c.count} | ${c.known ? "yes" : ""} |`)
+    lines.push(`| ${i + 1} | ${c.key} | ${c.kind} | ${c.cases.length} | ${c.count} | ${label(c)} |`)
   );
   lines.push("");
   for (const [i, c] of clusters.entries()) {
@@ -236,9 +313,9 @@ export function gapsMarkdown(runs: RunResult[], clusters: GapCluster[]): string 
 }
 
 /** Convenience for the CLI and tests: the report of several runs' results */
-export function gapReport(runs: RunResult[]): { clusters: GapCluster[]; markdown: string } {
+export function gapReport(runs: RunResult[], status?: StatusLookup): { clusters: GapCluster[]; markdown: string } {
   const clusters = clusterGaps(collectGaps(runs));
-  return { clusters, markdown: gapsMarkdown(runs, clusters) };
+  return { clusters, markdown: gapsMarkdown(runs, clusters, status) };
 }
 
 export type { CaseResult };

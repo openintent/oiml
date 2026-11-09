@@ -16,7 +16,9 @@
     "conformance": "tsx packages/conformance/src/run.ts",
     "evals": "tsx packages/evals/src/run.ts",
     "evals:generate": "tsx packages/evals/src/generate-cli.ts",
-    "evals:gaps": "tsx packages/evals/src/gaps-cli.ts"
+    "evals:gaps": "tsx packages/evals/src/gaps-cli.ts",
+    "evals:round": "tsx packages/evals/src/round-cli.ts",
+    "evals:next": "tsx packages/evals/src/next-cli.ts"
   },
   "devDependencies": {
     "@types/node": "^24",

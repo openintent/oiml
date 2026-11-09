@@ -97,6 +97,11 @@ function addUsage(total: ProposeUsage, usage: Anthropic.Messages.Usage): void {
   total.cache_creation_input_tokens += usage.cache_creation_input_tokens ?? 0;
 }
 
+/** The SDK's structured-output parse failures, as opposed to API errors */
+export function isParseFailure(error: unknown): boolean {
+  return error instanceof Error && /Failed to parse structured output/i.test(error.message);
+}
+
 function systemPrompt(): string {
   return `You turn feature requests into OSL model diffs. OSL compiles a declared application model into working code, so a diff is the whole change: entities, fields, relations, access rules, resources, auth, events and example scenarios that become contract tests.
 
@@ -131,19 +136,10 @@ function userPrompt(
     toYaml(model).trim(),
     "```"
   ];
-  if (previousProblems && previousYaml) {
-    parts.push(
-      "",
-      "Your previous diff was rejected. Fix every problem and return the whole diff again.",
-      "",
-      "Previous diff:",
-      "```yaml",
-      previousYaml.trim(),
-      "```",
-      "",
-      "Problems:",
-      ...previousProblems.map(p => `- ${p}`)
-    );
+  if (previousProblems && previousYaml !== undefined) {
+    parts.push("", "Your previous answer was rejected. Fix every problem and return the whole diff again.");
+    if (previousYaml.trim()) parts.push("", "Previous diff:", "```yaml", previousYaml.trim(), "```");
+    parts.push("", "Problems:", ...previousProblems.map(p => `- ${p}`));
   }
   return parts.join("\n");
 }
@@ -189,13 +185,27 @@ export async function propose(
   let previousProblems: string[] | undefined;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const response = await client.messages.parse({
-      model: modelId,
-      max_tokens: 16000,
-      output_config: { effort: "high", format: zodOutputFormat(Proposal) },
-      system: [{ type: "text", text: systemPrompt(), cache_control: { type: "ephemeral" } }],
-      messages: [{ role: "user", content: userPrompt(intentId, intent, model, previousProblems, previousYaml) }]
-    });
+    const ask = () =>
+      client.messages.parse({
+        model: modelId,
+        max_tokens: 16000,
+        output_config: { effort: "high", format: zodOutputFormat(Proposal) },
+        system: [{ type: "text", text: systemPrompt(), cache_control: { type: "ephemeral" } }],
+        messages: [{ role: "user", content: userPrompt(intentId, intent, model, previousProblems, previousYaml) }]
+      });
+    let response: Awaited<ReturnType<typeof ask>>;
+    try {
+      response = await ask();
+    } catch (error) {
+      // The SDK could not parse the structured output (a broken escape, a cut-off string): one more attempt
+      if (!isParseFailure(error)) throw error;
+      const problem = `the answer was not valid structured output: ${error instanceof Error ? error.message : String(error)}`;
+      options.onAttempt?.(attempt, "", [problem]);
+      if (attempt === MAX_ATTEMPTS) throw new ProposeInvalidError(problem, MAX_ATTEMPTS, [problem], usage);
+      previousProblems = [problem];
+      previousYaml = previousYaml ?? "";
+      continue;
+    }
     addUsage(usage, response.usage);
     if (response.stop_reason === "refusal") {
       throw new Error(

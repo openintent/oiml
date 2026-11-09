@@ -204,7 +204,7 @@ pages:
     title: Posts                   # default: the name in Title Case
     layout: split                  # split (list beside the selected row, default) | table (sortable, filterable, with a detail page) | board
     columns: [title, published]    # master list columns; default: the first few short columns
-    fields: [title, content, published]   # detail pane fields; default: every output field
+    fields: [title, content, published]   # detail pane fields; default: every output field (read_only ones show here, never in the form)
   tasks:
     resource: tasks
     layout: board                  # cards grouped by an enum field; dragging a card updates it
