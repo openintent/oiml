@@ -3,8 +3,8 @@
 
 import { QueryClient } from "@tanstack/react-query";
 import type { z } from "zod";
-import type { PublicMilestone, PublicNote, PublicProject, PublicTask, PublicTeam, PublicTeamMember, PublicUser } from "../present";
-import type { membersCreateInput, membersListQuery, membersUpdateInput, milestonesCreateInput, milestonesListQuery, milestonesUpdateInput, notesCreateInput, notesListQuery, notesUpdateInput, projectsCreateInput, projectsListQuery, projectsUpdateInput, tasksCreateInput, tasksListQuery, tasksRemindInput, tasksUpdateInput, teamsCreateInput, teamsListQuery, teamsUpdateInput, usersListQuery } from "../validation";
+import type { PublicChannel, PublicChannelMember, PublicMessage, PublicMilestone, PublicNote, PublicProject, PublicTask, PublicTeam, PublicTeamMember, PublicUser } from "../present";
+import type { channel_membersCreateInput, channel_membersListQuery, channelsCreateInput, channelsJoinInput, channelsListQuery, channelsUpdateInput, membersCreateInput, membersListQuery, membersUpdateInput, messagesCreateInput, messagesListQuery, messagesUpdateInput, milestonesCreateInput, milestonesListQuery, milestonesUpdateInput, notesCreateInput, notesListQuery, notesUpdateInput, projectsCreateInput, projectsListQuery, projectsUpdateInput, tasksCreateInput, tasksListQuery, tasksRemindInput, tasksUpdateInput, teamsCreateInput, teamsListQuery, teamsUpdateInput, usersListQuery } from "../validation";
 
 export class ApiError extends Error {
   constructor(
@@ -103,6 +103,27 @@ export type Inputs = {
     update: { id: string; data: z.input<typeof milestonesUpdateInput> };
     delete: { id: string };
   };
+  channels: {
+    list: z.input<typeof channelsListQuery>;
+    get: { id: string };
+    create: z.input<typeof channelsCreateInput>;
+    update: { id: string; data: z.input<typeof channelsUpdateInput> };
+    delete: { id: string };
+    join: z.input<typeof channelsJoinInput> & { id: string };
+  };
+  channel_members: {
+    list: z.input<typeof channel_membersListQuery>;
+    get: { id: string };
+    create: z.input<typeof channel_membersCreateInput>;
+    delete: { id: string };
+  };
+  messages: {
+    list: z.input<typeof messagesListQuery>;
+    get: { id: string };
+    create: z.input<typeof messagesCreateInput>;
+    update: { id: string; data: z.input<typeof messagesUpdateInput> };
+    delete: { id: string };
+  };
 };
 
 export type Outputs = {
@@ -161,6 +182,27 @@ export type Outputs = {
     get: PublicMilestone;
     create: PublicMilestone;
     update: PublicMilestone;
+    delete: null;
+  };
+  channels: {
+    list: { data: (PublicChannel)[]; page: Page };
+    get: PublicChannel & { members: PublicChannelMember[] };
+    create: PublicChannel;
+    update: PublicChannel;
+    delete: null;
+    join: PublicChannel;
+  };
+  channel_members: {
+    list: { data: (PublicChannelMember & { user: PublicUser | null })[]; page: Page };
+    get: PublicChannelMember;
+    create: PublicChannelMember;
+    delete: null;
+  };
+  messages: {
+    list: { data: (PublicMessage)[]; page: Page };
+    get: PublicMessage;
+    create: PublicMessage;
+    update: PublicMessage;
     delete: null;
   };
 };
@@ -229,6 +271,27 @@ export const client = {
     create: (input: Inputs["milestones"]["create"]) => call<PublicMilestone>("POST", "/api/milestones", { body: input }),
     update: ({ id, data }: Inputs["milestones"]["update"]) => call<PublicMilestone>("PATCH", "/api/milestones" + "/" + id, { body: data }),
     delete: ({ id }: Inputs["milestones"]["delete"]) => call<null>("DELETE", "/api/milestones" + "/" + id)
+  },
+  channels: {
+    list: (input: Inputs["channels"]["list"]) => call<Outputs["channels"]["list"]>("GET", "/api/channels", { query: input as Record<string, unknown>, whole: true }),
+    get: ({ id }: Inputs["channels"]["get"]) => call<Outputs["channels"]["get"]>("GET", "/api/channels" + "/" + id),
+    create: (input: Inputs["channels"]["create"]) => call<PublicChannel>("POST", "/api/channels", { body: input }),
+    update: ({ id, data }: Inputs["channels"]["update"]) => call<PublicChannel>("PATCH", "/api/channels" + "/" + id, { body: data }),
+    delete: ({ id }: Inputs["channels"]["delete"]) => call<null>("DELETE", "/api/channels" + "/" + id),
+    join: ({ id, ...input }: Inputs["channels"]["join"]) => call<PublicChannel>("POST", "/api/channels" + "/" + id + "/join", { body: input })
+  },
+  channel_members: {
+    list: (input: Inputs["channel_members"]["list"]) => call<Outputs["channel_members"]["list"]>("GET", "/api/channel_members", { query: input as Record<string, unknown>, whole: true }),
+    get: ({ id }: Inputs["channel_members"]["get"]) => call<Outputs["channel_members"]["get"]>("GET", "/api/channel_members" + "/" + id),
+    create: (input: Inputs["channel_members"]["create"]) => call<PublicChannelMember>("POST", "/api/channel_members", { body: input }),
+    delete: ({ id }: Inputs["channel_members"]["delete"]) => call<null>("DELETE", "/api/channel_members" + "/" + id)
+  },
+  messages: {
+    list: (input: Inputs["messages"]["list"]) => call<Outputs["messages"]["list"]>("GET", "/api/messages", { query: input as Record<string, unknown>, whole: true }),
+    get: ({ id }: Inputs["messages"]["get"]) => call<Outputs["messages"]["get"]>("GET", "/api/messages" + "/" + id),
+    create: (input: Inputs["messages"]["create"]) => call<PublicMessage>("POST", "/api/messages", { body: input }),
+    update: ({ id, data }: Inputs["messages"]["update"]) => call<PublicMessage>("PATCH", "/api/messages" + "/" + id, { body: data }),
+    delete: ({ id }: Inputs["messages"]["delete"]) => call<null>("DELETE", "/api/messages" + "/" + id)
   }
 };
 

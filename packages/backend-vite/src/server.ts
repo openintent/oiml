@@ -637,6 +637,8 @@ export function resourceRouterFile(ir: IR, resource: ResourceIR): string {
     [entity.rules.read, entity.rules.create, entity.rules.update, entity.rules.delete, ...actions.map(a => a.rule)],
     tableVar
   );
+  /** withRuleValues takes the session when a rule ends in a membership relation (the caller's own row is looked up) */
+  const sessionArg = ruleValues?.needsSession ? ", ctx.session" : "";
   /** Tables the module imports beyond the entity's own: the membership table of a tenant, and the ones rules reach */
   const extraTables = new Set<string>([...(listFilter?.tables ?? []), ...(ruleValues?.tables ?? [])]);
   extraTables.delete(entity.name);
@@ -646,6 +648,7 @@ export function resourceRouterFile(ir: IR, resource: ResourceIR): string {
 
   const drizzleImports = new Set<string>();
   if (get || update || remove || actions.some(a => a.scope === "row") || ruleValues) drizzleImports.add("eq");
+  for (const name of ruleValues?.drizzle ?? []) drizzleImports.add(name);
   if (list) {
     drizzleImports.add("count");
     if (hasConditions) drizzleImports.add("and");
@@ -672,10 +675,10 @@ export function resourceRouterFile(ir: IR, resource: ResourceIR): string {
    * answers 404), then the operation's own rule, both reading one resolution of the paths they follow.
    */
   const rowChecks = (own: RuleIR, rowVar: string, indent: string): { lines: string; arg: string } => {
-    if (entity.hidden !== "not_found") return { lines: "", arg: rowArg(own, rowVar) };
+    if (entity.hidden !== "not_found") return { lines: "", arg: rowArg(own, rowVar, sessionArg) };
     const via = hasVia(entity.rules.read) || hasVia(own);
     const arg = via ? `${rowVar}Values` : rowVar;
-    const resolve = via ? `\n${indent}const ${arg} = await withRuleValues(${rowVar});` : "";
+    const resolve = via ? `\n${indent}const ${arg} = await withRuleValues(${rowVar}${sessionArg});` : "";
     return { lines: `${resolve}\n${indent}if (!verdict(RULES.read, ctx.session, ${arg}).ok) throw notFound();`, arg };
   };
   const usesEmit =
@@ -782,8 +785,8 @@ ${whereLines}
     if (!row) throw notFound();
     ${
       entity.hidden === "not_found"
-        ? `if (!verdict(RULES.read, ctx.session, ${rowArg(get.rule, "row")}).ok) throw notFound();`
-        : `checkRule(RULES.read, ctx.session, ${rowArg(get.rule, "row")});`
+        ? `if (!verdict(RULES.read, ctx.session, ${rowArg(get.rule, "row", sessionArg)}).ok) throw notFound();`
+        : `checkRule(RULES.read, ctx.session, ${rowArg(get.rule, "row", sessionArg)});`
     }
     return presentGetRow(row);
   })`);
@@ -796,7 +799,7 @@ ${whereLines}
     const defaults = conditionDefaults(entity, create.rule);
     // The session is checked first: the body check reads the owner id from it and may query related rows
     const bodyCheck = needsBodyCheck(create.rule)
-      ? `\n    checkRule(RULES.create, ctx.session, ${rowArg(create.rule, owner || defaults ? `{ ${defaults}...input${owner} }` : "input")});`
+      ? `\n    checkRule(RULES.create, ctx.session, ${rowArg(create.rule, owner || defaults ? `{ ${defaults}...input${owner} }` : "input", sessionArg)});`
       : "";
     const insert =
       isTenant && tenancy && membershipTable

@@ -147,9 +147,10 @@ Sonnet comparison about twenty.
 
 ## Progress
 
-| Round                | Status                                                                                                                                                                                    |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A1 conformance walks | built 2026-11-09: five walks as harness steps, all fixtures on all backends passing them unchanged; the first run's only findings were the harness's own (`designs/conformance-walks.md`) |
+| Round                              | Status                                                                                                                                                                                                                 |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A1 conformance walks               | built 2026-11-09: five walks as harness steps, all fixtures on all backends passing them unchanged; the first run's only findings were the harness's own (`designs/conformance-walks.md`)                              |
+| A2 membership through any relation | built 2026-11-09: `member:` paths ending in a membership relation with `ranked: true`, workspace WS-9 channels and blog FEAT-12 followers, 9/9 with walks, oracle 27/27 (`designs/membership-through-any-relation.md`) |
 
 ## Decisions, as made on 2026-11-09
 

@@ -15,6 +15,7 @@ import {
   primaryKeyFields,
   resolveStepOp,
   ruleAlternativeTexts,
+  membershipRelation,
   splitCondition,
   splitWhen,
   type Action,
@@ -115,6 +116,21 @@ export interface RuleConditionIR {
   via?: RuleHopIR[];
 }
 
+/** The junction a member path ends in: the caller is a member when a row of it points at the row reached and at them */
+export interface MembershipIR {
+  /** The reverse relation's name, as the rule spells it */
+  relation: string;
+  entity: string;
+  table: string;
+  /** The junction's column pointing at the row the path reached */
+  column: string;
+  /** The junction's column pointing at the identity */
+  memberColumn: string;
+  /** The ranked enum and its values from most to least privileged, when the junction has one */
+  roleColumn?: string;
+  roles?: string[];
+}
+
 export type RuleIR =
   | { kind: "public"; when?: RuleConditionIR }
   | { kind: "authenticated"; when?: RuleConditionIR }
@@ -122,8 +138,12 @@ export type RuleIR =
   /** The row's `field` is the session's user; with `via`, `field` is on the row the hops reach */
   | { kind: "owner"; field: string; via?: RuleHopIR[]; when?: RuleConditionIR }
   | { kind: "role"; value: string; when?: RuleConditionIR }
-  /** The user has a membership of the tenant in `field` (with at least `role`, by the membership's enum order); with `via`, `field` is on the row the hops reach */
-  | { kind: "member"; field: string; role?: string; via?: RuleHopIR[]; when?: RuleConditionIR }
+  /**
+   * The user has a membership of the tenant in `field` (with at least `role`, by the membership's enum order); with
+   * `via`, `field` is on the row the hops reach. With `through`, the membership is a row of that junction pointing
+   * at the row reached (whose primary key `field` names) and at the user, ranked by the junction's own enum.
+   */
+  | { kind: "member"; field: string; role?: string; via?: RuleHopIR[]; through?: MembershipIR; when?: RuleConditionIR }
   /** Every part allows (a conjunction, `member:project_id.team_id and owner:author_id`) */
   | { kind: "all"; rules: PredicateIR[] }
   /** Any of the alternatives allows */
@@ -189,15 +209,28 @@ export function openRules(rule: RuleIR): RuleIR[] {
   );
 }
 
-/** The key the generated code keeps a row rule's value under when it checks a row: the column, or the dotted path */
+/**
+ * The key the generated code keeps a row rule's value under when it checks a row: the column, or the dotted path;
+ * for a membership, the path ending in the relation's name, so the value never collides with a column of the row.
+ */
 export function ruleKey(rule: RowRuleIR): string {
-  return [...(rule.via ?? []).map(h => h.column), rule.field].join(".");
+  const last = rule.kind === "member" && rule.through ? rule.through.relation : rule.field;
+  return [...(rule.via ?? []).map(h => h.column), last].join(".");
+}
+
+/** The member predicates that end in a membership relation, by their key: resolved as the caller's membership row, not a value */
+export function ruleMemberships(rule: RuleIR): Map<string, { via: RuleHopIR[]; field: string; through: MembershipIR }> {
+  const out = new Map<string, { via: RuleHopIR[]; field: string; through: MembershipIR }>();
+  for (const r of rowRules(rule))
+    if (r.kind === "member" && r.through) out.set(ruleKey(r), { via: r.via ?? [], field: r.field, through: r.through });
+  return out;
 }
 
 /** Every value a row check reads through relations: owner and member paths, and conditions with a path, by their dotted key */
 export function rulePaths(rule: RuleIR): Map<string, { via: RuleHopIR[]; field: string }> {
   const out = new Map<string, { via: RuleHopIR[]; field: string }>();
-  for (const r of rowRules(rule)) if (r.via?.length) out.set(ruleKey(r), { via: r.via, field: r.field });
+  for (const r of rowRules(rule))
+    if (r.via?.length && !(r.kind === "member" && r.through)) out.set(ruleKey(r), { via: r.via, field: r.field });
   for (const r of conditionedRules(rule))
     if (r.when!.via?.length) out.set(conditionKey(r.when!), { via: r.when!.via!, field: r.when!.column });
   return out;
@@ -543,14 +576,18 @@ const SCALARS = new Set<string>([
  */
 export type ConditionParser = (field: string, op: "eq" | "ne", raw: string) => RuleConditionIR;
 
+/** How a compile resolves a member path: the field tested on the row reached, its hops, and the junction when the path ends in a membership relation */
+export type MemberPathResolver = (path: string[]) => { field: string; via: RuleHopIR[]; through?: MembershipIR };
+
 export function parseRule(
   rule: Rule | undefined,
   fallback: RuleIR,
   hops?: (path: string[]) => RuleHopIR[],
-  condition?: ConditionParser
+  condition?: ConditionParser,
+  memberPath?: MemberPathResolver
 ): RuleIR {
   if (!rule) return fallback;
-  const alternatives = ruleAlternativeTexts(rule).map(a => parseAlternative(a, hops, condition));
+  const alternatives = ruleAlternativeTexts(rule).map(a => parseAlternative(a, hops, condition, memberPath));
   if (alternatives.length > 1) return { kind: "any", rules: alternatives };
   return alternatives[0];
 }
@@ -559,19 +596,21 @@ export function parseRule(
 function parseAlternative(
   text: string,
   hops?: (path: string[]) => RuleHopIR[],
-  condition?: ConditionParser
+  condition?: ConditionParser,
+  memberPath?: MemberPathResolver
 ): AlternativeIR {
-  const parts = conjunctionParts(text).map(p => parsePredicate(p, hops, condition));
+  const parts = conjunctionParts(text).map(p => parsePredicate(p, hops, condition, memberPath));
   return parts.length > 1 ? { kind: "all", rules: parts } : parts[0];
 }
 
 function parsePredicate(
   full: string,
   hops?: (path: string[]) => RuleHopIR[],
-  condition?: ConditionParser
+  condition?: ConditionParser,
+  memberPath?: MemberPathResolver
 ): PredicateIR {
   const { base: predicate, when } = splitWhen(full);
-  const out = parseBase(predicate, hops);
+  const out = parseBase(predicate, hops, memberPath);
   if (when && out.kind !== "none") out.when = parseCondition(when, hops, condition);
   return out;
 }
@@ -590,9 +629,23 @@ export function parseCondition(
   return out;
 }
 
-function parseBase(predicate: string, hops?: (path: string[]) => RuleHopIR[]): PredicateIR {
+function parseBase(
+  predicate: string,
+  hops?: (path: string[]) => RuleHopIR[],
+  memberPath?: MemberPathResolver
+): PredicateIR {
   const parts = predicateParts(predicate);
   if (parts) {
+    if (parts.kind === "member" && memberPath) {
+      const resolved = memberPath(parts.path);
+      const out: RowRuleIR =
+        parts.role !== undefined
+          ? { kind: "member", field: resolved.field, role: parts.role }
+          : { kind: "member", field: resolved.field };
+      if (resolved.via.length) out.via = resolved.via;
+      if (resolved.through) out.through = resolved.through;
+      return out;
+    }
     const field = parts.path[parts.path.length - 1];
     const via = parts.path.length > 1 && hops ? hops(parts.path.slice(0, -1)) : [];
     const out: RowRuleIR =
@@ -745,6 +798,27 @@ export function compile(input: Model): IR {
     }
     return out;
   };
+  /** A member path from `entityName`: the field tested on the row reached, or the junction when it ends in a membership relation */
+  const memberPathFrom = (entityName: string, path: string[]): ReturnType<MemberPathResolver> => {
+    const via = hopsFrom(entityName, path.slice(0, -1));
+    const reached = via.length ? via[via.length - 1].entity : entityName;
+    const last = path[path.length - 1];
+    if (allEntities[reached].fields[last]) return { field: last, via };
+    const membership = membershipRelation(model, reached, last);
+    if (!membership || "problem" in membership) return { field: last, via };
+    const through: MembershipIR = {
+      relation: last,
+      entity: membership.entity,
+      table: tableOf(membership.entity),
+      column: membership.fkField,
+      memberColumn: membership.memberField
+    };
+    if (membership.roleField) {
+      through.roleColumn = membership.roleField;
+      through.roles = membership.roles;
+    }
+    return { field: pkOf(reached)[0], via, through };
+  };
   /**
    * A when literal typed by the field it tests: null, a boolean, a number, or the string as written. A dotted field
    * follows relation fields from the entity; the literal is typed by the field reached and the hops are kept.
@@ -879,25 +953,29 @@ export function compile(input: Model): IR {
           entity.rules?.read,
           defaultRules.read,
           path => hopsFrom(entityName, path),
-          conditionOn(entityName)
+          conditionOn(entityName),
+          path => memberPathFrom(entityName, path)
         ),
         create: parseRule(
           entity.rules?.create,
           defaultRules.create,
           path => hopsFrom(entityName, path),
-          conditionOn(entityName)
+          conditionOn(entityName),
+          path => memberPathFrom(entityName, path)
         ),
         update: parseRule(
           entity.rules?.update,
           defaultRules.update,
           path => hopsFrom(entityName, path),
-          conditionOn(entityName)
+          conditionOn(entityName),
+          path => memberPathFrom(entityName, path)
         ),
         delete: parseRule(
           entity.rules?.delete,
           defaultRules.delete,
           path => hopsFrom(entityName, path),
-          conditionOn(entityName)
+          conditionOn(entityName),
+          path => memberPathFrom(entityName, path)
         )
       },
       hidden: entity.rules?.hidden ?? "forbidden",
@@ -1053,7 +1131,8 @@ export function compile(input: Model): IR {
         action.rule,
         fallback,
         resource ? path => hopsFrom(resource.entity.name, path) : undefined,
-        resource ? conditionOn(resource.entity.name) : undefined
+        resource ? conditionOn(resource.entity.name) : undefined,
+        resource ? path => memberPathFrom(resource.entity.name, path) : undefined
       ),
       returns,
       handler: owner

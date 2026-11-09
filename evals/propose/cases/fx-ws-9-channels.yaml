@@ -1,0 +1,39 @@
+id: fx-ws-9-channels
+tags: [fixture, entity, rules, relation, tenancy, actions, scenario, app]
+base: { fixture: workspace, through: WS-8 }
+oracle: fixtures/workspace/intents/WS-9/diff.yaml
+intent:
+  title: Channels with their own members
+  ask: >-
+    A team's members talk in channels. Anyone in the team sees and joins a public channel; a private channel is seen
+    only by the people added to it. Whoever creates a channel adds the first members and may make some of them channel
+    admins; channel admins add and remove members, and a member may leave on their own. Members of a channel post
+    messages that are theirs whatever the request says, edit and delete their own, and a channel admin deletes
+    anyone's. Someone outside a private channel must not learn that it, or its messages, exist.
+  acceptance:
+    - A member of another team, and a team member who is not in a private channel, get 404 for the channel and its messages, list neither, and cannot post (403)
+    - A channel member posts a message carrying their own id as author, cannot delete another's message, and a channel admin can
+    - Only the channel's creator or a channel admin adds members; a member who was removed can no longer see the channel
+    - Any team member reads a public channel's messages, cannot post until they join, posts after joining, and joining twice is a conflict
+expect:
+  entities: [Channel, "ChannelMember|ChannelMembership", Message]
+  relations:
+    [
+      "ChannelMember|ChannelMembership.* -> Channel:cascade",
+      "ChannelMember|ChannelMembership.* -> User:cascade",
+      "Message.* -> Channel:cascade"
+    ]
+  unique_together: { "ChannelMember|ChannelMembership": [channel_id, user_id] }
+  rules:
+    Message:
+      hidden: not_found
+      read: "member:channel_id.members or member:channel_id.team_id when channel_id.private = false|member:channel_id.members or member:channel_id.team_id when channel_id.private = false or member:channel_id.members:admin"
+      create: "member:channel_id.members and owner:author_id"
+  actions_on: { channels: { scope: row } }
+  scenarios: { min: 1, rejections: 4, statuses: [404, 403, 409] }
+  touches: [channels, messages]
+notes: >-
+  The first use of a member path ending in a membership relation: Message's rules reach the channel's members
+  through channel_id, the junction ranks its roles with ranked: true, and the public channel's alternative is a
+  tenant member rule conditioned through the relation. A diff that keeps the channel's members in a handler
+  rather than a rule fails the rules check on purpose.

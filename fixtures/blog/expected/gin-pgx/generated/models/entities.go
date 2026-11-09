@@ -248,6 +248,114 @@ func PresentAnnouncements(rows []*Announcement) []PublicAnnouncement {
 	return out
 }
 
+// FollowTable is the quoted table of Follow.
+const FollowTable = `"follows"`
+
+// FollowColumns lists the columns of Follow in model order, for SELECT and RETURNING.
+const FollowColumns = `"id", "follower_id", "followee_id", "created_at"`
+
+// Follow is a row of follows.
+type Follow struct {
+	ID         string    `json:"id"`
+	FollowerID string    `json:"follower_id"`
+	FolloweeID string    `json:"followee_id"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// PublicFollow is Follow as the API returns it: hidden columns removed, dates rendered.
+type PublicFollow struct {
+	ID         string `json:"id"`
+	FollowerID string `json:"follower_id"`
+	FolloweeID string `json:"followee_id"`
+	CreatedAt  string `json:"created_at"`
+}
+
+// ScanFollow reads one Follow from a row selected with FollowColumns.
+func ScanFollow(row Scanner) (*Follow, error) {
+	var r Follow
+	if err := row.Scan(&r.ID, &r.FollowerID, &r.FolloweeID, &r.CreatedAt); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// PresentFollow returns the public shape of a Follow.
+func PresentFollow(row *Follow) PublicFollow {
+	return PublicFollow{ID: row.ID, FollowerID: row.FollowerID, FolloweeID: row.FolloweeID, CreatedAt: FormatDateTime(row.CreatedAt)}
+}
+
+// PresentFollowPtr presents an optional Follow; nil stays nil.
+func PresentFollowPtr(row *Follow) *PublicFollow {
+	if row == nil {
+		return nil
+	}
+	out := PresentFollow(row)
+	return &out
+}
+
+// PresentFollows presents a list of Follow, never nil.
+func PresentFollows(rows []*Follow) []PublicFollow {
+	out := make([]PublicFollow, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, PresentFollow(row))
+	}
+	return out
+}
+
+// BulletinTable is the quoted table of Bulletin.
+const BulletinTable = `"bulletins"`
+
+// BulletinColumns lists the columns of Bulletin in model order, for SELECT and RETURNING.
+const BulletinColumns = `"id", "author_id", "body", "created_at"`
+
+// Bulletin is a row of bulletins.
+type Bulletin struct {
+	ID        string    `json:"id"`
+	AuthorID  string    `json:"author_id"`
+	Body      string    `json:"body"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// PublicBulletin is Bulletin as the API returns it: hidden columns removed, dates rendered.
+type PublicBulletin struct {
+	ID        string `json:"id"`
+	AuthorID  string `json:"author_id"`
+	Body      string `json:"body"`
+	CreatedAt string `json:"created_at"`
+}
+
+// ScanBulletin reads one Bulletin from a row selected with BulletinColumns.
+func ScanBulletin(row Scanner) (*Bulletin, error) {
+	var r Bulletin
+	if err := row.Scan(&r.ID, &r.AuthorID, &r.Body, &r.CreatedAt); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// PresentBulletin returns the public shape of a Bulletin.
+func PresentBulletin(row *Bulletin) PublicBulletin {
+	return PublicBulletin{ID: row.ID, AuthorID: row.AuthorID, Body: row.Body, CreatedAt: FormatDateTime(row.CreatedAt)}
+}
+
+// PresentBulletinPtr presents an optional Bulletin; nil stays nil.
+func PresentBulletinPtr(row *Bulletin) *PublicBulletin {
+	if row == nil {
+		return nil
+	}
+	out := PresentBulletin(row)
+	return &out
+}
+
+// PresentBulletins presents a list of Bulletin, never nil.
+func PresentBulletins(rows []*Bulletin) []PublicBulletin {
+	out := make([]PublicBulletin, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, PresentBulletin(row))
+	}
+	return out
+}
+
 // OslFileTable is the quoted table of OslFile.
 const OslFileTable = `"osl_files"`
 

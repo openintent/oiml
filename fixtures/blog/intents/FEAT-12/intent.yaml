@@ -1,0 +1,11 @@
+osl: "1.0"
+title: Followers and bulletins
+ask: >-
+  Signed-in users follow other users; following someone twice is a conflict, and only the follower can unfollow.
+  Anyone can list who follows whom. Authors post short bulletins that only their followers can read: a bulletin's
+  author sees their own, a follower of the author sees it, and nobody else does, signed in or not.
+acceptance:
+  - A duplicate follow is a conflict; unfollowing as someone else is refused
+  - A follower reads the author's bulletin; a signed-in user who does not follow the author is refused and lists none
+  - A visitor who is not signed in is asked to sign in
+  - After unfollowing, the former follower is refused

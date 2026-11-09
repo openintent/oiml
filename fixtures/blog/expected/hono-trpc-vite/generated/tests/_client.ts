@@ -30,6 +30,17 @@ const COERCE: Record<string, Record<string, "int" | "number" | "boolean" | "stri
     "page_size": "int",
     "published": "boolean",
     "author_id": "string"
+  },
+  "follows.list": {
+    "page": "int",
+    "page_size": "int",
+    "follower_id": "string",
+    "followee_id": "string"
+  },
+  "bulletins.list": {
+    "page": "int",
+    "page_size": "int",
+    "author_id": "string"
   }
 };
 

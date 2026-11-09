@@ -4,8 +4,8 @@
 import { QueryClient } from "@tanstack/react-query";
 import type { z } from "zod";
 import type { FileRecord } from "../files";
-import type { PublicAnnouncement, PublicArticle, PublicComment, PublicUser } from "../present";
-import type { announcementsCreateInput, announcementsListQuery, announcementsPublishInput, announcementsUpdateInput, commentsCreateInput, commentsListQuery, commentsUpdateInput, postsCreateInput, postsListQuery, postsLockInput, postsPublishInput, postsUnlockInput, postsUnpublishAllInput, postsUpdateInput, sendDigestInput, usersBanInput, usersListQuery, usersUpdateInput } from "../validation";
+import type { PublicAnnouncement, PublicArticle, PublicBulletin, PublicComment, PublicFollow, PublicUser } from "../present";
+import type { announcementsCreateInput, announcementsListQuery, announcementsPublishInput, announcementsUpdateInput, bulletinsCreateInput, bulletinsListQuery, bulletinsUpdateInput, commentsCreateInput, commentsListQuery, commentsUpdateInput, followsCreateInput, followsListQuery, postsCreateInput, postsListQuery, postsLockInput, postsPublishInput, postsUnlockInput, postsUnpublishAllInput, postsUpdateInput, sendDigestInput, usersBanInput, usersListQuery, usersUpdateInput } from "../validation";
 
 export class ApiError extends Error {
   constructor(
@@ -97,6 +97,19 @@ export type Inputs = {
     delete: { id: string };
     publish: z.input<typeof announcementsPublishInput> & { id: string };
   };
+  follows: {
+    list: z.input<typeof followsListQuery>;
+    get: { id: string };
+    create: z.input<typeof followsCreateInput>;
+    delete: { id: string };
+  };
+  bulletins: {
+    list: z.input<typeof bulletinsListQuery>;
+    get: { id: string };
+    create: z.input<typeof bulletinsCreateInput>;
+    update: { id: string; data: z.input<typeof bulletinsUpdateInput> };
+    delete: { id: string };
+  };
 };
 
 export type Outputs = {
@@ -149,6 +162,19 @@ export type Outputs = {
     update: PublicAnnouncement;
     delete: null;
     publish: PublicAnnouncement;
+  };
+  follows: {
+    list: { data: (PublicFollow)[]; page: Page };
+    get: PublicFollow;
+    create: PublicFollow;
+    delete: null;
+  };
+  bulletins: {
+    list: { data: (PublicBulletin)[]; page: Page };
+    get: PublicBulletin;
+    create: PublicBulletin;
+    update: PublicBulletin;
+    delete: null;
   };
 };
 
@@ -209,6 +235,19 @@ export const client = {
     update: ({ id, data }: Inputs["announcements"]["update"]) => call<PublicAnnouncement>("PATCH", "/api/announcements" + "/" + id, { body: data }),
     delete: ({ id }: Inputs["announcements"]["delete"]) => call<null>("DELETE", "/api/announcements" + "/" + id),
     publish: ({ id, ...input }: Inputs["announcements"]["publish"]) => call<PublicAnnouncement>("POST", "/api/announcements" + "/" + id + "/publish", { body: input })
+  },
+  follows: {
+    list: (input: Inputs["follows"]["list"]) => call<Outputs["follows"]["list"]>("GET", "/api/follows", { query: input as Record<string, unknown>, whole: true }),
+    get: ({ id }: Inputs["follows"]["get"]) => call<Outputs["follows"]["get"]>("GET", "/api/follows" + "/" + id),
+    create: (input: Inputs["follows"]["create"]) => call<PublicFollow>("POST", "/api/follows", { body: input }),
+    delete: ({ id }: Inputs["follows"]["delete"]) => call<null>("DELETE", "/api/follows" + "/" + id)
+  },
+  bulletins: {
+    list: (input: Inputs["bulletins"]["list"]) => call<Outputs["bulletins"]["list"]>("GET", "/api/bulletins", { query: input as Record<string, unknown>, whole: true }),
+    get: ({ id }: Inputs["bulletins"]["get"]) => call<Outputs["bulletins"]["get"]>("GET", "/api/bulletins" + "/" + id),
+    create: (input: Inputs["bulletins"]["create"]) => call<PublicBulletin>("POST", "/api/bulletins", { body: input }),
+    update: ({ id, data }: Inputs["bulletins"]["update"]) => call<PublicBulletin>("PATCH", "/api/bulletins" + "/" + id, { body: data }),
+    delete: ({ id }: Inputs["bulletins"]["delete"]) => call<null>("DELETE", "/api/bulletins" + "/" + id)
   }
 };
 

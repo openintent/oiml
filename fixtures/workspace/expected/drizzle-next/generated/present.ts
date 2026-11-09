@@ -38,6 +38,21 @@ export function presentMilestone(row: schema.Milestone): PublicMilestone {
   return { id: row.id, project_id: row.project_id, title: row.title, due_on: row.due_on, done: row.done };
 }
 
+export type PublicChannel = Pick<schema.Channel, "id" | "team_id" | "created_by" | "name" | "private" | "created_at">;
+export function presentChannel(row: schema.Channel): PublicChannel {
+  return { id: row.id, team_id: row.team_id, created_by: row.created_by, name: row.name, private: row.private, created_at: row.created_at };
+}
+
+export type PublicChannelMember = Pick<schema.ChannelMember, "id" | "channel_id" | "user_id" | "role" | "created_at">;
+export function presentChannelMember(row: schema.ChannelMember): PublicChannelMember {
+  return { id: row.id, channel_id: row.channel_id, user_id: row.user_id, role: row.role, created_at: row.created_at };
+}
+
+export type PublicMessage = Pick<schema.Message, "id" | "channel_id" | "author_id" | "body" | "created_at">;
+export function presentMessage(row: schema.Message): PublicMessage {
+  return { id: row.id, channel_id: row.channel_id, author_id: row.author_id, body: row.body, created_at: row.created_at };
+}
+
 export type PublicOslAuthToken = Pick<schema.OslAuthToken, "id" | "token_hash" | "email" | "purpose" | "expires_at" | "created_at">;
 export function presentOslAuthToken(row: schema.OslAuthToken): PublicOslAuthToken {
   return { id: row.id, token_hash: row.token_hash, email: row.email, purpose: row.purpose, expires_at: row.expires_at, created_at: row.created_at };

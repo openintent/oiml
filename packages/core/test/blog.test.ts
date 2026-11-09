@@ -28,7 +28,8 @@ describe("blog fixture", () => {
       "FEAT-8",
       "FEAT-9",
       "FEAT-10",
-      "FEAT-11"
+      "FEAT-11",
+      "FEAT-12"
     ]);
 
     for (const id of ids) {
@@ -39,7 +40,7 @@ describe("blog fixture", () => {
     expect(again.status).toBe("noop");
 
     const project = await loadProject(root);
-    expect(project.lock.revisions).toHaveLength(11);
+    expect(project.lock.revisions).toHaveLength(12);
     const ir = project.ir;
 
     const article = ir.entities.find(e => e.name === "Article")!;
@@ -60,7 +61,31 @@ describe("blog fixture", () => {
     expect(article.relations.map(r => r.name)).toEqual(["author", "comments"]);
     const user = ir.entities.find(e => e.name === "User")!;
     expect(user.relations).toEqual([
-      { name: "posts", kind: "many", direction: "reverse", target: "Article", column: "author_id", targetColumn: "id" }
+      { name: "posts", kind: "many", direction: "reverse", target: "Article", column: "author_id", targetColumn: "id" },
+      {
+        name: "following",
+        kind: "many",
+        direction: "reverse",
+        target: "Follow",
+        column: "follower_id",
+        targetColumn: "id"
+      },
+      {
+        name: "followers",
+        kind: "many",
+        direction: "reverse",
+        target: "Follow",
+        column: "followee_id",
+        targetColumn: "id"
+      },
+      {
+        name: "bulletins",
+        kind: "many",
+        direction: "reverse",
+        target: "Bulletin",
+        column: "author_id",
+        targetColumn: "id"
+      }
     ]);
     expect(user.columns.find(c => c.name === "password_hash")).toMatchObject({ hidden: true, nullable: true });
     expect(ir.auth?.registerFields).toEqual(["name"]);
@@ -87,7 +112,8 @@ describe("blog fixture", () => {
       "banning",
       "scheduled publishing",
       "locked articles",
-      "private drafts"
+      "private drafts",
+      "followers read bulletins"
     ]);
     expect(ir.examples.seed.map(s => s.op)).toEqual(["posts.create", "posts.create"]);
     expect(ir.actions.map(a => `${a.resource ?? "actions"}.${a.name}:${a.scope}`)).toEqual([

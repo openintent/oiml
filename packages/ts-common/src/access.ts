@@ -16,7 +16,9 @@ import {
   ruleAlternatives,
   ruleKey,
   rulePaths,
-  rowRules
+  rowRules,
+  ruleMemberships,
+  type MembershipIR
 } from "@osl/core";
 import { entityByName, q, tableExport, typeName } from "./conventions.js";
 
@@ -46,7 +48,7 @@ export type Rule =
   | { kind: "none" }
   | { kind: "owner"; field: string; when?: Condition }
   | { kind: "role"; value: string; when?: Condition }
-  | { kind: "member"; field: string; role?: string; when?: Condition }
+  | { kind: "member"; field: string; role?: string; through?: true; roles?: string[]; when?: Condition }
   | { kind: "all"; rules: Rule[] }
   | { kind: "any"; rules: Rule[] };
 
@@ -60,6 +62,12 @@ const ROLES: string[] = [${roles.map(q).join(", ")}];
 function rank(role: string): number {
   const index = ROLES.indexOf(role);
   return index < 0 ? ROLES.length : index;
+}
+
+/** The rank of a role within a junction's own list, from most to least privileged; an unknown role ranks last */
+function rankIn(roles: string[], role: string): number {
+  const index = roles.indexOf(role);
+  return index < 0 ? roles.length : index;
 }
 
 /** The tenants the session's user belongs to, with at least \`role\` when given */
@@ -142,6 +150,14 @@ function predicateVerdict(rule: Rule, session: Session | null, row?: Record<stri
     case "member": {
       if (!session) return { ok: false, status: 401 };
       if (!row) return ALLOW;
+      if (rule.through) {
+        // The caller's membership row, resolved under the predicate's key: its ranked value, true, or null
+        const held = row[rule.field];
+        if (held == null || held === false) return { ok: false, status: 403 };
+        if (rule.role !== undefined && rankIn(rule.roles ?? [], String(held)) > rankIn(rule.roles ?? [], rule.role))
+          return { ok: false, status: 403 };
+        return ALLOW;
+      }
       const tenant = row[rule.field];
       return memberTenantIds(session, rule.role).some(id => id === tenant) ? ALLOW : { ok: false, status: 403 };
     }
@@ -166,10 +182,15 @@ export function runtimeRule(rule: RuleIR): unknown {
   switch (rule.kind) {
     case "owner":
       return { kind: "owner", field: ruleKey(rule), ...when };
-    case "member":
-      return rule.role
-        ? { kind: "member", field: ruleKey(rule), role: rule.role, ...when }
-        : { kind: "member", field: ruleKey(rule), ...when };
+    case "member": {
+      const base: Record<string, unknown> = { kind: "member", field: ruleKey(rule) };
+      if (rule.role) base.role = rule.role;
+      if (rule.through) {
+        base.through = true;
+        if (rule.through.roles) base.roles = rule.through.roles;
+      }
+      return { ...base, ...when };
+    }
     case "all":
       return { kind: "all", rules: rule.rules.map(runtimeRule) };
     case "any":
@@ -190,12 +211,17 @@ export function ruleLiteral(rule: RuleIR): string {
 
 /** Whether checking this rule against a row needs values reached through relations: a path on a predicate or on a condition */
 export function hasVia(rule: RuleIR): boolean {
-  return rulePaths(rule).size > 0;
+  return rulePaths(rule).size > 0 || ruleMemberships(rule).size > 0;
 }
 
 /** The entities a rule reaches through relations, whose tables the generated module must import */
 export function ruleEntities(rule: RuleIR): string[] {
-  return [...new Set([...rulePaths(rule).values()].flatMap(p => p.via.map(h => h.entity)))];
+  return [
+    ...new Set([
+      ...[...rulePaths(rule).values()].flatMap(p => p.via.map(h => h.entity)),
+      ...[...ruleMemberships(rule).values()].flatMap(m => [...m.via.map(h => h.entity), m.through.entity])
+    ])
+  ];
 }
 
 /** How a generated module names things when it filters a list by its rule */
@@ -283,6 +309,21 @@ export function listRuleFilter(ir: IR, entity: EntityIR, rule: RuleIR, o: ListFi
       out.drizzle.add("eq");
       return `eq(${t}.${r.field}, ${o.me})`;
     }
+    if (r.through) {
+      // Rows whose junction holds the caller (at or above the role): one subquery, whatever the junction's size
+      const j = o.tableVar(entityByName(ir, r.through.entity));
+      out.tables.add(r.through.entity);
+      out.drizzle.add("inArray");
+      out.drizzle.add("eq");
+      const member = `eq(${j}.${r.through.memberColumn}, ${o.me})`;
+      let where = member;
+      if (r.role && r.through.roleColumn && r.through.roles) {
+        out.drizzle.add("and");
+        const allowed = r.through.roles.slice(0, r.through.roles.indexOf(r.role) + 1);
+        where = `and(${member}, inArray(${j}.${r.through.roleColumn}, ${JSON.stringify(allowed)}))!`;
+      }
+      return `inArray(${t}.${r.field}, db.select({ id: ${j}.${r.through.column} }).from(${j}).where(${where}))`;
+    }
     out.drizzle.add("inArray");
     return `inArray(${t}.${r.field}, ${tenants} ${o.tenantCast})`;
   };
@@ -300,7 +341,7 @@ export function listRuleFilter(ir: IR, entity: EntityIR, rule: RuleIR, o: ListFi
       if (part.kind === "none") continue;
       if (part.kind === "owner" || part.kind === "member") {
         let tenants = "";
-        if (part.kind === "member") {
+        if (part.kind === "member" && !part.through) {
           out.access.add("memberTenantIds");
           tenants = tenantsName();
           p.tenants.push([tenants, tenantsOf(part)]);
@@ -358,12 +399,53 @@ export function ruleValuesSource(
   ir: IR,
   rules: RuleIR[],
   tableVar: (entity: EntityIR) => string
-): { source: string; tables: Set<string> } | null {
+): { source: string; tables: Set<string>; drizzle: Set<string>; needsSession: boolean } | null {
   const paths = new Map<string, { via: RuleHopIR[]; field: string }>();
   for (const rule of rules) for (const [key, path] of rulePaths(rule)) paths.set(key, path);
-  if (paths.size === 0) return null;
+  const memberships = new Map<string, { via: RuleHopIR[]; field: string; through: MembershipIR }>();
+  for (const rule of rules) for (const [key, m] of ruleMemberships(rule)) memberships.set(key, m);
+  if (paths.size === 0 && memberships.size === 0) return null;
   const tables = new Set<string>();
+  const drizzle = new Set<string>();
   const blocks: string[] = [];
+  const identityPk = ir.auth ? entityByName(ir, ir.auth.identity).primaryKey[0] : "id";
+  for (const [key, m] of memberships) {
+    // Follow the hops to the row the path reaches (its id is the last hop's column on the row before it)
+    const steps: string[] = [];
+    for (let i = 0; i + 1 < m.via.length; i++) {
+      const hop = m.via[i];
+      const hopEntity = entityByName(ir, hop.entity);
+      const t = tableVar(hopEntity);
+      tables.add(hop.entity);
+      const idType = `schema.${typeName(hopEntity)}["${hop.targetColumn}"]`;
+      steps.push(
+        `    if (value != null) value = (await db.select({ v: ${t}.${m.via[i + 1].column} }).from(${t}).where(eq(${t}.${hop.targetColumn}, value as ${idType})))[0]?.v ?? null;`
+      );
+    }
+    const junction = entityByName(ir, m.through.entity);
+    const j = tableVar(junction);
+    tables.add(m.through.entity);
+    drizzle.add("and");
+    drizzle.add("eq");
+    const start = m.via.length ? m.via[0].column : m.field;
+    const selected = m.through.roleColumn ?? m.through.memberColumn;
+    const jType = `schema.${typeName(junction)}`;
+    blocks.push(`  {
+    let value: unknown = row.${start};
+${steps.join("\n")}
+    const me = session?.user.${identityPk} ?? null;
+    const held =
+      value == null || me == null
+        ? undefined
+        : (
+            await db
+              .select({ v: ${j}.${selected} })
+              .from(${j})
+              .where(and(eq(${j}.${m.through.column}, value as ${jType}["${m.through.column}"]), eq(${j}.${m.through.memberColumn}, me as ${jType}["${m.through.memberColumn}"]))!)
+          )[0];
+    out[${q(key)}] = held ? ${m.through.roleColumn ? "held.v" : "true"} : null;
+  }`);
+  }
   for (const [key, r] of paths) {
     const hops = r.via;
     const steps = hops.map((hop, i) => {
@@ -380,14 +462,20 @@ ${steps.join("\n")}
     out[${q(key)}] = value;
   }`);
   }
+  const needsSession = memberships.size > 0;
+  const params = needsSession
+    ? "row: Record<string, unknown>, session: { user: Record<string, unknown> } | null"
+    : "row: Record<string, unknown>";
   return {
-    source: `/** The row (or create body) with the values its rules reach through relations, under their dotted keys */
-async function withRuleValues(row: Record<string, unknown>): Promise<Record<string, unknown>> {
+    source: `/** The row (or create body) with the values its rules reach through relations, under their dotted keys${needsSession ? ", and the caller's memberships" : ""} */
+async function withRuleValues(${params}): Promise<Record<string, unknown>> {
   const out: Record<string, unknown> = { ...row };
 ${blocks.join("\n")}
   return out;
 }`,
-    tables
+    tables,
+    drizzle,
+    needsSession
   };
 }
 
@@ -413,6 +501,6 @@ export function conditionDefaults(entity: EntityIR, rule: RuleIR): string {
 }
 
 /** The expression the generated code hands to checkRule for a row (or body): resolved through relations when needed */
-export function rowArg(rule: RuleIR, expr: string): string {
-  return hasVia(rule) ? `await withRuleValues(${expr})` : expr;
+export function rowArg(rule: RuleIR, expr: string, sessionArg = ""): string {
+  return hasVia(rule) ? `await withRuleValues(${expr}${sessionArg})` : expr;
 }

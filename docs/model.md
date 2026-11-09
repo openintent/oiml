@@ -9,41 +9,41 @@ Every op has an `op` key. Validation runs after all ops, so order within one dif
 
 - `set_description` { description }
 - `add_entity` { name: PascalCase, entity: Entity }
-- `remove_entity` { name }  (fails while other entities, resources or auth still reference it)
-- `rename_entity` { from, to }  (updates relations, resources, events and auth; migrations emit RENAME)
+- `remove_entity` { name } (fails while other entities, resources or auth still reference it)
+- `rename_entity` { from, to } (updates relations, resources, events and auth; migrations emit RENAME)
 - `add_field` { entity, name: snake_case, field: Field }
-- `update_field` { entity, name, field: Field }  (replaces the field definition)
+- `update_field` { entity, name, field: Field } (replaces the field definition)
 - `remove_field` { entity, name }
-- `rename_field` { entity, from, to }  (updates rules, indexes, resource options; migrations emit RENAME)
+- `rename_field` { entity, from, to } (updates rules, indexes, resource options; migrations emit RENAME)
 - `set_rules` { entity, rules: Rules }
 - `set_indexes` { entity, indexes?: Index[], unique?: string[][] }
 - `add_resource` { name: snake_case, resource: Resource }
-- `update_resource` { name, resource: Resource }  (replaces the whole resource: repeat the operations, list options and actions you keep)
-- `remove_resource` { name }  (also drops the events, scenarios and seed steps that used it; do not remove those separately)
-- `set_auth` { auth: Auth } / `remove_auth` {}  (set_auth replaces the whole auth block; remove_auth leaves actors and signed-in scenarios behind, which then fail validation: remove them in the same diff)
+- `update_resource` { name, resource: Resource } (replaces the whole resource: repeat the operations, list options and actions you keep)
+- `remove_resource` { name } (also drops the events, scenarios and seed steps that used it; do not remove those separately)
+- `set_auth` { auth: Auth } / `remove_auth` {} (set_auth replaces the whole auth block; remove_auth leaves actors and signed-in scenarios behind, which then fail validation: remove them in the same diff)
 - `add_event` { event: { on: "<Entity>.created|updated|deleted", handler: snake_case } } / `remove_event` { on, handler }
-- `set_actors` { actors: { <name>: { email, password, ...identity fields, role } } }  (replaces every actor; repeat the existing ones)
+- `set_actors` { actors: { <name>: { email, password, ...identity fields, role } } } (replaces every actor; repeat the existing ones)
 - `add_scenario` { scenario: Scenario } / `remove_scenario` { name }
-- `set_seed` { seed: Step[] }  (steps without expect, replayed by osl seed)
-- `set_schedules` { schedules: Schedule[] } / `set_timers` { timers: Timer[] }  (replace the whole list; see Schedules and timers)
+- `set_seed` { seed: Step[] } (steps without expect, replayed by osl seed)
+- `set_schedules` { schedules: Schedule[] } / `set_timers` { timers: Timer[] } (replace the whole list; see Schedules and timers)
 - `set_app` { app: App } / `remove_app` {}
 - `add_page` { name: snake_case, page: Page } / `update_page` { name, page } / `remove_page` { name }
 - `set_sidebar` { sidebar: Sidebar }
-- `add_action` { resource?, name: snake_case, action: Action } / `update_action` { resource?, name, action } / `remove_action` { resource?, name }  (omit resource for a global action; remove_action also drops its events and the scenarios that call it)
+- `add_action` { resource?, name: snake_case, action: Action } / `update_action` { resource?, name, action } / `remove_action` { resource?, name } (omit resource for a global action; remove_action also drops its events and the scenarios that call it)
 - `set_files` { files: { upload?: Rule, read?: Rule } } / `remove_files` {}
 
 ## Entity
 
 ```yaml
-table: posts            # optional, default snake_case plural of the name
+table: posts # optional, default snake_case plural of the name
 description: optional
 fields:
-  <name>: Field         # order matters for the generated code
-rules: { read, create, update, delete, hidden }   # each rule: a predicate, or several joined with " or " (any allows) and " and " (all must)
-# predicate: public | authenticated | none | owner:<field> | role:<value> | member:<field>[:<role>]; <field> may be a path (article_id.author_id)
+  <name>: Field # order matters for the generated code
+rules: { read, create, update, delete, hidden } # each rule: a predicate, or several joined with " or " (any allows) and " and " (all must)
+# predicate: public | authenticated | none | owner:<field> | role:<value> | member:<field>[:<role>]; <field> may be a path (article_id.author_id), and a member path may end in a membership relation (channel_id.members)
 # hidden: forbidden (default) | not_found   # what a row the read rule hides answers when addressed by id
 indexes: [{ fields: [a, b], unique: false, name: optional }]
-unique: [[a, b]]        # multi-column unique constraints
+unique: [[a, b]] # multi-column unique constraints
 ```
 
 Default rules: read public; create, update and delete are authenticated when auth exists, public otherwise.
@@ -85,28 +85,44 @@ the related row is checked, so a required relation must stay in `create.fields`.
 the user must have a membership of that tenant, with `member:<field>:<role>` at least that role (roles rank in the order
 the membership's enum declares them, first is most privileged). Lists show only rows of the user's tenants; on create the
 client picks the tenant and must be a member of it.
+`member:` may also end in a membership relation: a reverse relation (declared with `reverse:` on a junction's relation
+field) whose entity has a relation to the identity. `member:members` on Channel is the channel's own members,
+`member:channel_id.members` on Message the members of the message's channel, `member:collaborators` on Playlist its
+collaborators, and `member:author_id.followers` on a row with an author means the caller follows the author (the member
+is the junction's other relation to the identity). The caller is a member when a row of that entity points at the row
+reached and at them; this needs auth but not tenancy. `member:shares:edit` names a value of an enum field marked
+`ranked: true` on the membership entity (values rank in declared order, first most privileged) and allows that value or a
+higher one; without a ranked enum, membership is all or nothing. Lists show only rows the caller is a member of; on create
+the client sends the relation the path starts with and must be a member of the row it names, and `and owner:author_id`
+binds the author as usual. Choose it when the ask shares or adds people to one row (a playlist, a channel, a page), and
+tenancy when every row of the app belongs to a team. Whoever creates the parent adds themselves through an owner path:
+`create: "owner:channel_id.created_by or member:channel_id.members:admin"`. A membership relation ends a path: a right
+granted through a second junction (a page shared with a team, read by the team's members) is not expressible, say so in
+not_delivered; a membership counts as soon as its row exists (keep pending invites in their own entity); a role ranks
+within one junction, and two junctions rank through alternatives.
 
 ## Field
 
 ```yaml
 type: string | text | integer | bigint | float | decimal | boolean | datetime | date | time | uuid | json | enum | array | bytes | file
-primary: true          # one or more fields; a single uuid primary gets a generated uuid, a single integer gets an identity
-required: true         # NOT NULL; defaults to false
+primary: true # one or more fields; a single uuid primary gets a generated uuid, a single integer gets an identity
+required: true # NOT NULL; defaults to false
 unique: true
 default: <literal> | now (datetime) | uuid (uuid)
-max_length: 255        # strings only; default 255
-enum_values: [a, b]    # enum only
-array_type: string     # array only: string text integer bigint float decimal boolean uuid
+max_length: 255 # strings only; default 255
+enum_values: [a, b] # enum only
+array_type: string # array only: string text integer bigint float decimal boolean uuid
 validate: { format: email|url|uuid, min_length, max_length, pattern, min, max }
-relation:              # makes this field a foreign key; type must match the target's primary key type
+relation: # makes this field a foreign key; type must match the target's primary key type
   entity: User
-  kind: many_to_one | one_to_one     # one_to_one needs unique: true on the field
-  name: author         # relation name here; default is the field name without _id
-  reverse: posts       # relation name on the target entity (optional)
-  on_delete: restrict | cascade | set_null   # set_null needs a nullable field
-hidden: true           # never returned by or accepted from the API
-read_only: true        # returned by the API but never accepted from it: register, create and update answer 400 when a client sends it
-file: { accept: [image/*, application/pdf], max_size: 5242880 }   # file only: what uploads it takes (sizes in bytes)
+  kind: many_to_one | one_to_one # one_to_one needs unique: true on the field
+  name: author # relation name here; default is the field name without _id
+  reverse: posts # relation name on the target entity (optional)
+  on_delete: restrict | cascade | set_null # set_null needs a nullable field
+hidden: true # never returned by or accepted from the API
+read_only: true # returned by the API but never accepted from it: register, create and update answer 400 when a client sends it
+ranked: true # enum only: the values rank in declared order, first most privileged, for member:<path>:<value> on a membership entity
+file: { accept: [image/*, application/pdf], max_size: 5242880 } # file only: what uploads it takes (sizes in bytes)
 ```
 
 A `read_only` field is one the server owns: a `banned` flag, an `archived_at` stamp, a `view_count`. Only your action
@@ -128,14 +144,22 @@ Only entities with a single-column primary key can have resources.
 
 ```yaml
 entity: Post
-path: /api/posts                      # optional, default /api/<resource name>
+path: /api/posts # optional, default /api/<resource name>
 operations: [list, get, create, update, delete]
-list: { filters: [published], order: [[created_at, desc]], page_size: 20, include: [author], sortable: [title, created_at], search: [title, content] }
+list:
+  {
+    filters: [published],
+    order: [[created_at, desc]],
+    page_size: 20,
+    include: [author],
+    sortable: [title, created_at],
+    search: [title, content]
+  }
 # page_size is the default page; clients may ask for fewer or more rows with ?page_size=, up to 200 (more is a 400). No key raises that cap.
 get: { include: [author] }
-create: { fields: [title, content] }  # optional; default is every writable field
+create: { fields: [title, content] } # optional; default is every writable field
 update: { fields: [title, content] }
-actions:                              # operations beyond the five; see Actions
+actions: # operations beyond the five; see Actions
   publish: { rule: "owner:author_id" }
 ```
 
@@ -158,13 +182,13 @@ Resource actions live under `resources.<name>.actions`; global ones under top-le
 resources:
   posts:
     actions:
-      publish:                        # POST /api/posts/{id}/publish; the handler gets the row
-        scope: row                    # row (default) | collection (POST /api/posts/publish, no row)
-        input: { note: { type: string, max_length: 200 } }   # optional body fields (Field without storage options)
-        rule: owner:author_id         # default: the entity's update rule (row) or create rule (collection)
-        returns: entity               # entity (default for row) | none (204) | { <field>: Field } (a custom shape)
+      publish: # POST /api/posts/{id}/publish; the handler gets the row
+        scope: row # row (default) | collection (POST /api/posts/publish, no row)
+        input: { note: { type: string, max_length: 200 } } # optional body fields (Field without storage options)
+        rule: owner:author_id # default: the entity's update rule (row) or create rule (collection)
+        returns: entity # entity (default for row) | none (204) | { <field>: Field } (a custom shape)
 actions:
-  send_digest:                        # POST /api/actions/send_digest
+  send_digest: # POST /api/actions/send_digest
     rule: role:admin
     returns: { sent: { type: integer, required: true } }
 ```
@@ -179,15 +203,22 @@ where a `read_only` field gets its value (`ban` sets `banned` and `banned_at`). 
 
 ```yaml
 identity: User
-providers: [credentials, magic_link, { oauth: github }, { oauth: google }, { oauth: oidc, issuer: https://id.example.com, name: example }]
-email_field: email            # a required, unique string on the identity
+providers:
+  [
+    credentials,
+    magic_link,
+    { oauth: github },
+    { oauth: google },
+    { oauth: oidc, issuer: https://id.example.com, name: example }
+  ]
+email_field: email # a required, unique string on the identity
 password_field: password_hash # added by OSL with the credentials provider; never declare it
 session_days: 30
-tenancy:                      # optional: teams, workspaces, organisations
-  entity: Team                # the tenant entity
-  membership: TeamMember      # relation to the identity, relation to Team, a required role enum, unique on both relations
-  role_field: role            # roles rank in the enum's order, first is most privileged
-  creator_role: owner         # whoever creates a Team through its resource gets this membership
+tenancy: # optional: teams, workspaces, organisations
+  entity: Team # the tenant entity
+  membership: TeamMember # relation to the identity, relation to Team, a required role enum, unique on both relations
+  role_field: role # roles rank in the enum's order, first is most privileged
+  creator_role: owner # whoever creates a Team through its resource gets this membership
 ```
 
 `provider: credentials` is the 1.0 spelling of `providers: [credentials]`. Credentials add `POST /api/auth/register`
@@ -201,8 +232,8 @@ create a user when the identity needs nothing but email (and name); otherwise th
 
 ```yaml
 events:
-  - { on: Post.created, handler: post_created }                       # after a create, in the request
-  - { on: posts.publish, handler: post_published, delivery: queue }   # after the action, as a job the worker runs with retries
+  - { on: Post.created, handler: post_created } # after a create, in the request
+  - { on: posts.publish, handler: post_published, delivery: queue } # after the action, as a job the worker runs with retries
 ```
 
 `on` is `<Entity>.created|updated|deleted`, `<resource>.<action>` or `actions.<action>`. `delivery` is `inline`
@@ -215,10 +246,10 @@ as web only. Both run an action's handler as the system: no session, no access r
 
 ```yaml
 schedules:
-  - { cron: "0 7 * * *", run: actions.send_reminders }                     # five cron fields, UTC; a global or collection action
-  - { cron: "*/15 * * * *", run: invoices.sweep_overdue, input: { grace_hours: 48 } }   # literal input when the action takes some
+  - { cron: "0 7 * * *", run: actions.send_reminders } # five cron fields, UTC; a global or collection action
+  - { cron: "*/15 * * * *", run: invoices.sweep_overdue, input: { grace_hours: 48 } } # literal input when the action takes some
 timers:
-  - { on: Article, at: publish_at, run: posts.publish, when: "published = false" }      # when publish_at passes, publish, if still unpublished
+  - { on: Article, at: publish_at, run: posts.publish, when: "published = false" } # when publish_at passes, publish, if still unpublished
   - { on: Delivery, at: assigned_at, after: 48h, run: deliveries.flag_overdue, when: "status = assigned" }
 ```
 
@@ -234,38 +265,38 @@ in rules or filters yet ("due before today", "upcoming events"): say so in not_d
 The web app: pages and the sidebar that links them. Backends with a web app render it; API-only backends ignore it.
 
 ```yaml
-title: Blog                        # sidebar header and document title; default: the model name
+title: Blog # sidebar header and document title; default: the model name
 pages:
-  posts:                           # page name, snake_case
-    kind: resource                 # resource (default) | custom
-    resource: posts                # resource pages: a resource with list and get operations
-    path: /posts                   # default /<name>; /login and /settings are reserved; one dashboard or custom page may take /
-    title: Posts                   # default: the name in Title Case
-    layout: split                  # split (list beside the selected row, default) | table (sortable, filterable, with a detail page) | board
-    columns: [title, published]    # master list columns; default: the first few short columns
-    fields: [title, content, published]   # detail pane fields; default: every output field (read_only ones show here, never in the form)
-    access: authenticated          # public | authenticated | role:<value>: who may open the page (sidebar and route); default authenticated with auth, else public
-    filter: { author_id: "{actor.id}" }   # resource pages: equality filters the list always carries, from list.filters; "{actor.id}" is the signed-in user (not on a public page)
-    refresh: 15                    # seconds; the page refetches its data on this interval while open (polling; there is no push)
+  posts: # page name, snake_case
+    kind: resource # resource (default) | custom
+    resource: posts # resource pages: a resource with list and get operations
+    path: /posts # default /<name>; /login and /settings are reserved; one dashboard or custom page may take /
+    title: Posts # default: the name in Title Case
+    layout: split # split (list beside the selected row, default) | table (sortable, filterable, with a detail page) | board
+    columns: [title, published] # master list columns; default: the first few short columns
+    fields: [title, content, published] # detail pane fields; default: every output field (read_only ones show here, never in the form)
+    access: authenticated # public | authenticated | role:<value>: who may open the page (sidebar and route); default authenticated with auth, else public
+    filter: { author_id: "{actor.id}" } # resource pages: equality filters the list always carries, from list.filters; "{actor.id}" is the signed-in user (not on a public page)
+    refresh: 15 # seconds; the page refetches its data on this interval while open (polling; there is no push)
   tasks:
     resource: tasks
-    layout: board                  # cards grouped by an enum field; dragging a card updates it
+    layout: board # cards grouped by an enum field; dragging a card updates it
     group_by: status
   home:
     kind: dashboard
-    tiles:                         # count tiles from list filters; group_by makes one tile per enum value or per row of a related resource
+    tiles: # count tiles from list filters; group_by makes one tile per enum value or per row of a related resource
       - { resource: posts, label: Published, filter: { published: true }, icon: file-text }
       - { resource: posts, label: By author, group_by: author_id }
       - { resource: tasks, label: Mine, filter: { assignee_id: "{actor.id}" } }
-    recent: [{ resource: posts, limit: 5 }]                                                         # newest rows, linked
+    recent: [{ resource: posts, limit: 5 }] # newest rows, linked
   about:
-    kind: custom                   # scaffolded once as a route for you to fill in
+    kind: custom # scaffolded once as a route for you to fill in
     title: About
 sidebar:
   items:
-    - { page: posts, label: Posts, icon: file-text }   # icon: a lucide icon name in kebab-case; label defaults to the title
+    - { page: posts, label: Posts, icon: file-text } # icon: a lucide icon name in kebab-case; label defaults to the title
     - { page: about, icon: info }
-  footer: { user: true, settings: true }               # user: avatar, name and sign-out (needs auth); settings: a /settings link
+  footer: { user: true, settings: true } # user: avatar, name and sign-out (needs auth); settings: a /settings link
 ```
 
 A resource page is a master/detail view: the list on the left (with a New action when the resource allows create),
@@ -290,11 +321,11 @@ actors:
 scenario:
   name: alice writes a post
   steps:
-    - as: alice                      # omit for an anonymous request
-      op: posts.create               # <resource>.<operation> or auth.register|login|logout|me
+    - as: alice # omit for an anonymous request
+      op: posts.create # <resource>.<operation> or auth.register|login|logout|me
       body: { title: Hello }
       expect: { status: 201, body: { data: { title: Hello, author_id: "{actor.id}" } } }
-      capture: { post: data.id }     # later steps use "{post}"
+      capture: { post: data.id } # later steps use "{post}"
     - op: posts.get
       path: { id: "{post}" }
       query: { page_size: "10" }
@@ -321,10 +352,10 @@ token is a 400), and upload a file:
 
 ```yaml
 - as: alice
-  op: files.upload                 # uploads the text as the file's bytes; 401 when uploads need a session
+  op: files.upload # uploads the text as the file's bytes; 401 when uploads need a session
   body: { name: cover.png, type: image/png, content: not-really-a-png }
   expect: { status: 200, body: { data: { name: cover.png, type: image/png } } }
-  capture: { cover: data.id }      # then write "{cover}" into a file field
+  capture: { cover: data.id } # then write "{cover}" into a file field
 ```
 
 Time is an input to scenarios. `{now}`, `{now+2h}` and `{now-30d}` (m, h, d) resolve to timestamps in bodies and
@@ -334,19 +365,19 @@ expectations, and three test-only steps drive schedules, timers and mail; they e
 ```yaml
 - as: alice
   op: posts.create
-  body: { title: Later, content: Soon, publish_at: "{now-1h}" }   # due in the past, so the timer is already due
+  body: { title: Later, content: Soon, publish_at: "{now-1h}" } # due in the past, so the timer is already due
   expect: { status: 201 }
   capture: { later: data.id }
-- op: timers.run                      # run every timer due at that moment, as the worker would
+- op: timers.run # run every timer due at that moment, as the worker would
   body: { now: "{now}" }
   expect: { status: 200, body: { data: { ran: 1 } } }
 - op: posts.get
   path: { id: "{later}" }
   expect: { status: 200, body: { data: { published: true } } }
-- op: schedules.run                   # run one schedule's action now, as the system
+- op: schedules.run # run one schedule's action now, as the system
   body: { run: actions.send_digest, now: "{now}" }
   expect: { status: 200, body: { data: { ran: 1 } } }
-- op: emails.sent                     # the mail captured since the app started, newest last; filter by to or subject
+- op: emails.sent # the mail captured since the app started, newest last; filter by to or subject
   query: { to: alice@example.com }
   expect: { status: 200, body: { data: [{ subject: Weekly digest }] } }
 ```

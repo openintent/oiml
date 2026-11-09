@@ -94,6 +94,42 @@ var AnnouncementsUpdateInput = Object{Fields: []Field{
 	{Name: "author_id", Type: UUID{}},
 }}
 
+// FollowsID parses a follows id from the path.
+func FollowsID(raw string) (string, bool) {
+	return ParseUUIDID(raw)
+}
+
+// FollowsListQuery validates the GET /api/follows query string.
+var FollowsListQuery = Query{PageSize: 20, Filters: []Filter{
+	{Name: "follower_id", Type: UUID{}},
+	{Name: "followee_id", Type: UUID{}},
+}}
+
+// FollowsCreateInput validates POST /api/follows bodies.
+var FollowsCreateInput = Object{Fields: []Field{
+	{Name: "followee_id", Required: true, Type: UUID{}},
+}}
+
+// BulletinsID parses a bulletins id from the path.
+func BulletinsID(raw string) (string, bool) {
+	return ParseUUIDID(raw)
+}
+
+// BulletinsListQuery validates the GET /api/bulletins query string.
+var BulletinsListQuery = Query{PageSize: 20, Filters: []Filter{
+	{Name: "author_id", Type: UUID{}},
+}}
+
+// BulletinsCreateInput validates POST /api/bulletins bodies.
+var BulletinsCreateInput = Object{Fields: []Field{
+	{Name: "body", Required: true, Type: String{}},
+}}
+
+// BulletinsUpdateInput validates PATCH /api/bulletins/{id} bodies.
+var BulletinsUpdateInput = Object{Fields: []Field{
+	{Name: "body", Type: String{}},
+}}
+
 // UsersBanInput validates POST /api/users/{id}/ban bodies.
 var UsersBanInput = Object{Fields: []Field{
 	{Name: "reason", Required: true, Type: String{MinLength: 1, MaxLength: 200}},

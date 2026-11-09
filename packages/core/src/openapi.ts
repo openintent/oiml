@@ -192,8 +192,15 @@ function baseNote(rule: OperationIR["rule"]): string {
         : `Only the row's owner (${rule.field}).`;
     case "role":
       return `Only users with role ${rule.value}.`;
-    case "member":
+    case "member": {
+      if (rule.through) {
+        const of = rule.via
+          ? `the ${rule.through.relation} of the row reached through ${rule.via.map(h => h.column).join(".")}`
+          : `the row's ${rule.through.relation}`;
+        return `Only ${of} (${rule.through.entity})${rule.role ? ` with at least ${rule.role}` : ""}.`;
+      }
       return `Only members of the ${rule.via ? `tenant reached through ${ruleKey(rule)}` : `row's tenant (${rule.field})`}${rule.role ? ` with at least role ${rule.role}` : ""}.`;
+    }
     case "all":
       return `All of: ${rule.rules.map(r => ruleNote(r).replace(/\.$/, "")).join("; ")}.`;
     case "any":

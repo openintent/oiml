@@ -97,10 +97,14 @@ export const Field = z
     hidden: z.boolean().optional(),
     /** Returned by the API but never accepted from it: only server code (an action handler) and defaults set it */
     read_only: z.boolean().optional(),
+    /** Enum fields only: the values rank in declared order, first most privileged, for member:<path>:<value> on a membership entity */
+    ranked: z.boolean().optional(),
     description: z.string().optional()
   })
   .strict()
   .superRefine((field, ctx) => {
+    if (field.ranked && field.type !== "enum")
+      ctx.addIssue({ code: "custom", message: "ranked only applies to enum fields" });
     if (field.read_only && field.hidden)
       ctx.addIssue({ code: "custom", message: "a hidden field is never accepted already; drop read_only" });
     if (field.read_only && field.primary)
@@ -218,6 +222,64 @@ export function predicateParts(
   if (kind !== "owner" && kind !== "member") return undefined;
   const path = field.split(".");
   return role !== undefined ? { kind, path, role } : { kind, path };
+}
+
+/** A membership relation as a member path ends in it: the junction, its two columns, and its ranked enum when it has one */
+export interface MembershipRelation {
+  entity: string;
+  /** The junction's relation field pointing at the entity the path reached */
+  fkField: string;
+  /** The junction's relation field pointing at the identity */
+  memberField: string;
+  roleField?: string;
+  roles: string[];
+  /** Whether the junction is unique on its two relation fields */
+  unique: boolean;
+}
+
+/**
+ * The membership relation named `name` on `entityName`: a reverse relation declared on a junction whose entity has
+ * exactly one relation to the identity besides the one the path arrived through. Null when no reverse relation has
+ * that name; a problem when it has one that is not a membership.
+ */
+export function membershipRelation(
+  model: Model,
+  entityName: string,
+  name: string
+): MembershipRelation | { problem: string } | null {
+  const identity = model.auth?.identity;
+  for (const [junctionName, junction] of Object.entries(model.entities)) {
+    for (const [fkField, field] of Object.entries(junction.fields)) {
+      if (field.relation?.entity !== entityName || field.relation.reverse !== name) continue;
+      const identityFields = Object.entries(junction.fields)
+        .filter(([n, f]) => f.relation?.entity === identity && n !== fkField)
+        .map(([n]) => n);
+      if (identityFields.length === 0)
+        return {
+          problem: `${junctionName} has no relation to ${identity ?? "the identity"} besides ${fkField}, so it is not a membership`
+        };
+      if (identityFields.length > 1)
+        return {
+          problem: `${junctionName} has ${identityFields.length} relations to ${identity} (${identityFields.join(", ")}); a membership needs one`
+        };
+      const memberField = identityFields[0];
+      const ranked = Object.entries(junction.fields).filter(([, f]) => f.type === "enum" && f.ranked);
+      const roleField = ranked[0]?.[0];
+      const bothPrimary = Boolean(junction.fields[fkField].primary && junction.fields[memberField].primary);
+      const unique =
+        bothPrimary ||
+        (junction.unique ?? []).some(cols => cols.length === 2 && cols.includes(fkField) && cols.includes(memberField));
+      return {
+        entity: junctionName,
+        fkField,
+        memberField,
+        roleField,
+        roles: roleField ? (junction.fields[roleField].enum_values ?? []) : [],
+        unique
+      };
+    }
+  }
+  return null;
 }
 
 /** Whether a rule can hide one row and allow another: an owner or member predicate, or a condition, somewhere in it */
@@ -847,9 +909,45 @@ export function validateModel(model: Model): Diagnostic[] {
       }
       const field = parts.path[parts.path.length - 1];
       const f = model.entities[current].fields[field];
-      if (!f) error("M020", `${parts.kind} field ${field} does not exist on ${current}`, rpath);
+      // A member path may end in a membership relation instead of a field: a reverse relation to a junction
+      const membership = !f && parts.kind === "member" ? membershipRelation(model, current, field) : null;
+      if (!f && !membership)
+        error(
+          "M020",
+          `${parts.kind} field ${field} does not exist on ${current}${parts.kind === "member" ? " (neither a field nor a reverse relation)" : ""}`,
+          rpath
+        );
       else if (!model.auth) error("M021", `${parts.kind} rules need auth to be configured`, rpath);
-      else if (parts.kind === "owner") {
+      else if (membership) {
+        const spelled = `member:${parts.path.join(".")}`;
+        if ("problem" in membership) error("M036", `${spelled}: ${membership.problem}`, rpath);
+        else {
+          if (parts.role !== undefined) {
+            if (!membership.roleField) {
+              const enums = Object.entries(model.entities[membership.entity].fields).filter(
+                ([, e]) => e.type === "enum"
+              );
+              const hint = enums.length === 1 ? ` (mark ${membership.entity}.${enums[0][0]} ranked: true)` : "";
+              error(
+                "M037",
+                `${spelled}:${parts.role} needs an enum field marked ranked: true on ${membership.entity}${hint}`,
+                rpath
+              );
+            } else if (!membership.roles.includes(parts.role))
+              error(
+                "M037",
+                `member role ${parts.role} is not a value of ${membership.entity}.${membership.roleField}`,
+                rpath
+              );
+          }
+          if (!membership.unique)
+            warn(
+              "M038",
+              `${membership.entity} has no unique on [${membership.fkField}, ${membership.memberField}]: a user could hold two memberships of one ${current}`,
+              rpath
+            );
+        }
+      } else if (parts.kind === "owner") {
         const pointsAtIdentity =
           f.relation?.entity === model.auth.identity || (current === model.auth.identity && f.primary);
         if (!pointsAtIdentity)
@@ -860,14 +958,18 @@ export function validateModel(model: Model): Diagnostic[] {
           );
       } else {
         if (!tenancy) {
-          error("M024", `member rules need auth.tenancy`, rpath);
+          error(
+            "M024",
+            `member field ${field} needs auth.tenancy; a membership relation (a reverse relation to an entity with a relation to ${model.auth.identity}) needs none`,
+            rpath
+          );
           return;
         }
         const pointsAtTenant = f.relation?.entity === tenancy.entity || (current === tenancy.entity && f.primary);
         if (!pointsAtTenant)
           error(
             "M025",
-            `member field ${field} must be a relation to ${tenancy.entity}, or the tenant's own primary key`,
+            `member field ${field} must be a relation to ${tenancy.entity}, the tenant's own primary key, or a membership relation (a reverse relation to an entity with a relation to ${model.auth.identity})`,
             rpath
           );
         if (parts.role !== undefined && !membershipRoles().includes(parts.role))
@@ -917,6 +1019,15 @@ export function validateModel(model: Model): Diagnostic[] {
         if (entity.fields[p].default !== undefined)
           error("M002", `composite key field ${p} cannot have a default`, `${base}.fields.${p}`);
     }
+    const rankedEnums = Object.keys(entity.fields).filter(
+      n => entity.fields[n].type === "enum" && entity.fields[n].ranked
+    );
+    if (rankedEnums.length > 1)
+      error(
+        "M039",
+        `${entityName} has ${rankedEnums.length} ranked enums (${rankedEnums.join(", ")}); one of them ranks memberships`,
+        base
+      );
     for (const [fieldName, field] of Object.entries(entity.fields)) {
       const fpath = `${base}.fields.${fieldName}`;
       if (field.relation) {

@@ -77,6 +77,19 @@ export const client = {
     update: (input: Inputs["announcements"]["update"]) => trpc.announcements.update.mutate(input),
     delete: (input: Inputs["announcements"]["delete"]) => trpc.announcements.delete.mutate(input),
     publish: (input: Inputs["announcements"]["publish"]) => trpc.announcements.publish.mutate(input)
+  },
+  follows: {
+    list: (input: Inputs["follows"]["list"]) => trpc.follows.list.query(input),
+    get: (input: Inputs["follows"]["get"]) => trpc.follows.get.query(input),
+    create: (input: Inputs["follows"]["create"]) => trpc.follows.create.mutate(input),
+    delete: (input: Inputs["follows"]["delete"]) => trpc.follows.delete.mutate(input)
+  },
+  bulletins: {
+    list: (input: Inputs["bulletins"]["list"]) => trpc.bulletins.list.query(input),
+    get: (input: Inputs["bulletins"]["get"]) => trpc.bulletins.get.query(input),
+    create: (input: Inputs["bulletins"]["create"]) => trpc.bulletins.create.mutate(input),
+    update: (input: Inputs["bulletins"]["update"]) => trpc.bulletins.update.mutate(input),
+    delete: (input: Inputs["bulletins"]["delete"]) => trpc.bulletins.delete.mutate(input)
   }
 };
 

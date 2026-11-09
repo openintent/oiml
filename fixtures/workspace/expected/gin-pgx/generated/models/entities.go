@@ -400,6 +400,176 @@ func PresentMilestones(rows []*Milestone) []PublicMilestone {
 	return out
 }
 
+// ChannelTable is the quoted table of Channel.
+const ChannelTable = `"channels"`
+
+// ChannelColumns lists the columns of Channel in model order, for SELECT and RETURNING.
+const ChannelColumns = `"id", "team_id", "created_by", "name", "private", "created_at"`
+
+// Channel is a row of channels.
+type Channel struct {
+	ID        string    `json:"id"`
+	TeamID    string    `json:"team_id"`
+	CreatedBy string    `json:"created_by"`
+	Name      string    `json:"name"`
+	Private   bool      `json:"private"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// PublicChannel is Channel as the API returns it: hidden columns removed, dates rendered.
+type PublicChannel struct {
+	ID        string `json:"id"`
+	TeamID    string `json:"team_id"`
+	CreatedBy string `json:"created_by"`
+	Name      string `json:"name"`
+	Private   bool   `json:"private"`
+	CreatedAt string `json:"created_at"`
+}
+
+// ScanChannel reads one Channel from a row selected with ChannelColumns.
+func ScanChannel(row Scanner) (*Channel, error) {
+	var r Channel
+	if err := row.Scan(&r.ID, &r.TeamID, &r.CreatedBy, &r.Name, &r.Private, &r.CreatedAt); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// PresentChannel returns the public shape of a Channel.
+func PresentChannel(row *Channel) PublicChannel {
+	return PublicChannel{ID: row.ID, TeamID: row.TeamID, CreatedBy: row.CreatedBy, Name: row.Name, Private: row.Private, CreatedAt: FormatDateTime(row.CreatedAt)}
+}
+
+// PresentChannelPtr presents an optional Channel; nil stays nil.
+func PresentChannelPtr(row *Channel) *PublicChannel {
+	if row == nil {
+		return nil
+	}
+	out := PresentChannel(row)
+	return &out
+}
+
+// PresentChannels presents a list of Channel, never nil.
+func PresentChannels(rows []*Channel) []PublicChannel {
+	out := make([]PublicChannel, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, PresentChannel(row))
+	}
+	return out
+}
+
+// ChannelMemberTable is the quoted table of ChannelMember.
+const ChannelMemberTable = `"channel_members"`
+
+// ChannelMemberColumns lists the columns of ChannelMember in model order, for SELECT and RETURNING.
+const ChannelMemberColumns = `"id", "channel_id", "user_id", "role", "created_at"`
+
+// ChannelMember is a row of channel_members.
+type ChannelMember struct {
+	ID        string    `json:"id"`
+	ChannelID string    `json:"channel_id"`
+	UserID    string    `json:"user_id"`
+	Role      string    `json:"role"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// PublicChannelMember is ChannelMember as the API returns it: hidden columns removed, dates rendered.
+type PublicChannelMember struct {
+	ID        string `json:"id"`
+	ChannelID string `json:"channel_id"`
+	UserID    string `json:"user_id"`
+	Role      string `json:"role"`
+	CreatedAt string `json:"created_at"`
+}
+
+// ScanChannelMember reads one ChannelMember from a row selected with ChannelMemberColumns.
+func ScanChannelMember(row Scanner) (*ChannelMember, error) {
+	var r ChannelMember
+	if err := row.Scan(&r.ID, &r.ChannelID, &r.UserID, &r.Role, &r.CreatedAt); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// PresentChannelMember returns the public shape of a ChannelMember.
+func PresentChannelMember(row *ChannelMember) PublicChannelMember {
+	return PublicChannelMember{ID: row.ID, ChannelID: row.ChannelID, UserID: row.UserID, Role: row.Role, CreatedAt: FormatDateTime(row.CreatedAt)}
+}
+
+// PresentChannelMemberPtr presents an optional ChannelMember; nil stays nil.
+func PresentChannelMemberPtr(row *ChannelMember) *PublicChannelMember {
+	if row == nil {
+		return nil
+	}
+	out := PresentChannelMember(row)
+	return &out
+}
+
+// PresentChannelMembers presents a list of ChannelMember, never nil.
+func PresentChannelMembers(rows []*ChannelMember) []PublicChannelMember {
+	out := make([]PublicChannelMember, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, PresentChannelMember(row))
+	}
+	return out
+}
+
+// MessageTable is the quoted table of Message.
+const MessageTable = `"messages"`
+
+// MessageColumns lists the columns of Message in model order, for SELECT and RETURNING.
+const MessageColumns = `"id", "channel_id", "author_id", "body", "created_at"`
+
+// Message is a row of messages.
+type Message struct {
+	ID        string    `json:"id"`
+	ChannelID string    `json:"channel_id"`
+	AuthorID  string    `json:"author_id"`
+	Body      string    `json:"body"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// PublicMessage is Message as the API returns it: hidden columns removed, dates rendered.
+type PublicMessage struct {
+	ID        string `json:"id"`
+	ChannelID string `json:"channel_id"`
+	AuthorID  string `json:"author_id"`
+	Body      string `json:"body"`
+	CreatedAt string `json:"created_at"`
+}
+
+// ScanMessage reads one Message from a row selected with MessageColumns.
+func ScanMessage(row Scanner) (*Message, error) {
+	var r Message
+	if err := row.Scan(&r.ID, &r.ChannelID, &r.AuthorID, &r.Body, &r.CreatedAt); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// PresentMessage returns the public shape of a Message.
+func PresentMessage(row *Message) PublicMessage {
+	return PublicMessage{ID: row.ID, ChannelID: row.ChannelID, AuthorID: row.AuthorID, Body: row.Body, CreatedAt: FormatDateTime(row.CreatedAt)}
+}
+
+// PresentMessagePtr presents an optional Message; nil stays nil.
+func PresentMessagePtr(row *Message) *PublicMessage {
+	if row == nil {
+		return nil
+	}
+	out := PresentMessage(row)
+	return &out
+}
+
+// PresentMessages presents a list of Message, never nil.
+func PresentMessages(rows []*Message) []PublicMessage {
+	out := make([]PublicMessage, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, PresentMessage(row))
+	}
+	return out
+}
+
 // OslAuthTokenTable is the quoted table of OslAuthToken.
 const OslAuthTokenTable = `"osl_auth_tokens"`
 

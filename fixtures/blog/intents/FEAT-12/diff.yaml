@@ -1,0 +1,107 @@
+osl: "1.0"
+summary: Follows between users and bulletins readable by the author's followers, through a membership relation with two identity relations
+ops:
+  - op: add_entity
+    name: Follow
+    entity:
+      fields:
+        id: { type: uuid, primary: true }
+        follower_id:
+          type: uuid
+          required: true
+          relation: { entity: User, name: follower, reverse: following, on_delete: cascade }
+        followee_id:
+          type: uuid
+          required: true
+          relation: { entity: User, name: followee, reverse: followers, on_delete: cascade }
+        created_at: { type: datetime, required: true, default: now }
+      unique: [[follower_id, followee_id]]
+      rules: { read: public, create: "owner:follower_id", update: none, delete: "owner:follower_id" }
+  - op: add_entity
+    name: Bulletin
+    entity:
+      fields:
+        id: { type: uuid, primary: true }
+        author_id:
+          type: uuid
+          required: true
+          relation: { entity: User, name: author, reverse: bulletins, on_delete: cascade }
+        body: { type: text, required: true }
+        created_at: { type: datetime, required: true, default: now }
+      rules:
+        read: "owner:author_id or member:author_id.followers"
+        create: "owner:author_id"
+        update: "owner:author_id"
+        delete: "owner:author_id"
+  - op: add_resource
+    name: follows
+    resource:
+      entity: Follow
+      operations: [list, get, create, delete]
+      list: { filters: [follower_id, followee_id], order: [[created_at, desc]] }
+  - op: add_resource
+    name: bulletins
+    resource:
+      entity: Bulletin
+      operations: [list, get, create, update, delete]
+      list: { filters: [author_id], order: [[created_at, desc]] }
+  - op: add_scenario
+    scenario:
+      name: followers read bulletins
+      steps:
+        - as: alice
+          op: auth.me
+          expect: { status: 200 }
+          capture: { alice_id: data.id }
+        - as: bob
+          op: follows.create
+          body: { followee_id: "{alice_id}" }
+          expect: { status: 201, body: { data: { follower_id: "{actor.id}", followee_id: "{alice_id}" } } }
+          capture: { follow: data.id }
+        - as: bob
+          op: follows.create
+          body: { followee_id: "{alice_id}" }
+          expect: { status: 409 }
+        - as: dave
+          op: follows.delete
+          path: { id: "{follow}" }
+          expect: { status: 403 }
+        - as: alice
+          op: bulletins.create
+          body: { body: "Followers only: the beta opens Friday." }
+          expect: { status: 201, body: { data: { author_id: "{actor.id}" } } }
+          capture: { bulletin: data.id }
+        - as: alice
+          op: bulletins.get
+          path: { id: "{bulletin}" }
+          expect: { status: 200 }
+        - as: bob
+          op: bulletins.get
+          path: { id: "{bulletin}" }
+          expect: { status: 200, body: { data: { body: "Followers only: the beta opens Friday." } } }
+        - as: bob
+          op: bulletins.list
+          query: { author_id: "{alice_id}" }
+          expect: { status: 200, body: { page: { total: 1 } } }
+        - as: dave
+          op: bulletins.get
+          path: { id: "{bulletin}" }
+          expect: { status: 403 }
+        - as: dave
+          op: bulletins.list
+          query: { author_id: "{alice_id}" }
+          expect: { status: 200, body: { page: { total: 0 } } }
+        - op: bulletins.get
+          path: { id: "{bulletin}" }
+          expect: { status: 401 }
+        - op: follows.list
+          query: { followee_id: "{alice_id}" }
+          expect: { status: 200, body: { page: { total: 1 } } }
+        - as: bob
+          op: follows.delete
+          path: { id: "{follow}" }
+          expect: { status: 204 }
+        - as: bob
+          op: bulletins.get
+          path: { id: "{bulletin}" }
+          expect: { status: 403 }

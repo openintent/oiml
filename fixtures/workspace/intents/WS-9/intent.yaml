@@ -1,0 +1,13 @@
+osl: "1.0"
+title: Channels with their own members
+ask: >-
+  A team's members talk in channels. Anyone in the team sees and joins a public channel; a private channel is seen
+  only by the people added to it. Whoever creates a channel adds the first members and may make some of them channel
+  admins; channel admins add and remove members, and a member may leave on their own. Members of a channel post
+  messages that are theirs whatever the request says, edit and delete their own, and a channel admin deletes
+  anyone's. Someone outside a private channel must not learn that it, or its messages, exist.
+acceptance:
+  - A member of another team, and a team member who is not in a private channel, get 404 for the channel and its messages, list neither, and cannot post (403)
+  - A channel member posts a message carrying their own id as author, cannot delete another's message, and a channel admin can
+  - Only the channel's creator or a channel admin adds members; a member who was removed can no longer see the channel
+  - Any team member reads a public channel's messages, cannot post until they join, posts after joining, and joining twice is a conflict

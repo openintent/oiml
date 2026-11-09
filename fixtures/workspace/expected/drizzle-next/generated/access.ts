@@ -16,7 +16,7 @@ export type Rule =
   | { kind: "none" }
   | { kind: "owner"; field: string; when?: Condition }
   | { kind: "role"; value: string; when?: Condition }
-  | { kind: "member"; field: string; role?: string; when?: Condition }
+  | { kind: "member"; field: string; role?: string; through?: true; roles?: string[]; when?: Condition }
   | { kind: "all"; rules: Rule[] }
   | { kind: "any"; rules: Rule[] };
 
@@ -30,6 +30,12 @@ const ROLES: string[] = ["owner", "admin", "member"];
 function rank(role: string): number {
   const index = ROLES.indexOf(role);
   return index < 0 ? ROLES.length : index;
+}
+
+/** The rank of a role within a junction's own list, from most to least privileged; an unknown role ranks last */
+function rankIn(roles: string[], role: string): number {
+  const index = roles.indexOf(role);
+  return index < 0 ? roles.length : index;
 }
 
 /** The tenants the session's user belongs to, with at least `role` when given */
@@ -112,6 +118,14 @@ function predicateVerdict(rule: Rule, session: Session | null, row?: Record<stri
     case "member": {
       if (!session) return { ok: false, status: 401 };
       if (!row) return ALLOW;
+      if (rule.through) {
+        // The caller's membership row, resolved under the predicate's key: its ranked value, true, or null
+        const held = row[rule.field];
+        if (held == null || held === false) return { ok: false, status: 403 };
+        if (rule.role !== undefined && rankIn(rule.roles ?? [], String(held)) > rankIn(rule.roles ?? [], rule.role))
+          return { ok: false, status: 403 };
+        return ALLOW;
+      }
       const tenant = row[rule.field];
       return memberTenantIds(session, rule.role).some(id => id === tenant) ? ALLOW : { ok: false, status: 403 };
     }

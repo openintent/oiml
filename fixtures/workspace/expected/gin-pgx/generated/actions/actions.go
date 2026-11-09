@@ -45,3 +45,13 @@ func ParseTasksRemindInput(values models.Values) TasksRemindInput {
 	_ = values
 	return input
 }
+
+// ChannelsJoinInput is the validated body of POST /api/channels/{id}/join.
+type ChannelsJoinInput struct{}
+
+// ParseChannelsJoinInput reads the validated values into the typed input.
+func ParseChannelsJoinInput(values models.Values) ChannelsJoinInput {
+	var input ChannelsJoinInput
+	_ = values
+	return input
+}

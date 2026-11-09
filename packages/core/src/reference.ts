@@ -42,7 +42,7 @@ description: optional
 fields:
   <name>: Field         # order matters for the generated code
 rules: { read, create, update, delete, hidden }   # each rule: a predicate, or several joined with " or " (any allows) and " and " (all must)
-# predicate: public | authenticated | none | owner:<field> | role:<value> | member:<field>[:<role>]; <field> may be a path (article_id.author_id)
+# predicate: public | authenticated | none | owner:<field> | role:<value> | member:<field>[:<role>]; <field> may be a path (article_id.author_id), and a member path may end in a membership relation (channel_id.members)
 # hidden: forbidden (default) | not_found   # what a row the read rule hides answers when addressed by id
 indexes: [{ fields: [a, b], unique: false, name: optional }]
 unique: [[a, b]]        # multi-column unique constraints
@@ -87,6 +87,21 @@ the related row is checked, so a required relation must stay in \`create.fields\
 the user must have a membership of that tenant, with \`member:<field>:<role>\` at least that role (roles rank in the order
 the membership's enum declares them, first is most privileged). Lists show only rows of the user's tenants; on create the
 client picks the tenant and must be a member of it.
+\`member:\` may also end in a membership relation: a reverse relation (declared with \`reverse:\` on a junction's relation
+field) whose entity has a relation to the identity. \`member:members\` on Channel is the channel's own members,
+\`member:channel_id.members\` on Message the members of the message's channel, \`member:collaborators\` on Playlist its
+collaborators, and \`member:author_id.followers\` on a row with an author means the caller follows the author (the member
+is the junction's other relation to the identity). The caller is a member when a row of that entity points at the row
+reached and at them; this needs auth but not tenancy. \`member:shares:edit\` names a value of an enum field marked
+\`ranked: true\` on the membership entity (values rank in declared order, first most privileged) and allows that value or a
+higher one; without a ranked enum, membership is all or nothing. Lists show only rows the caller is a member of; on create
+the client sends the relation the path starts with and must be a member of the row it names, and \`and owner:author_id\`
+binds the author as usual. Choose it when the ask shares or adds people to one row (a playlist, a channel, a page), and
+tenancy when every row of the app belongs to a team. Whoever creates the parent adds themselves through an owner path:
+\`create: "owner:channel_id.created_by or member:channel_id.members:admin"\`. A membership relation ends a path: a right
+granted through a second junction (a page shared with a team, read by the team's members) is not expressible, say so in
+not_delivered; a membership counts as soon as its row exists (keep pending invites in their own entity); a role ranks
+within one junction, and two junctions rank through alternatives.
 
 ## Field
 
@@ -108,6 +123,7 @@ relation:              # makes this field a foreign key; type must match the tar
   on_delete: restrict | cascade | set_null   # set_null needs a nullable field
 hidden: true           # never returned by or accepted from the API
 read_only: true        # returned by the API but never accepted from it: register, create and update answer 400 when a client sends it
+ranked: true           # enum only: the values rank in declared order, first most privileged, for member:<path>:<value> on a membership entity
 file: { accept: [image/*, application/pdf], max_size: 5242880 }   # file only: what uploads it takes (sizes in bytes)
 \`\`\`
 

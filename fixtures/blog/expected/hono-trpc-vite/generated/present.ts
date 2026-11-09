@@ -24,6 +24,16 @@ export function presentAnnouncement(row: schema.Announcement): PublicAnnouncemen
   return { id: row.id, title: row.title, body: row.body, published: row.published, author_id: row.author_id, created_at: row.created_at };
 }
 
+export type PublicFollow = Pick<schema.Follow, "id" | "follower_id" | "followee_id" | "created_at">;
+export function presentFollow(row: schema.Follow): PublicFollow {
+  return { id: row.id, follower_id: row.follower_id, followee_id: row.followee_id, created_at: row.created_at };
+}
+
+export type PublicBulletin = Pick<schema.Bulletin, "id" | "author_id" | "body" | "created_at">;
+export function presentBulletin(row: schema.Bulletin): PublicBulletin {
+  return { id: row.id, author_id: row.author_id, body: row.body, created_at: row.created_at };
+}
+
 export type PublicOslFile = Pick<schema.OslFile, "id" | "key" | "name" | "size" | "type" | "status" | "owner_id" | "created_at">;
 export function presentOslFile(row: schema.OslFile): PublicOslFile {
   return { id: row.id, key: row.key, name: row.name, size: row.size, type: row.type, status: row.status, owner_id: row.owner_id, created_at: row.created_at };

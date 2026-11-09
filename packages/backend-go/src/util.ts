@@ -334,10 +334,14 @@ export function ruleLiteral(rule: RuleIR): string {
       return `access.Rule{Kind: "owner", Field: ${q(ruleKey(rule))}${when}}`;
     case "role":
       return `access.Rule{Kind: "role", Value: ${q(rule.value)}${when}}`;
-    case "member":
+    case "member": {
+      const through = rule.through
+        ? `, Through: true${rule.through.roles ? `, Roles: []string{${rule.through.roles.map(q).join(", ")}}` : ""}`
+        : "";
       return rule.role
-        ? `access.Rule{Kind: "member", Field: ${q(ruleKey(rule))}, Role: ${q(rule.role)}${when}}`
-        : `access.Rule{Kind: "member", Field: ${q(ruleKey(rule))}${when}}`;
+        ? `access.Rule{Kind: "member", Field: ${q(ruleKey(rule))}, Role: ${q(rule.role)}${through}${when}}`
+        : `access.Rule{Kind: "member", Field: ${q(ruleKey(rule))}${through}${when}}`;
+    }
     case "all":
       return `access.Rule{Kind: "all", All: []access.Rule{${rule.rules
         .map(r => ruleLiteral(r).replace(/^access\.Rule/, ""))

@@ -1,0 +1,276 @@
+osl: "1.0"
+summary: "Channels in a team with their own membership (member through a membership relation, ranked channel roles), public channels joined by any team member, messages bound to their author"
+ops:
+  - op: add_entity
+    name: Channel
+    entity:
+      fields:
+        id: { type: uuid, primary: true }
+        team_id:
+          type: uuid
+          required: true
+          relation: { entity: Team, name: team, reverse: channels, on_delete: cascade }
+        created_by:
+          type: uuid
+          required: true
+          relation: { entity: User, name: creator, on_delete: cascade }
+        name: { type: string, max_length: 80, required: true, validate: { min_length: 1 } }
+        private: { type: boolean, required: true, default: false }
+        created_at: { type: datetime, required: true, default: now }
+      unique: [[team_id, name]]
+      rules:
+        read: "member:members or member:team_id when private = false"
+        create: "member:team_id and owner:created_by"
+        update: "member:members:admin or member:team_id:admin"
+        delete: "member:members:admin or member:team_id:admin"
+        hidden: not_found
+  - op: add_entity
+    name: ChannelMember
+    entity:
+      table: channel_members
+      fields:
+        id: { type: uuid, primary: true }
+        channel_id:
+          type: uuid
+          required: true
+          relation: { entity: Channel, name: channel, reverse: members, on_delete: cascade }
+        user_id:
+          type: uuid
+          required: true
+          relation: { entity: User, name: user, reverse: channel_memberships, on_delete: cascade }
+        role: { type: enum, enum_values: [admin, member], required: true, default: member, ranked: true }
+        created_at: { type: datetime, required: true, default: now }
+      unique: [[channel_id, user_id]]
+      rules:
+        read: "member:channel_id.members or member:channel_id.team_id when channel_id.private = false"
+        create: "owner:channel_id.created_by or member:channel_id.members:admin"
+        update: "member:channel_id.members:admin"
+        delete: "owner:user_id or member:channel_id.members:admin"
+  - op: add_entity
+    name: Message
+    entity:
+      fields:
+        id: { type: uuid, primary: true }
+        channel_id:
+          type: uuid
+          required: true
+          relation: { entity: Channel, name: channel, reverse: messages, on_delete: cascade }
+        author_id:
+          type: uuid
+          required: true
+          relation: { entity: User, name: author, on_delete: cascade }
+        body: { type: text, required: true }
+        created_at: { type: datetime, required: true, default: now }
+      rules:
+        read: "member:channel_id.members or member:channel_id.team_id when channel_id.private = false"
+        create: "member:channel_id.members and owner:author_id"
+        update: "owner:author_id"
+        delete: "owner:author_id or member:channel_id.members:admin"
+        hidden: not_found
+  - op: add_resource
+    name: channels
+    resource:
+      entity: Channel
+      operations: [list, get, create, update, delete]
+      list: { filters: [team_id, private], order: [[name, asc]] }
+      get: { include: [members] }
+      actions:
+        join: { rule: "member:team_id when private = false" }
+  - op: add_resource
+    name: channel_members
+    resource:
+      entity: ChannelMember
+      operations: [list, get, create, delete]
+      list: { filters: [channel_id, user_id], include: [user] }
+  - op: add_resource
+    name: messages
+    resource:
+      entity: Message
+      operations: [list, get, create, update, delete]
+      list: { filters: [channel_id], order: [[created_at, asc]] }
+  - op: add_page
+    name: channels
+    page: { resource: channels, layout: table, columns: [name, private, team_id] }
+  - op: add_page
+    name: messages
+    page: { resource: messages, columns: [body, channel_id] }
+  - op: set_sidebar
+    sidebar:
+      items:
+        - { page: teams, icon: building }
+        - { page: projects, icon: folder-kanban }
+        - { page: tasks, icon: list-checks }
+        - { page: milestones, icon: flag }
+        - { page: notes, icon: sticky-note }
+        - { page: members, icon: users }
+        - { page: channels, icon: hash }
+        - { page: messages, icon: message-square }
+      footer: { user: true, settings: true }
+  - op: add_scenario
+    scenario:
+      name: private and public channels
+      steps:
+        - as: alice
+          op: teams.create
+          body: { name: Chatter }
+          expect: { status: 201 }
+          capture: { team: data.id }
+        - as: alice
+          op: auth.me
+          expect: { status: 200 }
+          capture: { alice_id: data.id }
+        - as: bob
+          op: auth.me
+          expect: { status: 200 }
+          capture: { bob_id: data.id }
+        - as: carol
+          op: auth.me
+          expect: { status: 200 }
+          capture: { carol_id: data.id }
+        - as: alice
+          op: members.create
+          body: { team_id: "{team}", user_id: "{bob_id}" }
+          expect: { status: 201 }
+        - as: carol
+          op: teams.create
+          body: { name: Elsewhere }
+          expect: { status: 201 }
+        - as: alice
+          op: channels.create
+          body: { team_id: "{team}", name: ops, private: true }
+          expect: { status: 201, body: { data: { name: ops, private: true, created_by: "{actor.id}" } } }
+          capture: { ops: data.id }
+        - as: alice
+          op: channel_members.create
+          body: { channel_id: "{ops}", user_id: "{alice_id}", role: admin }
+          expect: { status: 201, body: { data: { role: admin } } }
+          capture: { alice_ops: data.id }
+        - as: alice
+          op: channel_members.create
+          body: { channel_id: "{ops}", user_id: "{bob_id}" }
+          expect: { status: 201, body: { data: { role: member } } }
+          capture: { bob_ops: data.id }
+        - as: carol
+          op: channels.get
+          path: { id: "{ops}" }
+          expect: { status: 404 }
+        - as: carol
+          op: channels.list
+          query: { team_id: "{team}" }
+          expect: { status: 200, body: { page: { total: 0 } } }
+        - as: carol
+          op: messages.create
+          body: { channel_id: "{ops}", body: "hi" }
+          expect: { status: 403 }
+        - as: bob
+          op: messages.create
+          body: { channel_id: "{ops}", body: "Hello ops" }
+          expect: { status: 201, body: { data: { author_id: "{actor.id}", body: "Hello ops" } } }
+          capture: { m_bob: data.id }
+        - as: alice
+          op: messages.create
+          body: { channel_id: "{ops}", body: "Welcome" }
+          expect: { status: 201 }
+          capture: { m_alice: data.id }
+        - as: bob
+          op: messages.list
+          query: { channel_id: "{ops}" }
+          expect: { status: 200, body: { page: { total: 2 } } }
+        - as: carol
+          op: messages.list
+          query: { channel_id: "{ops}" }
+          expect: { status: 200, body: { page: { total: 0 } } }
+        - as: carol
+          op: messages.get
+          path: { id: "{m_bob}" }
+          expect: { status: 404 }
+        - as: bob
+          op: messages.delete
+          path: { id: "{m_alice}" }
+          expect: { status: 403 }
+        - as: bob
+          op: messages.update
+          path: { id: "{m_bob}" }
+          body: { body: "Hello, ops" }
+          expect: { status: 200, body: { data: { body: "Hello, ops" } } }
+        - as: alice
+          op: messages.delete
+          path: { id: "{m_bob}" }
+          expect: { status: 204 }
+        - as: bob
+          op: channel_members.create
+          body: { channel_id: "{ops}", user_id: "{carol_id}" }
+          expect: { status: 403 }
+        - as: alice
+          op: members.create
+          body: { team_id: "{team}", user_id: "{carol_id}" }
+          expect: { status: 201 }
+        - as: carol
+          op: channels.get
+          path: { id: "{ops}" }
+          expect: { status: 404 }
+        - as: alice
+          op: channel_members.create
+          body: { channel_id: "{ops}", user_id: "{carol_id}", role: admin }
+          expect: { status: 201 }
+        - as: carol
+          op: channel_members.list
+          query: { channel_id: "{ops}" }
+          expect: { status: 200, body: { page: { total: 3 } } }
+        - as: carol
+          op: channel_members.delete
+          path: { id: "{bob_ops}" }
+          expect: { status: 204 }
+        - as: bob
+          op: channels.get
+          path: { id: "{ops}" }
+          expect: { status: 404 }
+        - as: bob
+          op: channel_members.delete
+          path: { id: "{alice_ops}" }
+          expect: { status: 403 }
+        - op: messages.list
+          query: { channel_id: "{ops}" }
+          expect: { status: 401 }
+        - as: alice
+          op: channels.create
+          body: { team_id: "{team}", name: general }
+          expect: { status: 201, body: { data: { private: false } } }
+          capture: { general: data.id }
+        - as: bob
+          op: channels.get
+          path: { id: "{general}" }
+          expect: { status: 200, body: { data: { name: general } } }
+        - as: bob
+          op: messages.create
+          body: { channel_id: "{general}", body: "hey" }
+          expect: { status: 403 }
+        - as: bob
+          op: channels.join
+          path: { id: "{general}" }
+          expect: { status: 200, body: { data: { name: general } } }
+        - as: bob
+          op: messages.create
+          body: { channel_id: "{general}", body: "hey" }
+          expect: { status: 201, body: { data: { author_id: "{actor.id}" } } }
+        - as: bob
+          op: channels.join
+          path: { id: "{general}" }
+          expect: { status: 409 }
+        - as: carol
+          op: messages.list
+          query: { channel_id: "{general}" }
+          expect: { status: 200, body: { page: { total: 1 } } }
+        - as: alice
+          op: channels.update
+          path: { id: "{general}" }
+          body: { name: general-chat }
+          expect: { status: 200, body: { data: { name: general-chat } } }
+        - as: bob
+          op: channels.delete
+          path: { id: "{general}" }
+          expect: { status: 403 }
+        - as: alice
+          op: channels.delete
+          path: { id: "{ops}" }
+          expect: { status: 204 }

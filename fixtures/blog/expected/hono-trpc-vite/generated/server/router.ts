@@ -8,6 +8,8 @@ import { usersRouter } from "./resources/users";
 import { postsRouter } from "./resources/posts";
 import { commentsRouter } from "./resources/comments";
 import { announcementsRouter } from "./resources/announcements";
+import { followsRouter } from "./resources/follows";
+import { bulletinsRouter } from "./resources/bulletins";
 import { router } from "./trpc";
 
 export const appRouter = router({
@@ -17,7 +19,9 @@ export const appRouter = router({
   users: usersRouter,
   posts: postsRouter,
   comments: commentsRouter,
-  announcements: announcementsRouter
+  announcements: announcementsRouter,
+  follows: followsRouter,
+  bulletins: bulletinsRouter
 });
 
 export type AppRouter = typeof appRouter;

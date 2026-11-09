@@ -9,6 +9,9 @@ import { projectsRouter } from "./resources/projects";
 import { tasksRouter } from "./resources/tasks";
 import { notesRouter } from "./resources/notes";
 import { milestonesRouter } from "./resources/milestones";
+import { channelsRouter } from "./resources/channels";
+import { channel_membersRouter } from "./resources/channel_members";
+import { messagesRouter } from "./resources/messages";
 import { router } from "./trpc";
 
 export const appRouter = router({
@@ -19,7 +22,10 @@ export const appRouter = router({
   projects: projectsRouter,
   tasks: tasksRouter,
   notes: notesRouter,
-  milestones: milestonesRouter
+  milestones: milestonesRouter,
+  channels: channelsRouter,
+  channel_members: channel_membersRouter,
+  messages: messagesRouter
 });
 
 export type AppRouter = typeof appRouter;

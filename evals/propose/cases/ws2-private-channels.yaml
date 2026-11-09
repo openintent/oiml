@@ -1,0 +1,32 @@
+id: ws2-private-channels
+tags: [entity, rules, relation, tenancy, scenario]
+base: { fixture: workspace, through: WS-2 }
+intent:
+  title: Private channels
+  ask: >-
+    Teams talk in channels. A channel is public or private. Any member of the team reads a public channel and its
+    messages; a private channel and its messages are seen only by the people added to it, and only those people
+    post in it. Whoever creates a channel adds people to it. A message always belongs to the member who posted it,
+    whatever the request says; its author edits and deletes it.
+  acceptance:
+    - A team member who is not in a private channel is refused its messages and cannot post
+    - A channel member posts a message that carries their own id as author
+    - Any team member reads a public channel's messages
+expect:
+  entities: [Channel, "ChannelMember|ChannelMembership|ChannelPerson", Message]
+  relations:
+    [
+      "Message.* -> Channel",
+      "ChannelMember|ChannelMembership|ChannelPerson.* -> Channel",
+      "ChannelMember|ChannelMembership|ChannelPerson.* -> User"
+    ]
+  rules:
+    Message:
+      read: "member:channel_id.members or member:channel_id.team_id when channel_id.private = false|member:channel_id.members or member:channel_id.team_id when channel_id.public = true|member:channel_id.members or member:channel_id.team_id when channel_id.visibility = public"
+      create: "member:channel_id.members and owner:author_id"
+  scenarios: { min: 1, rejections: 1, statuses: [403] }
+  touches: [messages]
+notes: >-
+  The Slack exercise's ask (docs/exercises/slack.md, SL-3 and SL-4): the channel's own membership beside the team's.
+  The expectation names the reverse relation `members`; the junction's name is the agent's. A diff that answers
+  with a handler, or with a tenant rule alone, fails the rules check on purpose.

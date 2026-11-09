@@ -83,10 +83,10 @@ export function resourceFile(ir: IR, resource: ResourceIR): string {
    * answers 404), then the operation's own rule, both reading one resolution of the paths they follow.
    */
   const rowChecks = (own: RuleIR, rowVar: string): { lines: string; arg: string } => {
-    if (entity.hidden !== "not_found") return { lines: "", arg: rowArg(own, rowVar) };
+    if (entity.hidden !== "not_found") return { lines: "", arg: rowArg(own, rowVar, sessionArg) };
     const via = hasVia(entity.rules.read) || hasVia(own);
     const arg = via ? `${rowVar}Values` : rowVar;
-    const resolve = via ? `\n      const ${arg} = await withRuleValues(${rowVar});` : "";
+    const resolve = via ? `\n      const ${arg} = await withRuleValues(${rowVar}${sessionArg});` : "";
     return { lines: `${resolve}\n      if (!checkRule(RULES.read, session, ${arg}).ok) return notFound();`, arg };
   };
   const listFilter = list
@@ -105,12 +105,15 @@ export function resourceFile(ir: IR, resource: ResourceIR): string {
     [entity.rules.read, entity.rules.create, entity.rules.update, entity.rules.delete, ...actions.map(a => a.rule)],
     tableVar
   );
+  /** withRuleValues takes the session when a rule ends in a membership relation (the caller's own row is looked up) */
+  const sessionArg = ruleValues?.needsSession ? ", session" : "";
   /** Tables the module imports beyond the entity's own: the membership table of a tenant, and the ones rules reach */
   const extraTables = new Set<string>([...(listFilter?.tables ?? []), ...(ruleValues?.tables ?? [])]);
   extraTables.delete(entity.name);
 
   const drizzleImports = new Set<string>();
   if (get || update || remove || actions.some(a => a.scope === "row") || ruleValues) drizzleImports.add("eq");
+  for (const name of ruleValues?.drizzle ?? []) drizzleImports.add(name);
   if (list) {
     drizzleImports.add("count");
     drizzleImports.add("and");
@@ -235,7 +238,7 @@ ${filterLines.join("\n")}
       if (!id.ok) return id.response;
       const row = await ${query}.findFirst({ where: eq(${table}.${pk}, id.data)${withClause(get.include)} });
       if (!row) return notFound();
-      const rowVerdict = checkRule(RULES.read, session, ${rowArg(get.rule, "row")});
+      const rowVerdict = checkRule(RULES.read, session, ${rowArg(get.rule, "row", sessionArg)});
       if (!rowVerdict.ok) return ${entity.hidden === "not_found" ? "notFound()" : "denied(rowVerdict)"};
       return ok(presentGetRow(row));
     } catch (err) {
@@ -252,7 +255,7 @@ ${filterLines.join("\n")}
     const emitLines = events("created").map(e => `      await emit(${q(e.name)}, present${T}(row));`);
     const defaults = conditionDefaults(entity, create.rule);
     const bodyCheck = needsBodyCheck(create.rule)
-      ? `      const bodyVerdict = checkRule(RULES.create, session, ${rowArg(create.rule, owner || defaults ? `{ ${defaults}...body.data${owner} }` : "body.data")});
+      ? `      const bodyVerdict = checkRule(RULES.create, session, ${rowArg(create.rule, owner || defaults ? `{ ${defaults}...body.data${owner} }` : "body.data", sessionArg)});
       if (!bodyVerdict.ok) return denied(bodyVerdict);\n`
       : "";
     const insert =

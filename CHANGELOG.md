@@ -5,6 +5,13 @@ fixture intent on all three backends before it is listed here.
 
 ## Unreleased
 
+- Membership through any relation (round A2 of the road to 1.0.0): a `member:` path may end in a membership
+  relation, a reverse relation to a junction whose entity has a relation to the identity (`member:members` on a
+  channel, `member:channel_id.members` on a message, `member:author_id.followers` on a bulletin); `:role` ranks an
+  enum field marked `ranked: true` on the junction. Tenancy's `member:team_id` is unchanged. Lists filter with a
+  subquery through the junction, row checks look the caller's membership row up, and the harness evaluator learned
+  the predicate. Diagnostics M036 to M039; workspace WS-9 channels and blog FEAT-12 followers; eval cases
+  `fx-ws-9-channels`, `fx-blog-12-followers`, `ws2-private-channels`, `empty-playlists`; the clusterer's topic.
 - The conformance walks (round A1 of the road to 1.0.0): five checks the harness runs over every fixture after the
   scenarios, as steps `walk:rule`, `walk:tenant`, `walk:leak`, `walk:fuzz` and `walk:contract`. The rule walk
   compares every operation and action, as every actor and anonymously, with what the IR's rules predict; the

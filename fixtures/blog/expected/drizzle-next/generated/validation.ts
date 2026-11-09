@@ -93,6 +93,40 @@ export const announcementsUpdateInput = z
   })
   .strict();
 
+export const followsId = z.string().uuid();
+export const followsListQuery = z
+  .object({
+    page: z.coerce.number().int().min(1).default(1),
+    page_size: z.coerce.number().int().min(1).max(200).default(20),
+    follower_id: z.string().uuid().optional(),
+    followee_id: z.string().uuid().optional()
+  })
+  .strict();
+export const followsCreateInput = z
+  .object({
+    followee_id: z.string().uuid()
+  })
+  .strict();
+
+export const bulletinsId = z.string().uuid();
+export const bulletinsListQuery = z
+  .object({
+    page: z.coerce.number().int().min(1).default(1),
+    page_size: z.coerce.number().int().min(1).max(200).default(20),
+    author_id: z.string().uuid().optional()
+  })
+  .strict();
+export const bulletinsCreateInput = z
+  .object({
+    body: z.string()
+  })
+  .strict();
+export const bulletinsUpdateInput = z
+  .object({
+    body: z.string().optional()
+  })
+  .strict();
+
 export const usersBanInput = z
   .object({
     reason: z.string().min(1).max(200)

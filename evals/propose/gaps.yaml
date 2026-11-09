@@ -152,7 +152,8 @@ gaps:
     first_seen: r5
     last_seen: r6
     cases: 2
-    note: "Exercise (docs/exercises/spotify.md): every Spotify screen but Home, Search and Library is one (artist, album,
+    note:
+      "Exercise (docs/exercises/spotify.md): every Spotify screen but Home, Search and Library is one (artist, album,
       playlist, profile, show), each composed of sections from several resources filtered by the parameter. Slack
       (docs/exercises/slack.md) adds the tenant context: a chosen workspace that scopes the sidebar and every list
       ({tenant.id} beside {actor.id}, a switcher in the shell); the rounds file that ask under this topic. Notion
@@ -301,10 +302,13 @@ gaps:
   # intents by hand, with what no intent can say. cases is 0 until a round reports them.
   - key: membership through any relation
     kind: not_delivered
-    status: open
+    status: built
     first_seen: exercise-spotify
     last_seen: exercise-slack
     cases: 0
+    construct: "member:<path> ending in a membership relation (a reverse relation to a junction with a relation to the
+      identity), :role over an enum marked ranked: true"
+    version: unreleased
     note: "member: is bound to the one tenancy entity, so a second membership shape (playlist collaborators beside
       artist teams, a document shared with people) has no predicate. Sketch in docs/exercises/spotify.md: a predicate
       over a reverse relation to a junction with an identity relation, compiled to the EXISTS subquery member: uses.

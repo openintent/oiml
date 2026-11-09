@@ -39,12 +39,16 @@ describe("openapi document", () => {
       "/api/auth/oauth/github/callback",
       "/api/auth/providers",
       "/api/auth/register",
+      "/api/bulletins",
+      "/api/bulletins/{id}",
       "/api/comments",
       "/api/comments/{id}",
       "/api/files",
       "/api/files/{id}",
       "/api/files/{id}/complete",
       "/api/files/{id}/content",
+      "/api/follows",
+      "/api/follows/{id}",
       "/api/posts",
       "/api/posts/{id}",
       "/api/posts/{id}/lock",
@@ -64,9 +68,11 @@ describe("openapi document", () => {
     expect(Object.keys(doc.components.schemas)).toEqual([
       "Announcement",
       "Article",
+      "Bulletin",
       "Comment",
       "Error",
       "File",
+      "Follow",
       "User"
     ]);
     expect(doc.components.securitySchemes).toBeDefined();

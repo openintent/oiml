@@ -6,6 +6,7 @@ import { boolean, date, index, pgEnum, pgTable, text, timestamp, unique, uuid, v
 
 export const teamMemberRoleEnum = pgEnum("team_member_role", ["owner", "admin", "member"]);
 export const projectStatusEnum = pgEnum("project_status", ["active", "archived"]);
+export const channelMemberRoleEnum = pgEnum("channel_member_role", ["admin", "member"]);
 export const oslAuthTokenPurposeEnum = pgEnum("osl_auth_token_purpose", ["magic_link"]);
 
 export const users = pgTable("users", {
@@ -86,6 +87,43 @@ export const milestones = pgTable(
   t => [index("milestones_project_id_idx").on(t.project_id)]
 );
 
+export const channels = pgTable(
+  "channels",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    team_id: uuid().notNull().references(() => teams.id, { onDelete: "cascade" }),
+    created_by: uuid().notNull().references(() => users.id, { onDelete: "cascade" }),
+    name: varchar({ length: 80 }).notNull(),
+    private: boolean().notNull().default(false),
+    created_at: timestamp({ withTimezone: true }).notNull().defaultNow()
+  },
+  t => [unique("channels_team_id_name_key").on(t.team_id, t.name), index("channels_team_id_idx").on(t.team_id), index("channels_created_by_idx").on(t.created_by)]
+);
+
+export const channelMembers = pgTable(
+  "channel_members",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    channel_id: uuid().notNull().references(() => channels.id, { onDelete: "cascade" }),
+    user_id: uuid().notNull().references(() => users.id, { onDelete: "cascade" }),
+    role: channelMemberRoleEnum().notNull().default("member"),
+    created_at: timestamp({ withTimezone: true }).notNull().defaultNow()
+  },
+  t => [unique("channel_members_channel_id_user_id_key").on(t.channel_id, t.user_id), index("channel_members_channel_id_idx").on(t.channel_id), index("channel_members_user_id_idx").on(t.user_id)]
+);
+
+export const messages = pgTable(
+  "messages",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    channel_id: uuid().notNull().references(() => channels.id, { onDelete: "cascade" }),
+    author_id: uuid().notNull().references(() => users.id, { onDelete: "cascade" }),
+    body: text().notNull(),
+    created_at: timestamp({ withTimezone: true }).notNull().defaultNow()
+  },
+  t => [index("messages_channel_id_idx").on(t.channel_id), index("messages_author_id_idx").on(t.author_id)]
+);
+
 export const oslAuthTokens = pgTable("osl_auth_tokens", {
   id: uuid().primaryKey().defaultRandom(),
   token_hash: varchar({ length: 255 }).notNull().unique(),
@@ -96,12 +134,14 @@ export const oslAuthTokens = pgTable("osl_auth_tokens", {
 });
 
 export const usersRelations = relations(users, ({ many }) => ({
-  memberships: many(teamMembers, { relationName: "user" })
+  memberships: many(teamMembers, { relationName: "user" }),
+  channel_memberships: many(channelMembers, { relationName: "user" })
 }));
 
 export const teamsRelations = relations(teams, ({ many }) => ({
   members: many(teamMembers, { relationName: "team" }),
-  projects: many(projects, { relationName: "team" })
+  projects: many(projects, { relationName: "team" }),
+  channels: many(channels, { relationName: "team" })
 }));
 
 export const teamMembersRelations = relations(teamMembers, ({ one }) => ({
@@ -130,6 +170,23 @@ export const milestonesRelations = relations(milestones, ({ one }) => ({
   project: one(projects, { fields: [milestones.project_id], references: [projects.id], relationName: "project" })
 }));
 
+export const channelsRelations = relations(channels, ({ one, many }) => ({
+  team: one(teams, { fields: [channels.team_id], references: [teams.id], relationName: "team" }),
+  creator: one(users, { fields: [channels.created_by], references: [users.id], relationName: "creator" }),
+  members: many(channelMembers, { relationName: "channel" }),
+  messages: many(messages, { relationName: "channel" })
+}));
+
+export const channelMembersRelations = relations(channelMembers, ({ one }) => ({
+  channel: one(channels, { fields: [channelMembers.channel_id], references: [channels.id], relationName: "channel" }),
+  user: one(users, { fields: [channelMembers.user_id], references: [users.id], relationName: "user" })
+}));
+
+export const messagesRelations = relations(messages, ({ one }) => ({
+  channel: one(channels, { fields: [messages.channel_id], references: [channels.id], relationName: "channel" }),
+  author: one(users, { fields: [messages.author_id], references: [users.id], relationName: "author" })
+}));
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Team = typeof teams.$inferSelect;
@@ -144,5 +201,11 @@ export type Note = typeof notes.$inferSelect;
 export type NewNote = typeof notes.$inferInsert;
 export type Milestone = typeof milestones.$inferSelect;
 export type NewMilestone = typeof milestones.$inferInsert;
+export type Channel = typeof channels.$inferSelect;
+export type NewChannel = typeof channels.$inferInsert;
+export type ChannelMember = typeof channelMembers.$inferSelect;
+export type NewChannelMember = typeof channelMembers.$inferInsert;
+export type Message = typeof messages.$inferSelect;
+export type NewMessage = typeof messages.$inferInsert;
 export type OslAuthToken = typeof oslAuthTokens.$inferSelect;
 export type NewOslAuthToken = typeof oslAuthTokens.$inferInsert;

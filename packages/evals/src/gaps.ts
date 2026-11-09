@@ -146,6 +146,10 @@ const TOPICS: [topic: string, pattern: RegExp][] = [
   [
     "relations beyond many-to-one",
     /\b(many[- ]to[- ]many|self[- ]referen|polymorphic|tree|hierarch|nested|parent.{0,20}child|ancestor)/i
+  ],
+  [
+    "membership through any relation",
+    /\b(collaborator|co-?editor|shared with|share (it|a|the|this) with|participants? only|members of (a|the|this|its|their) (channel|group|room|playlist|board|document|page)|private (channel|group|room)|add(ed|s)? (people|users|members|someone) to (a|the|this|its|their) (channel|group|playlist|board|page|room)|(join|leave)s? (a|the) (channel|group|room))/i
   ]
 ];
 

@@ -344,7 +344,7 @@ async function createRows(
         }
         const predicted = { ...built.body };
         if (create.ownerField && caller.session) predicted[create.ownerField] = caller.session.id;
-        const resolved = await resolver.resolve(entity, predicted, [create.rule]);
+        const resolved = await resolver.resolve(entity, predicted, [create.rule], caller.session);
         const expect = createOp(create.rule, caller.session, resolved, roles);
         let body = built.body;
         let reply = await caller.client.resource({ resource, op: create, body });
@@ -444,7 +444,7 @@ async function readWalk(
         await refresh(caller, resolver);
         const fresh = await resolver.fresh(entity, row.id);
         if (!fresh) break;
-        const resolved = await resolver.resolve(entity, fresh, rules);
+        const resolved = await resolver.resolve(entity, fresh, rules, caller.session);
         if (get && get.rule.kind !== "none") {
           const expect = rowOp(get.rule, entity, caller.session, resolved, roles, true);
           const reply = await caller.client.resource({ resource, op: get, id: row.id });
@@ -493,7 +493,7 @@ async function readWalk(
               action.rule,
               entity,
               caller.session,
-              await resolver.resolve(entity, fresh, rules),
+              await resolver.resolve(entity, fresh, rules, caller.session),
               roles,
               false
             );
@@ -502,7 +502,7 @@ async function readWalk(
             await refresh(caller, resolver);
             const fresh = await resolver.fresh(entity, row.id);
             if (!fresh) break;
-            const resolved = await resolver.resolve(entity, fresh, rules);
+            const resolved = await resolver.resolve(entity, fresh, rules, caller.session);
             const expect = rowOp(action.rule, entity, caller.session, resolved, roles, false);
             const body = actionInput(action, bodies);
             const reply = await caller.client.action({ action, id: row.id, body });
@@ -587,13 +587,20 @@ async function deleteWalk(
       const order = await sortByExpectation(state.callers, resolver, async caller => {
         const fresh = await resolver.fresh(entity, row.id);
         if (!fresh) return { allow: false, status: 404 };
-        return rowOp(del.rule, entity, caller.session, await resolver.resolve(entity, fresh, rules), roles, false);
+        return rowOp(
+          del.rule,
+          entity,
+          caller.session,
+          await resolver.resolve(entity, fresh, rules, caller.session),
+          roles,
+          false
+        );
       });
       for (const caller of order) {
         await refresh(caller, resolver);
         const fresh = await resolver.fresh(entity, row.id);
         if (!fresh) break;
-        const resolved = await resolver.resolve(entity, fresh, rules);
+        const resolved = await resolver.resolve(entity, fresh, rules, caller.session);
         const expect = rowOp(del.rule, entity, caller.session, resolved, roles, false);
         const reply = await caller.client.resource({ resource, op: del, id: row.id });
         state.calls++;

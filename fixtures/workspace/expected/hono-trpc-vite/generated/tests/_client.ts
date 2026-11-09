@@ -46,6 +46,23 @@ const COERCE: Record<string, Record<string, "int" | "number" | "boolean" | "stri
     "page_size": "int",
     "project_id": "string",
     "done": "boolean"
+  },
+  "channels.list": {
+    "page": "int",
+    "page_size": "int",
+    "team_id": "string",
+    "private": "boolean"
+  },
+  "channel_members.list": {
+    "page": "int",
+    "page_size": "int",
+    "channel_id": "string",
+    "user_id": "string"
+  },
+  "messages.list": {
+    "page": "int",
+    "page_size": "int",
+    "channel_id": "string"
   }
 };
 

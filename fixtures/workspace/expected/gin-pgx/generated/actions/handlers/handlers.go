@@ -6,8 +6,12 @@ package handlers
 import (
 	"workspace/generated/actions"
 	"workspace/generated/models"
+	channelsjoin "workspace/src/actions/channels_join"
 	tasksremind "workspace/src/actions/tasks_remind"
 )
 
 // TasksRemind handles POST /api/tasks/{id}/remind; its body is src/actions/tasks_remind/handler.go.
 var TasksRemind func(ctx *actions.Context, input actions.TasksRemindInput, row *models.Task) (*models.Task, error) = tasksremind.Handle
+
+// ChannelsJoin handles POST /api/channels/{id}/join; its body is src/actions/channels_join/handler.go.
+var ChannelsJoin func(ctx *actions.Context, input actions.ChannelsJoinInput, row *models.Channel) (*models.Channel, error) = channelsjoin.Handle

@@ -65,6 +65,28 @@ export const announcements = pgTable(
   t => [index("announcements_author_id_idx").on(t.author_id)]
 );
 
+export const follows = pgTable(
+  "follows",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    follower_id: uuid().notNull().references(() => users.id, { onDelete: "cascade" }),
+    followee_id: uuid().notNull().references(() => users.id, { onDelete: "cascade" }),
+    created_at: timestamp({ withTimezone: true }).notNull().defaultNow()
+  },
+  t => [unique("follows_follower_id_followee_id_key").on(t.follower_id, t.followee_id), index("follows_follower_id_idx").on(t.follower_id), index("follows_followee_id_idx").on(t.followee_id)]
+);
+
+export const bulletins = pgTable(
+  "bulletins",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    author_id: uuid().notNull().references(() => users.id, { onDelete: "cascade" }),
+    body: text().notNull(),
+    created_at: timestamp({ withTimezone: true }).notNull().defaultNow()
+  },
+  t => [index("bulletins_author_id_idx").on(t.author_id)]
+);
+
 export const oslFiles = pgTable(
   "osl_files",
   {
@@ -113,7 +135,10 @@ export const oslAuthAccounts = pgTable(
 );
 
 export const usersRelations = relations(users, ({ many }) => ({
-  posts: many(articles, { relationName: "author" })
+  posts: many(articles, { relationName: "author" }),
+  following: many(follows, { relationName: "follower" }),
+  followers: many(follows, { relationName: "followee" }),
+  bulletins: many(bulletins, { relationName: "author" })
 }));
 
 export const articlesRelations = relations(articles, ({ one, many }) => ({
@@ -128,6 +153,15 @@ export const commentsRelations = relations(comments, ({ one }) => ({
 
 export const announcementsRelations = relations(announcements, ({ one }) => ({
   author: one(users, { fields: [announcements.author_id], references: [users.id], relationName: "author" })
+}));
+
+export const followsRelations = relations(follows, ({ one }) => ({
+  follower: one(users, { fields: [follows.follower_id], references: [users.id], relationName: "follower" }),
+  followee: one(users, { fields: [follows.followee_id], references: [users.id], relationName: "followee" })
+}));
+
+export const bulletinsRelations = relations(bulletins, ({ one }) => ({
+  author: one(users, { fields: [bulletins.author_id], references: [users.id], relationName: "author" })
 }));
 
 export const oslFilesRelations = relations(oslFiles, ({ one }) => ({
@@ -146,6 +180,10 @@ export type Comment = typeof comments.$inferSelect;
 export type NewComment = typeof comments.$inferInsert;
 export type Announcement = typeof announcements.$inferSelect;
 export type NewAnnouncement = typeof announcements.$inferInsert;
+export type Follow = typeof follows.$inferSelect;
+export type NewFollow = typeof follows.$inferInsert;
+export type Bulletin = typeof bulletins.$inferSelect;
+export type NewBulletin = typeof bulletins.$inferInsert;
 export type OslFile = typeof oslFiles.$inferSelect;
 export type NewOslFile = typeof oslFiles.$inferInsert;
 export type OslAuthToken = typeof oslAuthTokens.$inferSelect;

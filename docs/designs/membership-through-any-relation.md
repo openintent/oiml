@@ -1,8 +1,26 @@
 # Design: membership through any relation
 
-**Status: proposed 2026-11-09.** Not yet built. The construct all three clone exercises named, and the only one none
-of the generated rounds has, because a ten-line intent rarely has two kinds of membership at once. The grammar
-below is the design to review before the build; the grammar is permanent.
+**Status: built 2026-11-09** (round A2 of the road to 1.0.0). What changed from the design below while building:
+the grammar is as written; `ranked` on a field that is not an enum is a schema refinement ("ranked only applies to
+enum fields") and M039 is two ranked enums on one entity; a reverse relation to any entity that reaches the
+identity counts as a membership (the authors of a channel's messages are one, odd but consistent), and M036 fires
+when the junction has two relations to the identity and the path did not arrive through it; the resolved
+membership sits under the path ending in the relation's name (`channel_id.members`), never the row's own column, so
+`member:members` on the channel cannot shadow its `id`; `withRuleValues` and the Go `ruleRow` take the session only
+in modules whose rules end in a membership relation, so every other module's output is byte for byte what it was
+(the snapshot step showed only the three shared access modules changing); the Go generator kept its own `hasVia`,
+which did not know memberships, so its `Get` checked the read rule against a bare row, found by the blog scenario
+and not by the walks, whose follow rows are self-follows (a walk limitation worth a later fix: related rows between
+actors); the Go list subquery casts the ranked enum to text before `= ANY`. The harness evaluator learned the
+predicate (`Resolver.resolve` takes the session). Proof: workspace WS-9 "channels" (Channel, ChannelMember with
+`ranked: true`, Message, a `join` row action with an overlay handler on each backend, 39 steps) and blog FEAT-12
+"followers and bulletins" (Follow with two identity relations, Bulletin read by the author's followers, 14 steps),
+conformance 9/9 with every earlier scenario unchanged (blog 141 and workspace 165 scenario tests per backend) and the
+five walks passing (blog 501 rule calls and 760 probes, workspace 473 and 956 with 16 home-team rows checked against
+an outsider), 116 unit tests, the oracle gate 27/27 with `fx-ws-9-channels` and `fx-blog-12-followers`, and the
+cases `ws2-private-channels` and `empty-playlists` for the next live round. The construct all three clone exercises
+named, and the only one none of the generated rounds had, because a ten-line intent rarely has two kinds of
+membership at once.
 
 `member:` today means one thing: the caller has a row in the tenancy's membership entity for the tenant the path
 reaches. Every application with a second membership shape stops there. Spotify's playlists have collaborators
@@ -14,19 +32,19 @@ case it always was.
 
 ## What was asked, in the exercises' words
 
-| Ask                                                                                           | Where                          | Verdict                                                           |
-| --------------------------------------------------------------------------------------------- | ------------------------------ | ----------------------------------------------------------------- |
-| "Chosen people may edit a playlist with its owner"                                            | Spotify SP-5                   | construct                                                         |
-| "Only members read a private channel; anyone in the workspace reads a public one"             | Slack SL-3                     | construct, with a tenant alternative                              |
-| "A member of the channel posts, and the message is theirs whatever the request says"          | Slack SL-4                     | construct, in a conjunction with an owner binding                 |
-| "Only the participants read a conversation"                                                   | Slack SL-5                     | construct                                                         |
-| "A guest sees only the channels they were added to"                                           | Slack SL-1                     | construct: a guest's only rows come through memberships           |
-| "A page is shared with named people at a level: full access, edit, comment, view"             | Notion NO-5                    | construct, with a ranked enum on the junction                     |
-| "Only my followers see my updates"                                                            | blog2-followers (corpus), SP-6 | construct: a junction with two relations to the identity          |
-| "A file is downloadable by whoever may read its message"                                      | Slack SL-10                    | the file-access gap; this gives it the rule to follow             |
-| "A page shared with a group"                                                                  | Notion NO-5                    | declined below: a right granted through a second junction         |
-| "A pending invite is not a membership yet"                                                    | the invites design             | declined below: pending rows live in their own entity             |
-| "A share link that shows only one owner's board"                                              | r4-09                          | not this: a page filter, the pages gap                            |
+| Ask                                                                                  | Where                          | Verdict                                                   |
+| ------------------------------------------------------------------------------------ | ------------------------------ | --------------------------------------------------------- |
+| "Chosen people may edit a playlist with its owner"                                   | Spotify SP-5                   | construct                                                 |
+| "Only members read a private channel; anyone in the workspace reads a public one"    | Slack SL-3                     | construct, with a tenant alternative                      |
+| "A member of the channel posts, and the message is theirs whatever the request says" | Slack SL-4                     | construct, in a conjunction with an owner binding         |
+| "Only the participants read a conversation"                                          | Slack SL-5                     | construct                                                 |
+| "A guest sees only the channels they were added to"                                  | Slack SL-1                     | construct: a guest's only rows come through memberships   |
+| "A page is shared with named people at a level: full access, edit, comment, view"    | Notion NO-5                    | construct, with a ranked enum on the junction             |
+| "Only my followers see my updates"                                                   | blog2-followers (corpus), SP-6 | construct: a junction with two relations to the identity  |
+| "A file is downloadable by whoever may read its message"                             | Slack SL-10                    | the file-access gap; this gives it the rule to follow     |
+| "A page shared with a group"                                                         | Notion NO-5                    | declined below: a right granted through a second junction |
+| "A pending invite is not a membership yet"                                           | the invites design             | declined below: pending rows live in their own entity     |
+| "A share link that shows only one owner's board"                                     | r4-09                          | not this: a page filter, the pages gap                    |
 
 ## The construct
 
@@ -34,7 +52,8 @@ case it always was.
 entities:
   Channel:
     fields:
-      team_id: { type: uuid, required: true, relation: { entity: Team, name: team, reverse: channels, on_delete: cascade } }
+      team_id:
+        { type: uuid, required: true, relation: { entity: Team, name: team, reverse: channels, on_delete: cascade } }
       created_by: { type: uuid, required: true, relation: { entity: User, name: creator, on_delete: cascade } }
       name: { type: string, max_length: 80, required: true }
       private: { type: boolean, required: true, default: false }
@@ -47,8 +66,18 @@ entities:
       hidden: not_found
   ChannelMember:
     fields:
-      channel_id: { type: uuid, required: true, relation: { entity: Channel, name: channel, reverse: members, on_delete: cascade } }
-      user_id: { type: uuid, required: true, relation: { entity: User, name: user, reverse: channel_memberships, on_delete: cascade } }
+      channel_id:
+        {
+          type: uuid,
+          required: true,
+          relation: { entity: Channel, name: channel, reverse: members, on_delete: cascade }
+        }
+      user_id:
+        {
+          type: uuid,
+          required: true,
+          relation: { entity: User, name: user, reverse: channel_memberships, on_delete: cascade }
+        }
       role: { type: enum, enum_values: [admin, member], required: true, default: member, ranked: true }
     unique: [[channel_id, user_id]]
     rules:
@@ -57,7 +86,12 @@ entities:
       delete: "owner:user_id or member:channel_id.members:admin"
   Message:
     fields:
-      channel_id: { type: uuid, required: true, relation: { entity: Channel, name: channel, reverse: messages, on_delete: cascade } }
+      channel_id:
+        {
+          type: uuid,
+          required: true,
+          relation: { entity: Channel, name: channel, reverse: messages, on_delete: cascade }
+        }
       author_id: { type: uuid, required: true, relation: { entity: User, name: author, on_delete: cascade } }
       body: { type: text, required: true }
     rules:
@@ -95,14 +129,14 @@ relation implied, and `member:id` on the tenant entity stays.
   role is below the one named, 404 for a hidden row under `hidden: not_found`, and on create 403 when the related
   row the body names is missing or the caller is not in its junction, as the related-row check answers today.
 
-| Caller and rule                                                                  | Answer                                   |
-| -------------------------------------------------------------------------------- | ---------------------------------------- |
-| Anonymous, any membership rule and no public alternative                         | 401, before the row is loaded            |
-| Signed in, not in the junction for the row the path reaches                      | 403, or 404 under `hidden: not_found`    |
-| In the junction below the role named                                             | 403 (the row is visible when read allows)|
-| In the junction at or above the role                                             | allowed                                  |
-| A list                                                                           | rows whose junction holds the caller     |
-| Create naming a channel the caller is not a member of                            | 403                                      |
+| Caller and rule                                             | Answer                                    |
+| ----------------------------------------------------------- | ----------------------------------------- |
+| Anonymous, any membership rule and no public alternative    | 401, before the row is loaded             |
+| Signed in, not in the junction for the row the path reaches | 403, or 404 under `hidden: not_found`     |
+| In the junction below the role named                        | 403 (the row is visible when read allows) |
+| In the junction at or above the role                        | allowed                                   |
+| A list                                                      | rows whose junction holds the caller      |
+| Create naming a channel the caller is not a member of       | 403                                       |
 
 Decisions, and why:
 
@@ -149,7 +183,7 @@ Decisions, and why:
   predicate's key as its ranked value (or `true` without one, `null` when absent). `verdict`'s member branch tests
   that value's rank when the rule has `through`; `rank` takes the roles from the rule rather than the tenancy's
   list. `listRuleFilter`'s leaf for a `through` predicate becomes `inArray(t.<pk>, db.select({ id: j.<target>
-  }).from(j).where(and(eq(j.<member>, me), inArray(j.<role>, rolesAtLeast))))` through the existing `through()`
+}).from(j).where(and(eq(j.<member>, me), inArray(j.<role>, rolesAtLeast))))` through the existing `through()`
   hops, with no `tenants` guard. `createChecksBody` is already true for member. Pages: `rulePredicate` already
   renders a member rule as `user !== null` and leaves the decision to the API.
 - gin-pgx: `ruleRow` adds the lookup under the same key; `access.CheckRow` reads it for `through` rules with the
@@ -197,11 +231,11 @@ Decisions, and why:
   "followers and bulletins" adds `Follow` (`follower_id` → User with `reverse: following`, `followee_id` → User
   with `reverse: followers`, unique on both, `create` and `delete` as `owner:follower_id`) and `Bulletin`
   (`author_id`, `body`) with `read: "owner:author_id or member:author_id.followers"` and `create:
-  "owner:author_id"`, and a scenario in which Bob follows Alice (201), again (409), reads her bulletin (200),
+"owner:author_id"`, and a scenario in which Bob follows Alice (201), again (409), reads her bulletin (200),
   Carol reads it (403) and lists none, Bob unfollows (204) and is refused (403). The second fixture proves the
   two-identity junction and a path that ends on the identity's own membership relation, without tenancy.
 - Eval cases: `fx-ws-9-channels` and `fx-blog-12-followers` with the fixtures' diffs as oracles; `ws2-private-
-  channels`, the Slack ask over the workspace base through WS-2, expecting `member:` with `members` in Message's
+channels`, the Slack ask over the workspace base through WS-2, expecting `member:` with `members` in Message's
   rules and 403 and 404 in the scenarios; `empty-playlists`, the Spotify ask over an empty model, expecting a
   collaborators junction and `member:collaborators` on the playlist's update rule.
 - Gate: conformance 9/9, snapshots, the oracle grader, rounds 1 to 7 graded again with `--resume` losing nothing,

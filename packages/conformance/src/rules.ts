@@ -15,7 +15,8 @@ import {
   type EntityIR,
   type IR,
   type RuleConditionIR,
-  type RuleIR
+  type RuleIR,
+  ruleMemberships
 } from "@osl/core";
 
 export type Row = Record<string, unknown>;
@@ -99,6 +100,15 @@ function predicate(rule: RuleIR, session: Session | null, row: Row | null, roles
     case "member": {
       if (!session) return { ok: false, status: 401 };
       if (!row) return ALLOW;
+      if (rule.through) {
+        // The caller's membership row of the junction, resolved under the predicate's key: its ranked value, true, or null
+        const held = row[ruleKey(rule)];
+        if (held == null || held === false) return { ok: false, status: 403 };
+        const list = rule.through.roles ?? [];
+        if (rule.role !== undefined && rank(list, String(held)) > rank(list, rule.role))
+          return { ok: false, status: 403 };
+        return ALLOW;
+      }
       const tenant = row[ruleKey(rule)];
       return memberTenantIds(session, roles, rule.role).some(id => same(id, tenant))
         ? ALLOW
@@ -213,7 +223,7 @@ export class Resolver {
   }
 
   /** The row with every value the rules reach through relations under its dotted key, and the entity's defaults */
-  async resolve(entity: EntityIR, row: Row, rules: RuleIR[]): Promise<Row> {
+  async resolve(entity: EntityIR, row: Row, rules: RuleIR[], session: Session | null = null): Promise<Row> {
     const out: Row = { ...row };
     for (const column of entity.columns)
       if (out[column.name] === undefined && column.default?.kind === "literal") out[column.name] = column.default.value;
@@ -231,6 +241,25 @@ export class Resolver {
       }
       out[key] = current ? current[p.field] : null;
     }
+    // A member path ending in a membership relation: the caller's own row of the junction, for the row reached
+    for (const rule of rules)
+      for (const [key, m] of ruleMemberships(rule)) {
+        let value: unknown = m.via.length ? out[m.via[0].column] : out[m.field];
+        for (let i = 0; i + 1 < m.via.length && value != null; i++) {
+          const next = await this.lookup(m.via[i].table, m.via[i].targetColumn, value);
+          value = next ? next[m.via[i + 1].column] : null;
+        }
+        if (value == null || !session) {
+          out[key] = null;
+          continue;
+        }
+        const result: pg.QueryResult<Row> = await this.db.query(
+          `select * from "${m.through.table}" where "${m.through.column}" = $1 and "${m.through.memberColumn}" = $2`,
+          [value, session.id]
+        );
+        const held = result.rows[0];
+        out[key] = held ? (m.through.roleColumn ? held[m.through.roleColumn] : true) : null;
+      }
     return out;
   }
 

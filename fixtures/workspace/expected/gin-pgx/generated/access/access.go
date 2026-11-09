@@ -18,16 +18,29 @@ import (
 // member (Field names the row's tenant column, Role the least privileged role allowed, or ""), all (All
 // lists the parts of a conjunction, every one of which must allow) or any (Any lists alternatives, one of
 // which must allow). Field is a column, or the dotted path of a value reached through relations, which the
-// handler resolves into the Row before checking. When, if set, allows only rows whose field compares to
-// its value as it says.
+// handler resolves into the Row before checking. A member rule with Through reads the caller's membership
+// row of a junction under Field (its ranked value, true, or nil), ranked by Roles from most to least
+// privileged. When, if set, allows only rows whose field compares to its value as it says.
 type Rule struct {
-	Kind  string
-	Field string
-	Value string
-	Role  string
-	All   []Rule
-	Any   []Rule
-	When  *Condition
+	Kind    string
+	Field   string
+	Value   string
+	Role    string
+	Through bool
+	Roles   []string
+	All     []Rule
+	Any     []Rule
+	When    *Condition
+}
+
+// rankIn is the rank of a role within a junction's own list, from most to least privileged; an unknown role ranks last.
+func rankIn(roles []string, role string) int {
+	for i, candidate := range roles {
+		if candidate == role {
+			return i
+		}
+	}
+	return len(roles)
 }
 
 // Condition is a row condition: the column (or the dotted path of a value reached through relations),
@@ -117,8 +130,18 @@ func CheckRow(rule Rule, session *auth.Session, row Row) *Verdict {
 	if rule.Kind == "owner" && !same(row[rule.Field], session.UserID()) {
 		return &Verdict{Status: http.StatusForbidden}
 	}
-	if rule.Kind == "member" && !memberOf(session, row[rule.Field], rule.Role) {
-		return &Verdict{Status: http.StatusForbidden}
+	if rule.Kind == "member" {
+		if rule.Through {
+			held := deref(row[rule.Field])
+			if held == nil || held == false {
+				return &Verdict{Status: http.StatusForbidden}
+			}
+			if rule.Role != "" && rankIn(rule.Roles, fmt.Sprint(held)) > rankIn(rule.Roles, rule.Role) {
+				return &Verdict{Status: http.StatusForbidden}
+			}
+		} else if !memberOf(session, row[rule.Field], rule.Role) {
+			return &Verdict{Status: http.StatusForbidden}
+		}
 	}
 	if rule.When != nil && !holds(rule.When, row) {
 		return &Verdict{Status: http.StatusForbidden}

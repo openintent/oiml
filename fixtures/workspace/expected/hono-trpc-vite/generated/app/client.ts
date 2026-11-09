@@ -84,6 +84,27 @@ export const client = {
     create: (input: Inputs["milestones"]["create"]) => trpc.milestones.create.mutate(input),
     update: (input: Inputs["milestones"]["update"]) => trpc.milestones.update.mutate(input),
     delete: (input: Inputs["milestones"]["delete"]) => trpc.milestones.delete.mutate(input)
+  },
+  channels: {
+    list: (input: Inputs["channels"]["list"]) => trpc.channels.list.query(input),
+    get: (input: Inputs["channels"]["get"]) => trpc.channels.get.query(input),
+    create: (input: Inputs["channels"]["create"]) => trpc.channels.create.mutate(input),
+    update: (input: Inputs["channels"]["update"]) => trpc.channels.update.mutate(input),
+    delete: (input: Inputs["channels"]["delete"]) => trpc.channels.delete.mutate(input),
+    join: (input: Inputs["channels"]["join"]) => trpc.channels.join.mutate(input)
+  },
+  channel_members: {
+    list: (input: Inputs["channel_members"]["list"]) => trpc.channel_members.list.query(input),
+    get: (input: Inputs["channel_members"]["get"]) => trpc.channel_members.get.query(input),
+    create: (input: Inputs["channel_members"]["create"]) => trpc.channel_members.create.mutate(input),
+    delete: (input: Inputs["channel_members"]["delete"]) => trpc.channel_members.delete.mutate(input)
+  },
+  messages: {
+    list: (input: Inputs["messages"]["list"]) => trpc.messages.list.query(input),
+    get: (input: Inputs["messages"]["get"]) => trpc.messages.get.query(input),
+    create: (input: Inputs["messages"]["create"]) => trpc.messages.create.mutate(input),
+    update: (input: Inputs["messages"]["update"]) => trpc.messages.update.mutate(input),
+    delete: (input: Inputs["messages"]["delete"]) => trpc.messages.delete.mutate(input)
   }
 };
 

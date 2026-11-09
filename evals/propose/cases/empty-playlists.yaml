@@ -1,0 +1,31 @@
+id: empty-playlists
+tags: [entity, rules, relation, auth, scenario]
+base: { empty: playlists }
+intent:
+  title: Playlists with collaborators
+  ask: >-
+    People sign up and make playlists with a name and a public flag. Anyone reads a public playlist; a private one is
+    read by its owner and by the people the owner added as collaborators. The owner and the collaborators add tracks
+    (a title and an artist) to the playlist and edit it; only the owner adds or removes collaborators and deletes the
+    playlist.
+  acceptance:
+    - A collaborator edits the playlist and adds a track; a stranger is refused
+    - Only the owner adds a collaborator
+    - A private playlist is refused to a stranger and readable by a collaborator
+expect:
+  entities: [User, Playlist, "PlaylistCollaborator|Collaborator|PlaylistMember", "Track|PlaylistTrack"]
+  relations:
+    [
+      "PlaylistCollaborator|Collaborator|PlaylistMember.* -> Playlist",
+      "PlaylistCollaborator|Collaborator|PlaylistMember.* -> User"
+    ]
+  rules:
+    Playlist:
+      update: "owner:owner_id or member:collaborators|owner:user_id or member:collaborators|owner:created_by or member:collaborators"
+      delete: "owner:owner_id|owner:user_id|owner:created_by"
+  scenarios: { min: 1, rejections: 2, statuses: [403] }
+  touches: [playlists]
+notes: >-
+  The Spotify exercise's ask (docs/exercises/spotify.md, SP-5) over an empty model: collaborators are a membership
+  relation named `collaborators` on the playlist, and the owner path stays an owner rule. A diff that models
+  collaborators as a handler, or that lets collaborators delete, fails on purpose.

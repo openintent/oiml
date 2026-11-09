@@ -160,5 +160,74 @@ var MilestonesUpdateInput = Object{Fields: []Field{
 	{Name: "done", Type: Boolean{}},
 }}
 
+// ChannelsID parses a channels id from the path.
+func ChannelsID(raw string) (string, bool) {
+	return ParseUUIDID(raw)
+}
+
+// ChannelsListQuery validates the GET /api/channels query string.
+var ChannelsListQuery = Query{PageSize: 20, Filters: []Filter{
+	{Name: "team_id", Type: UUID{}},
+	{Name: "private", Type: Boolean{}},
+}}
+
+// ChannelsCreateInput validates POST /api/channels bodies.
+var ChannelsCreateInput = Object{Fields: []Field{
+	{Name: "team_id", Required: true, Type: UUID{}},
+	{Name: "name", Required: true, Type: String{MinLength: 1, MaxLength: 80}},
+	{Name: "private", Type: Boolean{}},
+}}
+
+// ChannelsUpdateInput validates PATCH /api/channels/{id} bodies.
+var ChannelsUpdateInput = Object{Fields: []Field{
+	{Name: "team_id", Type: UUID{}},
+	{Name: "created_by", Type: UUID{}},
+	{Name: "name", Type: String{MinLength: 1, MaxLength: 80}},
+	{Name: "private", Type: Boolean{}},
+}}
+
+// ChannelMembersID parses a channel_members id from the path.
+func ChannelMembersID(raw string) (string, bool) {
+	return ParseUUIDID(raw)
+}
+
+// ChannelMembersListQuery validates the GET /api/channel_members query string.
+var ChannelMembersListQuery = Query{PageSize: 20, Filters: []Filter{
+	{Name: "channel_id", Type: UUID{}},
+	{Name: "user_id", Type: UUID{}},
+}}
+
+// ChannelMembersCreateInput validates POST /api/channel_members bodies.
+var ChannelMembersCreateInput = Object{Fields: []Field{
+	{Name: "channel_id", Required: true, Type: UUID{}},
+	{Name: "user_id", Required: true, Type: UUID{}},
+	{Name: "role", Type: Enum{Values: []string{"admin", "member"}}},
+}}
+
+// MessagesID parses a messages id from the path.
+func MessagesID(raw string) (string, bool) {
+	return ParseUUIDID(raw)
+}
+
+// MessagesListQuery validates the GET /api/messages query string.
+var MessagesListQuery = Query{PageSize: 20, Filters: []Filter{
+	{Name: "channel_id", Type: UUID{}},
+}}
+
+// MessagesCreateInput validates POST /api/messages bodies.
+var MessagesCreateInput = Object{Fields: []Field{
+	{Name: "channel_id", Required: true, Type: UUID{}},
+	{Name: "body", Required: true, Type: String{}},
+}}
+
+// MessagesUpdateInput validates PATCH /api/messages/{id} bodies.
+var MessagesUpdateInput = Object{Fields: []Field{
+	{Name: "channel_id", Type: UUID{}},
+	{Name: "body", Type: String{}},
+}}
+
 // TasksRemindInput validates POST /api/tasks/{id}/remind bodies.
 var TasksRemindInput = Object{}
+
+// ChannelsJoinInput validates POST /api/channels/{id}/join bodies.
+var ChannelsJoinInput = Object{}

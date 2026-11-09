@@ -4,8 +4,9 @@
 import type { Db } from "./db/client";
 import type * as schema from "./db/schema";
 import type { Session } from "./server/auth";
-import type { TasksRemindInput } from "./validation";
+import type { ChannelsJoinInput, TasksRemindInput } from "./validation";
 import * as tasks_remind from "@/actions/tasks_remind";
+import * as channels_join from "@/actions/channels_join";
 
 /** What a handler gets: the validated input, the row for row actions, the caller's session and the database */
 export interface ActionContext<Input, Row = undefined> {
@@ -19,7 +20,9 @@ export interface ActionContext<Input, Row = undefined> {
 }
 
 export type TasksRemindResult = schema.Task;
+export type ChannelsJoinResult = schema.Channel;
 
 export const handlers = {
-  tasks_remind: tasks_remind.handler as (ctx: ActionContext<TasksRemindInput, schema.Task>) => Promise<TasksRemindResult>
+  tasks_remind: tasks_remind.handler as (ctx: ActionContext<TasksRemindInput, schema.Task>) => Promise<TasksRemindResult>,
+  channels_join: channels_join.handler as (ctx: ActionContext<ChannelsJoinInput, schema.Channel>) => Promise<ChannelsJoinResult>
 };

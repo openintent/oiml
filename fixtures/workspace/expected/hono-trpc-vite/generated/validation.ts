@@ -158,5 +158,71 @@ export const milestonesUpdateInput = z
   })
   .strict();
 
+export const channelsId = z.string().uuid();
+export const channelsListQuery = z
+  .object({
+    page: z.number().int().min(1).default(1),
+    page_size: z.number().int().min(1).max(200).default(20),
+    team_id: z.string().uuid().optional(),
+    private: z.boolean().optional()
+  })
+  .strict();
+export const channelsCreateInput = z
+  .object({
+    team_id: z.string().uuid(),
+    name: z.string().min(1).max(80),
+    private: z.boolean().optional()
+  })
+  .strict();
+export const channelsUpdateInput = z
+  .object({
+    team_id: z.string().uuid().optional(),
+    created_by: z.string().uuid().optional(),
+    name: z.string().min(1).max(80).optional(),
+    private: z.boolean().optional()
+  })
+  .strict();
+
+export const channel_membersId = z.string().uuid();
+export const channel_membersListQuery = z
+  .object({
+    page: z.number().int().min(1).default(1),
+    page_size: z.number().int().min(1).max(200).default(20),
+    channel_id: z.string().uuid().optional(),
+    user_id: z.string().uuid().optional()
+  })
+  .strict();
+export const channel_membersCreateInput = z
+  .object({
+    channel_id: z.string().uuid(),
+    user_id: z.string().uuid(),
+    role: z.enum(["admin", "member"]).optional()
+  })
+  .strict();
+
+export const messagesId = z.string().uuid();
+export const messagesListQuery = z
+  .object({
+    page: z.number().int().min(1).default(1),
+    page_size: z.number().int().min(1).max(200).default(20),
+    channel_id: z.string().uuid().optional()
+  })
+  .strict();
+export const messagesCreateInput = z
+  .object({
+    channel_id: z.string().uuid(),
+    body: z.string()
+  })
+  .strict();
+export const messagesUpdateInput = z
+  .object({
+    channel_id: z.string().uuid().optional(),
+    body: z.string().optional()
+  })
+  .strict();
+
 export const tasksRemindInput = z.object({}).strict();
 export type TasksRemindInput = z.infer<typeof tasksRemindInput>;
+
+export const channelsJoinInput = z.object({}).strict();
+export type ChannelsJoinInput = z.infer<typeof channelsJoinInput>;
