@@ -119,6 +119,9 @@ describe("gap report", () => {
     expect(gapTopic("A signed-out visitor opening the roadmap of a project that is not public")).toBe(
       "rules on a field's value"
     );
+    expect(
+      gapTopic("The article appearing in the public list at its scheduled time depends on that automatic publishing")
+    ).toBe("scheduled and recurring work");
   });
 
   it("compares two reports: new, grown, shrunk and gone clusters", () => {

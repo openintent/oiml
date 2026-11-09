@@ -46,7 +46,7 @@ const TOPICS: [topic: string, pattern: RegExp][] = [
   ],
   [
     "rules on a field's value",
-    /\b(value|values|depend|depending|conditional|only when|status is|draft|own (unpublished|private)|visib|(not|is|marked|flagged) public|public flag|cannot (stop|prevent|forbid)|their own (role|membership)|grant(ing)? .{0,20}(role|owner)|promot|demot|deactivated|disabled account|banned user)/i
+    /\b(depend(s|ing)? on (a |the |its |their )?(field|value|status|state|flag|row|column|published)|(a |the )?(field|column|row)'?s? (value|state|status)|look at .{0,24}value|value of (a|the) (field|row|column)|conditional|only when|status is|draft|own (unpublished|private)|visib|(not|is|marked|flagged) public|public flag|cannot (stop|prevent|forbid)|their own (role|membership)|grant(ing)? .{0,20}(role|owner)|promot|demot|deactivated|disabled account|banned user|by (its|their|the row's) (status|state|value))/i
   ],
   ["realtime and live updates", /\b(real[- ]?time|websocket|live update|subscri|push notif|presence|stream)/i],
   [

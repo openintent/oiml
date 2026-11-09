@@ -3,39 +3,41 @@
 gaps:
   - key: rules on a field's value
     kind: not_delivered
-    status: open
+    status: built
     first_seen: run6-rules-opus-5-5
-    last_seen: run7b-implement-opus-5-5
+    last_seen: r3
     cases: 6
-    note: Drafts visible only to their author, approval states, unpublished pieces hidden from readers;
-      the largest cluster in every run.
+    construct: row conditions on rules (when <field> = <value>, a7b0817)
+    version: unreleased
+    note: Drafts visible only to their author, approval states, archived rows; built 2026-11-09 with
+      todo TODO-5 and workspace WS-4.
   - key: pages beyond master-detail
     kind: not_delivered
     status: open
     first_seen: run6-rules-opus-5-5
-    last_seen: r2
-    cases: 1
+    last_seen: run
+    cases: 5
     note: Landing routes, pages outside the signed-in shell, views that refresh themselves, charts.
   - key: scheduled and recurring work
     kind: not_delivered
     status: open
     first_seen: gen-r1-opus-5-5
-    last_seen: r2
-    cases: 1
+    last_seen: run
+    cases: 3
     note: Going live at a time, daily checks, locking after inactivity; today a handler called by an
       external scheduler.
   - key: invites and onboarding
     kind: not_delivered
     status: open
     first_seen: run6-rules-opus-5-5
-    last_seen: gen-r1-opus-5-5
+    last_seen: run
     cases: 3
     note: Where the SaaS set starts; needs an invitation that an account not yet registered can accept.
   - key: rule conjunctions
     kind: not_delivered
     status: open
     first_seen: gen-r1-opus-5-5
-    last_seen: run7b-implement-opus-5-5
+    last_seen: run
     cases: 1
     note: A create rule cannot require membership and bind the author to the session at once; rules have
       alternatives, not conjunctions.
@@ -74,5 +76,11 @@ gaps:
     kind: not_delivered
     status: open
     first_seen: r2
-    last_seen: r2
+    last_seen: run
     cases: 2
+  - key: uniqueness and constraints
+    kind: not_delivered
+    status: open
+    first_seen: r3
+    last_seen: run
+    cases: 1

@@ -139,6 +139,15 @@ was M083 on page `fields` naming a read-only field: three agents wanted a status
 detail pane, which is legitimate, so that check was wrong and is gone; read-only fields show in the pane and stay
 out of the form.
 
+The third round (r3, seed 11, ten intents, `--no-full`) ran after row conditions on rules landed (a7b0817,
+`update: "owner:submitter_id when status = pending"`): ten valid diffs on the first attempt for $1.36, and the
+agents wrote conditions nine times across them, unprompted by any example in their asks. The value-rule
+cluster, six cases in each earlier report, fell to one line, and that line was about publishing at a scheduled
+time: the keyword filing had taken "depends on" for a value rule, which is fixed, so the regression the round
+flagged was the report's, not the construct's. That is the loop's first full turn: a gap mined from generated
+rounds, a construct built against the harness, and the next round no longer reporting it. The top open gaps
+are now pages beyond master-detail and scheduled work, with uniqueness constraints new in the backlog.
+
 ### One command per round
 
 `pnpm evals:round [--round name] [--count n] [--seed n] [--no-full] [--max-cost usd]` is the unit the loop repeats:
@@ -155,7 +164,7 @@ reported again.
 
 `evals/propose/gaps.yaml` is the loop's state and is committed: one entry per `not_delivered` cluster with a
 `status` the tooling never changes by itself. `pnpm evals:gaps` and `pnpm evals:round` append new clusters as
-`open` and refresh `cases` and `last_seen`; a person marks a gap `built` (with `construct` and `version`) once the
+`open` and refresh `last_seen` and `cases` (the most distinct cases one report showed, so a small round does not shrink a gap); a person marks a gap `built` (with `construct` and `version`) once the
 construct ships, or `declined` (with a `note`, usually the reference sentence that now says what to do instead).
 The gap table shows each cluster's status and age, and a built gap that comes back is a regression: the report
 names it and the commands exit 1. Failures, invalid attempts and failed handlers are reported but not tracked

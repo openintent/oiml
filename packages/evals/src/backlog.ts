@@ -24,7 +24,7 @@ export const BacklogEntry = z
     first_seen: z.string().min(1),
     /** The run or round that last reported it */
     last_seen: z.string().min(1),
-    /** Distinct cases that hit it when it was last seen */
+    /** The most distinct cases that hit it in one report, so a small or quiet round does not shrink a gap */
     cases: z.number().int().nonnegative().default(0),
     /** built: the construct that closed it */
     construct: z.string().optional(),
@@ -85,7 +85,7 @@ export function updateBacklog(backlog: Backlog, clusters: GapCluster[], seenIn: 
     if (!existing && !isTopic(cluster.key) && cluster.cases.length < 2) continue;
     if (existing) {
       existing.last_seen = seenIn;
-      existing.cases = cluster.cases.length;
+      existing.cases = Math.max(existing.cases, cluster.cases.length);
       if (existing.status === "built") regressions.push(existing);
       continue;
     }
