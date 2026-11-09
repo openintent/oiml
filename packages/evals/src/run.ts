@@ -2,14 +2,14 @@
 /**
  * pnpm evals [--proposer live|oracle|null] [--model id] [--only a,b] [--tag t] [--limit n]
  *            [--no-full] [--implement] [--backend name] [--jobs n] [--full-jobs n] [--cases dir] [--out dir]
- *            [--compare <run dir>]
+ *            [--compare <run dir>] [--resume <run dir>]
  *
  * Reads ANTHROPIC_API_KEY and OSL_TEST_DATABASE_URL from the environment, .env.local and .env.
  */
-import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { loadCases } from "./cases.js";
+import { loadRepoEnv } from "./env.js";
 import { compareRuns, summaryMarkdown } from "./report.js";
 import { DEFAULT_MODEL, runAll, type Proposer, type RunResult } from "./runner.js";
 
@@ -21,8 +21,7 @@ const valueOf = (flag: string): string | undefined => {
 const has = (flag: string) => args.includes(flag);
 
 const repoRoot = path.resolve(process.env.OSL_REPO_ROOT ?? process.cwd());
-loadEnv(path.join(repoRoot, ".env.local"));
-loadEnv(path.join(repoRoot, ".env"));
+loadRepoEnv(repoRoot);
 
 const casesDir = path.resolve(valueOf("--cases") ?? path.join(repoRoot, "evals/propose/cases"));
 const proposer = (valueOf("--proposer") ?? "live") as Proposer;
@@ -33,6 +32,7 @@ if (!["live", "oracle", "null"].includes(proposer)) {
 const model = valueOf("--model") ?? DEFAULT_MODEL;
 const full = !has("--no-full");
 const implement = has("--implement");
+const resumeFrom = valueOf("--resume") ? path.resolve(valueOf("--resume")!) : undefined;
 const backend = valueOf("--backend") ?? "hono-trpc-vite";
 const jobs = Number(valueOf("--jobs") ?? 4);
 const fullJobs = Number(valueOf("--full-jobs") ?? 2);
@@ -45,7 +45,7 @@ const limit = valueOf("--limit") ? Number(valueOf("--limit")) : undefined;
 const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
 const outDir = path.resolve(valueOf("--out") ?? path.join(repoRoot, "evals/propose/runs", `${stamp}-${proposer}`));
 
-if ((proposer === "live" || implement) && !process.env.ANTHROPIC_API_KEY) {
+if ((proposer === "live" || implement) && !resumeFrom && !process.env.ANTHROPIC_API_KEY) {
   console.error(
     "ANTHROPIC_API_KEY is not set; put it in .env.local or run with --proposer oracle|null and without --implement"
   );
@@ -67,7 +67,7 @@ if (cases.length === 0) {
 console.log(
   `${cases.length} cases, proposer ${proposer}${proposer === "live" ? ` (${model})` : ""}, ${
     full ? `full runs on ${backend}${implement ? ` with handlers written by ${model}` : ""}` : "no full runs"
-  }\n-> ${outDir}\n`
+  }${resumeFrom ? `, proposals reused from ${path.basename(resumeFrom)} where recorded` : ""}\n-> ${outDir}\n`
 );
 await mkdir(outDir, { recursive: true });
 const run = await runAll(cases, {
@@ -79,6 +79,7 @@ const run = await runAll(cases, {
   fullJobs,
   full,
   implement,
+  resumeFrom,
   backend,
   databaseUrl,
   log: line => console.log(line)
@@ -96,18 +97,3 @@ if (compareWith) {
   console.log(`\n${comparison}`);
 }
 process.exit(run.cases.every(c => c.pass) ? 0 : 1);
-
-function loadEnv(file: string): void {
-  if (!existsSync(file)) return;
-  for (const raw of readFileSync(file, "utf8").split("\n")) {
-    const line = raw.trim();
-    if (!line || line.startsWith("#")) continue;
-    const eq = line.indexOf("=");
-    if (eq === -1) continue;
-    const key = line.slice(0, eq).trim();
-    let value = line.slice(eq + 1).trim();
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'")))
-      value = value.slice(1, -1);
-    if (process.env[key] === undefined) process.env[key] = value;
-  }
-}

@@ -15,6 +15,9 @@ pnpm evals --model claude-sonnet-5-5         # another model
 pnpm evals --proposer oracle                 # the fixtures' own diffs instead of Claude: the grader must pass them all
 pnpm evals --proposer null                   # an empty diff: the grader must fail everything that expects a result
 pnpm evals --compare evals/propose/runs/<earlier run>   # per-case differences after a change
+pnpm evals --resume evals/propose/runs/<earlier run>    # reuse that run's proposals, re-validated; grade and run them again
+pnpm evals:generate --round r1 --count 10    # a round of generated intents under evals/propose/generated/r1
+pnpm evals:gaps evals/propose/runs/<run>     # gaps.md: what the agents could not express, clustered and ranked
 ```
 
 `ANTHROPIC_API_KEY` and `OSL_TEST_DATABASE_URL` are read from the environment, `.env.local` and `.env`.
@@ -89,6 +92,40 @@ their cost.
 The summary also groups every validation problem the agent hit by shape, across attempts. A problem that
 recurs across cases is a sentence missing from the reference (`packages/core/src/reference.ts`), which is
 the text the agent reads; fixing it there improves `osl propose`, the MCP server and the docs together.
+
+## Generated rounds and the gap list
+
+The hand-written corpus is the spec; generated rounds are the sample. `pnpm evals:generate --round r1 --count 10`
+asks Claude for ten feature requests written the way a product person writes them, one per brief, where a brief is
+a domain (or one of the fixtures to extend), two constraints drawn from a list (tenancy, no sign-in, uploads, an
+admin, a server-owned value, a schedule, a running total...) and a seed that reproduces it. The cases land in
+`evals/propose/generated/<round>/cases` with `outcome: any` and a scenario minimum, so they grade whether the
+agent produces something valid that generates and runs, not a known answer. `pnpm evals --cases <that folder>
+--implement` runs them through the same runner.
+
+`pnpm evals:gaps <run dir> [<run dir> ...]` then reads the results and writes `gaps.md`: every `not_delivered`
+line filed under a topic (rules on a field's value, realtime, payments, scheduled work, computed fields, invites,
+pages beyond master-detail, and so on, by keyword, with the normalised text as the key when none matches), every
+expectation and full-run failure by shape, every invalid attempt by the shape of its problem, and every handler
+the model could not get past the compiler, each clustered and ranked by how many cases hit it. A cluster says
+whether the corpus already carries a case tagged `gap` or `trap` for it. The report is the input to the next
+round of work, by kind: a recurring `not_delivered` topic becomes a construct only when it has a deterministic
+mapping on every backend, with a fixture and scenarios proving it, and otherwise a reference sentence that says
+so; a recurring check or validation shape is a missing sentence in the reference; a recurring full-run failure
+is a compiler or harness bug. The judge stays the conformance harness, not the model's opinion of itself.
+
+The first round (r1, seed 42, ten intents, Opus 5.5, 2026-11-09, no full runs) cost $1.56 and produced nine
+valid diffs, eight on the first attempt, and one decline: a public status page for a workspace's projects, which
+needs visibility by a project's flag and a page outside the signed-in shell. The only validation retries were two
+M083s where the agent listed read-only fields in a form, fixed on the second attempt. Its `gaps.md` ranked rules on
+a field's value first (six of ten cases: unpublished pieces hidden from readers, drafts, approval states), pages
+beyond master-detail second (four: a landing route, a waiting room that refreshes itself, a public page) and
+scheduled work third (three: a piece going live at its time, a daily overdue check, a thread locking after
+inactivity), then one-off asks (gap-free invoice numbers, invites, payments, a many-to-many, exercising OAuth
+sign-in in a scenario). Over runs 6 and 7 and this round together the same three lead, with value-dependent rules
+at thirteen cases, so that is the next construct. One line in the round named a second rule gap worth its own
+case: a create rule cannot require membership and bind the author to the session at once, because rules have
+alternatives but no conjunction.
 
 ## Changing the prompt or the reference
 

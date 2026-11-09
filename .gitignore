@@ -8,3 +8,5 @@ dist
 .cursor
 .claude
 evals/propose/runs/
+evals/propose/generated/*
+!evals/propose/generated/README.md

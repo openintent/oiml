@@ -49,6 +49,11 @@ export interface RunOptions {
   databaseUrl?: string;
   /** Write the action handlers with the model before the full run, so diffs with actions are measured too */
   implement?: boolean;
+  /**
+   * An earlier run directory whose proposals are reused: a case with a recorded diff is re-validated and graded
+   * without asking Claude again, so a compiler or harness change can be measured on the same diffs
+   */
+  resumeFrom?: string;
   log: (line: string) => void;
 }
 
@@ -102,6 +107,8 @@ export interface RunResult {
   full: boolean;
   /** Whether handlers were written by the model before the full runs */
   implement?: boolean;
+  /** The run whose proposals this one reused, when it did */
+  resumed_from?: string;
   cases: CaseResult[];
 }
 
@@ -181,8 +188,46 @@ type Proposed =
   | { status: "declined"; attempts: number; usage: ProposeUsage; log: AttemptLog[]; reasons: string[] }
   | { status: "error"; error: string; attempts: number; usage: ProposeUsage; log: AttemptLog[] };
 
+/** The proposal an earlier run recorded for a case, or null when that run never got to it */
+async function recordedProposal(c: Case, base: ModelType, options: RunOptions): Promise<Proposed | null> {
+  if (!options.resumeFrom) return null;
+  const resultsFile = path.join(options.resumeFrom, "results.json");
+  if (!existsSync(resultsFile)) throw new Error(`--resume: no results.json in ${options.resumeFrom}`);
+  const prior = (JSON.parse(await readFile(resultsFile, "utf8")) as RunResult).cases.find(r => r.id === c.id);
+  if (!prior || prior.status === "error") return null;
+  const log = prior.attempt_log ?? [];
+  if (prior.status === "invalid")
+    return {
+      status: "invalid",
+      attempts: prior.attempts,
+      usage: prior.usage,
+      log,
+      problems: prior.failures.map(f => f.replace(/^invalid: /, ""))
+    };
+  if (prior.status === "declined")
+    return { status: "declined", attempts: prior.attempts, usage: prior.usage, log, reasons: prior.not_delivered };
+  const diffFile = path.join(options.resumeFrom, "cases", c.id, "diff.yaml");
+  if (!existsSync(diffFile)) return null;
+  // Validated again, so a compiler change since the recording shows up as an invalid diff
+  const yaml = await readFile(diffFile, "utf8");
+  const { diff, problems } = validateCandidate(base, yaml);
+  if (!diff || problems.length)
+    return { status: "invalid", attempts: prior.attempts, usage: prior.usage, log, problems };
+  return {
+    status: "ok",
+    diff,
+    yaml,
+    attempts: prior.attempts,
+    usage: prior.usage,
+    log,
+    notDelivered: prior.not_delivered
+  };
+}
+
 async function runProposer(c: Case, intent: Intent, base: ModelType, options: RunOptions): Promise<Proposed> {
   const log: AttemptLog[] = [];
+  const recorded = await recordedProposal(c, base, options);
+  if (recorded) return recorded;
   if (options.proposer === "live") {
     try {
       const result = await propose(c.id, intent, base, {
@@ -411,6 +456,7 @@ export async function runAll(cases: Case[], options: RunOptions): Promise<RunRes
       backend: options.backend,
       full: options.full,
       implement: Boolean(options.implement),
+      ...(options.resumeFrom ? { resumed_from: path.basename(options.resumeFrom) } : {}),
       cases: cases.map(c => results.get(c.id)).filter((r): r is CaseResult => !!r)
     };
     await writeFile(path.join(options.outDir, "results.json"), JSON.stringify(run, null, 2));

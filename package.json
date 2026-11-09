@@ -14,7 +14,9 @@
     "format": "prettier --write \"packages/**/*.{ts,js,json,md,yaml,yml}\" \"fixtures/**/*.{ts,js,json,md,yaml,yml}\" \"evals/**/*.{md,yaml,yml}\" \"*.{json,md,yaml,yml}\"",
     "format:check": "prettier --check \"packages/**/*.{ts,js,json,md,yaml,yml}\" \"fixtures/**/*.{ts,js,json,md,yaml,yml}\" \"evals/**/*.{md,yaml,yml}\" \"*.{json,md,yaml,yml}\"",
     "conformance": "tsx packages/conformance/src/run.ts",
-    "evals": "tsx packages/evals/src/run.ts"
+    "evals": "tsx packages/evals/src/run.ts",
+    "evals:generate": "tsx packages/evals/src/generate-cli.ts",
+    "evals:gaps": "tsx packages/evals/src/gaps-cli.ts"
   },
   "devDependencies": {
     "@types/node": "^24",

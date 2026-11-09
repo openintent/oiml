@@ -18,6 +18,7 @@
     "dev": "tsc -p tsconfig.json --watch"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1",
     "@osl/cli": "workspace:*",
     "@osl/conformance": "workspace:*",
     "@osl/core": "workspace:*",

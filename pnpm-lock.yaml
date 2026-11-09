@@ -123,6 +123,9 @@ importers:
 
   packages/evals:
     dependencies:
+      "@anthropic-ai/sdk":
+        specifier: ^1
+        version: 1.5.0(zod@3.25.76)
       "@osl/cli":
         specifier: workspace:*
         version: link:../cli
