@@ -1,6 +1,6 @@
 {
   "name": "@osl/ts-common",
-  "version": "1.0.0-alpha.2",
+  "version": "1.0.0-alpha.3",
   "description": "Generators shared by OSL's TypeScript backends: Drizzle schema, validation, presenters, events, test helpers and the stock shadcn/ui sources",
   "license": "Apache-2.0",
   "type": "module",

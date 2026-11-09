@@ -1,6 +1,6 @@
 {
   "name": "@osl/evals",
-  "version": "1.0.0-alpha.2",
+  "version": "1.0.0-alpha.3",
   "private": true,
   "description": "OSL agent evals: runs osl propose over a corpus of intents and scores the diffs it writes",
   "license": "Apache-2.0",

@@ -60,7 +60,7 @@ generated/              backend output, never edited by hand
 src/                    extension points: hooks and event handlers
 ```
 
-## What 1.1 added
+## What 1.0.0-alpha.2 added
 
 Five constructs, each with a deterministic mapping in the TypeScript backends and the Go backend: actions
 (operations beyond CRUD, with the handler left to you), file fields with a two-step upload flow and a storage adapter,
@@ -69,3 +69,16 @@ adapter, page layouts (split, table, board, dashboard) rendered by both web stac
 (queued events on a Postgres-backed worker, an OpenAPI document from the IR, Docker files, seed steps). The boundary
 rule held: user logic stays in `src/` (action handlers, event handlers, hooks), and every generated piece is proven by
 the fixtures through the conformance harness, which can overlay a fixture's user code per backend.
+
+## What 1.0.0-alpha.3 added
+
+Seven pieces, shipped as the checkpoint before the road to 1.0.0 (`docs/roadmap.md`): read-only fields
+(`read_only: true`, returned by the API and never accepted) with `osl implement`, which writes an action's handler
+from its declaration, the scenarios that call it and the backend's own files, checked by the backend's compiler;
+the gap-mining loop (`pnpm evals:round`, the backlog in `evals/propose/gaps.yaml`, `pnpm evals:next`, a nightly
+round); row conditions on rules (`when <field> = <value>`), conditions through relations (`when project_id.public =
+true`) and conjunctions (`and`); pages beyond master-detail (page access, fixed filters with `{actor.id}`, refresh,
+grouped tiles, a dashboard or custom page at `/`); schedules and timers on the job queue, with a clock the
+scenarios drive through test hooks; and hidden rows as not found (`rules.hidden: not_found`). Each came from a
+cluster of agents' `not_delivered` notes or an eval failure, and each is proven by a fixture intent on all three
+backends.

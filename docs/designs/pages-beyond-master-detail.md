@@ -14,19 +14,19 @@ the reference, and declines the rest. It is the design to review before the buil
 
 ## What was asked, in the agents' words
 
-| Ask | Where | Verdict |
-| --- | --- | --- |
-| "The app's landing route `/` is reserved for the shell, so the equipment page cannot be pinned there" | r1-01, r1-08 | construct: a page at `/` |
-| "A public status page outside the signed-in workspace: there is no construct for an unauthenticated, shareable page" | r1-07, r2-05 | half reference, half construct: anonymous visitors already see every page whose resource is public; what is missing is a page access rule |
-| "Limiting the editorial board page to staff: pages have no access rules, so every signed-in user sees the same board" | r3-05 | construct: page access rule |
-| "Showing writers only their own and co-authored articles on the board: pages cannot filter by the signed-in user" | r3-05 | construct: page filters with `{actor.id}` |
-| "A home page scoped to a single team: pages cannot be scoped to one team and there is no team switcher" | r1-08 | declined: a tenant switcher is a shell feature with no model shape yet |
-| "The waiting-room screen updating by itself when someone checks in: no live push or auto-refresh" | r1-05 | construct: `refresh` (polling); push stays declined |
-| "A task count in each board column header: the board layout has no count option" | r1-08, r3-05, r2-04 | reference: boards already show the count in each column header |
-| "Per-doctor cards: dashboard tiles use fixed filters, so doctors added at runtime cannot get their own card" | r1-05 | construct: tile `group_by`, one tile per enum value or per row of a related resource |
-| "A tile filter cannot express a due date before today"; "showing only upcoming events starting after now" | r2-04, r3-08 | separate construct, list filters with comparisons; named here, designed next |
-| "Pages cannot add related lists"; "an article's series with previous/next links" | r3-06, r3-01 | reference: the detail pane already renders every reverse relation the get operation includes; prev/next stays a custom page |
-| Charts, calendars, custom layouts | several one-offs | declined for now: custom pages exist for them |
+| Ask                                                                                                                   | Where               | Verdict                                                                                                                                   |
+| --------------------------------------------------------------------------------------------------------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| "The app's landing route `/` is reserved for the shell, so the equipment page cannot be pinned there"                 | r1-01, r1-08        | construct: a page at `/`                                                                                                                  |
+| "A public status page outside the signed-in workspace: there is no construct for an unauthenticated, shareable page"  | r1-07, r2-05        | half reference, half construct: anonymous visitors already see every page whose resource is public; what is missing is a page access rule |
+| "Limiting the editorial board page to staff: pages have no access rules, so every signed-in user sees the same board" | r3-05               | construct: page access rule                                                                                                               |
+| "Showing writers only their own and co-authored articles on the board: pages cannot filter by the signed-in user"     | r3-05               | construct: page filters with `{actor.id}`                                                                                                 |
+| "A home page scoped to a single team: pages cannot be scoped to one team and there is no team switcher"               | r1-08               | declined: a tenant switcher is a shell feature with no model shape yet                                                                    |
+| "The waiting-room screen updating by itself when someone checks in: no live push or auto-refresh"                     | r1-05               | construct: `refresh` (polling); push stays declined                                                                                       |
+| "A task count in each board column header: the board layout has no count option"                                      | r1-08, r3-05, r2-04 | reference: boards already show the count in each column header                                                                            |
+| "Per-doctor cards: dashboard tiles use fixed filters, so doctors added at runtime cannot get their own card"          | r1-05               | construct: tile `group_by`, one tile per enum value or per row of a related resource                                                      |
+| "A tile filter cannot express a due date before today"; "showing only upcoming events starting after now"             | r2-04, r3-08        | separate construct, list filters with comparisons; named here, designed next                                                              |
+| "Pages cannot add related lists"; "an article's series with previous/next links"                                      | r3-06, r3-01        | reference: the detail pane already renders every reverse relation the get operation includes; prev/next stays a custom page               |
+| Charts, calendars, custom layouts                                                                                     | several one-offs    | declined for now: custom pages exist for them                                                                                             |
 
 ## Constructs
 
@@ -48,7 +48,7 @@ current welcome card. `/login` and `/settings` stay reserved.
 pages:
   board:
     resource: articles
-    access: role:editor        # public | authenticated | role:<value>; default: authenticated when auth exists, public otherwise
+    access: role:editor # public | authenticated | role:<value>; default: authenticated when auth exists, public otherwise
 ```
 
 Who may open the page. The sidebar lists only the pages the current user may open; opening a page the user
@@ -72,7 +72,7 @@ would show an empty list, so that is refused.
 pages:
   mine:
     resource: articles
-    filter: { author_id: "{actor.id}", status: review }     # equality filters from the resource's list filters
+    filter: { author_id: "{actor.id}", status: review } # equality filters from the resource's list filters
   home:
     kind: dashboard
     tiles:
@@ -96,7 +96,7 @@ role (M092 otherwise: a public page cannot filter by a user who may not exist).
 pages:
   waiting_room:
     resource: visits
-    refresh: 15                # seconds; the page refetches on this interval while it is open
+    refresh: 15 # seconds; the page refetches on this interval while it is open
 ```
 
 Polling, not push: the queries of that page (list, tiles, recent) get `refetchInterval: 15000`. Allowed values
@@ -106,8 +106,8 @@ Polling, not push: the queries of that page (list, tiles, recent) get `refetchIn
 
 ```yaml
 tiles:
-  - { resource: tasks, group_by: status }          # one tile per enum value, counts filtered by it
-  - { resource: visits, group_by: doctor_id }      # one tile per row of the related resource, labelled by its title
+  - { resource: tasks, group_by: status } # one tile per enum value, counts filtered by it
+  - { resource: visits, group_by: doctor_id } # one tile per row of the related resource, labelled by its title
 ```
 
 - Enum: one count query per value, labels from the enum values in Title Case.

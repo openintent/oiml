@@ -38,7 +38,9 @@ gaps:
     first_seen: run6-rules-opus-5-5
     last_seen: r7
     cases: 3
-    note: Where the SaaS set starts; needs an invitation that an account not yet registered can accept.
+    note: "Where the SaaS set starts; needs an invitation that an account not yet registered can accept.
+      Design: docs/designs/invites.md. Slack (docs/exercises/slack.md) also wants a join link not bound to an email,
+      which the design declines."
   - key: rule conjunctions
     kind: not_delivered
     status: built
@@ -87,6 +89,11 @@ gaps:
     first_seen: r2
     last_seen: r7
     cases: 2
+    note: "Design for the count case: docs/designs/archive-and-counts.md (count_of over a reverse relation); sums
+      stay open. Exercise (docs/exercises/spotify.md): follower, like, track and play counts are count_of; a chart
+      over a window stays a schedule writing a read_only rank. Slack (docs/exercises/slack.md): unread counts compare
+      a channel's messages with the viewer's own marker and reaction counts group by emoji; neither is count_of, and
+      a per-viewer count is likely declined as a custom page or an action."
   - key: uniqueness and constraints
     kind: not_delivered
     status: open
@@ -99,24 +106,35 @@ gaps:
     first_seen: r4
     last_seen: r5
     cases: 1
+    note: "Exercise (docs/exercises/spotify.md): files.read is one rule for every file; audio for signed-in listeners
+      beside public cover art needs a read rule per file field defaulting to the row's read rule, and Range on the
+      local streaming path (the S3 redirect answers Range itself). Slack (docs/exercises/slack.md): a file in a private
+      channel is readable by whoever may read its message, the same default."
   - key: role changes
     kind: not_delivered
     status: open
     first_seen: run
     last_seen: r4
     cases: 2
+    note: "Slack (docs/exercises/slack.md): nobody below owner grants owner; what a client may write into a field would
+      depend on who they are, which the field-visibility design declines as a write rule."
   - key: conditional validation
     kind: not_delivered
     status: open
     first_seen: run
     last_seen: r4
     cases: 1
+    note: "Notion (docs/exercises/notion.md): a block's content depends on its type, a shape per enum value
+      (shape_by: { type: { heading: {...}, code: {...} } }) beside the typed-JSON design's single shape."
   - key: ordering and positions
     kind: not_delivered
     status: open
     first_seen: r5
     last_seen: r5
     cases: 1
+    note: "Exercise (docs/exercises/spotify.md): playlist tracks with a position; create appends, a move action
+      renumbers, delete closes the gap, the page drags to reorder. Notion (docs/exercises/notion.md): page siblings and
+      blocks, where the scope is a nullable self-relation (within: parent_block_id, falling back to page_id)."
   - key: conditions through relations
     kind: not_delivered
     status: built
@@ -134,12 +152,19 @@ gaps:
     first_seen: r5
     last_seen: r6
     cases: 2
+    note: "Exercise (docs/exercises/spotify.md): every Spotify screen but Home, Search and Library is one (artist, album,
+      playlist, profile, show), each composed of sections from several resources filtered by the parameter. Slack
+      (docs/exercises/slack.md) adds the tenant context: a chosen workspace that scopes the sidebar and every list
+      ({tenant.id} beside {actor.id}, a switcher in the shell); the rounds file that ask under this topic. Notion
+      (docs/exercises/notion.md): the page address the sidebar tree links to, and the public reader. All three
+      exercises hit it."
   - key: sequences and reference numbers
     kind: not_delivered
     status: open
     first_seen: r5
     last_seen: r7
     cases: 1
+    note: "Design: docs/designs/field-kinds.md (a sequence field: prefix, scope, width)."
   - key: sign-in flow settings
     kind: not_delivered
     status: open
@@ -152,8 +177,10 @@ gaps:
     first_seen: r6
     last_seen: r6
     cases: 1
-    note: A list cannot include a row reached through a junction (course -> course_instructors -> user),
-      so many-to-many shows ids where names are wanted.
+    note: "A list cannot include a row reached through a junction (course -> course_instructors -> user), so
+      many-to-many shows ids where names are wanted. Exercise (docs/exercises/spotify.md): featured artists, genres
+      and playlist tracks; proven together with ordering by one playlist fixture. The topic also catches tree and
+      ancestor asks, recorded separately as tree queries (docs/exercises/notion.md) until the topic is split."
   - key: hidden rows as not found
     kind: not_delivered
     status: built
@@ -200,3 +227,175 @@ gaps:
     first_seen: r7
     last_seen: r7
     cases: 1
+  # Entries below came from design notes rather than a round (docs/designs/*.md, 2026-11-09): constructs that
+  # hand-written applications of this shape build for themselves. cases is 0 until a round reports them.
+  - key: tenant isolation backstop
+    kind: not_delivered
+    status: open
+    first_seen: designs-2026-11-09
+    last_seen: designs-2026-11-09
+    cases: 0
+    note: "Row-level security derived from relations, composite tenant keys, two database roles, and the cross-tenant
+      walk. Design: docs/designs/tenant-isolation-backstop.md."
+  - key: field-level visibility
+    kind: not_delivered
+    status: open
+    first_seen: designs-2026-11-09
+    last_seen: designs-2026-11-09
+    cases: 0
+    note: "A read rule on a field; the key is absent when it refuses. Design: docs/designs/field-visibility.md."
+  - key: state machines and transitions
+    kind: not_delivered
+    status: open
+    first_seen: designs-2026-11-09
+    last_seen: designs-2026-11-09
+    cases: 0
+    note: "Declared transitions on a read_only enum: guard, action, event and board affordance from one line.
+      Design: docs/designs/state-machines.md."
+  - key: money and currency
+    kind: not_delivered
+    status: open
+    first_seen: designs-2026-11-09
+    last_seen: designs-2026-11-09
+    cases: 0
+    note: "A money type, numeric at rest and a decimal string on the wire. Design: docs/designs/field-kinds.md."
+  - key: sealed and encrypted fields
+    kind: not_delivered
+    status: open
+    first_seen: designs-2026-11-09
+    last_seen: designs-2026-11-09
+    cases: 0
+    note: "Encrypted at rest, never in events, webhooks, audit or logs. Design: docs/designs/field-kinds.md."
+  - key: soft delete and archiving
+    kind: not_delivered
+    status: open
+    first_seen: designs-2026-11-09
+    last_seen: designs-2026-11-09
+    cases: 0
+    note: "archive: true on an entity; archived rows leave lists, archive and restore actions. Design:
+      docs/designs/archive-and-counts.md."
+  - key: history, versions and audit
+    kind: not_delivered
+    status: open
+    first_seen: designs-2026-11-09
+    last_seen: designs-2026-11-09
+    cases: 0
+    note: "audit: true on an entity; one entry per mutation in the same transaction. Design:
+      docs/designs/audit-and-webhooks.md."
+  - key: webhooks to other systems
+    kind: not_delivered
+    status: open
+    first_seen: designs-2026-11-09
+    last_seen: designs-2026-11-09
+    cases: 0
+    note: "Endpoints, signed deliveries with retries from declared events. Design: docs/designs/audit-and-webhooks.md."
+  - key: api keys and agent tools
+    kind: not_delivered
+    status: open
+    first_seen: designs-2026-11-09
+    last_seen: designs-2026-11-09
+    cases: 0
+    note: "Scoped API keys, idempotency keys, and an MCP server with one tool per operation. Design:
+      docs/designs/agent-surface.md."
+  # Entries below came from the clone exercises (docs/exercises/*.md, from 2026-11-09): an application decomposed into
+  # intents by hand, with what no intent can say. cases is 0 until a round reports them.
+  - key: membership through any relation
+    kind: not_delivered
+    status: open
+    first_seen: exercise-spotify
+    last_seen: exercise-slack
+    cases: 0
+    note: "member: is bound to the one tenancy entity, so a second membership shape (playlist collaborators beside
+      artist teams, a document shared with people) has no predicate. Sketch in docs/exercises/spotify.md: a predicate
+      over a reverse relation to a junction with an identity relation, compiled to the EXISTS subquery member: uses.
+      Slack (docs/exercises/slack.md) needs it in four intents (private channels, posting, conversations, files),
+      through a path (in:channel_id.members on Message) and in a conjunction with an owner binding. Notion
+      (docs/exercises/notion.md) adds a ranked level on the junction (in:shares:edit, as member:<field>:<role> ranks)
+      and teamspaces nested under the workspace. All three exercises hit it. Design:
+      docs/designs/membership-through-any-relation.md (the last segment of a member: path may be a membership
+      relation; :role ranks an enum marked ranked: true)."
+  - key: actor conditions
+    kind: not_delivered
+    status: open
+    first_seen: exercise-spotify
+    last_seen: exercise-spotify
+    cases: 0
+    note: "when names the row's fields and role: is the only actor attribute a rule tests; premium-only streaming, an
+      explicit-content setting and country availability need when actor.<field> = <value>. Sketch in
+      docs/exercises/spotify.md."
+  - key: search across resources
+    kind: not_delivered
+    status: open
+    first_seen: exercise-spotify
+    last_seen: exercise-spotify
+    cases: 0
+    note: "One box over tracks, artists, albums and playlists. Likely declined: a custom page composes the per-resource
+      searches; recorded so a round that asks twice decides it (docs/exercises/spotify.md)."
+  - key: cursor pagination
+    kind: not_delivered
+    status: open
+    first_seen: exercise-slack
+    last_seen: exercise-slack
+    cases: 0
+    note: "Lists answer page numbers and a total (a count per request); a message log wants before and after anchors
+      on the order columns, newest first, with no count. Sketch in docs/exercises/slack.md: list.paging: cursor when
+      the order ends in a unique column, a keyset WHERE on every backend, the page loading older rows on scroll."
+  - key: conditions against now
+    kind: not_delivered
+    status: open
+    first_seen: exercise-slack
+    last_seen: exercise-slack
+    cases: 0
+    note: "Nothing compares a field against now in rules or filters (the reference says to decline due before today
+      and upcoming); Slack needs an edit window (owner for fifteen minutes) and a date range in search. Sketch in
+      docs/exercises/slack.md: when created_at > now-15m on any predicate and a range filter on lists, spelled as the
+      scenarios spell time; row checks compare with ctx.now, lists with the request clock."
+  - key: search and ranking
+    kind: not_delivered
+    status: open
+    first_seen: exercise-slack
+    last_seen: exercise-slack
+    cases: 0
+    note: "Full-text search over message bodies ranked by relevance (docs/exercises/slack.md); substring search stays
+      the default. Sketch: search mode full_text as a tsvector column with a GIN index and ts_rank ordering, SQL on
+      every backend. Notion (docs/exercises/notion.md) also searches a page by its blocks' text, a search through a
+      relation. Waits for a round to ask."
+  - key: rules inherited through a tree
+    kind: not_delivered
+    status: open
+    first_seen: exercise-notion
+    last_seen: exercise-notion
+    cases: 0
+    note: "A page without its own sharing takes its parent's, all the way up; paths are fixed length and no predicate
+      recurses. Sketch in docs/exercises/notion.md: rules.inherit: parent_id, evaluating on the nearest row up the chain
+      with its own shares, as a recursive query for row checks and a maintained column for lists. The largest
+      construct an exercise has named; waits for a round to ask."
+  - key: navigation from data
+    kind: not_delivered
+    status: open
+    first_seen: exercise-notion
+    last_seen: exercise-notion
+    cases: 0
+    note: "The sidebar lists declared pages (a name, a label, an icon), never rows; Notion's sidebar is a tree of pages
+      per section plus recents. Sketch in docs/exercises/notion.md: a sidebar item kind tree { resource, parent, label,
+      filter } linking to a parameterized page, and a recent kind. Needs pages with parameters first."
+  - key: tree queries
+    kind: not_delivered
+    status: open
+    first_seen: exercise-notion
+    last_seen: exercise-notion
+    cases: 0
+    note: "Ancestors for breadcrumbs, descendants for duplicating, archiving or publishing a subtree, and a refusal
+      when a move would make a row its own descendant. Sketch in docs/exercises/notion.md: tree: true on a
+      self-relation adding ancestors and descendants routes and the cycle check, recursive CTEs on every backend.
+      Rounds file these asks under relations beyond many-to-one."
+  - key: user-defined schemas
+    kind: not_delivered
+    status: open
+    first_seen: exercise-notion
+    last_seen: exercise-notion
+    cases: 0
+    note: "Notion's databases: properties the users define at runtime, rows typed by them, views with filters, sorts
+      and formulas. Out by construction; recommended declined with the sentence a schema the users define is data,
+      with properties and values as rows and their typing, filters and formulas a handler or a custom page
+      (docs/exercises/notion.md)."

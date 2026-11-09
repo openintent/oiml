@@ -1,0 +1,112 @@
+# Exercise: a Notion clone
+
+**Status: assessed 2026-11-09.** The third clone exercise, by the method in `spotify.md`. Nothing here is built;
+the sketches are starting points for design notes, not grammar.
+
+Notion is the farthest of the three apps from OSL's shape, for two reasons that are worth more than the gaps
+they produce. Its security model is a tree: a page takes its parent's sharing unless it has its own, and OSL's
+rules have paths of fixed length and no recursion. Its core feature is a database whose properties its users
+define at runtime, and a schema language compiles away exactly that: what OSL declares, Notion lets the user
+declare. The editor and the sidebar are custom, as the chat was Slack's and the player Spotify's. What lands is
+the frame around those three things: workspaces, a page tree, blocks as rows, comments, sharing to named people,
+duplication, trash and publishing.
+
+## The intent series
+
+Verdicts: **yes** means the intent lands as a diff today; **partial** means the data lands and a named piece does
+not; **out** means the model does not express it, with the reason.
+
+| Intent | Ask, in one sentence | Verdict |
+| --- | --- | --- |
+| NO-1 Accounts and workspaces | People sign up with a password, Google or a magic link, create workspaces, and hold a role in each: owner, admin, member or guest. | yes: Workspace as the tenancy entity, WorkspaceMember with ranked roles |
+| NO-2 Pages as a tree | A page lives in a workspace under a parent page or at the top, with a title, an icon, a cover and a place among its siblings; moving a page re-parents it; deleting one deletes its subtree; breadcrumbs show its ancestors. | partial: Page with a self-relation `parent_id` and cascade lands, with a `children` include (the subtasks eval case proves the shape on every run since the Drizzle fix); the place among siblings is ordered collections; breadcrumbs walk an unbounded path no include follows; a move that would make a page its own descendant is a check that walks the tree |
+| NO-3 Blocks | A page is an ordered list of blocks, each of a type (paragraph, heading, to-do, bullet, toggle, image, code, embed, divider) with the content that type needs; blocks nest under toggles and lists and move within and between pages. | partial: Block as one wide row (type enum, text, checked, language, file, url, `parent_block_id`) lands; order and moves are ordered collections, nested; "the content that type needs" is the open `conditional validation` gap, a shape per enum value where the typed-JSON design gives one shape |
+| NO-4 The editor | A page renders its blocks as a document people type into, with slash commands, drag handles and inline formatting. | out by design: a custom page; OSL renders forms and lists, and this is the product's main screen |
+| NO-5 Sharing a page | A page is private to its creator, open to the workspace, shared with named people or groups at a level (full access, edit, comment, view), or published to the web; what a person may do follows the highest level they hold. | partial: `owner:created_by or member:workspace_id when scope = workspace or public when published = true` lands; sharing with named people at a level is membership through any relation with a ranked enum on the junction, as `member:<field>:<role>` ranks today |
+| NO-6 Inherited permissions | A page without its own sharing takes its parent's, all the way up; a child may be restricted below its parent. | out: a rule that walks `parent_id` until a page with its own shares; paths are fixed length and no predicate recurses |
+| NO-7 Teamspaces | Inside a workspace, teamspaces have their own members and a default access level; a page belongs to a teamspace or to one person's private section. | partial: Teamspace and TeamspaceMember land; the page's rule through `teamspace_id` is the same membership predicate, nested one level below the tenant |
+| NO-8 Databases | A person makes a database inside a page, defines its properties (text, number, select with options, multi-select, date, person, checkbox, URL, relation, rollup, formula), adds rows that are themselves pages, and views them as a table, board, calendar, list or gallery with filters, sorts and groups they define. | out by construction: the storage lands (Database, Property with a type and config, Value or a `properties` json per row), but typing, filtering, sorting and grouping on properties the users define, and formulas and rollups, are a handler or a custom page; a schema the users define is data |
+| NO-9 Comments | People comment on a page or a block, reply, resolve, and mention each other. | yes: Comment with a self-relation for replies and a `resolve` action, rules following the page's level once NO-5 lands; mentions are an event handler |
+| NO-10 Page history | Every edit is kept; a person views a past version and restores it. | partial: audit is designed and records one entry per block change; restoring is declined there and becomes an action with a handler |
+| NO-11 Search | Quick find lists pages by title and content the person can see, recent first and ranked. | partial: `search:` on the title is a substring; content lives in blocks, so searching a page by its children's text is a join no `search` makes; ranking is search and ranking |
+| NO-12 The sidebar | Favorites, Teamspaces, Shared and Private sections each show a tree of pages expandable in place, plus recent pages; a click opens the page at its own address. | out: the sidebar lists declared pages (a name, a label, an icon), not rows; a tree from data has no construct; the page itself is pages with parameters; Favorite is a junction and recents are Visit rows an action writes |
+| NO-13 Templates and duplication | A page or subtree is duplicated with its blocks; some pages are marked as templates. | yes by design: a `pages.duplicate` action whose handler deep-copies, and an `is_template` flag |
+| NO-14 Trash | A deleted page goes to the trash with its subtree, is restorable for thirty days, then purged. | partial: archive is designed with the purge as a timer on `archived_at`; archiving the subtree is declined there (an event handler archives the children) |
+| NO-15 Public pages | A published page is readable by anyone at a public address, with its subtree if chosen. | partial: `public when published = true` lands; the address is pages with parameters; the reader is NO-4's custom page in read mode; the subtree follows NO-6 |
+| NO-16 Integrations | An integration gets a token and sees only the pages it is shared with, like a person; webhooks fire on changes. | partial by design: API keys and webhooks are designed; an integration is a User row with an `integration` role holding a key, so shares reach it as they reach a person |
+
+Three intents land, nine are partial, four are out. The partials mostly wait on constructs already in the backlog
+(membership through any relation, ordered collections, pages with parameters, conditional validation, archive,
+audit, API keys). The outs are the two reasons above plus two custom surfaces.
+
+## The gaps, ranked by how much of the app they block
+
+1. **Membership through any relation, with a level** (backlog `membership through any relation`, recorded by
+   Spotify, moved to the front by Slack). Blocks NO-5, NO-7, NO-9 and NO-15's private side. Notion adds a ranked
+   level on the junction (full, edit, comment, view) that a predicate names as `in:shares:edit`, ranked the way
+   `member:<field>:<role>` ranks today, and a second nesting (teamspace under workspace). Design:
+   `../designs/membership-through-any-relation.md` (`member:shares:edit`).
+2. **Rules inherited through a tree** (new, `rules inherited through a tree`). Blocks NO-6 and the subtree in
+   NO-15; NO-9 and NO-14 follow it. Sketch: `rules: { inherit: parent_id }` on an entity with a self-relation,
+   meaning the rules evaluate on the nearest row up the chain, itself included, that has its own shares. Mapping:
+   a recursive query for row checks, and for lists either the same query or a maintained `rules_from_id` column
+   kept by triggers on `parent_id` and on the share rows, the way `count_of` is kept. SQL on every backend; the
+   largest construct any exercise has named, and the one that makes a wiki, a file system or a folder tree
+   expressible. Waits for a round to ask.
+3. **Navigation from data** (new, `navigation from data`). Blocks NO-12. Sketch: a sidebar item of a new kind,
+   `{ tree: { resource: pages, parent: parent_id, label: title, filter: { teamspace_id: "{param}" } }, page:
+   page }`, rendering rows nested and expandable, each linking to a parameterized page, and a `recent` kind
+   beside it. Both web backends render the sidebar from one generator, and the list the tree needs already
+   exists (a filter on the parent). Needs pages with parameters first.
+4. **Tree queries** (new, `tree queries`). Blocks the breadcrumbs and the move check in NO-2, and subtree
+   operations in NO-13 and NO-14. Sketch: `tree: true` on a self-relation adds `GET /api/pages/{id}/ancestors`
+   and `/descendants`, a 400 when an update would make a row its own descendant, and a `depth` the lists may
+   filter on. Recursive CTEs on every backend; shares its mapping with 2. The clusterer files tree and ancestor
+   asks under `relations beyond many-to-one` until that topic is split.
+5. **User-defined schemas** (new, `user-defined schemas`). Blocks NO-8, which is Notion's product. Recommended
+   declined, with the sentence the reference gets: "a schema the users define is data: properties and values are
+   rows, and their typing, filters, sorts and formulas are a handler or a custom page". Recording it says where
+   OSL's shape ends: applications whose schema the builder declares.
+6. **Conditional validation** (backlog `conditional validation`, open since r4). Blocks the per-type content in
+   NO-3. Notion's spelling is a shape per enum value: `shape_by: { type: { heading: {...}, code: {...} } }`
+   beside the typed-JSON design's single `shape`, so a wide row or a json column validates by the discriminator.
+7. **Ordered collections, nested** (backlog `ordering and positions`). Blocks the sibling order in NO-2 and the
+   block order in NO-3, where the scope is a nullable self-relation (`within: parent_block_id`, falling back to
+   `page_id` at the top), which the playlist sketch did not need.
+8. Already recorded or designed: pages with parameters (NO-12, NO-15), search and ranking (NO-11, plus a search
+   through a relation to the blocks' text), archive (NO-14), audit (NO-10), API keys and webhooks (NO-16).
+
+## Out by design, and still right
+
+- The block editor and the public reader: custom pages; the model declares the rows they edit.
+- Realtime collaborative editing: declined, and beyond push; concurrent edits to one block need a merge the
+  model does not describe.
+- Restoring a version, duplicating a subtree, archiving a subtree: actions whose handlers do the walk.
+- Formulas and rollups over user-defined properties: handler logic, with NO-8.
+
+## What three exercises say together
+
+| Gap | Spotify | Slack | Notion |
+| --- | --- | --- | --- |
+| pages with parameters | every screen | the channel, with a tenant context | the page, the sidebar's target |
+| membership through any relation | collaborators | four intents, through a path | shares with a level, teamspaces |
+| ordering and positions | playlist tracks | | siblings and blocks, nested |
+| search and ranking | | messages, full text | title and block text |
+| files and media | protected audio | files follow the message | |
+| relations beyond many-to-one | artists, genres | | ancestors, descendants |
+| computed and aggregate fields | counts | unread per viewer | |
+
+Two gaps appear in all three apps, and neither was in the backlog before the exercises: pages with parameters
+was, with two cases; membership through any relation was not. The bake order after three apps: membership
+through any relation (with a path, a conjunction and a level), then pages with parameters with the tenant
+context, then ordered collections (nested), with cursor pagination and conditions against now riding on the pages
+round. Trees and inheritance wait for a round; user-defined schemas are the boundary.
+
+## The fixture it implies
+
+A `wiki` fixture, when trees are built: WK-1 workspaces and a page tree (NO-1, NO-2, the proof of tree queries),
+WK-2 blocks in order (NO-3, the proof of nested ordered collections and a shape per type), WK-3 sharing with a
+level (NO-5, the proof of the ranked membership predicate), WK-4 inherited sharing (NO-6, the proof of rules
+inherited through a tree), WK-5 the sidebar and the page address (NO-12, NO-15, the proof of navigation from
+data). Until then, the ranked level can be proven on the workspace fixture's channels (a channel role beside
+Slack's WS-9), and nothing else here needs a fixture before its construct.

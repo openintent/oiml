@@ -77,7 +77,7 @@ The two TypeScript backends share their generators through `@osl/ts-common` (`pa
 
 The `hono-trpc-vite` contract tests speak tRPC's HTTP transport but assert the same scenarios: a successful call is the contract's 200 (201 and 204 fold into it), tRPC error codes carry the contract's statuses, and query-string filters are coerced to the typed input. Generated route files under `src/routes` are rewritten on every generate; the shell (`src/components/app-sidebar.tsx`, `app-shell.tsx`), the root route, home, sign-in and settings pages are scaffolds written once, and they read the sidebar's data from `generated/app/nav.ts`, so a later intent that adds a page needs no edits.
 
-## What the 1.1 constructs become
+## What the alpha.2 and alpha.3 constructs become
 
 | Construct | drizzle-next (REST) | hono-trpc-vite (tRPC) | gin-pgx (REST) |
 | --- | --- | --- | --- |
@@ -91,6 +91,8 @@ The `hono-trpc-vite` contract tests speak tRPC's HTTP transport but assert the s
 | Seed | `tsx generated/seed.ts` replays `examples.seed` over HTTP; `osl seed` | the same over tRPC | a Go program |
 | Docker | `Dockerfile`, `docker-compose.yml` with postgres and, with queued events, a worker service | the same | the same |
 | App pages | `app/(app)/…` with the sidebar shell, React Query over the REST client; page access gates, fixed filters, refresh intervals and grouped tiles | `src/routes/…` with TanStack Router over the tRPC client; the same | none |
+| Rules with conditions, paths and conjunctions; hidden rows | checks from the generated access module shared with the Vite backend; lists filter by the row condition and through relations with subqueries; a hidden row answers `notFound()` | the same | `access.CheckRow` over the values `ruleRow` resolves, `where.Raw` subqueries, `httpx.NotFound()` |
+| Read-only fields, `osl implement` | strict input schemas answer 400 when a client sends the field; handlers written from the action, its scenarios and the files `handlerGuide` names, checked with `tsc` | the same | the same, with `gofmt` first |
 
 Every one of these is proven by the fixtures: `blog` (actions, files, search and sort, magic link and GitHub providers, table and dashboard pages, a queued event, seed), `todo` (actions, board and table pages, a dashboard, seed) and `workspace` (teams, memberships with ranked roles, member rules, auto-membership, magic link). A fixture may ship the user-owned code its scenarios depend on under `fixtures/<name>/overlay/<backend>/`; the harness copies it over the generated project before installing. Snapshots cover generated files only.
 

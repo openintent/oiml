@@ -89,7 +89,7 @@ Node 22+ and pnpm 10. The conformance run needs PostgreSQL for a throwaway datab
 
 ## Status
 
-OSL 1.1 is an alpha. All three backends pass all three fixtures end to end on a real database, and the conformance snapshots are committed as proof. See the plan in the docs for the boundary rule and what is deliberately out of scope: live push, charts and layouts beyond the page kinds the model declares, and any construct without a deterministic mapping; action handlers are the model's to write through `osl implement`, never the compiler's.
+OSL is at `1.0.0-alpha.3`. All three backends pass all three fixtures end to end on a real database, and the conformance snapshots are committed as proof. The road to `1.0.0` is [docs/roadmap.md](docs/roadmap.md); see the architecture page for the boundary rule and what is deliberately out of scope: live push, charts and layouts beyond the page kinds the model declares, and any construct without a deterministic mapping; action handlers are the model's to write through `osl implement`, never the compiler's.
 
 ## License
 

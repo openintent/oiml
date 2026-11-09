@@ -17,16 +17,16 @@ rest. It is the design to review before the build; the grammar is permanent.
 
 ## What was asked, in the agents' words
 
-| Ask | Where | Verdict |
-| --- | --- | --- |
-| "Running the overdue check automatically every day has no schedule construct; the handler must be triggered by an external scheduler or an admin" | r1-04, r2-01, r3-02, r4-03 | construct: `schedules`, a cron that runs a global action |
-| "Automatic go-live at the scheduled time: `publish_at` is stored, but a piece only goes live when its publish action is called" | r1-03, r3-10, r4-07 | construct: `timers`, a row action that runs when a datetime field (plus an offset) passes |
-| "Automatic locking of a thread after 60 days without new replies"; "flag overdue 48 hours after assignment"; "clear tasks done for 30 days" | r1-09, r4-08, r4-03 | construct: `timers` with `after` |
-| "Scenarios cannot back-date activity or advance the clock, so only the sweep's access rule is tested" | r1-09, r4-08, r3-10 | construct: a clock for scenarios, `timers.run` and `schedules.run` steps with `{now+49h}` |
-| "The model cannot declare or test that an email was sent" | r1-04, r2-01 | construct: `emails.sent` step over the capture mailbox |
-| "A tile filter cannot express a due date before today"; "comparing completion time against now minus 30 days" | r2-04, r4-03 | separate construct, comparison filters with `now`; named here, designed next |
-| "The overdue flag cannot be computed from the due date" | r1-04 | a timer sets a read_only flag; no computed field |
-| "Refusing replies to a locked thread: a create rule cannot depend on the related thread's field" | r1-09 | a row condition through a relation (`when article_id.locked = false`); a small extension of row conditions, noted for the rules backlog |
+| Ask                                                                                                                                               | Where                      | Verdict                                                                                                                                 |
+| ------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| "Running the overdue check automatically every day has no schedule construct; the handler must be triggered by an external scheduler or an admin" | r1-04, r2-01, r3-02, r4-03 | construct: `schedules`, a cron that runs a global action                                                                                |
+| "Automatic go-live at the scheduled time: `publish_at` is stored, but a piece only goes live when its publish action is called"                   | r1-03, r3-10, r4-07        | construct: `timers`, a row action that runs when a datetime field (plus an offset) passes                                               |
+| "Automatic locking of a thread after 60 days without new replies"; "flag overdue 48 hours after assignment"; "clear tasks done for 30 days"       | r1-09, r4-08, r4-03        | construct: `timers` with `after`                                                                                                        |
+| "Scenarios cannot back-date activity or advance the clock, so only the sweep's access rule is tested"                                             | r1-09, r4-08, r3-10        | construct: a clock for scenarios, `timers.run` and `schedules.run` steps with `{now+49h}`                                               |
+| "The model cannot declare or test that an email was sent"                                                                                         | r1-04, r2-01               | construct: `emails.sent` step over the capture mailbox                                                                                  |
+| "A tile filter cannot express a due date before today"; "comparing completion time against now minus 30 days"                                     | r2-04, r4-03               | separate construct, comparison filters with `now`; named here, designed next                                                            |
+| "The overdue flag cannot be computed from the due date"                                                                                           | r1-04                      | a timer sets a read_only flag; no computed field                                                                                        |
+| "Refusing replies to a locked thread: a create rule cannot depend on the related thread's field"                                                  | r1-09                      | a row condition through a relation (`when article_id.locked = false`); a small extension of row conditions, noted for the rules backlog |
 
 ## Constructs
 
@@ -39,8 +39,8 @@ in the IR, as a queued event does.
 
 ```yaml
 schedules:
-  - { cron: "0 7 * * *", action: send_reminders }                 # UTC; a global action with no required input
-  - { cron: "*/15 * * * *", action: sweep_overdue, input: { grace_hours: 48 } }   # literal input when the action takes some
+  - { cron: "0 7 * * *", action: send_reminders } # UTC; a global action with no required input
+  - { cron: "*/15 * * * *", action: sweep_overdue, input: { grace_hours: 48 } } # literal input when the action takes some
 ```
 
 A schedule runs a global action's handler as the system: no session, no access rule, the input given here (or none).
@@ -90,13 +90,13 @@ on stale data. The handler sees `ctx.now`, the time the timer was due.
 Time is an input, so scenarios can state it. Three step kinds join `auth.*` and `files.*`:
 
 ```yaml
-- op: timers.run                         # run every timer due at that moment, as the worker would
+- op: timers.run # run every timer due at that moment, as the worker would
   body: { now: "{now+49h}" }
   expect: { status: 200, body: { data: { ran: 1 } } }
-- op: schedules.run                      # run one schedule's action now
+- op: schedules.run # run one schedule's action now
   body: { schedule: send_reminders, now: "{now+1d}" }
   expect: { status: 200, body: { data: { ran: 1 } } }
-- op: emails.sent                        # the capture mailbox since the scenario began
+- op: emails.sent # the capture mailbox since the scenario began
   query: { to: bob@example.com }
   expect: { status: 200, body: { data: [{ subject: "Reminder: Spring fair" }] } }
 ```

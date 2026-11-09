@@ -35,7 +35,7 @@ correct diff must contain:
 ```yaml
 id: blog2-comments
 tags: [entity, relation, rules, list, scenario]
-base: { fixture: blog, through: FEAT-2 }   # or { empty: <name> } for a new project
+base: { fixture: blog, through: FEAT-2 } # or { empty: <name> } for a new project
 intent:
   title: Comments
   ask: Signed-in users comment on posts ...
@@ -73,14 +73,14 @@ new asks over the fixtures' models at different points, or over an empty model.
 
 ## What a case measures
 
-| Column | Meaning |
-| --- | --- |
-| Status | `ok`: a valid diff within the attempts. `invalid`: none after the retry. `declined`: the agent said nothing is expressible, with reasons. `error`: the API or the runner failed; not graded. |
-| Attempts | 1 means the first diff validated; 2 means the retry with the problems was needed. |
-| Checks | The expectations above, on the applied model. |
-| Generate | Every backend generated the project (a pure function of the IR, so this catches compiler gaps). |
-| Full | The conformance harness on one backend: install, typecheck, migrate a throwaway database, drift, start, and run every scenario in the model, including the ones the diff added. |
-| Pass | Outcome as expected and every check, generate and full step passed. |
+| Column   | Meaning                                                                                                                                                                                      |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Status   | `ok`: a valid diff within the attempts. `invalid`: none after the retry. `declined`: the agent said nothing is expressible, with reasons. `error`: the API or the runner failed; not graded. |
+| Attempts | 1 means the first diff validated; 2 means the retry with the problems was needed.                                                                                                            |
+| Checks   | The expectations above, on the applied model.                                                                                                                                                |
+| Generate | Every backend generated the project (a pure function of the IR, so this catches compiler gaps).                                                                                              |
+| Full     | The conformance harness on one backend: install, typecheck, migrate a throwaway database, drift, start, and run every scenario in the model, including the ones the diff added.              |
+| Pass     | Outcome as expected and every check, generate and full step passed.                                                                                                                          |
 
 Full runs of diffs that add actions are reported separately. Without `--implement` the generated handler
 stubs return the row unchanged, so a scenario that expects the action's effect fails until someone writes the
@@ -222,6 +222,13 @@ names it and the commands exit 1. Failures, invalid attempts and failed handlers
 here; they are bugs or missing reference sentences, fixed rather than carried. A cluster keyed by a one-off
 line's wording (no topic matched it) enters the backlog only once two cases share it; when such a line recurs,
 the fix is a new topic in `packages/evals/src/gaps.ts`.
+
+Not every entry comes from a round. `docs/designs/` also holds briefs written from the other direction: what
+hand-written applications of OSL's shape build for themselves (tenant isolation, invites, field visibility, state
+machines, money and sequences, archiving and counts, audit and webhooks, API keys and an MCP surface, and the
+conformance walks that prove them). Each enters the backlog as `open` with `first_seen: designs-<date>` and
+`cases: 0`, so it ranks below what agents have asked for until a round reports it; its `note` names the brief. A
+brief's status line says `proposed` until it is built, and then what changed while building, like the others.
 
 ### The next construct
 

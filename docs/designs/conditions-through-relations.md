@@ -18,13 +18,13 @@ proof. It is the design to review before the build; the grammar is permanent.
 
 ## What was asked, in the agents' words
 
-| Ask | Where | Verdict |
-| --- | --- | --- |
-| "A task's read rule can only check the task's own fields, not whether its project is public" | r5-10, r1-07 | construct: a condition through a relation |
-| "Refusing replies to a locked or inactive thread: a create rule cannot depend on a field value of the related thread" | r1-09, blog2-forum-autolock | construct: a condition through a relation, on create |
-| "The rules can require publication membership on create or bind the author to the session, but not both at once, so a member could file a draft under another person's name" | r1-02, r3-09, ws2-project-notes | construct: a conjunction of predicates |
-| "Filtering the projects list itself by tag: list filters only take the entity's own fields" | r3-02 | separate, a list construct; noted, not built here |
-| "A deactivated account is refused at sign-in or blocked from writing" | r2-04 | separate, an auth setting; noted, not built here |
+| Ask                                                                                                                                                                          | Where                           | Verdict                                              |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- | ---------------------------------------------------- |
+| "A task's read rule can only check the task's own fields, not whether its project is public"                                                                                 | r5-10, r1-07                    | construct: a condition through a relation            |
+| "Refusing replies to a locked or inactive thread: a create rule cannot depend on a field value of the related thread"                                                        | r1-09, blog2-forum-autolock     | construct: a condition through a relation, on create |
+| "The rules can require publication membership on create or bind the author to the session, but not both at once, so a member could file a draft under another person's name" | r1-02, r3-09, ws2-project-notes | construct: a conjunction of predicates               |
+| "Filtering the projects list itself by tag: list filters only take the entity's own fields"                                                                                  | r3-02                           | separate, a list construct; noted, not built here    |
+| "A deactivated account is refused at sign-in or blocked from writing"                                                                                                        | r2-04                           | separate, an auth setting; noted, not built here     |
 
 ## Constructs
 
