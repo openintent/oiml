@@ -1,0 +1,10 @@
+osl: "1.0"
+title: Banning users
+ask: >-
+  Admins can ban a user, giving a reason. A banned user's profile shows that they are banned, since when, and
+  why. Nobody but an admin can ban, and nobody sets those fields by hand: not when registering, not when editing
+  a profile. Users may edit their own name. Roles are set by operators, never through the API.
+acceptance:
+  - Registering with banned or role in the body is refused
+  - A member trying to ban someone gets 403; an admin's ban succeeds and the profile then shows banned true with the reason
+  - A banned user cannot unban themselves or change their role through their profile, but can change their name

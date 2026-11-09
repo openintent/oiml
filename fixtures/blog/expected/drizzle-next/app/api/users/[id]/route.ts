@@ -6,3 +6,7 @@ import { users, type RouteContext } from "@/generated/resources/users";
 export async function GET(request: Request, ctx: RouteContext): Promise<Response> {
   return users.get(request, ctx);
 }
+
+export async function PATCH(request: Request, ctx: RouteContext): Promise<Response> {
+  return users.update(request, ctx);
+}

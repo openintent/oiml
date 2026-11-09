@@ -18,6 +18,13 @@ export interface Rates {
   full_pass: number;
   full_ran_no_actions: number;
   full_pass_no_actions: number;
+  /** Full runs of diffs with actions whose handlers the model wrote */
+  full_ran_implemented: number;
+  full_pass_implemented: number;
+  handlers_written: number;
+  handlers_ok: number;
+  handlers_first_attempt: number;
+  implement_cost: number;
   attempts_mean: number;
   ms_mean: number;
   cost_total: number;
@@ -31,6 +38,8 @@ export function rates(cases: CaseResult[]): Rates {
   const declined = graded.filter(c => c.status === "declined");
   const full = valid.filter(c => c.full && !c.full.skipped);
   const fullNoActions = full.filter(c => !c.adds_actions);
+  const implemented = full.filter(c => c.implement?.handlers.some(h => !h.skipped));
+  const handlers = valid.flatMap(c => c.implement?.handlers.filter(h => !h.skipped) ?? []);
   return {
     cases: cases.length,
     errors: cases.length - graded.length,
@@ -46,6 +55,12 @@ export function rates(cases: CaseResult[]): Rates {
     full_pass: full.filter(c => c.full!.ok).length,
     full_ran_no_actions: fullNoActions.length,
     full_pass_no_actions: fullNoActions.filter(c => c.full!.ok).length,
+    full_ran_implemented: implemented.length,
+    full_pass_implemented: implemented.filter(c => c.full!.ok).length,
+    handlers_written: handlers.length,
+    handlers_ok: handlers.filter(h => h.ok).length,
+    handlers_first_attempt: handlers.filter(h => h.ok && h.attempts === 1).length,
+    implement_cost: valid.reduce((n, c) => n + (c.implement?.cost_usd ?? 0), 0),
     attempts_mean: graded.length ? graded.reduce((n, c) => n + c.attempts, 0) / graded.length : 0,
     ms_mean: graded.length ? graded.reduce((n, c) => n + c.ms, 0) / graded.length : 0,
     cost_total: graded.reduce((n, c) => n + (c.cost_usd ?? 0), 0),
@@ -94,7 +109,9 @@ export function summaryMarkdown(run: RunResult): string {
   lines.push(`# Propose eval ${run.id}`, "");
   lines.push(
     `Model ${run.model}, proposer ${run.proposer}, ${r.cases} cases` +
-      (run.full ? `, full runs on ${run.backend}` : ", no full runs") +
+      (run.full
+        ? `, full runs on ${run.backend}${run.implement ? " with handlers written by the model" : ""}`
+        : ", no full runs") +
       `. Started ${run.started}, finished ${run.finished}.`,
     ""
   );
@@ -114,8 +131,17 @@ export function summaryMarkdown(run: RunResult): string {
   if (run.full) {
     lines.push(`| Full run passes (${run.backend}) | ${r.full_pass}/${r.full_ran} (${pct(r.full_pass, r.full_ran)}) |`);
     lines.push(
-      `| Full run passes, diffs without actions (handlers are stubs) | ${r.full_pass_no_actions}/${r.full_ran_no_actions} (${pct(r.full_pass_no_actions, r.full_ran_no_actions)}) |`
+      `| Full run passes, diffs without actions${run.implement ? "" : " (handlers are stubs)"} | ${r.full_pass_no_actions}/${r.full_ran_no_actions} (${pct(r.full_pass_no_actions, r.full_ran_no_actions)}) |`
     );
+    if (run.implement) {
+      lines.push(
+        `| Full run passes, diffs with actions (handlers written by the model) | ${r.full_pass_implemented}/${r.full_ran_implemented} (${pct(r.full_pass_implemented, r.full_ran_implemented)}) |`
+      );
+      lines.push(
+        `| Handlers written / passing the check / on the first attempt | ${r.handlers_written} / ${r.handlers_ok} / ${r.handlers_first_attempt} |`
+      );
+      lines.push(`| Handler cost | ${money(r.implement_cost)} |`);
+    }
   }
   lines.push(`| Declined (nothing expressible, with reasons) | ${r.declined} |`);
   lines.push(`| Proposer errors (not graded) | ${r.errors} |`);

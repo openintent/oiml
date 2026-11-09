@@ -77,6 +77,11 @@ export interface RunOptions {
    * The snapshots are written for the default, so the snapshot step is skipped for any other.
    */
   packageManager?: string;
+  /**
+   * Runs once the project is installed and before it is checked, with the project directory; what it returns is
+   * the step's detail. The eval runner writes the action handlers here.
+   */
+  afterInstall?: (dir: string, backendName: string) => Promise<string | void>;
   log?: (line: string) => void;
 }
 
@@ -190,6 +195,11 @@ export async function runFixture(
     for (const cmd of runtime.install) await exec(cmd, dir);
   });
   if (!installed) return finish(result, options);
+
+  if (options.afterInstall) {
+    const prepared = await step("implement", () => options.afterInstall!(dir, backend.name));
+    if (!prepared) return finish(result, options);
+  }
 
   await step("check", async () => {
     for (const cmd of runtime.check) await exec(cmd, dir);

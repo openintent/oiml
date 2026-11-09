@@ -48,7 +48,9 @@ export const client = {
   },
   users: {
     list: (input: Inputs["users"]["list"]) => trpc.users.list.query(input),
-    get: (input: Inputs["users"]["get"]) => trpc.users.get.query(input)
+    get: (input: Inputs["users"]["get"]) => trpc.users.get.query(input),
+    update: (input: Inputs["users"]["update"]) => trpc.users.update.mutate(input),
+    ban: (input: Inputs["users"]["ban"]) => trpc.users.ban.mutate(input)
   },
   posts: {
     list: (input: Inputs["posts"]["list"]) => trpc.posts.list.query(input),

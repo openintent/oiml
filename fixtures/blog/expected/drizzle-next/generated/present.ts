@@ -4,9 +4,9 @@
 import type * as schema from "./db/schema";
 import { presentFileRef, type PublicFile } from "./files";
 
-export type PublicUser = Pick<schema.User, "id" | "email" | "name" | "role" | "created_at">;
+export type PublicUser = Pick<schema.User, "id" | "email" | "name" | "role" | "created_at" | "banned" | "banned_at" | "ban_reason">;
 export function presentUser(row: schema.User): PublicUser {
-  return { id: row.id, email: row.email, name: row.name, role: row.role, created_at: row.created_at };
+  return { id: row.id, email: row.email, name: row.name, role: row.role, created_at: row.created_at, banned: row.banned, banned_at: row.banned_at, ban_reason: row.ban_reason };
 }
 
 export type PublicArticle = Pick<schema.Article, "id" | "title" | "content" | "published" | "author_id" | "posted_at" | "tags"> & { cover: PublicFile | null };

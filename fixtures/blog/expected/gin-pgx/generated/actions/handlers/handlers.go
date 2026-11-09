@@ -9,7 +9,11 @@ import (
 	postspublish "blog/src/actions/posts_publish"
 	postsunpublishall "blog/src/actions/posts_unpublish_all"
 	senddigest "blog/src/actions/send_digest"
+	usersban "blog/src/actions/users_ban"
 )
+
+// UsersBan handles POST /api/users/{id}/ban; its body is src/actions/users_ban/handler.go.
+var UsersBan func(ctx *actions.Context, input actions.UsersBanInput, row *models.User) (*models.User, error) = usersban.Handle
 
 // PostsPublish handles POST /api/posts/{id}/publish; its body is src/actions/posts_publish/handler.go.
 var PostsPublish func(ctx *actions.Context, input actions.PostsPublishInput, row *models.Article) (*models.Article, error) = postspublish.Handle

@@ -2026,11 +2026,40 @@
                             "enum": [
                               "member",
                               "admin"
-                            ]
+                            ],
+                            "readOnly": true
                           },
                           "created_at": {
                             "type": "string",
                             "format": "date-time"
+                          },
+                          "banned": {
+                            "type": "boolean",
+                            "description": "Set by the ban action",
+                            "readOnly": true
+                          },
+                          "banned_at": {
+                            "oneOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "readOnly": true
+                          },
+                          "ban_reason": {
+                            "oneOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "readOnly": true
                           }
                         },
                         "required": [
@@ -2038,7 +2067,10 @@
                           "email",
                           "name",
                           "role",
-                          "created_at"
+                          "created_at",
+                          "banned",
+                          "banned_at",
+                          "ban_reason"
                         ]
                       }
                     },
@@ -2141,11 +2173,40 @@
                           "enum": [
                             "member",
                             "admin"
-                          ]
+                          ],
+                          "readOnly": true
                         },
                         "created_at": {
                           "type": "string",
                           "format": "date-time"
+                        },
+                        "banned": {
+                          "type": "boolean",
+                          "description": "Set by the ban action",
+                          "readOnly": true
+                        },
+                        "banned_at": {
+                          "oneOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "readOnly": true
+                        },
+                        "ban_reason": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "readOnly": true
                         },
                         "posts": {
                           "type": "array",
@@ -2160,8 +2221,170 @@
                         "name",
                         "role",
                         "created_at",
+                        "banned",
+                        "banned_at",
+                        "ban_reason",
                         "posts"
                       ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "users"
+        ],
+        "operationId": "users_update",
+        "description": "Only the row's owner (id).",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "summary": "Update one of users",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 1
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/User"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/users/{id}/ban": {
+      "post": {
+        "tags": [
+          "users"
+        ],
+        "operationId": "users_ban",
+        "summary": "Ban the user, recording when and why",
+        "description": "Only users with role admin.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "minLength": 1
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "reason"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/User"
                     }
                   }
                 }
@@ -2358,11 +2581,40 @@
             "enum": [
               "member",
               "admin"
-            ]
+            ],
+            "readOnly": true
           },
           "created_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "banned": {
+            "type": "boolean",
+            "description": "Set by the ban action",
+            "readOnly": true
+          },
+          "banned_at": {
+            "oneOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "readOnly": true
+          },
+          "ban_reason": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "readOnly": true
           }
         },
         "required": [
@@ -2370,7 +2622,10 @@
           "email",
           "name",
           "role",
-          "created_at"
+          "created_at",
+          "banned",
+          "banned_at",
+          "ban_reason"
         ]
       }
     },

@@ -26,6 +26,7 @@ import {
 } from "@osl/core";
 import { BACKENDS, backendNamed } from "./backends.js";
 import { loadDotEnv, requireDatabaseUrl } from "./env.js";
+import { implementActions } from "./implement.js";
 import { DEFAULT_MODEL, ProposeDeclinedError, propose } from "./propose.js";
 import { startMcp } from "./mcp.js";
 
@@ -201,6 +202,54 @@ program
       const install = backend.runtime(project.config).install[0];
       const shown = install ? `${install.command} ${install.args.filter(a => !a.startsWith("-")).join(" ")}` : "";
       info(`next: install dependencies${shown ? ` (${shown})` : ""}, then osl migrate`);
+    }
+  });
+
+program
+  .command("implement [handlers...]")
+  .description(
+    "Ask Claude to write the action handlers still at their stubs (or the named ones), checked with the backend's compiler"
+  )
+  .option("-m, --model <model>", "Claude model id", DEFAULT_MODEL)
+  .option("--force", "also rewrite handlers that are no longer stubs")
+  .option("--no-check", "skip the compiler check")
+  .action(async (handlers: string[], options: { model: string; force?: boolean; check: boolean }) => {
+    const root = projectRoot();
+    const project = await loadProject(root);
+    const backend = backendNamed(project.config.backend);
+    if (project.ir.actions.length === 0) {
+      info("the model declares no actions, so there is nothing to implement");
+      return;
+    }
+    info(
+      `asking ${options.model} to write ${handlers.length ? handlers.join(", ") : "the handlers still at their stubs"}`
+    );
+    const result = await implementActions(root, backend, {
+      model: options.model,
+      only: handlers.length ? handlers : undefined,
+      force: options.force,
+      check: options.check,
+      onAttempt: (handler, attempt, problems) => {
+        if (problems.length) warn(`${handler}: attempt ${attempt} failed the check, retrying with its output`);
+      }
+    });
+    for (const h of result.handlers) {
+      if (h.skipped) info(`${h.path}: ${h.skipped}`);
+      else if (h.ok)
+        ok(`wrote ${h.path} (${h.attempts} attempt${h.attempts === 1 ? "" : "s"})${h.notes ? `: ${h.notes}` : ""}`);
+      else {
+        console.log(chalk.red("✗"), `${h.path} still fails the check after ${h.attempts} attempts:`);
+        for (const line of h.problems) console.log(`    ${line}`);
+        process.exitCode = 1;
+      }
+    }
+    const written = result.handlers.filter(h => !h.skipped);
+    if (written.length === 0) info("every handler is already implemented; pass --force or name the ones to rewrite");
+    else {
+      info(
+        `tokens: ${(result.usage.input_tokens + result.usage.cache_read_input_tokens + result.usage.cache_creation_input_tokens).toLocaleString()} in, ${result.usage.output_tokens.toLocaleString()} out`
+      );
+      info("next: review the handlers, then osl verify --base-url <url> runs the contract tests against them");
     }
   });
 

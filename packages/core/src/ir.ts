@@ -53,6 +53,8 @@ export interface ColumnIR {
   unique: boolean;
   primary: boolean;
   hidden: boolean;
+  /** Returned by the API but never accepted from it: register, create and update leave it out */
+  readOnly?: boolean;
   default?: DefaultIR;
   /** Database-generated integer identity */
   generated?: "identity";
@@ -595,6 +597,7 @@ export function compile(input: Model): IR {
       primary: isPrimary,
       hidden: Boolean(field.hidden)
     };
+    if (field.read_only) column.readOnly = true;
     if (type.kind === "enum" && !stored) column.enumValues = field.enum_values!;
     const def = columnDefault(field);
     if (def) column.default = def;
@@ -730,6 +733,7 @@ export function compile(input: Model): IR {
         c =>
           !c.primary &&
           !c.hidden &&
+          !c.readOnly &&
           !isBytes(c) &&
           c.type.kind !== "file" &&
           c.name !== model.auth!.email_field &&
@@ -848,7 +852,7 @@ export function compile(input: Model): IR {
     const entity = entityByName(resource.entity);
     const path = resource.path ?? `/api/${resourceName}`;
     const writable = entity.columns
-      .filter(c => !c.primary && !c.hidden && !isBytes(c) && !isGeneratedDefault(c))
+      .filter(c => !c.primary && !c.hidden && !c.readOnly && !isBytes(c) && !isGeneratedDefault(c))
       .map(c => c.name);
     const operations: OperationIR[] = [];
     for (const kind of resource.operations) {

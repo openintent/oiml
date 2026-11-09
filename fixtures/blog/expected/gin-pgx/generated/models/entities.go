@@ -9,31 +9,37 @@ import "time"
 const UserTable = `"users"`
 
 // UserColumns lists the columns of User in model order, for SELECT and RETURNING.
-const UserColumns = `"id", "email", "name", "role", "created_at", "password_hash"`
+const UserColumns = `"id", "email", "name", "role", "created_at", "banned", "banned_at", "ban_reason", "password_hash"`
 
 // User is a row of users.
 type User struct {
-	ID           string    `json:"id"`
-	Email        string    `json:"email"`
-	Name         string    `json:"name"`
-	Role         string    `json:"role"`
-	CreatedAt    time.Time `json:"created_at"`
-	PasswordHash *string   `json:"-"`
+	ID           string     `json:"id"`
+	Email        string     `json:"email"`
+	Name         string     `json:"name"`
+	Role         string     `json:"role"`
+	CreatedAt    time.Time  `json:"created_at"`
+	Banned       bool       `json:"banned"`
+	BannedAt     *time.Time `json:"banned_at"`
+	BanReason    *string    `json:"ban_reason"`
+	PasswordHash *string    `json:"-"`
 }
 
 // PublicUser is User as the API returns it: hidden columns removed, dates rendered.
 type PublicUser struct {
-	ID        string `json:"id"`
-	Email     string `json:"email"`
-	Name      string `json:"name"`
-	Role      string `json:"role"`
-	CreatedAt string `json:"created_at"`
+	ID        string  `json:"id"`
+	Email     string  `json:"email"`
+	Name      string  `json:"name"`
+	Role      string  `json:"role"`
+	CreatedAt string  `json:"created_at"`
+	Banned    bool    `json:"banned"`
+	BannedAt  *string `json:"banned_at"`
+	BanReason *string `json:"ban_reason"`
 }
 
 // ScanUser reads one User from a row selected with UserColumns.
 func ScanUser(row Scanner) (*User, error) {
 	var r User
-	if err := row.Scan(&r.ID, &r.Email, &r.Name, &r.Role, &r.CreatedAt, &r.PasswordHash); err != nil {
+	if err := row.Scan(&r.ID, &r.Email, &r.Name, &r.Role, &r.CreatedAt, &r.Banned, &r.BannedAt, &r.BanReason, &r.PasswordHash); err != nil {
 		return nil, err
 	}
 	return &r, nil
@@ -41,7 +47,7 @@ func ScanUser(row Scanner) (*User, error) {
 
 // PresentUser returns the public shape of a User.
 func PresentUser(row *User) PublicUser {
-	return PublicUser{ID: row.ID, Email: row.Email, Name: row.Name, Role: row.Role, CreatedAt: FormatDateTime(row.CreatedAt)}
+	return PublicUser{ID: row.ID, Email: row.Email, Name: row.Name, Role: row.Role, CreatedAt: FormatDateTime(row.CreatedAt), Banned: row.Banned, BannedAt: FormatDateTimePtr(row.BannedAt), BanReason: row.BanReason}
 }
 
 // PresentUserPtr presents an optional User; nil stays nil.

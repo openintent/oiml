@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * pnpm evals [--proposer live|oracle|null] [--model id] [--only a,b] [--tag t] [--limit n]
- *            [--no-full] [--backend name] [--jobs n] [--full-jobs n] [--cases dir] [--out dir]
+ *            [--no-full] [--implement] [--backend name] [--jobs n] [--full-jobs n] [--cases dir] [--out dir]
  *            [--compare <run dir>]
  *
  * Reads ANTHROPIC_API_KEY and OSL_TEST_DATABASE_URL from the environment, .env.local and .env.
@@ -32,6 +32,7 @@ if (!["live", "oracle", "null"].includes(proposer)) {
 }
 const model = valueOf("--model") ?? DEFAULT_MODEL;
 const full = !has("--no-full");
+const implement = has("--implement");
 const backend = valueOf("--backend") ?? "hono-trpc-vite";
 const jobs = Number(valueOf("--jobs") ?? 4);
 const fullJobs = Number(valueOf("--full-jobs") ?? 2);
@@ -44,8 +45,10 @@ const limit = valueOf("--limit") ? Number(valueOf("--limit")) : undefined;
 const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
 const outDir = path.resolve(valueOf("--out") ?? path.join(repoRoot, "evals/propose/runs", `${stamp}-${proposer}`));
 
-if (proposer === "live" && !process.env.ANTHROPIC_API_KEY) {
-  console.error("ANTHROPIC_API_KEY is not set; put it in .env.local or run with --proposer oracle|null");
+if ((proposer === "live" || implement) && !process.env.ANTHROPIC_API_KEY) {
+  console.error(
+    "ANTHROPIC_API_KEY is not set; put it in .env.local or run with --proposer oracle|null and without --implement"
+  );
   process.exit(2);
 }
 const databaseUrl = process.env.OSL_TEST_DATABASE_URL;
@@ -63,7 +66,7 @@ if (cases.length === 0) {
 
 console.log(
   `${cases.length} cases, proposer ${proposer}${proposer === "live" ? ` (${model})` : ""}, ${
-    full ? `full runs on ${backend}` : "no full runs"
+    full ? `full runs on ${backend}${implement ? ` with handlers written by ${model}` : ""}` : "no full runs"
   }\n-> ${outDir}\n`
 );
 await mkdir(outDir, { recursive: true });
@@ -75,6 +78,7 @@ const run = await runAll(cases, {
   jobs,
   fullJobs,
   full,
+  implement,
   backend,
   databaseUrl,
   log: line => console.log(line)

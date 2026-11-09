@@ -1,0 +1,90 @@
+osl: "1.0"
+summary: Admins ban users through an action that sets read_only fields; role is read_only too; users edit their own name
+ops:
+  - op: update_field
+    entity: User
+    name: role
+    field: { type: enum, required: true, default: member, enum_values: [member, admin], read_only: true }
+  - op: add_field
+    entity: User
+    name: banned
+    field: { type: boolean, required: true, default: false, read_only: true, description: Set by the ban action }
+  - op: add_field
+    entity: User
+    name: banned_at
+    field: { type: datetime, read_only: true }
+  - op: add_field
+    entity: User
+    name: ban_reason
+    field: { type: text, read_only: true }
+  - op: update_resource
+    name: users
+    resource:
+      entity: User
+      operations: [list, get, update]
+      get: { include: [posts] }
+      update: { fields: [name] }
+      actions:
+        ban:
+          description: Ban the user, recording when and why
+          rule: "role:admin"
+          input: { reason: { type: string, required: true, max_length: 200, validate: { min_length: 1 } } }
+  - op: update_page
+    name: users
+    page: { resource: users, columns: [name, email, role, banned] }
+  - op: add_scenario
+    scenario:
+      name: banning
+      steps:
+        - op: auth.register
+          body: { email: eve@example.com, password: eve-pass-1, name: Eve, banned: true }
+          expect: { status: 400 }
+        - op: auth.register
+          body: { email: eve@example.com, password: eve-pass-1, name: Eve, role: admin }
+          expect: { status: 400 }
+        - as: alice
+          op: auth.me
+          expect: { status: 200, body: { data: { banned: false } } }
+          capture: { alice_id: data.id }
+        - op: users.ban
+          path: { id: "{alice_id}" }
+          body: { reason: Spam }
+          expect: { status: 401 }
+        - as: bob
+          op: users.ban
+          path: { id: "{alice_id}" }
+          body: { reason: Spam }
+          expect: { status: 403 }
+        - as: admin
+          op: users.ban
+          path: { id: "{alice_id}" }
+          body: {}
+          expect: { status: 400 }
+        - as: admin
+          op: users.ban
+          path: { id: "{alice_id}" }
+          body: { reason: Spam }
+          expect: { status: 200, body: { data: { banned: true, ban_reason: Spam } } }
+        - as: alice
+          op: users.update
+          path: { id: "{alice_id}" }
+          body: { banned: false }
+          expect: { status: 400 }
+        - as: alice
+          op: users.update
+          path: { id: "{alice_id}" }
+          body: { role: admin }
+          expect: { status: 400 }
+        - as: bob
+          op: users.update
+          path: { id: "{alice_id}" }
+          body: { name: Mallory }
+          expect: { status: 403 }
+        - as: alice
+          op: users.update
+          path: { id: "{alice_id}" }
+          body: { name: Alice Banned }
+          expect: { status: 200, body: { data: { name: Alice Banned, banned: true, role: member } } }
+        - op: users.get
+          path: { id: "{alice_id}" }
+          expect: { status: 200, body: { data: { banned: true, ban_reason: Spam } } }

@@ -108,6 +108,21 @@ export const ginPgxBackend: Backend = {
     "openapi"
   ],
   generate,
+  handlerGuide: config => ({
+    language: "go",
+    files: [
+      `${config.generated_dir}/actions/actions.go`,
+      `${config.generated_dir}/models/entities.go`,
+      `${config.generated_dir}/httpx/httpx.go`,
+      `${config.generated_dir}/email/email.go`
+    ],
+    conventions: [
+      "ctx.DB is a *pgxpool.Pool and ctx.Gin.Request.Context() the request context. models.<Entity>Table is the quoted table name, models.<Entity>Columns the column list for SELECT and RETURNING, and models.Scan<Entity>(row) scans one row selected with those columns (ctx.DB.QueryRow).",
+      "Return httpx.NewError(status, code, message) to answer with that status (the httpx package lives next to the generated/actions package the stub imports); return the plain error for anything unexpected.",
+      "ctx.Session is nil for anonymous callers; ctx.Session.User.ID is the caller's id. Nullable columns are pointers, time columns are time.Time; stamp with time.Now().UTC(). Keep the file gofmt-formatted and every import used.",
+      "To send mail, call email.Send(ctx.Gin.Request.Context(), email.Email{...}) from the generated email package; it logs or captures the message outside production, so sending is safe in tests."
+    ].join("\n")
+  }),
   runtime: () => ({
     install: [{ command: "go", args: ["mod", "tidy"] }],
     check: [

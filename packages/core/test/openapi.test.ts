@@ -47,7 +47,8 @@ describe("openapi document", () => {
       "/api/posts/{id}/publish",
       "/api/posts/unpublish_all",
       "/api/users",
-      "/api/users/{id}"
+      "/api/users/{id}",
+      "/api/users/{id}/ban"
     ]);
     const list = doc.paths["/api/posts"].get;
     expect(list.operationId).toBe("posts_list");

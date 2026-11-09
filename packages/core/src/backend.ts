@@ -52,6 +52,16 @@ export interface BackendRuntime {
   migrationsDir(generatedDir: string): string;
 }
 
+/** What whoever writes an action handler, a person or `osl implement`, needs to know about the stack. */
+export interface HandlerGuide {
+  /** The language of the handler files, for fenced code blocks */
+  language: "ts" | "go";
+  /** Generated files worth reading before writing a handler, relative to the project root */
+  files: string[];
+  /** The stack's conventions in prose: the database client, how to answer with a status, what to return */
+  conventions: string;
+}
+
 export interface Backend {
   name: string;
   version: string;
@@ -60,6 +70,8 @@ export interface Backend {
   generate(input: GenerateInput): GeneratedFile[];
   /** How to run a project generated with this config (its backend_options pick the package manager, say) */
   runtime(config: ProjectConfig): BackendRuntime;
+  /** How to write an action handler for this stack */
+  handlerGuide(config: ProjectConfig): HandlerGuide;
 }
 
 /** Region markers use the host file's comment style: `//` for code, `#` for env and YAML. */

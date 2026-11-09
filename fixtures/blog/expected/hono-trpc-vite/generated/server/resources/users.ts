@@ -7,7 +7,8 @@ import { db } from "../../db/client";
 import * as schema from "../../db/schema";
 import { users as usersTable } from "../../db/schema";
 import { presentArticle, presentUser } from "../../present";
-import { usersId, usersListQuery } from "../../validation";
+import { usersBanInput, usersId, usersListQuery, usersUpdateInput } from "../../validation";
+import { handlers } from "../../actions";
 import { checkRule, type Rule } from "../access";
 import type { Session } from "../auth";
 import { notFound, parseId, toTRPCError } from "../errors";
@@ -21,6 +22,10 @@ const RULES = {
   create: {"kind":"authenticated"} as Rule,
   update: {"kind":"owner","field":"id"} as Rule,
   delete: {"kind":"role","value":"admin"} as Rule
+};
+
+const ACTION_RULES = {
+  ban: {"kind":"role","value":"admin"} as Rule
 };
 
 /** Ids as clients send them; parseId applies usersId and answers NOT_FOUND to a malformed one. */
@@ -62,5 +67,47 @@ export const usersRouter = router({
     if (!row) throw notFound();
     checkRule(RULES.read, ctx.session, row);
     return presentGetRow(row);
+  }),
+
+  update: publicProcedure
+    .input(z.object({ id: ID, data: usersUpdateInput }))
+    .mutation(async ({ ctx, input }) => {
+      checkRule(RULES.update, ctx.session);
+      const id = parseId(usersId, input.id);
+      const existing = await db.query.users.findFirst({ where: eq(usersTable.id, id) }).catch(err => {
+        throw toTRPCError(err, "read");
+      });
+      if (!existing) throw notFound();
+      checkRule(RULES.update, ctx.session, existing);
+      const hookContext: HookContext = { session: ctx.session, req: ctx.req };
+      try {
+        const patch = await hooks.beforeUpdate(existing, input.data, hookContext);
+        if (Object.keys(patch).length === 0) return presentUser(existing);
+        const [row] = await db.update(usersTable).set(patch).where(eq(usersTable.id, id)).returning();
+
+        await hooks.afterUpdate(row, hookContext);
+        return presentUser(row);
+      } catch (err) {
+        throw toTRPCError(err, "write");
+      }
+    }),
+
+  /** POST /api/users/{id}/ban */
+  ban: publicProcedure.input(usersBanInput.extend({ id: ID })).mutation(async ({ ctx, input: raw }) => {
+    const { id: rawId, ...input } = raw;
+    checkRule(ACTION_RULES.ban, ctx.session);
+    const id = parseId(usersId, rawId);
+    const current = await db.query.users.findFirst({ where: eq(usersTable.id, id) }).catch(err => {
+      throw toTRPCError(err, "read");
+    });
+    if (!current) throw notFound();
+    checkRule(ACTION_RULES.ban, ctx.session, current);
+    try {
+      const result = await handlers.users_ban({ input, row: current, session: ctx.session, db });
+
+      return presentUser(result);
+    } catch (err) {
+      throw toTRPCError(err, "write");
+    }
   })
 });

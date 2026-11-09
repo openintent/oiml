@@ -11,6 +11,11 @@ func UsersID(raw string) (string, bool) {
 // UsersListQuery validates the GET /api/users query string.
 var UsersListQuery = Query{PageSize: 20}
 
+// UsersUpdateInput validates PATCH /api/users/{id} bodies.
+var UsersUpdateInput = Object{Fields: []Field{
+	{Name: "name", Type: String{MinLength: 1, MaxLength: 100}},
+}}
+
 // PostsID parses a posts id from the path.
 func PostsID(raw string) (string, bool) {
 	return ParseUUIDID(raw)
@@ -61,6 +66,11 @@ var CommentsCreateInput = Object{Fields: []Field{
 var CommentsUpdateInput = Object{Fields: []Field{
 	{Name: "body", Type: String{MinLength: 1}},
 	{Name: "article_id", Type: UUID{}},
+}}
+
+// UsersBanInput validates POST /api/users/{id}/ban bodies.
+var UsersBanInput = Object{Fields: []Field{
+	{Name: "reason", Required: true, Type: String{MinLength: 1, MaxLength: 200}},
 }}
 
 // PostsPublishInput validates POST /api/posts/{id}/publish bodies.

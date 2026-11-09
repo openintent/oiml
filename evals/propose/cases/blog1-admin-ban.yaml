@@ -11,8 +11,11 @@ intent:
     - An admin's ban succeeds and the profile then shows banned true
 expect:
   fields: { User: ["banned|is_banned|banned_at"] }
+  field_props: { "User.banned|is_banned|banned_at": { read_only: true } }
   actions_on: { users: { scope: row, rule: "role:admin", input: ["reason|ban_reason"] } }
   actor_fields: { role: admin }
   scenarios: { min: 1, rejections: 1, statuses: [403, 200] }
   touches: [users]
-notes: Needs an actor with role admin (set_actors, repeating alice and bob) so the scenario shows the ban succeeding, not only refused.
+notes: >-
+  Needs an actor with role admin (set_actors, repeating alice and bob) so the scenario shows the ban succeeding, not
+  only refused. The ban fields are the server's: read_only, so register cannot set them.

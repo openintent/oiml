@@ -95,10 +95,16 @@ export const Field = z
     file: FileOptions.optional(),
     /** Never returned by the API and never accepted from it */
     hidden: z.boolean().optional(),
+    /** Returned by the API but never accepted from it: only server code (an action handler) and defaults set it */
+    read_only: z.boolean().optional(),
     description: z.string().optional()
   })
   .strict()
   .superRefine((field, ctx) => {
+    if (field.read_only && field.hidden)
+      ctx.addIssue({ code: "custom", message: "a hidden field is never accepted already; drop read_only" });
+    if (field.read_only && field.primary)
+      ctx.addIssue({ code: "custom", message: "a primary key is never accepted already; drop read_only" });
     if (field.type !== "file" && field.file)
       ctx.addIssue({ code: "custom", message: "file options only apply to file fields" });
     if (field.type === "file" && (field.primary || field.unique || field.default !== undefined || field.relation))
@@ -507,27 +513,32 @@ export interface Diagnostic {
 const RESERVED_ACTION_NAMES = new Set<string>([...OPERATIONS, "actions"]);
 
 /** Columns a list may filter, order, sort or search by: anything but files and binary data */
-/** A client may write the field: it is not a key, not hidden, not raw bytes, and not filled by the database */
+/** The field can hold a written value: it is not a key, not hidden, not raw bytes, and not filled by the database */
 function isWritable(field: Field): boolean {
   return (
     !field.primary && !field.hidden && field.type !== "bytes" && field.default !== "now" && field.default !== "uuid"
   );
 }
 
-/** Fields auth.register accepts besides email and password: writable identity fields, never role */
+/** A client may write the field through the API: writable and not read_only */
+function isClientWritable(field: Field): boolean {
+  return isWritable(field) && !field.read_only;
+}
+
+/** Fields auth.register accepts besides email and password: client-writable identity fields, never role */
 function registerFields(model: Model): string[] {
   if (!model.auth) return [];
   const identity = model.entities[model.auth.identity];
   if (!identity) return [];
   const email = model.auth.email_field ?? "email";
   return Object.entries(identity.fields)
-    .filter(([name, f]) => isWritable(f) && f.type !== "file" && name !== email && name !== "role")
+    .filter(([name, f]) => isClientWritable(f) && f.type !== "file" && name !== email && name !== "role")
     .map(([name]) => name);
 }
 
 /**
- * Identity fields an example actor may set although register refuses them (today: role). The test harness and
- * `osl seed` register the actor through the API, then write these straight into the database.
+ * Identity fields an example actor may set although register refuses them: role and read_only fields. The test
+ * harness and `osl seed` register the actor through the API, then write these straight into the database.
  */
 export function provisionFields(model: Model): string[] {
   if (!model.auth) return [];
@@ -690,6 +701,18 @@ export function validateModel(model: Model): Diagnostic[] {
         if (field.relation.on_delete === "set_null" && field.required)
           error("M013", `on_delete set_null needs a nullable field`, fpath);
       }
+      if (
+        field.read_only &&
+        field.required &&
+        field.default === undefined &&
+        !field.primary &&
+        directOwnerField(entity.rules?.create) !== fieldName
+      )
+        error(
+          "M065",
+          `read_only field ${fieldName} is required and has no default, so nothing could ever create a row; give it a default, drop required, or set it from the session with rules.create: owner:${fieldName}`,
+          fpath
+        );
     }
     for (const [action, rule] of Object.entries(entity.rules ?? {})) {
       if (rule) checkRule(rule, entityName, `${base}.rules.${action}`, true);
@@ -891,6 +914,12 @@ export function validateModel(model: Model): Diagnostic[] {
       for (const f of resource[key]?.fields ?? []) {
         if (!fieldNames.has(f)) error("M056", `${key} field ${f} does not exist`, `${base}.${key}.fields`);
         else if (entity.fields[f].hidden) error("M057", `${key} field ${f} is hidden`, `${base}.${key}.fields`);
+        else if (entity.fields[f].read_only)
+          error(
+            "M064",
+            `${key} field ${f} is read_only: only server code sets it; drop it from ${key}.fields or the read_only`,
+            `${base}.${key}.fields`
+          );
       }
       if (resource[key] && !ops.has(key))
         warn("M058", `${key} options given but ${key} is not in operations`, `${base}.${key}`);
@@ -902,7 +931,7 @@ export function validateModel(model: Model): Diagnostic[] {
         if (
           !field.required ||
           field.default !== undefined ||
-          !isWritable(field) ||
+          !isClientWritable(field) ||
           listed.has(name) ||
           name === ownerField
         )
@@ -998,6 +1027,8 @@ export function validateModel(model: Model): Diagnostic[] {
           if (!field) error("M083", `${key} field ${f} does not exist on ${resource.entity}`, `${base}.${key}`);
           else if (field.hidden || field.type === "bytes")
             error("M083", `${key} field ${f} is never returned by the API`, `${base}.${key}`);
+          else if (key === "fields" && field.read_only)
+            error("M083", `${key} field ${f} is read_only, so a form cannot submit it`, `${base}.${key}`);
         }
       }
       if (page.group_by) {
@@ -1044,10 +1075,48 @@ export function validateModel(model: Model): Diagnostic[] {
     )
       error("M121", `${step.op} needs the magic_link provider`, spath);
   };
+  // "{name}" in a step resolves to what an earlier step of the same scenario captured; "{actor.id}" to the step's actor
+  const templatesIn = (value: unknown, out: string[] = []): string[] => {
+    if (typeof value === "string") for (const m of value.matchAll(/\{([a-zA-Z0-9_.]+)\}/g)) out.push(m[1]);
+    else if (Array.isArray(value)) for (const v of value) templatesIn(v, out);
+    else if (value && typeof value === "object") for (const v of Object.values(value)) templatesIn(v, out);
+    return out;
+  };
+  const checkTemplates = (
+    steps: {
+      as?: string;
+      path?: unknown;
+      query?: unknown;
+      body?: unknown;
+      expect?: unknown;
+      capture?: Record<string, string>;
+    }[],
+    base: string
+  ) => {
+    const captured = new Set<string>();
+    for (const [ti, step] of steps.entries()) {
+      const spath = `${base}[${ti}]`;
+      const expectBody =
+        step.expect && typeof step.expect === "object" ? (step.expect as { body?: unknown }).body : undefined;
+      for (const name of new Set(templatesIn([step.path, step.query, step.body, expectBody]))) {
+        if (name === "actor.id") {
+          if (!step.as) error("M077", `{actor.id} needs the step to act as someone (as: <actor>)`, spath);
+        } else if (name.startsWith("actor.") || !captured.has(name.split(".")[0]))
+          error(
+            "M077",
+            `{${name}} is not captured by an earlier step of this scenario; only captured names and {actor.id} resolve (actors are not addressable by name: capture an id from auth.me or a create response first)`,
+            spath
+          );
+      }
+      for (const name of Object.keys(step.capture ?? {})) captured.add(name);
+    }
+  };
   for (const [si, scenario] of (model.examples?.scenarios ?? []).entries()) {
     for (const [ti, step] of scenario.steps.entries()) checkStep(step, `examples.scenarios[${si}].steps[${ti}]`);
+    checkTemplates(scenario.steps, `examples.scenarios[${si}].steps`);
   }
   for (const [ti, step] of (model.examples?.seed ?? []).entries()) checkStep(step, `examples.seed[${ti}]`);
+  checkTemplates(model.examples?.seed ?? [], "examples.seed");
 
   return out;
 }

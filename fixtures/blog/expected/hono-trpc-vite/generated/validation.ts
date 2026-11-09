@@ -10,6 +10,11 @@ export const usersListQuery = z
     page_size: z.number().int().min(1).max(200).default(20)
   })
   .strict();
+export const usersUpdateInput = z
+  .object({
+    name: z.string().min(1).max(100).optional()
+  })
+  .strict();
 
 export const postsId = z.string().uuid();
 export const postsListQuery = z
@@ -62,6 +67,13 @@ export const commentsUpdateInput = z
     article_id: z.string().uuid().optional()
   })
   .strict();
+
+export const usersBanInput = z
+  .object({
+    reason: z.string().min(1).max(200)
+  })
+  .strict();
+export type UsersBanInput = z.infer<typeof usersBanInput>;
 
 export const postsPublishInput = z.object({}).strict();
 export type PostsPublishInput = z.infer<typeof postsPublishInput>;

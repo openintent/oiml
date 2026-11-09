@@ -17,6 +17,9 @@ export const users = pgTable("users", {
   name: varchar({ length: 100 }).notNull(),
   role: userRoleEnum().notNull().default("member"),
   created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  banned: boolean().notNull().default(false),
+  banned_at: timestamp({ withTimezone: true }),
+  ban_reason: text(),
   password_hash: varchar({ length: 255 })
 });
 

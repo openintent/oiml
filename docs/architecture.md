@@ -37,7 +37,7 @@ intent.yaml  ──propose──▶  diff.yaml  ──apply──▶  model.yaml
 | Write an intent                           | Human                                | The ask in prose plus acceptance criteria.                                                                                           |
 | Propose a diff                            | Claude, via `osl propose`            | Turns prose into typed ops. Validated locally and retried once with the validation errors. The human reviews the diff, not the code. |
 | Apply, compile, generate, migrate, verify | Deterministic code                   | No model calls.                                                                                                                      |
-| Custom logic                              | Human, or an agent through `osl mcp` | Hooks and event handlers in `src/`, with the generated scaffold as context.                                                          |
+| Custom logic                              | Claude, via `osl implement`, or a human | Action handlers in `src/actions`, written from the action's declaration, the scenarios that call it and the generated files, checked by the backend's compiler and retried with its output. Hooks and event handlers stay yours. |
 
 A backend itself can be written by a model once, against the conformance suite, and then frozen. The suite is the gate, not a review.
 

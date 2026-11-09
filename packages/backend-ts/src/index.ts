@@ -253,6 +253,22 @@ export const drizzleNextBackend: Backend = {
     "openapi"
   ],
   generate,
+  handlerGuide: config => ({
+    language: "ts",
+    files: [
+      `${config.generated_dir}/actions.ts`,
+      `${config.generated_dir}/db/schema.ts`,
+      `${config.generated_dir}/http.ts`,
+      `${config.generated_dir}/email.ts`
+    ],
+    conventions: [
+      'ctx.db is the Drizzle client; tables and row types are exported from the generated db/schema module (column keys are the model\'s snake_case names). Import eq, and, desc, sql from "drizzle-orm".',
+      "Write through ctx.db.update(table).set({ ... }).where(eq(table.id, ctx.row.id)).returning() and return the fresh row; insert with ctx.db.insert(table).values({ ... }).returning().",
+      "Throw new HttpError(status, code, message) from the generated http module (the import path is in the stub's comment) to answer with that status.",
+      "ctx.session is null for anonymous callers; ctx.session.user.id is the caller's id. Dates are Date objects; nullable columns hold null.",
+      "To send mail, await sendEmail({ to, subject, text }) from the generated email module; it logs or captures the message outside production, so sending is safe in tests."
+    ].join("\n")
+  }),
   runtime: config => ({
     install: [installCommand(packageManagerOf(config))],
     check: [{ command: "./node_modules/.bin/tsc", args: ["--noEmit"] }],

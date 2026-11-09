@@ -1,6 +1,6 @@
 # OSL - Open Schema Language
 
-OSL compiles a declared application model into working code. You describe entities, relations, access rules, API resources, auth, events and example scenarios once. OSL turns that into a database schema, migrations, route handlers, validation, sessions and contract tests for a chosen stack, deterministically. A language model is used in exactly two places: to propose a change from prose, and to write the custom logic that no schema can express.
+OSL compiles a declared application model into working code. You describe entities, relations, access rules, API resources, auth, events and example scenarios once. OSL turns that into a database schema, migrations, route handlers, validation, sessions and contract tests for a chosen stack, deterministically. A language model is used in exactly two places: `osl propose` turns prose into a model change, and `osl implement` writes the action handlers, the custom logic no schema can express. Both are checked by the compiler and measured by the eval suite.
 
 ```
 intent.yaml  ──propose──▶  diff.yaml  ──apply──▶  model.yaml ──compile──▶  IR ──backend──▶  schema, migrations,
@@ -32,6 +32,7 @@ osl propose FEAT-1                         # Claude writes .osl/intents/FEAT-1/d
 osl apply                                  # folds the diff into model.yaml and the lock
 osl generate                               # Drizzle schema, migrations, Next.js routes, auth, tests
 pnpm install
+osl implement                              # Claude writes the action handlers the model declares, if any; checked with tsc
 echo 'DATABASE_URL=postgres://postgres@localhost:5432/blog' > .env
 osl migrate
 pnpm dev &
@@ -51,7 +52,7 @@ osl verify --base-url http://localhost:3000   # generated files current, typeche
 | Auth                | Credentials on an identity entity                                                                                                                        | Register, login, logout, me; signed cookie sessions; scrypt hashes                                     |
 | Events              | `Entity.created                                                                                                                                          | updated                                                                                                | deleted` to a handler | Dispatch to user-owned handlers |
 | Examples            | Actors and ordered scenarios with expected responses                                                                                                     | Contract tests                                                                                         |
-| Actions             | Operations beyond CRUD on a resource or globally, with input, rule and result shape                                                                      | Routes or procedures, validation, typed handler stubs you fill in                                      |
+| Actions             | Operations beyond CRUD on a resource or globally, with input, rule and result shape                                                                      | Routes or procedures, validation, typed handler stubs, filled in by you or `osl implement`             |
 | Files               | `file` fields with accepted types and size limits                                                                                                        | Upload flow, local or S3-compatible storage, snapshots, signed URLs                                    |
 | Tenancy             | Teams with memberships and ranked roles; `member:<field>[:<role>]` rules                                                                                 | Membership-scoped lists and checks, auto-membership for creators                                       |
 | Providers           | Credentials, magic links, OAuth (GitHub, Google, OIDC)                                                                                                   | Token and state tables, email adapter, sign-in routes                                                  |

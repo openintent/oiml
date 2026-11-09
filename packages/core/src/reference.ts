@@ -84,8 +84,14 @@ relation:              # makes this field a foreign key; type must match the tar
   reverse: posts       # relation name on the target entity (optional)
   on_delete: restrict | cascade | set_null   # set_null needs a nullable field
 hidden: true           # never returned by or accepted from the API
+read_only: true        # returned by the API but never accepted from it: register, create and update answer 400 when a client sends it
 file: { accept: [image/*, application/pdf], max_size: 5242880 }   # file only: what uploads it takes (sizes in bytes)
 \`\`\`
+
+A \`read_only\` field is one the server owns: a \`banned\` flag, an \`archived_at\` stamp, a \`view_count\`. Only your action
+handlers (and its default) set it, so declare the action that does, and give the field a default or leave it optional
+(a required one without a default could never be created). Mark the identity's \`role\` read_only the same way. Example
+actors may still set read_only identity fields: the harness writes them into the database after registering the actor.
 
 A \`file\` field holds an uploaded file. Clients upload first (\`POST /api/files\` with { name, type, size } answers an
 upload URL and method; PUT the bytes there; \`POST /api/files/{id}/complete\`), then write the file's id into the field.
@@ -113,7 +119,7 @@ actions:                              # operations beyond the five; see Actions
 \`\`\`
 
 \`sortable\` lets a client pass \`sort=<field>:asc|desc\`; \`search\` lets it pass \`q\` to match those string fields as a
-case-insensitive substring. Writable fields exclude primary keys, hidden fields, and fields with generated defaults (now, uuid, identity).
+case-insensitive substring. Writable fields exclude primary keys, hidden and read_only fields, and fields with generated defaults (now, uuid, identity).
 \`include\` names relations: forward ones declared on the entity's fields and reverse ones declared with \`reverse\`.
 List returns \`{ data: [...], page: { page, page_size, total } }\`; get, create and update return \`{ data }\`; delete returns 204.
 Errors are \`{ error: { code, message } }\` with 400 validation, 401 no session, 403 the rule refuses (also a get of a row
@@ -142,8 +148,9 @@ actions:
 \`\`\`
 
 The generated handler stub is \`src/actions/<resource>_<name>\` (or \`src/actions/<name>\`); it receives the validated input,
-the row for row actions, the session and the database, and returns the row, nothing, or the declared shape. Scenario
-steps call actions as \`posts.publish\` or \`actions.send_digest\`. Events may follow an action: \`on: posts.publish\`.
+the row for row actions, the session and the database, and returns the row, nothing, or the declared shape. A handler is
+where a \`read_only\` field gets its value (\`ban\` sets \`banned\` and \`banned_at\`). Scenario steps call actions as
+\`posts.publish\` or \`actions.send_digest\`. Events may follow an action: \`on: posts.publish\`.
 
 ## Auth
 
@@ -161,7 +168,7 @@ tenancy:                      # optional: teams, workspaces, organisations
 \`\`\`
 
 \`provider: credentials\` is the 1.0 spelling of \`providers: [credentials]\`. Credentials add \`POST /api/auth/register\`
-(identity's writable fields plus password; \`role\` is never accepted) and \`POST /api/auth/login\`. Every model with auth
+(identity's writable fields plus password; \`role\` and read_only fields are never accepted) and \`POST /api/auth/login\`. Every model with auth
 has \`POST /api/auth/logout\`, \`GET /api/auth/me\` and \`GET /api/auth/providers\`. \`magic_link\` adds
 \`POST /api/auth/magic-link\` { email } (always ok) and \`POST /api/auth/magic-link/verify\` { token }; the email goes
 through the app's email adapter. \`oauth\` adds \`GET /api/auth/oauth/<name>\` and its callback. Magic links and OAuth
@@ -242,7 +249,9 @@ Every scenario step has \`expect\` with at least a \`status\`; a step without on
 All scenarios run in order against one database, each with every actor registered first, and the rows earlier
 scenarios and steps made are still there: expect a list exactly only through a filter, a search or a unique title
 that isolates what the scenario itself created, or check \`page.total\` on such a filter.
-\`{actor.id}\` is the acting user's id. Passwords must be at least 8 characters. An actor carries what register
+\`{actor.id}\` is the acting user's id. Only names an earlier step of the same scenario captured and \`{actor.id}\` resolve;
+actors are not addressable by name (\`{alice.id}\` is nothing), so capture an id from \`auth.me\` or a create response first.
+Passwords must be at least 8 characters. An actor carries what register
 accepts (email, password, the identity's other writable fields) and may also set \`role\`, which register refuses:
 the harness and \`osl seed\` register the actor, then write that field straight into the database, so a scenario can
 act as an admin and show both the refusal of a member (403) and the admin's allowed call. The value must fit the

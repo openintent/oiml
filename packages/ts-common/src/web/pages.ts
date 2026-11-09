@@ -970,10 +970,9 @@ ${rows.join("\n")}
       </dl>`;
   sections.push(`export function ${Comp}Detail() {
   ${target.useIdParam(page.path)}
-  const id = idOf(rawId);${
+  const id = idOf(rawId);${remove ? `\n  ${target.navigateDecl}` : ""}${
     mutations
       ? `
-  ${target.navigateDecl}
   const queryClient = useQueryClient();`
       : ""
   }${

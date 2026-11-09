@@ -18,6 +18,20 @@ type Context struct {
 	DB      *pgxpool.Pool
 }
 
+// UsersBanInput is the validated body of POST /api/users/{id}/ban.
+type UsersBanInput struct {
+	Reason string
+}
+
+// ParseUsersBanInput reads the validated values into the typed input.
+func ParseUsersBanInput(values models.Values) UsersBanInput {
+	var input UsersBanInput
+	if v, ok := values["reason"]; ok && v != nil {
+		input.Reason = v.(string)
+	}
+	return input
+}
+
 // PostsPublishInput is the validated body of POST /api/posts/{id}/publish.
 type PostsPublishInput struct{}
 

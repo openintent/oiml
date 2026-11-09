@@ -1,0 +1,20 @@
+id: ws2-archive-project
+tags: [fields, actions, rules, tenancy]
+base: { fixture: workspace }
+intent:
+  title: Archiving projects
+  ask: >-
+    A team admin can archive a project. An archived project shows when it was archived. Nobody sets or clears
+    that by editing the project; only archiving does.
+  acceptance:
+    - A plain member archiving a project gets 403; a team admin succeeds and the project then shows when
+    - Editing a project with the archive stamp in the body is refused
+expect:
+  fields: { Project: ["archived_at|archived"] }
+  field_props: { "Project.archived_at|archived": { read_only: true } }
+  actions_on: { projects: { scope: row, rule: "member:team_id:admin|member:team_id:owner" } }
+  scenarios: { min: 1, rejections: 1, statuses: [403, 200] }
+  touches: [projects]
+notes: >-
+  Server-owned field under tenancy: the stamp is read_only, the action is for the team's admins. The scenario
+  needs a member who is not an admin of the team to show the refusal.

@@ -20,6 +20,11 @@ interface Backend {
     readyPath: string; // answers once the server is up
     migrationsDir(generatedDir: string): string;
   };
+  handlerGuide(config: ProjectConfig): {
+    language: "ts" | "go";
+    files: string[]; // generated files to read before writing an action handler
+    conventions: string; // the database client, how to answer with a status, what to return
+  };
 }
 
 interface GeneratedFile {
@@ -76,7 +81,7 @@ The `hono-trpc-vite` contract tests speak tRPC's HTTP transport but assert the s
 
 | Construct | drizzle-next (REST) | hono-trpc-vite (tRPC) | gin-pgx (REST) |
 | --- | --- | --- | --- |
-| Actions | `POST <resource>/{id}/<name>`, `<resource>/<name>`, `/api/actions/<name>`; handler stubs in `src/actions/<handler>.ts` | procedures `posts.publish({ id, ...input })`, `actions.send_digest(input)`; same stubs | the same routes; stubs in Go |
+| Actions | `POST <resource>/{id}/<name>`, `<resource>/<name>`, `/api/actions/<name>`; handler stubs in `src/actions/<handler>.ts`, filled in by you or `osl implement` | procedures `posts.publish({ id, ...input })`, `actions.send_digest(input)`; same stubs | the same routes; stubs in Go |
 | Files | `POST /api/files`, `PUT`/`GET /api/files/{id}/content`, `POST /api/files/{id}/complete`, `GET /api/files/{id}`; local disk or S3-compatible storage | `files.begin/complete/get` plus the REST content routes on the Hono app | the same routes |
 | Member rules, tenancy | sessions carry memberships; lists filter by tenant; creators get a membership | the same | the same |
 | Magic links, OAuth | `POST /api/auth/magic-link`, `/verify`, `GET /api/auth/oauth/<name>[/callback]`, `GET /api/auth/providers`; email through log, Resend or capture | procedures `auth.magic_link`, `auth.magic_link_verify`, `auth.providers`; OAuth as REST routes | the same routes |
@@ -98,5 +103,6 @@ Environment the features read: `OSL_STORAGE` (`local` default, `s3` with `S3_BUC
 2. Produce the migration files with `migrationFiles` from core.
 3. Mark user-owned files `scaffold` and env files `regions`.
 4. Declare the runtime commands as a function of the project config (the TypeScript backends take the install command from `installCommand` in `@osl/ts-common`), including `seed` and, when other tooling owns tables, `ignoredTables`.
-5. Register the backend in `packages/conformance/src/index.ts` and `packages/cli/src/backends.ts`, add it to each `fixtures/*/fixture.yaml`, and run the harness with `--update` to create its snapshots.
-6. Keep iterating until every fixture passes every step. The harness output names the failing step and keeps the temp project with `--keep`.
+5. Declare the handler guide: the generated files `osl implement` shows the model and the stack's conventions in a few lines (the database client, the error helper that answers with a status, what a handler returns).
+6. Register the backend in `packages/conformance/src/index.ts` and `packages/cli/src/backends.ts`, add it to each `fixtures/*/fixture.yaml`, and run the harness with `--update` to create its snapshots.
+7. Keep iterating until every fixture passes every step. The harness output names the failing step and keeps the temp project with `--keep`.

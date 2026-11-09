@@ -9,7 +9,8 @@ intent:
 expect:
   fields: { Post: ["view_count|views|view_counter"] }
   types: { "Post.view_count|views|view_counter": "integer|bigint" }
-  field_props: { "Post.view_count|views|view_counter": { default: 0 } }
+  field_props: { "Post.view_count|views|view_counter": { default: 0, read_only: true } }
   actions_on: { posts: { scope: row, rule: public } }
   scenarios: { min: 1 }
   touches: [posts]
+notes: The count is the server's to keep, so it is read_only and only the view action moves it.

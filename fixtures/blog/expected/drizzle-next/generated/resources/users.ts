@@ -6,10 +6,11 @@ import { db } from "../db/client";
 import * as schema from "../db/schema";
 import { users as usersTable } from "../db/schema";
 import { checkRule, denied, type Rule } from "../access";
+import { handlers } from "../actions";
 import { getSession, type Session } from "../auth";
-import { handleError, notFound, ok, parseId, parseQuery } from "../http";
+import { handleError, notFound, ok, parseBody, parseId, parseQuery } from "../http";
 import { presentArticle, presentUser } from "../present";
-import { usersId, usersListQuery } from "../validation";
+import { usersBanInput, usersId, usersListQuery, usersUpdateInput } from "../validation";
 import { hooks } from "@/src/extensions/users";
 
 export type RouteContext = { params: Promise<{ id: string }> };
@@ -20,6 +21,10 @@ const RULES = {
   create: {"kind":"authenticated"} as Rule,
   update: {"kind":"owner","field":"id"} as Rule,
   delete: {"kind":"role","value":"admin"} as Rule
+};
+
+const ACTION_RULES = {
+  ban: {"kind":"role","value":"admin"} as Rule
 };
 
 type ListRow = schema.User;
@@ -68,6 +73,53 @@ export const users = {
       return ok(presentGetRow(row));
     } catch (err) {
       return handleError(err, "read");
+    }
+  },
+
+  async update(request: Request, ctx: RouteContext): Promise<Response> {
+    try {
+      const session = await getSession(request);
+      const verdict = checkRule(RULES.update, session);
+      if (!verdict.ok) return denied(verdict);
+      const id = parseId(usersId, (await ctx.params).id);
+      if (!id.ok) return id.response;
+      const existing = await db.query.users.findFirst({ where: eq(usersTable.id, id.data) });
+      if (!existing) return notFound();
+      const rowVerdict = checkRule(RULES.update, session, existing);
+      if (!rowVerdict.ok) return denied(rowVerdict);
+      const body = await parseBody(usersUpdateInput, request);
+      if (!body.ok) return body.response;
+      const hookContext: HookContext = { request, session };
+      const patch = await hooks.beforeUpdate(existing, body.data, hookContext);
+      if (Object.keys(patch).length === 0) return ok(presentUser(existing));
+      const [row] = await db.update(usersTable).set(patch).where(eq(usersTable.id, id.data)).returning();
+
+      await hooks.afterUpdate(row, hookContext);
+      return ok(presentUser(row));
+    } catch (err) {
+      return handleError(err, "write");
+    }
+  },
+
+  /** POST /api/users/{id}/ban */
+  async ban(request: Request, ctx: RouteContext): Promise<Response> {
+    try {
+      const session = await getSession(request);
+      const verdict = checkRule(ACTION_RULES.ban, session);
+      if (!verdict.ok) return denied(verdict);
+      const id = parseId(usersId, (await ctx.params).id);
+      if (!id.ok) return id.response;
+      const current = await db.query.users.findFirst({ where: eq(usersTable.id, id.data) });
+      if (!current) return notFound();
+      const rowVerdict = checkRule(ACTION_RULES.ban, session, current);
+      if (!rowVerdict.ok) return denied(rowVerdict);
+      const body = await parseBody(usersBanInput, request);
+      if (!body.ok) return body.response;
+      const result = await handlers.users_ban({ input: body.data, row: current, session, db });
+
+      return ok(presentUser(result));
+    } catch (err) {
+      return handleError(err, "write");
     }
   }
 };

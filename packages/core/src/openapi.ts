@@ -102,7 +102,7 @@ function presentedSchema(entity: EntityIR, ir: IR, include: string[] = []): Sche
   const properties: Record<string, Schema> = {};
   for (const c of entity.columns) {
     if (c.hidden || (c.type.kind === "scalar" && c.type.scalar === "bytes")) continue;
-    properties[c.name] = columnSchema(c, ir);
+    properties[c.name] = c.readOnly ? { ...columnSchema(c, ir), readOnly: true } : columnSchema(c, ir);
   }
   for (const name of include) {
     const rel = entity.relations.find(r => r.name === name);

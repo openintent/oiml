@@ -14,6 +14,10 @@
     "./propose": {
       "types": "./dist/propose.d.ts",
       "default": "./dist/propose.js"
+    },
+    "./implement": {
+      "types": "./dist/implement.d.ts",
+      "default": "./dist/implement.js"
     }
   },
   "files": [

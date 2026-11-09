@@ -26,6 +26,7 @@ import {
   validateCandidate,
   type ProposeUsage
 } from "@osl/cli/propose";
+import { implementActions } from "@osl/cli/implement";
 import { BACKENDS, runFixture, type Fixture, type StepResult } from "@osl/conformance";
 import type { Case } from "./cases.js";
 import { actionLabels, checkExpectations, scenarioMetrics, type ScenarioMetrics } from "./checks.js";
@@ -46,6 +47,8 @@ export interface RunOptions {
   full: boolean;
   backend: string;
   databaseUrl?: string;
+  /** Write the action handlers with the model before the full run, so diffs with actions are measured too */
+  implement?: boolean;
   log: (line: string) => void;
 }
 
@@ -80,6 +83,12 @@ export interface CaseResult {
   /** Backend -> generate step outcome */
   generate: Record<string, { ok: boolean; detail?: string }>;
   full?: { backend: string; ok: boolean; steps: StepResult[]; failed_step?: string; skipped?: string };
+  /** The handlers the model wrote before the full run, when the run asked for it */
+  implement?: {
+    handlers: { handler: string; ok: boolean; attempts: number; skipped?: string }[];
+    usage: ProposeUsage;
+    cost_usd: number | null;
+  };
   diff_file?: string;
 }
 
@@ -91,6 +100,8 @@ export interface RunResult {
   proposer: Proposer;
   backend: string;
   full: boolean;
+  /** Whether handlers were written by the model before the full runs */
+  implement?: boolean;
   cases: CaseResult[];
 }
 
@@ -105,8 +116,8 @@ const emptyUsage = (): ProposeUsage => ({
 export async function baseIntents(
   repoRoot: string,
   c: Case
-): Promise<{ name: string; ids: string[]; all: string[]; dir: string | null; overlay: boolean }> {
-  if ("empty" in c.base) return { name: c.base.empty, ids: [], all: [], dir: null, overlay: false };
+): Promise<{ name: string; ids: string[]; all: string[]; dir: string | null }> {
+  if ("empty" in c.base) return { name: c.base.empty, ids: [], all: [], dir: null };
   const dir = path.join(repoRoot, "fixtures", c.base.fixture);
   const intentsDir = path.join(dir, "intents");
   if (!existsSync(intentsDir)) throw new Error(`${c.id}: fixture ${c.base.fixture} has no intents at ${intentsDir}`);
@@ -117,21 +128,26 @@ export async function baseIntents(
     if (index === -1) throw new Error(`${c.id}: fixture ${c.base.fixture} has no intent ${c.base.through}`);
     ids = all.slice(0, index + 1);
   }
-  // The fixture's overlay holds the user-owned handlers of its final model; copy it when the base declares the
-  // same actions, so a base that stops before an intent without actions still runs with working handlers
-  const overlay =
-    ids.length === all.length ||
-    handlersOf(await modelThrough(dir, c.base.fixture, ids)) ===
-      handlersOf(await modelThrough(dir, c.base.fixture, all));
-  return { name: c.base.fixture, ids, all, dir, overlay };
+  return { name: c.base.fixture, ids, all, dir };
 }
 
-/** The action handlers a model declares, as one comparable string */
-function handlersOf(model: ModelType): string {
-  const names = Object.keys(model.actions ?? {}).map(a => `actions.${a}`);
-  for (const [resource, r] of Object.entries(model.resources ?? {}))
-    for (const a of Object.keys(r.actions ?? {})) names.push(`${resource}.${a}`);
-  return names.sort().join(",");
+/** Copy a fixture overlay, keeping only the action handlers in `keep` (all of them when null) */
+async function copyOverlay(from: string, to: string, keep: Set<string> | null): Promise<void> {
+  for (const entry of await readdir(from, { withFileTypes: true })) {
+    const source = path.join(from, entry.name);
+    const target = path.join(to, entry.name);
+    const handlers = /(^|\/)src\/actions$/.test(from.split(path.sep).join("/"));
+    if (handlers && keep) {
+      // src/actions/<handler>.ts or src/actions/<handler>/handler.go
+      const name = entry.isDirectory() ? entry.name : entry.name.replace(/\.[a-z]+$/, "");
+      if (!keep.has(name)) continue;
+    }
+    if (entry.isDirectory()) await copyOverlay(source, target, keep);
+    else {
+      await mkdir(to, { recursive: true });
+      await cp(source, target);
+    }
+  }
 }
 
 /** The fixture's model after the given intents, in order */
@@ -218,7 +234,7 @@ async function writeCaseFixture(
   caseDir: string,
   options: RunOptions
 ): Promise<Fixture> {
-  const { ids, all, dir, overlay } = await baseIntents(options.repoRoot, c);
+  const { name: fixtureName, ids, all, dir } = await baseIntents(options.repoRoot, c);
   // An oracle diff that is the fixture's own last intent needs the fixture's handlers too
   const oracleCompletes =
     options.proposer === "oracle" &&
@@ -229,8 +245,15 @@ async function writeCaseFixture(
   const intentsDir = path.join(fixtureDir, "intents");
   await mkdir(intentsDir, { recursive: true });
   for (const id of ids) await cp(path.join(dir!, "intents", id), path.join(intentsDir, id), { recursive: true });
-  if ((overlay || oracleCompletes) && dir && existsSync(path.join(dir, "overlay")))
-    await cp(path.join(dir, "overlay"), path.join(fixtureDir, "overlay"), { recursive: true });
+  // The fixture's overlay holds the user-owned handlers of its final model. The base keeps the ones for the actions
+  // it declares itself (their fields are the fixture's); a handler the proposed diff declares stays a stub, which
+  // --implement then writes. An oracle diff that completes the fixture gets them all.
+  if (dir && existsSync(path.join(dir, "overlay"))) {
+    const keep = oracleCompletes
+      ? null
+      : new Set(compile(await modelThrough(dir, fixtureName, ids)).actions.map(a => a.handler));
+    await copyOverlay(path.join(dir, "overlay"), path.join(fixtureDir, "overlay"), keep);
+  }
   // Sorts after every fixture intent id (FEAT-, TODO-, WS-)
   const evalDir = path.join(intentsDir, "ZZ-EVAL");
   await mkdir(evalDir, { recursive: true });
@@ -329,12 +352,42 @@ export async function runFull(c: Case, result: CaseResult, options: RunOptions):
   }
   const raw = fromYaml<{ name: string }>(await readFile(path.join(fixtureDir, "fixture.yaml"), "utf8"));
   const fixture: Fixture = { name: raw.name, dir: fixtureDir, backends: [options.backend] };
+  // The base's own stubs need writing too, not only the actions this diff adds
+  const hasActions =
+    compile(
+      applyDiff(await baseModel(options.repoRoot, c), parseDiff(fromYaml(await readFile(result.diff_file!, "utf8"))))
+        .model
+    ).actions.length > 0;
   const lines: string[] = [];
   const out = await runFixture(fixture, options.backend, {
     skipSnapshot: true,
     databaseUrl: options.databaseUrl,
     keep: true,
-    log: line => lines.push(line)
+    log: line => lines.push(line),
+    afterInstall:
+      options.implement && hasActions
+        ? async dir => {
+            const done = await implementActions(dir, BACKENDS[options.backend], {
+              model: options.model,
+              onAttempt: (handler, attempt, problems) =>
+                lines.push(
+                  `  implement ${handler} attempt ${attempt}: ${problems.length ? firstLine(problems[0]) : "ok"}`
+                )
+            });
+            result.implement = {
+              handlers: done.handlers.map(h => ({
+                handler: h.handler,
+                ok: h.ok,
+                attempts: h.attempts,
+                skipped: h.skipped
+              })),
+              usage: done.usage,
+              cost_usd: costUsd(options.model, done.usage)
+            };
+            const written = done.handlers.filter(h => !h.skipped);
+            return `${written.length} handler${written.length === 1 ? "" : "s"} written, ${written.filter(h => h.ok).length} passed the check`;
+          }
+        : undefined
   });
   await writeFile(path.join(caseDir, `full-${options.backend}.log`), lines.join("\n") + "\n");
   const failed = out.steps.find(s => !s.ok);
@@ -357,6 +410,7 @@ export async function runAll(cases: Case[], options: RunOptions): Promise<RunRes
       proposer: options.proposer,
       backend: options.backend,
       full: options.full,
+      implement: Boolean(options.implement),
       cases: cases.map(c => results.get(c.id)).filter((r): r is CaseResult => !!r)
     };
     await writeFile(path.join(options.outDir, "results.json"), JSON.stringify(run, null, 2));

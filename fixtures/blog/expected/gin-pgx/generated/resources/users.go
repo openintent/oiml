@@ -10,11 +10,15 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"blog/generated/access"
+	"blog/generated/actions"
+	"blog/generated/actions/handlers"
 	"blog/generated/auth"
 	"blog/generated/db"
+	"blog/generated/hooks"
 	"blog/generated/httpx"
 	"blog/generated/models"
 	"blog/generated/validation"
+	usershooks "blog/src/extensions/users"
 )
 
 // Users serves the users resource (User).
@@ -28,10 +32,12 @@ func NewUsers(db *pgxpool.Pool, a *auth.Auth) *Users {
 	return &Users{db: db, auth: a}
 }
 
-// Routes registers every operation of the resource.
+// Routes registers every operation of the resource and its actions.
 func (h *Users) Routes(r gin.IRouter) {
 	r.GET("/api/users", h.List)
 	r.GET("/api/users/:id", h.Get)
+	r.PATCH("/api/users/:id", h.Update)
+	r.POST("/api/users/:id/ban", h.ActionBan)
 }
 
 var usersReadRule = access.Rule{Kind: "public"}
@@ -41,6 +47,8 @@ var usersCreateRule = access.Rule{Kind: "authenticated"}
 var usersUpdateRule = access.Rule{Kind: "owner", Field: "id"}
 
 var usersDeleteRule = access.Rule{Kind: "role", Value: "admin"}
+
+var usersBanActionRule = access.Rule{Kind: "role", Value: "admin"}
 
 // usersGetRow is a single row with its includes.
 type usersGetRow struct {
@@ -119,6 +127,110 @@ func (h *Users) Get(c *gin.Context) {
 		return
 	}
 	httpx.OK(c, usersGetRow{PublicUser: models.PresentUser(row), Posts: models.PresentArticles(postsRows[row.ID])})
+}
+
+// Update handles PATCH /api/users/{id}.
+func (h *Users) Update(c *gin.Context) {
+	ctx := c.Request.Context()
+	session, err := h.auth.Session(c)
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if verdict := access.Check(usersUpdateRule, session); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	id, ok := validation.UsersID(c.Param("id"))
+	if !ok {
+		httpx.Fail(c, httpx.NotFound())
+		return
+	}
+	existing, err := models.ScanUser(h.db.QueryRow(ctx, `SELECT `+models.UserColumns+` FROM `+models.UserTable+` WHERE "id" = $1`, id))
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if verdict := access.CheckRow(usersUpdateRule, session, access.Row{"id": existing.ID}); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	body, perr := httpx.ParseBody(c)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	patch, perr := validation.UsersUpdateInput.Parse(body)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	hookCtx := &hooks.Context{Gin: c, Session: session}
+	patch, err = usershooks.BeforeUpdate(hookCtx, existing, patch)
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if len(patch) == 0 {
+		httpx.OK(c, models.PresentUser(existing))
+		return
+	}
+	sql, args := db.Update(models.UserTable, patch, `"id"`, id, models.UserColumns)
+	row, err := models.ScanUser(h.db.QueryRow(ctx, sql, args...))
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if err := usershooks.AfterUpdate(hookCtx, row); err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	httpx.OK(c, models.PresentUser(row))
+}
+
+// ActionBan handles POST /api/users/{id}/ban: the ban action.
+func (h *Users) ActionBan(c *gin.Context) {
+	ctx := c.Request.Context()
+	session, err := h.auth.Session(c)
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if verdict := access.Check(usersBanActionRule, session); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	id, ok := validation.UsersID(c.Param("id"))
+	if !ok {
+		httpx.Fail(c, httpx.NotFound())
+		return
+	}
+	row, err := models.ScanUser(h.db.QueryRow(ctx, `SELECT `+models.UserColumns+` FROM `+models.UserTable+` WHERE "id" = $1`, id))
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if verdict := access.CheckRow(usersBanActionRule, session, nil); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	body, perr := httpx.ParseBody(c)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	values, perr := validation.UsersBanInput.Parse(body)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	actx := &actions.Context{Gin: c, Session: session, DB: h.db}
+	result, err := handlers.UsersBan(actx, actions.ParseUsersBanInput(values), row)
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	httpx.OK(c, models.PresentUser(result))
 }
 
 // loadPosts fetches the posts of each User, grouped by author_id.

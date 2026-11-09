@@ -8,6 +8,7 @@ against numbers rather than anecdotes.
 ```bash
 pnpm evals                                   # every case, live against Claude, then the full harness on hono-trpc-vite
 pnpm evals --no-full                         # propose, check and generate only (seconds per case, no database)
+pnpm evals --implement                       # also let Claude write the action handlers before the full runs (osl implement)
 pnpm evals --only blog2-comments,empty-notes # a few cases
 pnpm evals --tag tenancy                     # one slice
 pnpm evals --model claude-sonnet-5-5         # another model
@@ -76,9 +77,14 @@ new asks over the fixtures' models at different points, or over an empty model.
 | Full | The conformance harness on one backend: install, typecheck, migrate a throwaway database, drift, start, and run every scenario in the model, including the ones the diff added. |
 | Pass | Outcome as expected and every check, generate and full step passed. |
 
-Full runs of diffs that add actions are reported separately: the generated handler stubs return the row
-unchanged, so a scenario that expects the action's effect fails until a person writes the handler. That is
-the intended division of labour, not an agent mistake.
+Full runs of diffs that add actions are reported separately. Without `--implement` the generated handler
+stubs return the row unchanged, so a scenario that expects the action's effect fails until someone writes the
+handler: the intended division of labour, not an agent mistake. With `--implement`, the runner calls
+`osl implement` on the generated project before the check step: Claude writes each stub from the action's
+declaration, the scenarios that call it and the generated files, the backend's compiler checks the file (three
+attempts, the output fed back), and the scenarios then measure the handler too. The summary adds the pass rate
+of diffs with actions, how many handlers were written, passed the check and did so on the first attempt, and
+their cost.
 
 The summary also groups every validation problem the agent hit by shape, across attempts. A problem that
 recurs across cases is a sentence missing from the reference (`packages/core/src/reference.ts`), which is
@@ -160,6 +166,15 @@ asked for "only the author can delete", added the article's author and admins as
 to add an alternative only when the ask names it), and the admin-creates-accounts trap, which the agent this
 time declined rather than answering with a collection action.
 
+The field gap closed next (2026-11-09): `read_only: true` marks a field the API returns but never accepts, so
+register, create and update answer 400 when a client sends it and only an action handler (or the default) sets
+it; the identity's `role` can be marked the same way, and example actors may still carry read_only fields, which
+the harness writes into the database after registering them. Blog FEAT-7 bans users through such an action, with
+`banned`, `banned_at` and `ban_reason` read_only and the users resource gaining an update limited to `name`, proven
+on all three backends. In the corpus, `blog1-admin-ban` and `blog2-view-counter` now expect the field to be
+read_only, and `fx-blog-7-banning` and `ws2-archive-project` were added; in the run below the agent marked the ban
+fields and the view count read_only from the reference text alone.
+
 ## Another model
 
 The same corpus on Claude Sonnet 5.5 (2026-11-08, before the rules round): 44 of 59 passed against Opus's 45, with
@@ -171,3 +186,27 @@ operation whose rule is `none`, where the route does not exist at all, which the
 self-relation whose include failed under Drizzle because the two relations between a table and itself were
 unnamed, fixed in the schema emitter. A smaller model is a cheaper way to find the places where the reference
 leaves room for a wrong guess.
+
+## Handlers written by the model
+
+The second place a model is used is `osl implement` (2026-11-09). For every action handler still at its
+generated stub, one Claude call gets the action's declaration, its entity, the scenarios that call it and the
+generated files the backend's handler guide names (the actions context, the schema, the error helper, the email
+helper), and answers with the complete file; the backend's check commands run (`tsc`, or `vite build` and
+`tsc`, or `gofmt`, `go vet` and `go build`) and their output goes back, three attempts at most. On the blog fixture
+with its overlay removed, all four handlers (publish, unpublish all, send digest, ban) were written on the first
+attempt on both hono-trpc-vite and gin-pgx, and the fixture's full suite passed against them, for about $0.20 per
+backend. The Go ban handler came back as one UPDATE with RETURNING scanned through the generated `ScanUser`,
+which is better than the hand-written overlay.
+
+The corpus with `--implement` (run 7, 64 cases, Opus 5.5, 2026-11-09) passed 61 of 64 against 46 of 62 in run 6,
+with 61 valid diffs (60 on the first attempt), three asks declined, every valid diff generating on all three
+backends, and 54 of 56 full runs passing: 39 of 41 without actions and 15 of 15 with actions, whose 24 handlers
+all passed the check on the first attempt, at $0.81 for the handlers on top of $3.23 for the proposals. Eleven
+cases that failed on stubs in run 6 pass with their handlers written. The two full-run failures were not
+handlers: both agents referenced a variable no step had captured (`{alice.id}` for an actor's id, `{article_author}`
+never captured), which only the tests found; validation now refuses that (M077) and the reference says only
+captured names and `{actor.id}` resolve. The fixture-6 case also ran the blog's publishing scenario against a stub,
+because the runner copied the fixture overlay only when the base declared the same actions as the whole fixture,
+which FEAT-7 ended; it now keeps the overlay handlers for the actions the base declares and writes the rest. The
+remaining failure is the comments case where the agent again adds alternatives the ask did not name.

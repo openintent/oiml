@@ -2,22 +2,201 @@
 // Do not edit: this file is rewritten on every osl generate.
 
 "use client";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useMatchRoute, useParams } from "@tanstack/react-router";
-import { useState } from "react";
+import { Fragment, useEffect, useState, type FormEvent } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { client, sessionUser, type Inputs, type Outputs } from "../client";
-import { EmptyPane, ErrorNote, FieldRow, ListSkeleton, Pagination, Pane, PaneHeader, PaneSkeleton, formatDateTime, text } from "../ui";
+import { client, sessionUser, type Inputs, type Outputs, type SessionUser } from "../client";
+import { EmptyPane, ErrorNote, FieldRow, FormRow, ListSkeleton, Pagination, Pane, PaneHeader, PaneSkeleton, formatDateTime, splitList, text, yesNo } from "../ui";
 
 type Row = Outputs["users"]["list"]["data"][number];
 type Detail = Outputs["users"]["get"];
+type Input<K extends keyof Inputs["users"]> = Inputs["users"][K];
 
 const PAGE_SIZE = 20;
 const KEY = ["users"] as const;
 
 function idOf(raw: string) {
   return raw;
+}
+
+function canUpdate(user: SessionUser | null, row: Detail): boolean {
+  return user !== null && row.id === user.id;
+}
+
+function canBan(user: SessionUser | null, row: Detail): boolean {
+  return user !== null && (user as { role?: unknown }).role === "admin";
+}
+
+const USERS_FIELDS = ["name"] as const;
+type UsersField = (typeof USERS_FIELDS)[number];
+
+type UsersValues = {
+  name: string;
+};
+
+const EMPTY_USERS: UsersValues = {
+  name: ""
+};
+
+const USERS_UPDATE: readonly UsersField[] = ["name"];
+
+function toUsersUpdateInput(v: UsersValues): Input<"update">["data"] {
+  return {
+    name: v.name
+  };
+}
+
+function usersFromRow(row: Detail): UsersValues {
+  return {
+    name: text(row.name)
+  };
+}
+
+type UsersSetter = <K extends keyof UsersValues>(key: K, value: UsersValues[K]) => void;
+
+function renderUsersField(field: UsersField, values: UsersValues, set: UsersSetter) {
+  switch (field) {
+    case "name":
+      return (
+      <FormRow label="Name" htmlFor="name">
+        <Input id="name" type="text" maxLength={100} value={values.name} onChange={e => set("name", e.target.value)} required />
+      </FormRow>
+      );
+  }
+}
+
+function UsersForm({
+  fields,
+  initial,
+  submitLabel,
+  pending,
+  error,
+  onSubmit,
+  onCancel
+}: {
+  fields: readonly UsersField[];
+  initial: UsersValues;
+  submitLabel: string;
+  pending: boolean;
+  error: { message: string } | null;
+  onSubmit: (values: UsersValues) => void;
+  onCancel?: () => void;
+}) {
+  const [values, setValues] = useState<UsersValues>(initial);
+  const [problem, setProblem] = useState<string | null>(null);
+  const set: UsersSetter = (key, value) => setValues(current => ({ ...current, [key]: value }));
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    setProblem(null);
+    try {
+      onSubmit(values);
+    } catch (err) {
+      setProblem(err instanceof Error ? err.message : String(err));
+    }
+  };
+  return (
+    <form onSubmit={submit} className="grid max-w-xl gap-4">
+      {fields.map(field => (
+        <Fragment key={field}>{renderUsersField(field, values, set)}</Fragment>
+      ))}
+      <ErrorNote error={error ?? (problem ? { message: problem } : null)} />
+      <div className="flex gap-2">
+        <Button type="submit" disabled={pending}>
+          {submitLabel}
+        </Button>
+        {onCancel ? (
+          <Button type="button" variant="ghost" onClick={onCancel}>
+            Cancel
+          </Button>
+        ) : null}
+      </div>
+    </form>
+  );
+}
+
+const USERSBAN_FIELDS = ["reason"] as const;
+type UsersBanField = (typeof USERSBAN_FIELDS)[number];
+
+type UsersBanValues = {
+  reason: string;
+};
+
+const EMPTY_USERSBAN: UsersBanValues = {
+  reason: ""
+};
+
+const USERSBAN_CREATE: readonly UsersBanField[] = ["reason"];
+
+function toUsersBanCreateInput(v: UsersBanValues): Omit<Inputs["users"]["ban"], "id"> {
+  return {
+    reason: v.reason
+  };
+}
+
+type UsersBanSetter = <K extends keyof UsersBanValues>(key: K, value: UsersBanValues[K]) => void;
+
+function renderUsersBanField(field: UsersBanField, values: UsersBanValues, set: UsersBanSetter) {
+  switch (field) {
+    case "reason":
+      return (
+      <FormRow label="Reason" htmlFor="reason">
+        <Input id="reason" type="text" maxLength={200} value={values.reason} onChange={e => set("reason", e.target.value)} required />
+      </FormRow>
+      );
+  }
+}
+
+function UsersBanForm({
+  fields,
+  initial,
+  submitLabel,
+  pending,
+  error,
+  onSubmit,
+  onCancel
+}: {
+  fields: readonly UsersBanField[];
+  initial: UsersBanValues;
+  submitLabel: string;
+  pending: boolean;
+  error: { message: string } | null;
+  onSubmit: (values: UsersBanValues) => void;
+  onCancel?: () => void;
+}) {
+  const [values, setValues] = useState<UsersBanValues>(initial);
+  const [problem, setProblem] = useState<string | null>(null);
+  const set: UsersBanSetter = (key, value) => setValues(current => ({ ...current, [key]: value }));
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    setProblem(null);
+    try {
+      onSubmit(values);
+    } catch (err) {
+      setProblem(err instanceof Error ? err.message : String(err));
+    }
+  };
+  return (
+    <form onSubmit={submit} className="grid max-w-xl gap-4">
+      {fields.map(field => (
+        <Fragment key={field}>{renderUsersBanField(field, values, set)}</Fragment>
+      ))}
+      <ErrorNote error={error ?? (problem ? { message: problem } : null)} />
+      <div className="flex gap-2">
+        <Button type="submit" disabled={pending}>
+          {submitLabel}
+        </Button>
+        {onCancel ? (
+          <Button type="button" variant="ghost" onClick={onCancel}>
+            Cancel
+          </Button>
+        ) : null}
+      </div>
+    </form>
+  );
 }
 
 export function UsersLayout() {
@@ -31,6 +210,7 @@ export function UsersLayout() {
   const user = sessionUser(session.data);
   void user;
   const matchRoute = useMatchRoute();
+  const queryClient = useQueryClient();
 
   return (
     <div className="flex h-full min-h-0">
@@ -56,7 +236,7 @@ export function UsersLayout() {
                     className={cn("block border-l-2 border-transparent px-4 py-2 hover:bg-accent/60", Boolean(matchRoute({ to: "/users/$id", params: { id: text(row.id) } })) && "border-primary bg-accent")}
                   >
                     <div className="truncate text-sm font-medium">{text(row.name) || "User " + text(row.id)}</div>
-                    <div className="truncate text-xs text-muted-foreground">{[text(row.email), text(row.role)].filter(Boolean).join(" · ")}</div>
+                    <div className="truncate text-xs text-muted-foreground">{[text(row.email), text(row.role), (row.banned ? "Banned" : "Not banned")].filter(Boolean).join(" · ")}</div>
                   </Link>
                 </li>
               ))}
@@ -79,27 +259,80 @@ export function UsersIndex() {
 export function UsersDetail() {
   const { id: rawId } = useParams({ from: "/users/$id" });
   const id = idOf(rawId);
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [openAction, setOpenAction] = useState<string | null>(null);
+  useEffect(() => {
+    setEditing(false);
+    setOpenAction(null);
+  }, [id]);
   const query = useQuery({ queryKey: [...KEY, "get", id], queryFn: () => client.users.get({ id }) });
   const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
   const user = sessionUser(session.data);
   void user;
-
+  const updateRow = useMutation({
+    mutationFn: (input: Inputs["users"]["update"]) => client.users.update(input),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: KEY });
+      setEditing(false);
+    }
+  });
+  const banAction = useMutation({
+    mutationFn: (input: Inputs["users"]["ban"]) => client.users.ban(input),
+    onSuccess: async () => {
+      setOpenAction(null);
+      await queryClient.invalidateQueries({ queryKey: KEY });
+    }
+  });
   if (query.isPending) return <PaneSkeleton />;
   if (query.error) return <ErrorNote error={query.error} className="m-6" />;
   const row: Detail = query.data;
-  void row;
   return (
     <Pane
       title={text(row.name) || "User " + text(row.id)}
+      actions={
+        <>
+          {canBan(user, row) ? (
+            <Button variant="outline" size="sm" onClick={() => setOpenAction(open => (open === "ban" ? null : "ban"))}>
+              Ban
+            </Button>
+          ) : null}
+          {canUpdate(user, row) ? (
+            <Button variant="outline" size="sm" onClick={() => setEditing(current => !current)}>
+              {editing ? "Cancel" : "Edit"}
+            </Button>
+          ) : null}
+        </>
+      }
     >
+      {openAction === "ban" ? (
+        <div className="mb-6 rounded-md border border-border p-4">
+          <UsersBanForm fields={USERSBAN_CREATE} initial={EMPTY_USERSBAN} submitLabel="Ban" pending={banAction.isPending} error={banAction.error} onCancel={() => setOpenAction(null)} onSubmit={values => banAction.mutate({ id, ...toUsersBanCreateInput(values) })} />
+        </div>
+      ) : null}
 
-
-      <dl className="grid gap-3">
+      {editing ? (
+        <UsersForm
+          fields={USERS_UPDATE}
+          initial={usersFromRow(row)}
+          submitLabel="Save"
+          pending={updateRow.isPending}
+          error={updateRow.error}
+          onCancel={() => setEditing(false)}
+          onSubmit={values => updateRow.mutate({ id, data: toUsersUpdateInput(values) })}
+        />
+      ) : (
+        <dl className="grid gap-3">
         <FieldRow label="Id">{text(row.id) || "—"}</FieldRow>
         <FieldRow label="Email">{text(row.email) || "—"}</FieldRow>
         <FieldRow label="Name">{text(row.name) || "—"}</FieldRow>
         <FieldRow label="Role">{row.role == null ? "—" : <Badge variant="secondary">{text(row.role)}</Badge>}</FieldRow>
         <FieldRow label="Created At">{formatDateTime(row.created_at) || "—"}</FieldRow>
+        <FieldRow label="Banned">{row.banned == null ? "—" : <Badge variant={row.banned ? "default" : "outline"}>{yesNo(row.banned)}</Badge>}</FieldRow>
+        <FieldRow label="Banned At">{formatDateTime(row.banned_at) || "—"}</FieldRow>
+        <FieldRow label="Ban Reason">
+          <p className="whitespace-pre-wrap">{text(row.ban_reason) || "—"}</p>
+        </FieldRow>
         <FieldRow label="Posts">
           {row.posts.length === 0 ? (
             "—"
@@ -111,7 +344,8 @@ export function UsersDetail() {
             </ul>
           )}
         </FieldRow>
-      </dl>
+        </dl>
+      )}
     </Pane>
   );
 }

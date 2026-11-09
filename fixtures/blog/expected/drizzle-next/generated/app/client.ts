@@ -5,7 +5,7 @@ import { QueryClient } from "@tanstack/react-query";
 import type { z } from "zod";
 import type { FileRecord } from "../files";
 import type { PublicArticle, PublicComment, PublicUser } from "../present";
-import type { commentsCreateInput, commentsListQuery, commentsUpdateInput, postsCreateInput, postsListQuery, postsPublishInput, postsUnpublishAllInput, postsUpdateInput, sendDigestInput, usersListQuery } from "../validation";
+import type { commentsCreateInput, commentsListQuery, commentsUpdateInput, postsCreateInput, postsListQuery, postsPublishInput, postsUnpublishAllInput, postsUpdateInput, sendDigestInput, usersBanInput, usersListQuery, usersUpdateInput } from "../validation";
 
 export class ApiError extends Error {
   constructor(
@@ -68,6 +68,8 @@ export type Inputs = {
   users: {
     list: z.input<typeof usersListQuery>;
     get: { id: string };
+    update: { id: string; data: z.input<typeof usersUpdateInput> };
+    ban: z.input<typeof usersBanInput> & { id: string };
   };
   posts: {
     list: z.input<typeof postsListQuery>;
@@ -109,6 +111,8 @@ export type Outputs = {
   users: {
     list: { data: (PublicUser)[]; page: Page };
     get: PublicUser & { posts: PublicArticle[] };
+    update: PublicUser;
+    ban: PublicUser;
   };
   posts: {
     list: { data: (PublicArticle & { author: PublicUser | null })[]; page: Page };
@@ -156,7 +160,9 @@ export const client = {
   },
   users: {
     list: (input: Inputs["users"]["list"]) => call<Outputs["users"]["list"]>("GET", "/api/users", { query: input as Record<string, unknown>, whole: true }),
-    get: ({ id }: Inputs["users"]["get"]) => call<Outputs["users"]["get"]>("GET", "/api/users" + "/" + id)
+    get: ({ id }: Inputs["users"]["get"]) => call<Outputs["users"]["get"]>("GET", "/api/users" + "/" + id),
+    update: ({ id, data }: Inputs["users"]["update"]) => call<PublicUser>("PATCH", "/api/users" + "/" + id, { body: data }),
+    ban: ({ id, ...input }: Inputs["users"]["ban"]) => call<PublicUser>("POST", "/api/users" + "/" + id + "/ban", { body: input })
   },
   posts: {
     list: (input: Inputs["posts"]["list"]) => call<Outputs["posts"]["list"]>("GET", "/api/posts", { query: input as Record<string, unknown>, whole: true }),

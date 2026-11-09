@@ -1,0 +1,29 @@
+id: fx-blog-7-banning
+tags: [fixture, fields, actions, rules, scenario]
+base: { fixture: blog, through: FEAT-6 }
+oracle: fixtures/blog/intents/FEAT-7/diff.yaml
+intent:
+  title: Banning users
+  ask: >-
+    Admins can ban a user, giving a reason. A banned user's profile shows that they are banned, since when, and
+    why. Nobody but an admin can ban, and nobody sets those fields by hand: not when registering, not when editing
+    a profile. Users may edit their own name. Roles are set by operators, never through the API.
+  acceptance:
+    - Registering with banned or role in the body is refused
+    - A member trying to ban someone gets 403; an admin's ban succeeds and the profile then shows banned true with the reason
+    - A banned user cannot unban themselves or change their role through their profile, but can change their name
+expect:
+  fields: { User: ["banned|is_banned", "banned_at|banned_since", "ban_reason|banned_reason|reason"] }
+  field_props:
+    "User.banned|is_banned": { read_only: true }
+    "User.banned_at|banned_since": { read_only: true }
+    "User.role": { read_only: true }
+  actions_on: { users: { scope: row, rule: "role:admin", input: ["reason|ban_reason"] } }
+  resources: [users]
+  actor_fields: { role: admin }
+  scenarios: { min: 1, rejections: 2, statuses: [400, 403, 200] }
+  touches: [users]
+notes: >-
+  The read_only construct from both sides: register and update refuse the ban fields and role with 400, and the
+  admin's action sets them. The users resource gains update limited to name, so a user can touch their profile
+  but not the server's fields.

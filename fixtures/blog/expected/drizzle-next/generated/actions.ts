@@ -4,7 +4,8 @@
 import type { Db } from "./db/client";
 import type * as schema from "./db/schema";
 import type { Session } from "./auth";
-import type { PostsPublishInput, PostsUnpublishAllInput, SendDigestInput } from "./validation";
+import type { PostsPublishInput, PostsUnpublishAllInput, SendDigestInput, UsersBanInput } from "./validation";
+import * as users_ban from "@/src/actions/users_ban";
 import * as posts_publish from "@/src/actions/posts_publish";
 import * as posts_unpublish_all from "@/src/actions/posts_unpublish_all";
 import * as send_digest from "@/src/actions/send_digest";
@@ -17,11 +18,13 @@ export interface ActionContext<Input, Row = undefined> {
   db: Db;
 }
 
+export type UsersBanResult = schema.User;
 export type PostsPublishResult = schema.Article;
 export type PostsUnpublishAllResult = { count: number };
 export type SendDigestResult = { sent: number };
 
 export const handlers = {
+  users_ban: users_ban.handler as (ctx: ActionContext<UsersBanInput, schema.User>) => Promise<UsersBanResult>,
   posts_publish: posts_publish.handler as (ctx: ActionContext<PostsPublishInput, schema.Article>) => Promise<PostsPublishResult>,
   posts_unpublish_all: posts_unpublish_all.handler as (ctx: ActionContext<PostsUnpublishAllInput, undefined>) => Promise<PostsUnpublishAllResult>,
   send_digest: send_digest.handler as (ctx: ActionContext<SendDigestInput, undefined>) => Promise<SendDigestResult>
