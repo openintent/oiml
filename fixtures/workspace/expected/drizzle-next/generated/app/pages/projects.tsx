@@ -10,10 +10,12 @@ import { Fragment, useEffect, useState, type FormEvent, type ReactNode } from "r
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { client, sessionUser, type Inputs, type Outputs, type SessionUser } from "../client";
-import { EmptyPane, ErrorNote, FieldRow, FormRow, ListSkeleton, Pagination, Pane, PaneHeader, PaneSkeleton, SortHeader, formatDateTime, selectClass, splitList, text, useDebounced } from "../ui";
+import { EmptyPane, ErrorNote, FieldRow, FormRow, ListSkeleton, Pagination, Pane, PaneHeader, PaneSkeleton, SortHeader, formatDateTime, selectClass, splitList, text, useDebounced, yesNo } from "../ui";
 
 type Row = Outputs["projects"]["list"]["data"][number];
 type Detail = Outputs["projects"]["get"];
@@ -74,38 +76,42 @@ function guarded<P extends object>(Component: (props: P) => ReactNode) {
   };
 }
 
-const PROJECTS_FIELDS = ["team_id", "name", "status"] as const;
+const PROJECTS_FIELDS = ["team_id", "name", "status", "public"] as const;
 type ProjectsField = (typeof PROJECTS_FIELDS)[number];
 
 type ProjectsValues = {
   team_id: string;
   name: string;
   status: "active" | "archived";
+  public: boolean;
 };
 
 const EMPTY_PROJECTS: ProjectsValues = {
   team_id: "",
   name: "",
-  status: "active"
+  status: "active",
+  public: false
 };
 
-const PROJECTS_CREATE: readonly ProjectsField[] = ["team_id", "name", "status"];
+const PROJECTS_CREATE: readonly ProjectsField[] = ["team_id", "name", "status", "public"];
 
 function toProjectsCreateInput(v: ProjectsValues): Input<"create"> {
   return {
     team_id: v.team_id,
     name: v.name,
-    status: (v.status || undefined)
+    status: (v.status || undefined),
+    public: v.public
   };
 }
 
-const PROJECTS_UPDATE: readonly ProjectsField[] = ["team_id", "name", "status"];
+const PROJECTS_UPDATE: readonly ProjectsField[] = ["team_id", "name", "status", "public"];
 
 function toProjectsUpdateInput(v: ProjectsValues): Input<"update">["data"] {
   return {
     team_id: v.team_id,
     name: v.name,
-    status: v.status
+    status: v.status,
+    public: v.public
   };
 }
 
@@ -113,7 +119,8 @@ function projectsFromRow(row: Detail): ProjectsValues {
   return {
     team_id: text(row.team_id),
     name: text(row.name),
-    status: row.status
+    status: row.status,
+    public: row.public ?? false
   };
 }
 
@@ -166,6 +173,13 @@ function renderProjectsField(field: ProjectsField, values: ProjectsValues, set: 
           <option value="archived">archived</option>
         </select>
       </FormRow>
+      );
+    case "public":
+      return (
+      <div className="flex items-center gap-2">
+        <Checkbox id="public" checked={values.public} onCheckedChange={checked => set("public", checked)} />
+        <Label htmlFor="public">Public</Label>
+      </div>
       );
   }
 }
@@ -415,6 +429,7 @@ function ProjectsDetailInner() {
         <FieldRow label="Name">{text(row.name) || "—"}</FieldRow>
         <FieldRow label="Status">{row.status == null ? "—" : <Badge variant="secondary">{text(row.status)}</Badge>}</FieldRow>
         <FieldRow label="Created At">{formatDateTime(row.created_at) || "—"}</FieldRow>
+        <FieldRow label="Public">{row.public == null ? "—" : <Badge variant={row.public ? "default" : "outline"}>{yesNo(row.public)}</Badge>}</FieldRow>
         </dl>
       )}
     </Pane>

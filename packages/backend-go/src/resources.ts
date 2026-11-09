@@ -11,14 +11,15 @@ import type {
 } from "@osl/core";
 import {
   actionsOf,
+  alternativeParts,
   conditionedRules,
   globalActions,
   rowDependentRules,
   rowRules,
   ruleAlternatives,
-  ruleKey
+  rulePaths
 } from "@osl/core";
-import type { PredicateIR, RowRuleIR } from "@osl/core";
+import type { AlternativeIR, PredicateIR, RowRuleIR, RuleConditionIR, RuleHopIR } from "@osl/core";
 import { actionParseFunc } from "./actions.js";
 import { fileSpecsLiteral } from "./auth.js";
 import { eventFunc } from "./events.js";
@@ -53,15 +54,15 @@ import {
 } from "./util.js";
 import { actionInputVar, idFunc, inputVar, queryVar } from "./validation.js";
 
-/** Whether checking the rule against a row needs values reached through relations */
+/** Whether checking the rule against a row needs values reached through relations: a path on a predicate or on a condition */
 function hasVia(rule: RuleIR): boolean {
-  return rowRules(rule).some(r => Boolean(r.via?.length));
+  return rulePaths(rule).size > 0;
 }
 
 /** The columns a rule reads from the row itself: its plain fields, the first column of each path, and the ones its conditions test */
 function baseColumns(rule: RuleIR): string[] {
   const out = new Set(rowRules(rule).map(r => (r.via?.length ? r.via[0].column : r.field)));
-  for (const r of conditionedRules(rule)) out.add(r.when!.column);
+  for (const r of conditionedRules(rule)) out.add(r.when!.via?.length ? r.when!.via[0].column : r.when!.column);
   return [...out];
 }
 
@@ -72,7 +73,7 @@ function baseColumns(rule: RuleIR): string[] {
 function rowColumns(rule: RuleIR, allRules: RuleIR[]): string[] {
   const out = new Set(baseColumns(rule));
   if (hasVia(rule))
-    for (const other of allRules) for (const r of rowRules(other)) if (r.via?.length) out.add(r.via[0].column);
+    for (const other of allRules) for (const path of rulePaths(other).values()) out.add(path.via[0].column);
   return [...out];
 }
 
@@ -103,8 +104,11 @@ function rowFromValues(
     .join(", ")}}`;
 }
 
-/** A Go string expression concatenating raw literals and code */
-function goConcat(parts: (string | { code: string })[]): string {
+/**
+ * A Go string expression concatenating raw literals and code. gofmt spaces a `+` chain that is the only argument
+ * of a call and packs one among several arguments, so the caller says which (`sep`).
+ */
+function goConcat(parts: Part[], sep = "+"): string {
   const out: string[] = [];
   let literal = "";
   for (const part of parts) {
@@ -116,12 +120,15 @@ function goConcat(parts: (string | { code: string })[]): string {
     }
   }
   if (literal) out.push(goRaw(literal));
-  return out.join("+");
+  return out.join(sep);
 }
+
+type Part = string | { code: string };
 
 /**
  * The lines that narrow a list to the rows its rule lets the session see: owner by column, member by the session's
- * tenants, a path as a subquery through the relations, alternatives joined with OR unless one allows without a row.
+ * tenants, a path (on a predicate or on its condition) as a subquery through the relations, a conjunction as the
+ * AND of its parts, alternatives joined with OR unless one allows without a row.
  */
 function listFilterLines(
   ir: IR,
@@ -134,29 +141,34 @@ function listFilterLines(
   const rows = rowDependentRules(rule);
   if (rows.length === 0) return [];
   const me = { code: `session.User.${identityPk}` };
+  let memberCount = 0;
+  const tenantsName = () => (memberCount++ === 0 ? "tenants" : `tenants${memberCount}`);
   const tenantsOf = (r: RowRuleIR) =>
     `access.MemberTenantIDs(session, ${q(r.kind === "member" ? (r.role ?? "") : "")})`;
-  const last = (r: RowRuleIR, tenants: string): (string | { code: string })[] =>
+  const last = (r: RowRuleIR, tenants: string): Part[] =>
     r.kind === "owner"
       ? [`${quoteIdent(r.field)} = `, { code: `where.Param(${me.code})` }]
       : [`${quoteIdent(r.field)} = ANY(`, { code: `where.Param(${tenants})` }, `)`];
-  /** The SQL of a predicate's condition as a Go string expression, or null without one */
-  const whenSql = (r: PredicateIR): string | null => {
-    if (r.kind === "none" || !r.when) return null;
-    const col = quoteIdent(r.when.column);
-    if (r.when.value === null) return goRaw(`${col} IS ${r.when.op === "eq" ? "" : "NOT "}NULL`);
-    return goConcat([
-      `${col} ${r.when.op === "eq" ? "=" : "<>"} `,
-      { code: `where.Param(${conditionValue(r.when.value)})` }
-    ]);
+  /** The SQL of a condition's comparison on the table it names */
+  const whenLeaf = (when: RuleConditionIR): Part[] => {
+    const col = quoteIdent(when.column);
+    if (when.value === null) return [`${col} IS ${when.op === "eq" ? "" : "NOT "}NULL`];
+    return [`${col} ${when.op === "eq" ? "=" : "<>"} `, { code: `where.Param(${conditionValue(when.value)})` }];
   };
-  /** The whole condition of an alternative: the row part, the when part, or both */
-  const alternative = (r: PredicateIR, tenants: string): string => {
-    const when = whenSql(r);
-    if (r.kind !== "owner" && r.kind !== "member") return when!;
-    const rowPart = condition(r, tenants);
-    return when ? `"("+${rowPart}+" AND "+${when}+")"` : rowPart;
+  /** A test on the listed table through `hops`: nested IN (SELECT ...) down to `leaf` on the table the hops reach */
+  const through = (hops: RuleHopIR[], leaf: Part[]): Part[] => {
+    if (hops.length === 0) return leaf;
+    const inner = (i: number): Part[] => {
+      const hop = hops[i];
+      const table = { code: `models.${tableConst(entityByName(ir, hop.entity))}` };
+      const where = i + 1 < hops.length ? [`${quoteIdent(hops[i + 1].column)} IN (`, ...inner(i + 1), `)`] : leaf;
+      return [`SELECT ${quoteIdent(hop.targetColumn)} FROM `, table, ` WHERE `, ...where];
+    };
+    return [`${quoteIdent(hops[0].column)} IN (`, ...inner(0), `)`];
   };
+  /** The parts of a predicate's condition, following its path, or null without one */
+  const whenSql = (r: PredicateIR): Part[] | null =>
+    r.kind === "none" || !r.when ? null : through(r.when.via ?? [], whenLeaf(r.when));
   /** The runtime guard before an open predicate's condition applies */
   const guard = (r: PredicateIR): string | null =>
     r.kind === "authenticated"
@@ -164,47 +176,78 @@ function listFilterLines(
       : r.kind === "role"
         ? `session != nil && session.Role() == ${q(r.value)}`
         : null;
-  const condition = (r: RowRuleIR, tenants: string): string => {
-    const hops = r.via ?? [];
-    if (hops.length === 0) return goConcat(last(r, tenants));
-    const inner = (i: number): (string | { code: string })[] => {
-      const hop = hops[i];
-      const table = { code: `models.${tableConst(entityByName(ir, hop.entity))}` };
-      const where =
-        i + 1 < hops.length ? [`${quoteIdent(hops[i + 1].column)} IN (`, ...inner(i + 1), `)`] : last(r, tenants);
-      return [`SELECT ${quoteIdent(hop.targetColumn)} FROM `, table, ` WHERE `, ...where];
-    };
-    return goConcat([`${quoteIdent(hops[0].column)} IN (`, ...inner(0), `)`]);
+  /** What one alternative needs: the tenant lists it declares, the runtime guards, and the SQL pieces ANDed together */
+  interface Plan {
+    tenants: [string, string][];
+    guards: string[];
+    /** The SQL pieces, each as parts, ANDed together */
+    sql: Part[][];
+    /** A single owner or member column without path or condition: the builder has a method for it */
+    simple?: RowRuleIR;
+  }
+  /** Whether a caller without a session reaches the filter: an alternative made of public predicates lets them list */
+  const anonymousMayList = ruleAlternatives(rule).some(alt => alternativeParts(alt).every(p => p.kind === "public"));
+  const plan = (alt: AlternativeIR): Plan => {
+    const p: Plan = { tenants: [], guards: [], sql: [] };
+    const parts = alternativeParts(alt);
+    for (const part of parts) {
+      if (part.kind === "none") continue;
+      if (part.kind === "owner" || part.kind === "member") {
+        let tenants = "";
+        if (part.kind === "member") {
+          tenants = tenantsName();
+          p.tenants.push([tenants, tenantsOf(part)]);
+          p.guards.push(`len(${tenants}) > 0`);
+        } else if (anonymousMayList && !p.guards.includes("session != nil")) p.guards.push("session != nil");
+        p.sql.push(through(part.via ?? [], last(part, tenants)));
+        if (parts.length === 1 && !part.via?.length && !part.when) p.simple = part;
+      } else {
+        const g = guard(part);
+        if (g) p.guards.push(g);
+      }
+      const when = whenSql(part);
+      if (when) p.sql.push(when);
+    }
+    return p;
+  };
+  /** The alternative's SQL as one Go expression; `sep` follows gofmt's spacing for where the expression lands */
+  const sqlOf = (p: Plan, sep: string): string => {
+    if (p.sql.length === 1) return goConcat(p.sql[0], sep);
+    const parts: Part[] = ["("];
+    p.sql.forEach((piece, i) => parts.push(...(i ? [" AND ", ...piece] : piece)));
+    parts.push(")");
+    return goConcat(parts, sep);
   };
   if (ruleAlternatives(rule).length === 1) {
-    const r = rows[0];
+    // The check before the list already refused a session the open parts refuse; only the tenants can still be empty
+    const p = plan(rows[0]);
     const lines: string[] = [];
-    if (r.kind === "member") {
-      lines.push(`\ttenants := ${tenantsOf(r)}`);
-      lines.push(`\tif len(tenants) == 0 {\n\t\thttpx.List(c, ${empty}, ${pageExpr(0)})\n\t\treturn\n\t}`);
-      if (!r.via?.length && !r.when) lines.push(`\twhere.In(${goRaw(quoteIdent(r.field))}, tenants)`);
-      else lines.push(`\twhere.Raw(${alternative(r, "tenants")})`);
-    } else if (r.kind === "owner") {
-      if (!r.via?.length && !r.when) lines.push(`\twhere.Eq(${goRaw(quoteIdent(r.field))}, ${me.code})`);
-      else lines.push(`\twhere.Raw(${alternative(r, "tenants")})`);
-    } else lines.push(`\twhere.Raw(${alternative(r, "")})`);
+    for (const [name, expr] of p.tenants) lines.push(`\t${name} := ${expr}`);
+    if (p.tenants.length)
+      lines.push(
+        `\tif ${p.tenants.map(([name]) => `len(${name}) == 0`).join(" || ")} {\n\t\thttpx.List(c, ${empty}, ${pageExpr(0)})\n\t\treturn\n\t}`
+      );
+    if (p.simple?.kind === "owner") lines.push(`\twhere.Eq(${goRaw(quoteIdent(p.simple.field))}, ${me.code})`);
+    else if (p.simple?.kind === "member") lines.push(`\twhere.In(${goRaw(quoteIdent(p.simple.field))}, tenants)`);
+    else lines.push(`\twhere.Raw(${sqlOf(p, " + ")})`);
     return lines;
   }
   const lines: string[] = [`\tif !access.Satisfied(${ruleVar}, session) {`, `\t\talternatives := []string{}`];
-  for (const r of rows) {
-    if (r.kind === "owner") lines.push(`\t\talternatives = append(alternatives, ${alternative(r, "")})`);
-    else if (r.kind === "member")
+  for (const alt of rows) {
+    const p = plan(alt);
+    if (p.tenants.length === 1 && p.guards.length === 1) {
+      const [name, expr] = p.tenants[0];
       lines.push(
-        `\t\tif tenants := ${tenantsOf(r)}; len(tenants) > 0 {\n\t\t\talternatives = append(alternatives, ${alternative(r, "tenants")})\n\t\t}`
+        `\t\tif ${name} := ${expr}; len(${name}) > 0 {\n\t\t\talternatives = append(alternatives, ${sqlOf(p, "+")})\n\t\t}`
       );
-    else {
-      const g = guard(r);
-      lines.push(
-        g
-          ? `\t\tif ${g} {\n\t\t\talternatives = append(alternatives, ${alternative(r, "")})\n\t\t}`
-          : `\t\talternatives = append(alternatives, ${alternative(r, "")})`
-      );
+      continue;
     }
+    for (const [name, expr] of p.tenants) lines.push(`\t\t${name} := ${expr}`);
+    lines.push(
+      p.guards.length
+        ? `\t\tif ${p.guards.join(" && ")} {\n\t\t\talternatives = append(alternatives, ${sqlOf(p, "+")})\n\t\t}`
+        : `\t\talternatives = append(alternatives, ${sqlOf(p, "+")})`
+    );
   }
   lines.push(`\t\tif len(alternatives) == 0 {\n\t\t\thttpx.List(c, ${empty}, ${pageExpr(0)})\n\t\t\treturn\n\t\t}`);
   lines.push(`\t\twhere.AnyOf(alternatives)`, `\t}`);
@@ -213,13 +256,13 @@ function listFilterLines(
 
 /** The ruleRow method: adds to a Row the values the entity's rules reach through relations, under their dotted keys */
 function ruleRowMethod(ir: IR, handler: string, rules: RuleIR[]): string | null {
-  const paths = new Map<string, ReturnType<typeof rowRules>[number]>();
-  for (const rule of rules) for (const r of rowRules(rule)) if (r.via?.length) paths.set(ruleKey(r), r);
+  const paths = new Map<string, { via: RuleHopIR[]; field: string }>();
+  for (const rule of rules) for (const [key, path] of rulePaths(rule)) paths.set(key, path);
   if (paths.size === 0) return null;
   const blocks: string[] = [];
   let n = 0;
   for (const [key, r] of paths) {
-    const hops = r.via!;
+    const hops = r.via;
     const lines: string[] = [];
     let source = `row[${q(hops[0].column)}]`;
     hops.forEach((hop, i) => {

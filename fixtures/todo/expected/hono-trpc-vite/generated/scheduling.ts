@@ -52,7 +52,7 @@ interface TimerDef<Row> {
   name: string;
   entity: string;
   dueOf(row: Row): Date | null;
-  holds(row: Row): boolean;
+  holds(row: Row): Promise<boolean>;
   id(row: Row): unknown;
   load(id: unknown): Promise<Row | undefined>;
   dueRows(now: Date): Promise<Row[]>;
@@ -82,7 +82,7 @@ export async function runTimerJob(name: string, payload: { id: unknown; due: str
   const row = await timer.load(payload.id);
   if (!row) return false;
   const at = timer.dueOf(row);
-  if (!at || at.toISOString() !== payload.due || !timer.holds(row)) return false;
+  if (!at || at.toISOString() !== payload.due || !(await timer.holds(row))) return false;
   await timer.run(row, now);
   return true;
 }
@@ -92,7 +92,7 @@ export async function runDueTimers(now: Date): Promise<number> {
   let ran = 0;
   for (const timer of TIMERS) {
     for (const row of await timer.dueRows(now)) {
-      if (!timer.holds(row)) continue;
+      if (!(await timer.holds(row))) continue;
       await timer.run(row, now);
       ran++;
     }

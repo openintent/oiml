@@ -17,7 +17,18 @@ describe("blog fixture", () => {
   it("applies every intent, compiles IR and plans migrations with renames", async () => {
     const root = await freshProject();
     const ids = await listIntents(root);
-    expect(ids).toEqual(["FEAT-1", "FEAT-2", "FEAT-3", "FEAT-4", "FEAT-5", "FEAT-6", "FEAT-7", "FEAT-8", "FEAT-9"]);
+    expect(ids).toEqual([
+      "FEAT-1",
+      "FEAT-2",
+      "FEAT-3",
+      "FEAT-4",
+      "FEAT-5",
+      "FEAT-6",
+      "FEAT-7",
+      "FEAT-8",
+      "FEAT-9",
+      "FEAT-10"
+    ]);
 
     for (const id of ids) {
       const outcome = await applyIntent(root, id);
@@ -27,7 +38,7 @@ describe("blog fixture", () => {
     expect(again.status).toBe("noop");
 
     const project = await loadProject(root);
-    expect(project.lock.revisions).toHaveLength(9);
+    expect(project.lock.revisions).toHaveLength(10);
     const ir = project.ir;
 
     const article = ir.entities.find(e => e.name === "Article")!;
@@ -41,7 +52,8 @@ describe("blog fixture", () => {
       "posted_at",
       "tags",
       "cover",
-      "publish_at"
+      "publish_at",
+      "locked"
     ]);
     expect(article.foreignKeys[0]).toMatchObject({ column: "author_id", targetTable: "users", onDelete: "cascade" });
     expect(article.relations.map(r => r.name)).toEqual(["author", "comments"]);
@@ -72,13 +84,16 @@ describe("blog fixture", () => {
       "magic link",
       "comments and moderation",
       "banning",
-      "scheduled publishing"
+      "scheduled publishing",
+      "locked articles"
     ]);
     expect(ir.examples.seed.map(s => s.op)).toEqual(["posts.create", "posts.create"]);
     expect(ir.actions.map(a => `${a.resource ?? "actions"}.${a.name}:${a.scope}`)).toEqual([
       "users.ban:row",
       "posts.publish:row",
       "posts.unpublish_all:collection",
+      "posts.lock:row",
+      "posts.unlock:row",
       "actions.send_digest:global"
     ]);
     const publish = ir.actions.find(a => a.handler === "posts_publish");

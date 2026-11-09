@@ -2,6 +2,7 @@
  * The project layer: `.osl/` on disk. Reads and writes the config, the model,
  * the lock with its revision history, intents and generated files.
  */
+import { compareIds } from "./naming.js";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, rm, writeFile, stat } from "node:fs/promises";
 import path from "node:path";
@@ -184,7 +185,7 @@ export async function listIntents(root: string): Promise<string[]> {
     if (name.startsWith(".")) continue;
     if ((await stat(path.join(dir, name))).isDirectory()) out.push(name);
   }
-  return out.sort();
+  return out.sort(compareIds);
 }
 
 export async function createIntent(root: string, id: string, intent: Intent): Promise<string> {

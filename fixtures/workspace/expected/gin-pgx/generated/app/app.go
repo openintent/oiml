@@ -34,6 +34,7 @@ func New(pool *pgxpool.Pool) *gin.Engine {
 	resources.NewMembers(pool, a).Routes(r)
 	resources.NewProjects(pool, a).Routes(r)
 	resources.NewTasks(pool, a).Routes(r)
+	resources.NewNotes(pool, a).Routes(r)
 	if os.Getenv("OSL_TEST_HOOKS") == "1" {
 		testhooks.Routes(r)
 	}

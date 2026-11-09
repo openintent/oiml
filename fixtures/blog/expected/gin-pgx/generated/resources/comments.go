@@ -43,7 +43,7 @@ func (h *Comments) Routes(r gin.IRouter) {
 
 var commentsReadRule = access.Rule{Kind: "public"}
 
-var commentsCreateRule = access.Rule{Kind: "owner", Field: "author_id"}
+var commentsCreateRule = access.Rule{Kind: "owner", Field: "author_id", When: &access.Condition{Field: "article_id.locked", Op: "eq", Value: false}}
 
 var commentsUpdateRule = access.Rule{Kind: "owner", Field: "author_id"}
 
@@ -154,6 +154,15 @@ func (h *Comments) Create(c *gin.Context) {
 	values, perr := validation.CommentsCreateInput.Parse(body)
 	if perr != nil {
 		httpx.Fail(c, perr)
+		return
+	}
+	ruleRow, err := h.ruleRow(ctx, access.Row{"author_id": session.User.ID, "article_id": values["article_id"]})
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if verdict := access.CheckRow(commentsCreateRule, session, ruleRow); verdict != nil {
+		access.Deny(c, verdict)
 		return
 	}
 	values["author_id"] = session.User.ID
@@ -285,11 +294,18 @@ func (h *Comments) Delete(c *gin.Context) {
 // ruleRow adds to row the values the rules reach through relations, under their dotted keys.
 func (h *Comments) ruleRow(ctx context.Context, row access.Row) (access.Row, error) {
 	{
-		var v0 *string
-		if err := h.db.QueryRow(ctx, `SELECT "author_id" FROM `+models.ArticleTable+` WHERE "id" = $1`, row["article_id"]).Scan(&v0); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		var v0 *bool
+		if err := h.db.QueryRow(ctx, `SELECT "locked" FROM `+models.ArticleTable+` WHERE "id" = $1`, row["article_id"]).Scan(&v0); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return nil, err
 		}
-		row["article_id.author_id"] = v0
+		row["article_id.locked"] = v0
+	}
+	{
+		var v1 *string
+		if err := h.db.QueryRow(ctx, `SELECT "author_id" FROM `+models.ArticleTable+` WHERE "id" = $1`, row["article_id"]).Scan(&v1); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return nil, err
+		}
+		row["article_id.author_id"] = v1
 	}
 	return row, nil
 }

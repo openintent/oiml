@@ -22,6 +22,9 @@
       "name": "tasks"
     },
     {
+      "name": "notes"
+    },
+    {
       "name": "auth",
       "description": "Sign-in"
     }
@@ -860,6 +863,435 @@
         }
       }
     },
+    "/api/notes": {
+      "get": {
+        "tags": [
+          "notes"
+        ],
+        "operationId": "notes_list",
+        "description": "Only members of the tenant reached through project_id.team_id.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "summary": "List notes",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 20
+            }
+          },
+          {
+            "name": "project_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "page"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "project_id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "author_id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "body": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "created_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "author": {
+                            "oneOf": [
+                              {
+                                "$ref": "#/components/schemas/User"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "project_id",
+                          "author_id",
+                          "body",
+                          "created_at",
+                          "author"
+                        ]
+                      }
+                    },
+                    "page": {
+                      "type": "object",
+                      "required": [
+                        "page",
+                        "page_size",
+                        "total"
+                      ],
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "page_size": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "notes"
+        ],
+        "operationId": "notes_create",
+        "description": "All of: Only members of the tenant reached through project_id.team_id; Only the row's owner (author_id).",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "summary": "Create one of notes",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "body": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "project_id",
+                  "body"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Note"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/notes/{id}": {
+      "get": {
+        "tags": [
+          "notes"
+        ],
+        "operationId": "notes_get",
+        "description": "Only members of the tenant reached through project_id.team_id.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "summary": "Get one of notes",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "project_id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "author_id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "body": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "created_at": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "project_id",
+                        "author_id",
+                        "body",
+                        "created_at"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "notes"
+        ],
+        "operationId": "notes_update",
+        "description": "Only the row's owner (author_id).",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "summary": "Update one of notes",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "body": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Note"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "notes"
+        ],
+        "operationId": "notes_delete",
+        "description": "Any of: Only the row's owner (author_id); Only members of the tenant reached through project_id.team_id with at least role admin.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "summary": "Delete one of notes",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
     "/api/projects": {
       "get": {
         "tags": [
@@ -974,6 +1406,10 @@
                           "created_at": {
                             "type": "string",
                             "format": "date-time"
+                          },
+                          "public": {
+                            "type": "boolean",
+                            "description": "Anyone may read a public project and its tasks"
                           }
                         },
                         "required": [
@@ -981,7 +1417,8 @@
                           "team_id",
                           "name",
                           "status",
-                          "created_at"
+                          "created_at",
+                          "public"
                         ]
                       }
                     },
@@ -1060,6 +1497,10 @@
                       "active",
                       "archived"
                     ]
+                  },
+                  "public": {
+                    "type": "boolean",
+                    "description": "Anyone may read a public project and its tasks"
                   }
                 },
                 "additionalProperties": false,
@@ -1169,6 +1610,10 @@
                         "created_at": {
                           "type": "string",
                           "format": "date-time"
+                        },
+                        "public": {
+                          "type": "boolean",
+                          "description": "Anyone may read a public project and its tasks"
                         }
                       },
                       "required": [
@@ -1176,7 +1621,8 @@
                         "team_id",
                         "name",
                         "status",
-                        "created_at"
+                        "created_at",
+                        "public"
                       ]
                     }
                   }
@@ -1246,6 +1692,10 @@
                       "active",
                       "archived"
                     ]
+                  },
+                  "public": {
+                    "type": "boolean",
+                    "description": "Anyone may read a public project and its tasks"
                   }
                 },
                 "additionalProperties": false
@@ -1340,7 +1790,7 @@
           "tasks"
         ],
         "operationId": "tasks_list",
-        "description": "Any of: Only the row's owner (assignee_id); Only members of the tenant reached through project_id.team_id with at least role admin.",
+        "description": "Any of: Open to everyone, only when project_id.public = true; Only the row's owner (assignee_id); Only members of the tenant reached through project_id.team_id with at least role admin.",
         "security": [
           {
             "cookieAuth": []
@@ -1625,7 +2075,7 @@
           "tasks"
         ],
         "operationId": "tasks_get",
-        "description": "Any of: Only the row's owner (assignee_id); Only members of the tenant reached through project_id.team_id with at least role admin.",
+        "description": "Any of: Open to everyone, only when project_id.public = true; Only the row's owner (assignee_id); Only members of the tenant reached through project_id.team_id with at least role admin.",
         "security": [
           {
             "cookieAuth": []
@@ -2594,6 +3044,38 @@
           }
         }
       },
+      "Note": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "author_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "author_id",
+          "body",
+          "created_at"
+        ]
+      },
       "Project": {
         "type": "object",
         "properties": {
@@ -2620,6 +3102,10 @@
           "created_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "public": {
+            "type": "boolean",
+            "description": "Anyone may read a public project and its tasks"
           }
         },
         "required": [
@@ -2627,7 +3113,8 @@
           "team_id",
           "name",
           "status",
-          "created_at"
+          "created_at",
+          "public"
         ]
       },
       "Task": {

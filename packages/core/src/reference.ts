@@ -41,7 +41,7 @@ table: posts            # optional, default snake_case plural of the name
 description: optional
 fields:
   <name>: Field         # order matters for the generated code
-rules: { read, create, update, delete }   # each: a predicate, or several joined with " or " (any of them allows)
+rules: { read, create, update, delete }   # each: a predicate, or several joined with " or " (any allows) and " and " (all must)
 # predicate: public | authenticated | none | owner:<field> | role:<value> | member:<field>[:<role>]; <field> may be a path (article_id.author_id)
 indexes: [{ fields: [a, b], unique: false, name: optional }]
 unique: [[a, b]]        # multi-column unique constraints
@@ -54,10 +54,19 @@ when no alternative allows, anonymous callers get 401 and signed-in ones 403. Ad
 names it ("only the author" means owner alone).
 A predicate may carry a row condition: \`read: "public when published = true or owner:author_id"\` lets anyone read
 published rows and authors their drafts; \`update: "owner:author_id when status = draft"\` freezes a row once it
-leaves draft. \`when <field> = <value>\` (or \`!=\`) names a field of the entity itself and a literal: true or false, a
+leaves draft. \`when <field> = <value>\` (or \`!=\`) names a field of the entity and a literal: true or false, a
 number, an enum value, a string without spaces, or null. Lists are filtered by it, get, update and delete check the
-row, and on create the body (with the field's default) must satisfy it. What a client may write into a field still
-cannot depend on who they are (no "only owners may grant owner"): say so in not_delivered rather than approximating.
+row, and on create the body (with the field's default) must satisfy it. The field may be a path through relation
+fields to a field of the row they reach: \`read: "public when project_id.public = true or member:project_id.team_id"\`
+on Task opens the tasks of public projects to everyone, \`create: "owner:author_id when article_id.locked = false"\`
+on Comment refuses comments on a locked article (403; a missing related row refuses too). Lists follow the path with
+a subquery; a timer's \`when\` takes the same paths. What a client may write into a field still cannot depend on who
+they are (no "only owners may grant owner"): say so in not_delivered rather than approximating.
+Predicates joined with \`and\` must all allow: \`create: "member:project_id.team_id and owner:author_id"\` lets only a
+member of the project's team create, and binds author_id to the session as a plain owner rule does, so a member
+cannot file a note under another name. \`and\` binds tighter than \`or\` (\`a and b or c\`); \`none\` never belongs
+in a conjunction and \`public\` adds nothing to one (M034). When a conjunction refuses, the status is 401 only when the
+part that failed needed a session and there was none, otherwise 403.
 \`owner:<field>\` needs auth; the field must be a relation to the identity entity (or the identity's own primary key).
 A path follows relation fields to a row that is not the one being accessed: \`owner:article_id.author_id\` on Comment is
 the author of the comment's article, \`member:project_id.team_id\` on Task is membership of the task's project's team.

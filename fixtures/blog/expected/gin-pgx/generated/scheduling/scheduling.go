@@ -118,8 +118,9 @@ func dueArticlePublishAt(row *models.Article) *time.Time {
 	return &due
 }
 
-func holdsArticlePublishAt(row *models.Article) bool {
-	return row.Published == false
+func holdsArticlePublishAt(ctx context.Context, row *models.Article) (bool, error) {
+	_ = ctx
+	return row.Published == false, nil
 }
 
 func runArticlePublishAt(ctx context.Context, row *models.Article, now time.Time) error {
@@ -153,8 +154,11 @@ func RunTimerJob(ctx context.Context, name string, id json.RawMessage, due strin
 			return err
 		}
 		at := dueArticlePublishAt(row)
-		if at == nil || at.UTC().Format(time.RFC3339Nano) != due || !holdsArticlePublishAt(row) {
+		if at == nil || at.UTC().Format(time.RFC3339Nano) != due {
 			return nil
+		}
+		if ok, err := holdsArticlePublishAt(ctx, row); err != nil || !ok {
+			return err
 		}
 		return runArticlePublishAt(ctx, row, time.Now().UTC())
 	}
@@ -170,7 +174,11 @@ func RunDueTimers(ctx context.Context, now time.Time) (int, error) {
 			return ran, err
 		}
 		for _, row := range rows {
-			if !holdsArticlePublishAt(row) {
+			ok, err := holdsArticlePublishAt(ctx, row)
+			if err != nil {
+				return ran, err
+			}
+			if !ok {
 				continue
 			}
 			if err := runArticlePublishAt(ctx, row, now); err != nil {

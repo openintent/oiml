@@ -9,9 +9,9 @@ export function presentUser(row: schema.User): PublicUser {
   return { id: row.id, email: row.email, name: row.name, role: row.role, created_at: row.created_at, banned: row.banned, banned_at: row.banned_at, ban_reason: row.ban_reason };
 }
 
-export type PublicArticle = Pick<schema.Article, "id" | "title" | "content" | "published" | "author_id" | "posted_at" | "tags" | "publish_at"> & { cover: PublicFile | null };
+export type PublicArticle = Pick<schema.Article, "id" | "title" | "content" | "published" | "author_id" | "posted_at" | "tags" | "publish_at" | "locked"> & { cover: PublicFile | null };
 export function presentArticle(row: schema.Article): PublicArticle {
-  return { id: row.id, title: row.title, content: row.content, published: row.published, author_id: row.author_id, posted_at: row.posted_at, tags: row.tags, publish_at: row.publish_at, cover: presentFileRef(row.cover) };
+  return { id: row.id, title: row.title, content: row.content, published: row.published, author_id: row.author_id, posted_at: row.posted_at, tags: row.tags, publish_at: row.publish_at, locked: row.locked, cover: presentFileRef(row.cover) };
 }
 
 export type PublicComment = Pick<schema.Comment, "id" | "body" | "article_id" | "author_id" | "created_at">;

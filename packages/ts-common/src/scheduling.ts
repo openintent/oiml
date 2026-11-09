@@ -6,12 +6,32 @@ export function hasScheduling(ir: IR): boolean {
   return ir.schedules.length > 0 || ir.timers.length > 0;
 }
 
-/** The `holds(row)` predicate of a timer's when condition, or always true */
-function holdsExpr(timer: TimerIR): string {
-  if (!timer.when) return "() => true";
-  const col = `row.${timer.when.column}`;
-  if (timer.when.value === null) return `row => ${col} ${timer.when.op === "eq" ? "==" : "!="} null`;
-  return `row => String(${col}) ${timer.when.op === "eq" ? "===" : "!=="} ${JSON.stringify(String(timer.when.value))}`;
+/** A comparison of `value` with a condition's literal; values compare as text, null only to null */
+function compareExpr(value: string, when: NonNullable<TimerIR["when"]>): string {
+  if (when.value === null) return `${value} ${when.op === "eq" ? "==" : "!="} null`;
+  return `String(${value}) ${when.op === "eq" ? "===" : "!=="} ${JSON.stringify(String(when.value))}`;
+}
+
+/**
+ * The `holds(row)` predicate of a timer's when condition, or always true. A condition through a relation follows
+ * the hops with one query each and compares the value it reaches.
+ */
+function holdsExpr(ir: IR, timer: TimerIR): string {
+  if (!timer.when) return "async () => true";
+  const hops = timer.when.via ?? [];
+  if (hops.length === 0) return `async row => ${compareExpr(`row.${timer.when.column}`, timer.when)}`;
+  const steps = hops.map((hop, i) => {
+    const hopEntity = entityByName(ir, hop.entity);
+    const t = `schema.${tableExport(hopEntity)}`;
+    const next = i + 1 < hops.length ? hops[i + 1].column : timer.when!.column;
+    const idType = `schema.${typeName(hopEntity)}["${hop.targetColumn}"]`;
+    return `    if (value != null) value = (await db.select({ v: ${t}.${next} }).from(${t}).where(eq(${t}.${hop.targetColumn}, value as ${idType})))[0]?.v ?? null;`;
+  });
+  return `async row => {
+    let value: unknown = row.${hops[0].column};
+${steps.join("\n")}
+    return ${compareExpr("value", timer.when)};
+  }`;
 }
 
 /**
@@ -29,7 +49,7 @@ export function schedulingFile(ir: IR, conv: TsConventions): string {
   name: ${q(timer.name)},
   entity: ${q(timer.entity)},
   dueOf: row => due(row.${timer.column}, ${timer.afterSeconds}),
-  holds: ${holdsExpr(timer)},
+  holds: ${holdsExpr(ir, timer)},
   id: row => row.${pk},
   load: async id => (await db.select().from(${table}).where(eq(${table}.${pk}, id as schema.${T}[${q(pk)}])))[0],
   dueRows: now =>
@@ -103,7 +123,7 @@ interface TimerDef<Row> {
   name: string;
   entity: string;
   dueOf(row: Row): Date | null;
-  holds(row: Row): boolean;
+  holds(row: Row): Promise<boolean>;
   id(row: Row): unknown;
   load(id: unknown): Promise<Row | undefined>;
   dueRows(now: Date): Promise<Row[]>;
@@ -133,7 +153,7 @@ export async function runTimerJob(name: string, payload: { id: unknown; due: str
   const row = await timer.load(payload.id);
   if (!row) return false;
   const at = timer.dueOf(row);
-  if (!at || at.toISOString() !== payload.due || !timer.holds(row)) return false;
+  if (!at || at.toISOString() !== payload.due || !(await timer.holds(row))) return false;
   await timer.run(row, now);
   return true;
 }
@@ -143,7 +163,7 @@ export async function runDueTimers(now: Date): Promise<number> {
   let ran = 0;
   for (const timer of TIMERS) {
     for (const row of await timer.dueRows(now)) {
-      if (!timer.holds(row)) continue;
+      if (!(await timer.holds(row))) continue;
       await timer.run(row, now);
       ran++;
     }

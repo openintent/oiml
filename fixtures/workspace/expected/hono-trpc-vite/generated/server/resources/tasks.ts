@@ -19,7 +19,7 @@ import { hooks } from "@/extensions/tasks";
 export type HookContext = { session: Session | null; req: Request };
 
 const RULES = {
-  read: {"kind":"any","rules":[{"kind":"owner","field":"assignee_id"},{"kind":"member","field":"project_id.team_id","role":"admin"}]} as Rule,
+  read: {"kind":"any","rules":[{"kind":"public","when":{"field":"project_id.public","op":"eq","value":true}},{"kind":"owner","field":"assignee_id"},{"kind":"member","field":"project_id.team_id","role":"admin"}]} as Rule,
   create: {"kind":"member","field":"project_id.team_id"} as Rule,
   update: {"kind":"any","rules":[{"kind":"owner","field":"assignee_id"},{"kind":"member","field":"project_id.team_id","role":"admin"}]} as Rule,
   delete: {"kind":"member","field":"project_id.team_id","role":"admin"} as Rule
@@ -39,6 +39,11 @@ async function withRuleValues(row: Record<string, unknown>): Promise<Record<stri
     let value: unknown = row.project_id;
     if (value != null) value = (await db.select({ v: projectsTable.team_id }).from(projectsTable).where(eq(projectsTable.id, value as schema.Project["id"])))[0]?.v ?? null;
     out["project_id.team_id"] = value;
+  }
+  {
+    let value: unknown = row.project_id;
+    if (value != null) value = (await db.select({ v: projectsTable.public }).from(projectsTable).where(eq(projectsTable.id, value as schema.Project["id"])))[0]?.v ?? null;
+    out["project_id.public"] = value;
   }
   return out;
 }
@@ -64,7 +69,8 @@ export const tasksRouter = router({
     if (filters.assignee_id !== undefined) conditions.push(eq(tasksTable.assignee_id, filters.assignee_id));
     if (!satisfied(RULES.read, ctx.session)) {
       const alternatives: SQL[] = [];
-      alternatives.push(eq(tasksTable.assignee_id, ctx.session!.user.id));
+      alternatives.push(inArray(tasksTable.project_id, db.select({ id: projectsTable.id }).from(projectsTable).where(eq(projectsTable.public, true))));
+      if (ctx.session !== null) alternatives.push(eq(tasksTable.assignee_id, ctx.session!.user.id));
       const tenants = memberTenantIds(ctx.session, "admin");
       if (tenants.length > 0) alternatives.push(inArray(tasksTable.project_id, db.select({ id: projectsTable.id }).from(projectsTable).where(inArray(projectsTable.team_id, tenants as string[]))));
       if (alternatives.length === 0) return { data: [], page: { page, page_size, total: 0 } };
@@ -94,6 +100,7 @@ export const tasksRouter = router({
   }),
 
   create: publicProcedure.input(tasksCreateInput).mutation(async ({ ctx, input }) => {
+    checkRule(RULES.create, ctx.session);
     checkRule(RULES.create, ctx.session, await withRuleValues(input));
     const hookContext: HookContext = { session: ctx.session, req: ctx.req };
     try {

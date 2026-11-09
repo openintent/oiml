@@ -44,6 +44,14 @@ function canPublish(user: SessionUser | null, row: Detail): boolean {
   return user !== null && row.author_id === user.id;
 }
 
+function canLock(user: SessionUser | null, row: Detail): boolean {
+  return user !== null && (user as { role?: unknown }).role === "admin";
+}
+
+function canUnlock(user: SessionUser | null, row: Detail): boolean {
+  return user !== null && (user as { role?: unknown }).role === "admin";
+}
+
 function canUnpublishAll(user: SessionUser | null): boolean {
   return user !== null && (user as { role?: unknown }).role === "admin";
 }
@@ -324,7 +332,7 @@ function PostsLayoutInner() {
                     className={cn("block border-l-2 border-transparent px-4 py-2 hover:bg-accent/60", Boolean(matchRoute({ to: "/posts/$id", params: { id: text(row.id) } })) && "border-primary bg-accent")}
                   >
                     <div className="truncate text-sm font-medium">{text(row.title) || "Article " + text(row.id)}</div>
-                    <div className="truncate text-xs text-muted-foreground">{[(row.published ? "Published" : "Not published"), formatDateTime(row.posted_at)].filter(Boolean).join(" · ")}</div>
+                    <div className="truncate text-xs text-muted-foreground">{[(row.published ? "Published" : "Not published"), (row.locked ? "Locked" : "Not locked"), formatDateTime(row.posted_at)].filter(Boolean).join(" · ")}</div>
                   </Link>
                 </li>
               ))}
@@ -404,6 +412,20 @@ function PostsDetailInner() {
       await queryClient.invalidateQueries({ queryKey: KEY });
     }
   });
+  const lockAction = useMutation({
+    mutationFn: (input: Inputs["posts"]["lock"]) => client.posts.lock(input),
+    onSuccess: async () => {
+      setOpenAction(null);
+      await queryClient.invalidateQueries({ queryKey: KEY });
+    }
+  });
+  const unlockAction = useMutation({
+    mutationFn: (input: Inputs["posts"]["unlock"]) => client.posts.unlock(input),
+    onSuccess: async () => {
+      setOpenAction(null);
+      await queryClient.invalidateQueries({ queryKey: KEY });
+    }
+  });
   if (query.isPending) return <PaneSkeleton />;
   if (query.error) return <ErrorNote error={query.error} className="m-6" />;
   const row: Detail = query.data;
@@ -415,6 +437,16 @@ function PostsDetailInner() {
           {canPublish(user, row) ? (
             <Button variant="outline" size="sm" disabled={publishAction.isPending} onClick={() => publishAction.mutate({ id })}>
               Publish
+            </Button>
+          ) : null}
+          {canLock(user, row) ? (
+            <Button variant="outline" size="sm" disabled={lockAction.isPending} onClick={() => lockAction.mutate({ id })}>
+              Lock
+            </Button>
+          ) : null}
+          {canUnlock(user, row) ? (
+            <Button variant="outline" size="sm" disabled={unlockAction.isPending} onClick={() => unlockAction.mutate({ id })}>
+              Unlock
             </Button>
           ) : null}
           {canUpdate(user, row) ? (
@@ -439,6 +471,8 @@ function PostsDetailInner() {
     >
 
       <ErrorNote error={publishAction.error} className="mb-4" />
+      <ErrorNote error={lockAction.error} className="mb-4" />
+      <ErrorNote error={unlockAction.error} className="mb-4" />
       {editing ? (
         <PostsForm
           fields={POSTS_UPDATE}
@@ -457,6 +491,7 @@ function PostsDetailInner() {
           <p className="whitespace-pre-wrap">{text(row.content) || "—"}</p>
         </FieldRow>
         <FieldRow label="Published">{row.published == null ? "—" : <Badge variant={row.published ? "default" : "outline"}>{yesNo(row.published)}</Badge>}</FieldRow>
+        <FieldRow label="Locked">{row.locked == null ? "—" : <Badge variant={row.locked ? "default" : "outline"}>{yesNo(row.locked)}</Badge>}</FieldRow>
         <FieldRow label="Cover">
           <FilePreview file={row.cover} />
         </FieldRow>

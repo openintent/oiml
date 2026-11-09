@@ -5,16 +5,18 @@
 import { hashValue } from "./canonical.js";
 import {
   AUTH_STEP_OPS,
-  EVENT_ON_PATTERN,
-  OAUTH_PRESETS,
+  conjunctionParts,
   defaultPagePath,
   durationSeconds,
+  EVENT_ON_PATTERN,
   loadModel,
+  OAUTH_PRESETS,
   predicateParts,
-  splitWhen,
   primaryKeyFields,
   resolveStepOp,
-  rulePredicates,
+  ruleAlternativeTexts,
+  splitCondition,
+  splitWhen,
   type Action,
   type Entity,
   type Field,
@@ -101,12 +103,16 @@ export interface RuleHopIR {
   targetColumn: string;
 }
 
-/** A row condition on a predicate: it allows only rows whose `column` compares to `value` as `op` says */
+/**
+ * A row condition on a predicate: it allows only rows whose `column` compares to `value` as `op` says. With `via`,
+ * `column` is on the row the hops reach from the row being checked (`project_id.public`).
+ */
 export interface RuleConditionIR {
   column: string;
   op: "eq" | "ne";
   /** The literal, typed by the column: boolean, number, string (enum values included) or null */
   value: string | number | boolean | null;
+  via?: RuleHopIR[];
 }
 
 export type RuleIR =
@@ -118,43 +124,62 @@ export type RuleIR =
   | { kind: "role"; value: string; when?: RuleConditionIR }
   /** The user has a membership of the tenant in `field` (with at least `role`, by the membership's enum order); with `via`, `field` is on the row the hops reach */
   | { kind: "member"; field: string; role?: string; via?: RuleHopIR[]; when?: RuleConditionIR }
+  /** Every part allows (a conjunction, `member:project_id.team_id and owner:author_id`) */
+  | { kind: "all"; rules: PredicateIR[] }
   /** Any of the alternatives allows */
   | { kind: "any"; rules: RuleIR[] };
 
 export type RowRuleIR = Extract<RuleIR, { kind: "owner" | "member" }>;
-/** An alternative that is not `any`: the predicates a rule is made of */
-export type PredicateIR = Exclude<RuleIR, { kind: "any" }>;
+/** A single predicate: neither `any` nor `all` */
+export type PredicateIR = Exclude<RuleIR, { kind: "any" | "all" }>;
+/** An alternative of a rule: a predicate, or a conjunction of predicates */
+export type AlternativeIR = Exclude<RuleIR, { kind: "any" }>;
 /** A predicate that may carry a row condition */
 export type ConditionedRuleIR = Exclude<PredicateIR, { kind: "none" }>;
 
-/** The alternatives that carry a row condition, in order */
+/** The predicates that carry a row condition, in order, looking inside conjunctions */
 export function conditionedRules(rule: RuleIR): ConditionedRuleIR[] {
-  return ruleAlternatives(rule).filter(
-    (r): r is ConditionedRuleIR => r.kind !== "any" && r.kind !== "none" && r.when !== undefined
-  );
+  return ruleParts(rule).filter((r): r is ConditionedRuleIR => r.kind !== "none" && r.when !== undefined);
 }
 
-/** The alternatives whose verdict needs the row: owner and member rules, and any predicate with a condition */
-export function rowDependentRules(rule: RuleIR): PredicateIR[] {
-  return ruleAlternatives(rule).filter(
-    (r): r is PredicateIR =>
-      r.kind === "owner" || r.kind === "member" || (r.kind !== "any" && r.kind !== "none" && r.when !== undefined)
-  );
+/** Whether a predicate's verdict needs the row: owner and member rules, and any predicate with a condition */
+export function isRowDependent(rule: PredicateIR): boolean {
+  return rule.kind === "owner" || rule.kind === "member" || (rule.kind !== "none" && rule.when !== undefined);
+}
+
+/** The alternatives whose verdict needs the row: a row predicate, or a conjunction with a row-dependent part */
+export function rowDependentRules(rule: RuleIR): AlternativeIR[] {
+  return ruleAlternatives(rule).filter(r => (r.kind === "all" ? r.rules.some(isRowDependent) : isRowDependent(r)));
+}
+
+/** The key a condition's value sits under in a checked row: the column, or the dotted path through its hops */
+export function conditionKey(when: RuleConditionIR): string {
+  return [...(when.via ?? []).map(h => h.column), when.column].join(".");
 }
 
 /** ` when published = true`, as the model writes a condition */
 export function conditionText(when: RuleConditionIR): string {
-  return ` when ${when.column} ${when.op === "eq" ? "=" : "!="} ${when.value === null ? "null" : String(when.value)}`;
+  return ` when ${conditionKey(when)} ${when.op === "eq" ? "=" : "!="} ${when.value === null ? "null" : String(when.value)}`;
 }
 
-/** The alternatives of a rule: the rule itself, or the rules an `any` lists */
-export function ruleAlternatives(rule: RuleIR): RuleIR[] {
+/** The alternatives of a rule: the rule itself, or the rules an `any` lists; a conjunction is one alternative */
+export function ruleAlternatives(rule: RuleIR): AlternativeIR[] {
   return rule.kind === "any" ? rule.rules.flatMap(ruleAlternatives) : [rule];
 }
 
-/** The alternatives that are about a row (owner and member), in order */
+/** The parts of an alternative: the predicate itself, or the predicates a conjunction joins */
+export function alternativeParts(rule: AlternativeIR): PredicateIR[] {
+  return rule.kind === "all" ? rule.rules : [rule];
+}
+
+/** Every predicate of a rule, across alternatives and inside conjunctions */
+export function ruleParts(rule: RuleIR): PredicateIR[] {
+  return ruleAlternatives(rule).flatMap(alternativeParts);
+}
+
+/** The predicates that are about a row (owner and member), in order, looking inside conjunctions */
 export function rowRules(rule: RuleIR): RowRuleIR[] {
-  return ruleAlternatives(rule).filter((r): r is RowRuleIR => r.kind === "owner" || r.kind === "member");
+  return ruleParts(rule).filter((r): r is RowRuleIR => r.kind === "owner" || r.kind === "member");
 }
 
 /** The alternatives a session can satisfy without a row: public, authenticated and role, without a condition */
@@ -169,15 +194,25 @@ export function ruleKey(rule: RowRuleIR): string {
   return [...(rule.via ?? []).map(h => h.column), rule.field].join(".");
 }
 
-/** The field an owner alternative without a path names: set from the session on create, never written by a client */
+/** Every value a row check reads through relations: owner and member paths, and conditions with a path, by their dotted key */
+export function rulePaths(rule: RuleIR): Map<string, { via: RuleHopIR[]; field: string }> {
+  const out = new Map<string, { via: RuleHopIR[]; field: string }>();
+  for (const r of rowRules(rule)) if (r.via?.length) out.set(ruleKey(r), { via: r.via, field: r.field });
+  for (const r of conditionedRules(rule))
+    if (r.when!.via?.length) out.set(conditionKey(r.when!), { via: r.when!.via!, field: r.when!.column });
+  return out;
+}
+
+/** The field an owner predicate without a path names (an alternative or a conjunction part): set from the session on create, never written by a client */
 export function directOwnerOf(rule: RuleIR): string | undefined {
-  const owner = ruleAlternatives(rule).find(r => r.kind === "owner" && !r.via);
+  const owner = ruleParts(rule).find(r => r.kind === "owner" && !r.via);
   return owner?.kind === "owner" ? owner.field : undefined;
 }
 
 /** The rule as the model writes it */
 export function ruleText(rule: RuleIR): string {
-  const when = rule.kind !== "any" && rule.kind !== "none" && rule.when ? conditionText(rule.when) : "";
+  const when =
+    rule.kind !== "any" && rule.kind !== "all" && rule.kind !== "none" && rule.when ? conditionText(rule.when) : "";
   switch (rule.kind) {
     case "none":
       return rule.kind;
@@ -190,6 +225,8 @@ export function ruleText(rule: RuleIR): string {
       return `role:${rule.value}${when}`;
     case "member":
       return `member:${ruleKey(rule)}${rule.role ? `:${rule.role}` : ""}${when}`;
+    case "all":
+      return rule.rules.map(ruleText).join(" and ");
     case "any":
       return rule.rules.map(ruleText).join(" or ");
   }
@@ -498,7 +535,10 @@ const SCALARS = new Set<string>([
  * Parse a rule. `hops` resolves the relation fields an owner or member path follows (every segment but the
  * last) from the entity the rule is on; without it a path is treated as a plain field.
  */
-/** How a compile turns a when literal into a typed condition, knowing the entity's fields */
+/**
+ * How a compile turns a when literal into a typed condition, knowing the entity's fields: `field` may be a dotted
+ * path, in which case the literal is typed by the field the path reaches and the hops are compiled into `via`.
+ */
 export type ConditionParser = (field: string, op: "eq" | "ne", raw: string) => RuleConditionIR;
 
 export function parseRule(
@@ -508,22 +548,47 @@ export function parseRule(
   condition?: ConditionParser
 ): RuleIR {
   if (!rule) return fallback;
-  const predicates = rulePredicates(rule);
-  if (predicates.length > 1) return { kind: "any", rules: predicates.map(p => parsePredicate(p, hops, condition)) };
-  return parsePredicate(predicates[0], hops, condition);
+  const alternatives = ruleAlternativeTexts(rule).map(a => parseAlternative(a, hops, condition));
+  if (alternatives.length > 1) return { kind: "any", rules: alternatives };
+  return alternatives[0];
 }
 
-function parsePredicate(full: string, hops?: (path: string[]) => RuleHopIR[], condition?: ConditionParser): RuleIR {
+/** A predicate, or a conjunction of predicates joined with " and " */
+function parseAlternative(
+  text: string,
+  hops?: (path: string[]) => RuleHopIR[],
+  condition?: ConditionParser
+): AlternativeIR {
+  const parts = conjunctionParts(text).map(p => parsePredicate(p, hops, condition));
+  return parts.length > 1 ? { kind: "all", rules: parts } : parts[0];
+}
+
+function parsePredicate(
+  full: string,
+  hops?: (path: string[]) => RuleHopIR[],
+  condition?: ConditionParser
+): PredicateIR {
   const { base: predicate, when } = splitWhen(full);
   const out = parseBase(predicate, hops);
-  if (when && out.kind !== "none" && out.kind !== "any")
-    out.when = condition
-      ? condition(when.field, when.op === "=" ? "eq" : "ne", when.value)
-      : { column: when.field, op: when.op === "=" ? "eq" : "ne", value: when.value };
+  if (when && out.kind !== "none") out.when = parseCondition(when, hops, condition);
   return out;
 }
 
-function parseBase(predicate: string, hops?: (path: string[]) => RuleHopIR[]): RuleIR {
+/** A condition as written into its IR: typed by the field it reaches when the parser knows the entity, with its hops */
+export function parseCondition(
+  when: { field: string; op: "=" | "!="; value: string },
+  hops?: (path: string[]) => RuleHopIR[],
+  condition?: ConditionParser
+): RuleConditionIR {
+  const op = when.op === "=" ? "eq" : "ne";
+  if (condition) return condition(when.field, op, when.value);
+  const path = when.field.split(".");
+  const out: RuleConditionIR = { column: path[path.length - 1], op, value: when.value };
+  if (path.length > 1 && hops) out.via = hops(path.slice(0, -1));
+  return out;
+}
+
+function parseBase(predicate: string, hops?: (path: string[]) => RuleHopIR[]): PredicateIR {
   const parts = predicateParts(predicate);
   if (parts) {
     const field = parts.path[parts.path.length - 1];
@@ -668,17 +733,6 @@ export function compile(input: Model): IR {
   const tableOf = (name: string) => allEntities[name].table ?? defaultTableName(name);
   const pkOf = (name: string) => primaryKeyFields(allEntities[name]);
   /** The hops a rule path takes from `entityName` through its relation fields */
-  /** A when literal typed by the field it tests: null, a boolean, a number, or the string as written */
-  const conditionOn =
-    (entityName: string): ConditionParser =>
-    (field, op, raw) => {
-      const f = allEntities[entityName]?.fields[field];
-      let value: RuleConditionIR["value"] = raw;
-      if (raw === "null") value = null;
-      else if (f?.type === "boolean") value = raw === "true";
-      else if (f && ["integer", "bigint", "float", "decimal"].includes(f.type)) value = Number(raw);
-      return { column: field, op, value };
-    };
   const hopsFrom = (entityName: string, path: string[]): RuleHopIR[] => {
     const out: RuleHopIR[] = [];
     let current = entityName;
@@ -689,6 +743,26 @@ export function compile(input: Model): IR {
     }
     return out;
   };
+  /**
+   * A when literal typed by the field it tests: null, a boolean, a number, or the string as written. A dotted field
+   * follows relation fields from the entity; the literal is typed by the field reached and the hops are kept.
+   */
+  const conditionOn =
+    (entityName: string): ConditionParser =>
+    (field, op, raw) => {
+      const path = field.split(".");
+      const via = path.length > 1 ? hopsFrom(entityName, path.slice(0, -1)) : [];
+      const target = via.length ? via[via.length - 1].entity : entityName;
+      const column = path[path.length - 1];
+      const f = allEntities[target]?.fields[column];
+      let value: RuleConditionIR["value"] = raw;
+      if (raw === "null") value = null;
+      else if (f?.type === "boolean") value = raw === "true";
+      else if (f && ["integer", "bigint", "float", "decimal"].includes(f.type)) value = Number(raw);
+      const out: RuleConditionIR = { column, op, value };
+      if (via.length) out.via = via;
+      return out;
+    };
   const providers = model.auth?.providers ?? (model.auth ? ["credentials"] : []);
   const hasCredentials = providers.includes("credentials");
 
@@ -1314,8 +1388,8 @@ export function compile(input: Model): IR {
       run
     };
     if (t.when) {
-      const [field, op, value] = t.when.split(" ");
-      timer.when = conditionOn(t.on)(field, op === "=" ? "eq" : "ne", value);
+      const when = splitCondition(t.when)!;
+      timer.when = conditionOn(t.on)(when.field, when.op === "=" ? "eq" : "ne", when.value);
     }
     return timer;
   });

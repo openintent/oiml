@@ -1,5 +1,23 @@
-import type { EntityIR, IR, PredicateIR, RowRuleIR, RuleHopIR, RuleIR } from "@osl/core";
-import { conditionedRules, rowDependentRules, ruleAlternatives, ruleKey, rowRules } from "@osl/core";
+import type {
+  AlternativeIR,
+  EntityIR,
+  IR,
+  PredicateIR,
+  RowRuleIR,
+  RuleConditionIR,
+  RuleHopIR,
+  RuleIR
+} from "@osl/core";
+import {
+  alternativeParts,
+  conditionKey,
+  conditionedRules,
+  rowDependentRules,
+  ruleAlternatives,
+  ruleKey,
+  rulePaths,
+  rowRules
+} from "@osl/core";
 import { entityByName, q, tableExport, typeName } from "./conventions.js";
 
 /** `memberships` on the session, when the model has tenancy */
@@ -18,7 +36,10 @@ export function verdictSource(ir: IR): string {
   return `/** A row condition on a rule: it allows only rows whose \`field\` compares to \`value\` as \`op\` says */
 export type Condition = { field: string; op: "eq" | "ne"; value: unknown };
 
-/** A rule from the model. \`field\` is a column, or the dotted path of a value reached through relations. */
+/**
+ * A rule from the model. \`field\` is a column, or the dotted path of a value reached through relations; a
+ * condition's \`field\` may be such a path too. \`all\` is a conjunction (every part allows), \`any\` alternatives.
+ */
 export type Rule =
   | { kind: "public"; when?: Condition }
   | { kind: "authenticated"; when?: Condition }
@@ -26,6 +47,7 @@ export type Rule =
   | { kind: "owner"; field: string; when?: Condition }
   | { kind: "role"; value: string; when?: Condition }
   | { kind: "member"; field: string; role?: string; when?: Condition }
+  | { kind: "all"; rules: Rule[] }
   | { kind: "any"; rules: Rule[] };
 
 export type Verdict = { ok: true } | { ok: false; status: 401 | 403 };
@@ -64,6 +86,8 @@ export function satisfied(rule: Rule, session: Session | null): boolean {
       return session !== null && !rule.when;
     case "role":
       return session !== null && (session.user as Record<string, unknown>).role === rule.value && !rule.when;
+    case "all":
+      return rule.rules.every(part => satisfied(part, session));
     case "any":
       return rule.rules.some(alternative => satisfied(alternative, session));
     default:
@@ -73,23 +97,32 @@ export function satisfied(rule: Rule, session: Session | null): boolean {
 
 /**
  * Check a rule for a session and, when the rule is about a row, that row (or the body of a create). A rule
- * with alternatives allows when any of them does; otherwise it answers 401 when every alternative did.
+ * with alternatives allows when any of them does; otherwise it answers 401 when the caller has no session and
+ * an alternative wanted one, else 403. A conjunction allows when every part does, and answers what the first
+ * refusing part answered.
  * A condition is checked once the row is there; before that, the rule allows what its predicate allows.
  */
 export function verdict(rule: Rule, session: Session | null, row?: Record<string, unknown> | null): Verdict {
   const base = predicateVerdict(rule, session, row);
-  if (!base.ok || rule.kind === "any" || rule.kind === "none" || !rule.when || !row) return base;
+  if (!base.ok || rule.kind === "any" || rule.kind === "all" || rule.kind === "none" || !rule.when || !row) return base;
   return holds(rule.when, row) ? ALLOW : { ok: false, status: 403 };
 }
 
 function predicateVerdict(rule: Rule, session: Session | null, row?: Record<string, unknown> | null): Verdict {
   switch (rule.kind) {
+    case "all": {
+      for (const part of rule.rules) {
+        const result = verdict(part, session, row);
+        if (!result.ok) return result;
+      }
+      return ALLOW;
+    }
     case "any": {
-      let status: 401 | 403 = 401;
+      let status: 401 | 403 = 403;
       for (const alternative of rule.rules) {
         const result = verdict(alternative, session, row);
         if (result.ok) return ALLOW;
-        if (result.status !== 401) status = 403;
+        if (result.status === 401) status = 401;
       }
       return { ok: false, status };
     }
@@ -124,11 +157,11 @@ export function membershipsLoader(ir: IR, userExpr: string): string {
   return `(await db.query.${table}.findMany({ where: eq(${table}Table.${t.userColumn}, ${userExpr}) })).map(m => ({ tenant: m.${t.tenantColumn}, role: m.${t.roleColumn} }))`;
 }
 
-/** The runtime shape of a rule for the generated code: alternatives kept, a path flattened to its dotted key */
+/** The runtime shape of a rule for the generated code: alternatives and conjunctions kept, a path flattened to its dotted key */
 export function runtimeRule(rule: RuleIR): unknown {
   const when =
-    rule.kind !== "any" && rule.kind !== "none" && rule.when
-      ? { when: { field: rule.when.column, op: rule.when.op, value: rule.when.value } }
+    rule.kind !== "any" && rule.kind !== "all" && rule.kind !== "none" && rule.when
+      ? { when: { field: conditionKey(rule.when), op: rule.when.op, value: rule.when.value } }
       : {};
   switch (rule.kind) {
     case "owner":
@@ -137,6 +170,8 @@ export function runtimeRule(rule: RuleIR): unknown {
       return rule.role
         ? { kind: "member", field: ruleKey(rule), role: rule.role, ...when }
         : { kind: "member", field: ruleKey(rule), ...when };
+    case "all":
+      return { kind: "all", rules: rule.rules.map(runtimeRule) };
     case "any":
       return { kind: "any", rules: rule.rules.map(runtimeRule) };
     case "role":
@@ -153,14 +188,14 @@ export function ruleLiteral(rule: RuleIR): string {
   return JSON.stringify(runtimeRule(rule));
 }
 
-/** Whether checking this rule against a row needs values reached through relations */
+/** Whether checking this rule against a row needs values reached through relations: a path on a predicate or on a condition */
 export function hasVia(rule: RuleIR): boolean {
-  return rowRules(rule).some(r => Boolean(r.via?.length));
+  return rulePaths(rule).size > 0;
 }
 
 /** The entities a rule reaches through relations, whose tables the generated module must import */
 export function ruleEntities(rule: RuleIR): string[] {
-  return [...new Set(rowRules(rule).flatMap(r => (r.via ?? []).map(h => h.entity)))];
+  return [...new Set([...rulePaths(rule).values()].flatMap(p => p.via.map(h => h.entity)))];
 }
 
 /** How a generated module names things when it filters a list by its rule */
@@ -193,29 +228,49 @@ export interface ListFilter {
 
 /**
  * The lines that narrow a list to the rows its rule allows the session to see: an owner rule filters by the
- * owner column, a member rule by the session's tenants, a path through a relation becomes a subquery, and
- * alternatives are joined with OR unless one of them allows the session without a row.
+ * owner column, a member rule by the session's tenants, a path through a relation (on a predicate or on its
+ * condition) becomes a subquery, a conjunction ANDs its parts, and alternatives are joined with OR unless one
+ * of them allows the session without a row.
  */
 export function listRuleFilter(ir: IR, entity: EntityIR, rule: RuleIR, o: ListFilterOptions): ListFilter {
   const out: ListFilter = { lines: [], drizzle: new Set(), access: new Set(), tables: new Set() };
   const rows = rowDependentRules(rule);
   if (rows.length === 0) return out;
   const table = o.tableVar(entity);
+  const ind = o.indent;
+  let memberCount = 0;
+  const tenantsName = () => (memberCount++ === 0 ? "tenants" : `tenants${memberCount}`);
   const tenantsOf = (r: RowRuleIR) =>
     `memberTenantIds(${o.session}, ${r.kind === "member" && r.role ? q(r.role) : "undefined"})`;
-  /** The SQL of a predicate's condition on the listed table, or null without one */
-  const whenSql = (r: PredicateIR): string | null => {
-    if (r.kind === "none" || !r.when) return null;
-    const col = `${table}.${r.when.column}`;
-    if (r.when.value === null) {
-      const fn = r.when.op === "eq" ? "isNull" : "isNotNull";
+  /** A condition on the listed table through `hops` with nested subqueries; `leaf` tests the table the hops reach */
+  const through = (hops: RuleHopIR[], leaf: (t: string) => string): string => {
+    if (hops.length === 0) return leaf(table);
+    const inner = (i: number): string => {
+      const hop = hops[i];
+      const hopEntity = entityByName(ir, hop.entity);
+      const t = o.tableVar(hopEntity);
+      out.tables.add(hop.entity);
+      out.drizzle.add("inArray");
+      const where = i + 1 < hops.length ? `inArray(${t}.${hops[i + 1].column}, ${inner(i + 1)})` : leaf(t);
+      return `db.select({ id: ${t}.${hop.targetColumn} }).from(${t}).where(${where})`;
+    };
+    return `inArray(${table}.${hops[0].column}, ${inner(0)})`;
+  };
+  /** The SQL of a condition's comparison on the table it names */
+  const whenLeaf = (t: string, when: RuleConditionIR): string => {
+    const col = `${t}.${when.column}`;
+    if (when.value === null) {
+      const fn = when.op === "eq" ? "isNull" : "isNotNull";
       out.drizzle.add(fn);
       return `${fn}(${col})`;
     }
-    const fn = r.when.op === "eq" ? "eq" : "ne";
+    const fn = when.op === "eq" ? "eq" : "ne";
     out.drizzle.add(fn);
-    return `${fn}(${col}, ${JSON.stringify(r.when.value)})`;
+    return `${fn}(${col}, ${JSON.stringify(when.value)})`;
   };
+  /** The SQL of a predicate's condition, following its path when it has one, or null without a condition */
+  const whenSql = (r: PredicateIR): string | null =>
+    r.kind === "none" || !r.when ? null : through(r.when.via ?? [], t => whenLeaf(t, r.when!));
   /** The runtime guard before an open predicate's condition applies: the session or the role it needs */
   const guard = (r: PredicateIR): string | null => {
     if (r.kind === "authenticated") return `${o.session} !== null`;
@@ -231,61 +286,62 @@ export function listRuleFilter(ir: IR, entity: EntityIR, rule: RuleIR, o: ListFi
     out.drizzle.add("inArray");
     return `inArray(${t}.${r.field}, ${tenants} ${o.tenantCast})`;
   };
-  /** The condition on the listed table, following the hops with nested subqueries */
-  const condition = (r: RowRuleIR, tenants: string): string => {
-    const hops = r.via ?? [];
-    if (hops.length === 0) return last(r, table, tenants);
-    const inner = (i: number): string => {
-      const hop = hops[i];
-      const hopEntity = entityByName(ir, hop.entity);
-      const t = o.tableVar(hopEntity);
-      out.tables.add(hop.entity);
-      out.drizzle.add("inArray");
-      const where = i + 1 < hops.length ? `inArray(${t}.${hops[i + 1].column}, ${inner(i + 1)})` : last(r, t, tenants);
-      return `db.select({ id: ${t}.${hop.targetColumn} }).from(${t}).where(${where})`;
-    };
-    return `inArray(${table}.${hops[0].column}, ${inner(0)})`;
+  /** What one alternative needs: the tenant lists it declares, the runtime guards, and the SQL pieces ANDed together */
+  interface Plan {
+    tenants: [string, string][];
+    guards: string[];
+    sql: string[];
+  }
+  /** Whether a caller without a session reaches the filter: an alternative made of public predicates lets them list */
+  const anonymousMayList = ruleAlternatives(rule).some(alt => alternativeParts(alt).every(p => p.kind === "public"));
+  const plan = (alt: AlternativeIR): Plan => {
+    const p: Plan = { tenants: [], guards: [], sql: [] };
+    for (const part of alternativeParts(alt)) {
+      if (part.kind === "none") continue;
+      if (part.kind === "owner" || part.kind === "member") {
+        let tenants = "";
+        if (part.kind === "member") {
+          out.access.add("memberTenantIds");
+          tenants = tenantsName();
+          p.tenants.push([tenants, tenantsOf(part)]);
+          p.guards.push(`${tenants}.length > 0`);
+        } else if (anonymousMayList && !p.guards.includes(`${o.session} !== null`))
+          p.guards.push(`${o.session} !== null`);
+        p.sql.push(through(part.via ?? [], t => last(part, t, tenants)));
+      } else {
+        const g = guard(part);
+        if (g) p.guards.push(g);
+      }
+      const when = whenSql(part);
+      if (when) p.sql.push(when);
+    }
+    return p;
   };
-  /** The whole condition of an alternative: the row part, the when part, or both */
-  const alternative = (r: PredicateIR, tenants: string): string => {
-    const when = whenSql(r);
-    if (r.kind !== "owner" && r.kind !== "member") return when!;
-    const rowPart = condition(r, tenants);
-    if (!when) return rowPart;
+  const sqlOf = (p: Plan): string => {
+    if (p.sql.length === 1) return p.sql[0];
     out.drizzle.add("and");
-    return `and(${rowPart}, ${when})!`;
+    return `and(${p.sql.join(", ")})!`;
   };
-  const single = ruleAlternatives(rule).length === 1;
-  const ind = o.indent;
-  if (single) {
-    const r = rows[0];
-    if (r.kind === "member") {
-      out.access.add("memberTenantIds");
-      out.lines.push(`${ind}const tenants = ${tenantsOf(r)};`, `${ind}if (tenants.length === 0) ${o.empty}`);
-      out.lines.push(`${ind}conditions.push(${alternative(r, "tenants")});`);
-    } else out.lines.push(`${ind}conditions.push(${alternative(r, "tenants")});`);
+  if (ruleAlternatives(rule).length === 1) {
+    // The check before the list already refused a session the open parts refuse; only the tenants can still be empty
+    const p = plan(rows[0]);
+    for (const [name, expr] of p.tenants) out.lines.push(`${ind}const ${name} = ${expr};`);
+    if (p.tenants.length)
+      out.lines.push(`${ind}if (${p.tenants.map(([name]) => `${name}.length === 0`).join(" || ")}) ${o.empty}`);
+    out.lines.push(`${ind}conditions.push(${sqlOf(p)});`);
     return out;
   }
   out.access.add("satisfied");
   out.lines.push(`${ind}if (!satisfied(${o.ruleRef}, ${o.session})) {`);
   out.lines.push(`${ind}  const alternatives: SQL[] = [];`);
-  let memberCount = 0;
-  for (const r of rows) {
-    if (r.kind === "owner") out.lines.push(`${ind}  alternatives.push(${alternative(r, "")});`);
-    else if (r.kind === "member") {
-      out.access.add("memberTenantIds");
-      const name = memberCount === 0 ? "tenants" : `tenants${memberCount + 1}`;
-      memberCount++;
-      out.lines.push(`${ind}  const ${name} = ${tenantsOf(r)};`);
-      out.lines.push(`${ind}  if (${name}.length > 0) alternatives.push(${alternative(r, name)});`);
-    } else {
-      const g = guard(r);
-      out.lines.push(
-        g
-          ? `${ind}  if (${g}) alternatives.push(${alternative(r, "")});`
-          : `${ind}  alternatives.push(${alternative(r, "")});`
-      );
-    }
+  for (const alt of rows) {
+    const p = plan(alt);
+    for (const [name, expr] of p.tenants) out.lines.push(`${ind}  const ${name} = ${expr};`);
+    out.lines.push(
+      p.guards.length
+        ? `${ind}  if (${p.guards.join(" && ")}) alternatives.push(${sqlOf(p)});`
+        : `${ind}  alternatives.push(${sqlOf(p)});`
+    );
   }
   out.lines.push(`${ind}  if (alternatives.length === 0) ${o.empty}`);
   out.drizzle.add("or");
@@ -303,13 +359,13 @@ export function ruleValuesSource(
   rules: RuleIR[],
   tableVar: (entity: EntityIR) => string
 ): { source: string; tables: Set<string> } | null {
-  const paths = new Map<string, RowRuleIR>();
-  for (const rule of rules) for (const r of rowRules(rule)) if (r.via?.length) paths.set(ruleKey(r), r);
+  const paths = new Map<string, { via: RuleHopIR[]; field: string }>();
+  for (const rule of rules) for (const [key, path] of rulePaths(rule)) paths.set(key, path);
   if (paths.size === 0) return null;
   const tables = new Set<string>();
   const blocks: string[] = [];
   for (const [key, r] of paths) {
-    const hops = r.via as RuleHopIR[];
+    const hops = r.via;
     const steps = hops.map((hop, i) => {
       const hopEntity = entityByName(ir, hop.entity);
       const t = tableVar(hopEntity);
@@ -335,18 +391,20 @@ ${blocks.join("\n")}
   };
 }
 
-/** Whether a create must check the rule against the body: a member or a path alternative reads the related row, a condition the body */
+/** Whether a create must check the rule against the body: a member or a path predicate reads the related row, a condition the body */
 export function needsBodyCheck(rule: RuleIR): boolean {
   return rowRules(rule).some(r => r.kind === "member" || Boolean(r.via?.length)) || conditionedRules(rule).length > 0;
 }
 
 /**
- * The literal defaults of the columns the rule's conditions test, as object-literal entries to spread a create
- * body over (`published: false, `), so a body that leaves the column out is checked with the value it will get.
+ * The literal defaults of the entity's own columns the rule's conditions test, as object-literal entries to spread
+ * a create body over (`published: false, `), so a body that leaves the column out is checked with the value it
+ * will get. A condition through a relation reads the related row instead.
  */
 export function conditionDefaults(entity: EntityIR, rule: RuleIR): string {
   const parts: string[] = [];
   for (const r of conditionedRules(rule)) {
+    if (r.when!.via?.length) continue;
     const col = entity.columns.find(c => c.name === r.when!.column);
     if (col?.default?.kind === "literal" && !parts.some(p => p.startsWith(`${col.name}:`)))
       parts.push(`${col.name}: ${JSON.stringify(col.default.value)}`);

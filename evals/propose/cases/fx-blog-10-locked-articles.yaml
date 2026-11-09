@@ -1,0 +1,29 @@
+id: fx-blog-10-locked-articles
+tags: [fixture, fields, actions, rules, relation, scenario]
+base: { fixture: blog, through: FEAT-9 }
+oracle: fixtures/blog/intents/FEAT-10/diff.yaml
+intent:
+  title: Locked articles
+  ask: >-
+    An admin can lock an article so it takes no new comments, and unlock it later. Nobody locks or unlocks an
+    article by editing it, and nobody but an admin does it at all. While an article is locked, every attempt to
+    comment on it is refused, the author's included; comments already there stay readable.
+  acceptance:
+    - A member trying to lock an article gets 403; an admin's lock succeeds and the article shows it is locked
+    - A comment on a locked article is refused, and allowed again once the admin unlocks it
+    - Setting the lock through an article edit is refused
+expect:
+  fields: { Article: ["locked|is_locked"] }
+  field_props:
+    "Article.locked|is_locked": { read_only: true }
+  actions_on: { posts: { scope: row, rule: "role:admin" } }
+  rules:
+    Comment:
+      create: "owner:author_id when article_id.locked = false|owner:author_id when article_id.is_locked = false"
+  scenarios: { min: 1, rejections: 2, statuses: [400, 403, 200] }
+  touches: [posts, comments]
+notes: >-
+  A condition through a relation on create: the comment's rule reads the article's lock through article_id, so a
+  comment on a locked article answers 403 without any handler code. The lock itself is the read_only flag and
+  admin actions from FEAT-7's pattern. A diff that denormalises the flag onto comments, or that leaves the refusal
+  to not_delivered, fails the rules check on purpose.

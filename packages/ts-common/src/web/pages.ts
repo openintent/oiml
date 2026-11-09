@@ -80,7 +80,9 @@ function isIntegerKey(column: ColumnIR): boolean {
 /** A client-side predicate for a rule, over the signed-in user and (for row rules) the row */
 export function rulePredicate(rule: RuleIR, user: string, row: string | null, identityPkName: string): string {
   const base = basePredicate(rule, user, row, identityPkName);
-  if (rule.kind === "any" || rule.kind === "none" || !rule.when || !row) return base;
+  if (rule.kind === "any" || rule.kind === "all" || rule.kind === "none" || !rule.when || !row) return base;
+  // A condition through a relation is decided by the API; the page offers the control when the base allows
+  if (rule.when.via?.length) return base;
   // The condition is on the row the page shows; values compare as text, null only to null
   const col = `${row}.${rule.when.column}`;
   const test =
@@ -106,6 +108,10 @@ function basePredicate(rule: RuleIR, user: string, row: string | null, identityP
         : `${user} !== null`;
     case "role":
       return `${user} !== null && (${user} as { role?: unknown }).role === ${JSON.stringify(rule.value)}`;
+    case "all": {
+      const parts = [...new Set(rule.rules.map(r => rulePredicate(r, user, row, identityPkName)))];
+      return parts.length === 1 ? parts[0] : `(${parts.join(" && ")})`;
+    }
     case "any":
       return `(${rule.rules.map(r => rulePredicate(r, user, row, identityPkName)).join(" || ")})`;
   }

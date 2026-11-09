@@ -83,6 +83,12 @@ export type PostsPublishInput = z.infer<typeof postsPublishInput>;
 export const postsUnpublishAllInput = z.object({}).strict();
 export type PostsUnpublishAllInput = z.infer<typeof postsUnpublishAllInput>;
 
+export const postsLockInput = z.object({}).strict();
+export type PostsLockInput = z.infer<typeof postsLockInput>;
+
+export const postsUnlockInput = z.object({}).strict();
+export type PostsUnlockInput = z.infer<typeof postsUnlockInput>;
+
 export const sendDigestInput = z
   .object({
     subject: z.string().min(1).max(100)

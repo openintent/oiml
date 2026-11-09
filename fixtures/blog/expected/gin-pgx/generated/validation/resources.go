@@ -81,6 +81,12 @@ var PostsPublishInput = Object{}
 // PostsUnpublishAllInput validates POST /api/posts/unpublish_all bodies.
 var PostsUnpublishAllInput = Object{}
 
+// PostsLockInput validates POST /api/posts/{id}/lock bodies.
+var PostsLockInput = Object{}
+
+// PostsUnlockInput validates POST /api/posts/{id}/unlock bodies.
+var PostsUnlockInput = Object{}
+
 // SendDigestInput validates POST /api/actions/send_digest bodies.
 var SendDigestInput = Object{Fields: []Field{
 	{Name: "subject", Required: true, Type: String{MinLength: 1, MaxLength: 100}},

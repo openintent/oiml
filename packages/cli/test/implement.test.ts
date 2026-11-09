@@ -24,7 +24,9 @@ describe("implement planning", () => {
     const root = await generatedBlog(backend.name);
     const plan = await planHandlers(root, backend);
     expect(plan.handlers.map(h => h.action.handler).sort()).toEqual([
+      "posts_lock",
       "posts_publish",
+      "posts_unlock",
       "posts_unpublish_all",
       "send_digest",
       "users_ban"
@@ -63,6 +65,8 @@ describe("implement planning", () => {
     await writeFile(path.join(root, "src/actions/posts_publish/handler.go"), "package postspublish\n");
     const plan = await planHandlers(root, backend);
     expect(plan.handlers.map(h => h.action.handler).sort()).toEqual([
+      "posts_lock",
+      "posts_unlock",
       "posts_unpublish_all",
       "send_digest",
       "users_ban"

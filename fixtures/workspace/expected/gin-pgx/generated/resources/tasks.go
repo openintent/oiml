@@ -46,7 +46,7 @@ func (h *Tasks) Routes(r gin.IRouter) {
 	r.POST("/api/tasks/:id/remind", h.ActionRemind)
 }
 
-var tasksReadRule = access.Rule{Kind: "any", Any: []access.Rule{{Kind: "owner", Field: "assignee_id"}, {Kind: "member", Field: "project_id.team_id", Role: "admin"}}}
+var tasksReadRule = access.Rule{Kind: "any", Any: []access.Rule{{Kind: "public", When: &access.Condition{Field: "project_id.public", Op: "eq", Value: true}}, {Kind: "owner", Field: "assignee_id"}, {Kind: "member", Field: "project_id.team_id", Role: "admin"}}}
 
 var tasksCreateRule = access.Rule{Kind: "member", Field: "project_id.team_id"}
 
@@ -85,7 +85,10 @@ func (h *Tasks) List(c *gin.Context) {
 	}
 	if !access.Satisfied(tasksReadRule, session) {
 		alternatives := []string{}
-		alternatives = append(alternatives, `"assignee_id" = `+where.Param(session.User.ID))
+		alternatives = append(alternatives, `"project_id" IN (SELECT "id" FROM `+models.ProjectTable+` WHERE "public" = `+where.Param(true)+`)`)
+		if session != nil {
+			alternatives = append(alternatives, `"assignee_id" = `+where.Param(session.User.ID))
+		}
 		if tenants := access.MemberTenantIDs(session, "admin"); len(tenants) > 0 {
 			alternatives = append(alternatives, `"project_id" IN (SELECT "id" FROM `+models.ProjectTable+` WHERE "team_id" = ANY(`+where.Param(tenants)+`))`)
 		}
@@ -376,6 +379,13 @@ func (h *Tasks) ruleRow(ctx context.Context, row access.Row) (access.Row, error)
 			return nil, err
 		}
 		row["project_id.team_id"] = v0
+	}
+	{
+		var v1 *bool
+		if err := h.db.QueryRow(ctx, `SELECT "public" FROM `+models.ProjectTable+` WHERE "id" = $1`, row["project_id"]).Scan(&v1); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return nil, err
+		}
+		row["project_id.public"] = v1
 	}
 	return row, nil
 }

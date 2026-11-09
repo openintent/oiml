@@ -70,6 +70,7 @@ var ProjectsCreateInput = Object{Fields: []Field{
 	{Name: "team_id", Required: true, Type: UUID{}},
 	{Name: "name", Required: true, Type: String{MinLength: 1, MaxLength: 120}},
 	{Name: "status", Type: Enum{Values: []string{"active", "archived"}}},
+	{Name: "public", Type: Boolean{}},
 }}
 
 // ProjectsUpdateInput validates PATCH /api/projects/{id} bodies.
@@ -77,6 +78,7 @@ var ProjectsUpdateInput = Object{Fields: []Field{
 	{Name: "team_id", Type: UUID{}},
 	{Name: "name", Type: String{MinLength: 1, MaxLength: 120}},
 	{Name: "status", Type: Enum{Values: []string{"active", "archived"}}},
+	{Name: "public", Type: Boolean{}},
 }}
 
 // TasksID parses a tasks id from the path.
@@ -107,6 +109,28 @@ var TasksUpdateInput = Object{Fields: []Field{
 	{Name: "done", Type: Boolean{}},
 	{Name: "assignee_id", Nullable: true, Type: UUID{}},
 	{Name: "due_at", Nullable: true, Type: DateTime{}},
+}}
+
+// NotesID parses a notes id from the path.
+func NotesID(raw string) (string, bool) {
+	return ParseUUIDID(raw)
+}
+
+// NotesListQuery validates the GET /api/notes query string.
+var NotesListQuery = Query{PageSize: 20, Filters: []Filter{
+	{Name: "project_id", Type: UUID{}},
+}}
+
+// NotesCreateInput validates POST /api/notes bodies.
+var NotesCreateInput = Object{Fields: []Field{
+	{Name: "project_id", Required: true, Type: UUID{}},
+	{Name: "body", Required: true, Type: String{MinLength: 1}},
+}}
+
+// NotesUpdateInput validates PATCH /api/notes/{id} bodies.
+var NotesUpdateInput = Object{Fields: []Field{
+	{Name: "project_id", Type: UUID{}},
+	{Name: "body", Type: String{MinLength: 1}},
 }}
 
 // TasksRemindInput validates POST /api/tasks/{id}/remind bodies.

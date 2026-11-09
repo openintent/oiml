@@ -1,0 +1,36 @@
+id: fx-ws-7-public-projects-and-notes
+tags: [fixture, rules, relation, entity, tenancy, scenario]
+base: { fixture: workspace, through: WS-6 }
+oracle: fixtures/workspace/intents/WS-7/diff.yaml
+intent:
+  title: Public projects and project notes
+  ask: >-
+    A team can mark a project as public: anyone, signed in or not, can read the tasks of a public project, while the
+    tasks of every other project stay as they are. Members also leave notes on a project. Only a member of the
+    project's team can write a note, and a note always belongs to the member who wrote it, whatever the request
+    says. The writer can edit their own note; the writer or a team admin can delete it. People outside the team see
+    no notes.
+  acceptance:
+    - A visitor who is not signed in reads a public project's tasks and is refused a private project's task
+    - A member creates a note that carries their own id as its author; a non-member is refused
+    - A note's writer updates it, another member cannot; a team admin deletes it
+expect:
+  fields: { Project: ["public|is_public"] }
+  entities: ["Note|ProjectNote"]
+  relations: ["Note|ProjectNote.* -> Project", "Note|ProjectNote.* -> User"]
+  rules:
+    Task:
+      read: >-
+        public when project_id.public = true or owner:assignee_id or member:project_id.team_id:admin|public when
+        project_id.is_public = true or owner:assignee_id or member:project_id.team_id:admin
+    "Note|ProjectNote":
+      create: "member:project_id.team_id and owner:author_id|member:project_id.team_id and owner:user_id"
+      read: "member:project_id.team_id|member:project_id.team_id:member"
+  resources: ["notes|project_notes"]
+  scenarios: { min: 1, rejections: 2, statuses: [401, 403] }
+  touches: ["notes|project_notes", tasks]
+notes: >-
+  Both rule extensions at once: the task read rule looks at the project through project_id (a condition through a
+  relation), and the note create rule needs membership of the project's team and binds the author to the session
+  (a conjunction). A diff that copies the project's flag onto tasks, or that drops either half of the conjunction,
+  fails the rules check on purpose.

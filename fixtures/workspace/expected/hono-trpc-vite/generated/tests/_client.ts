@@ -35,6 +35,11 @@ const COERCE: Record<string, Record<string, "int" | "number" | "boolean" | "stri
     "project_id": "string",
     "done": "boolean",
     "assignee_id": "string"
+  },
+  "notes.list": {
+    "page": "int",
+    "page_size": "int",
+    "project_id": "string"
   }
 };
 

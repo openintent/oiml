@@ -45,6 +45,8 @@ func (h *Posts) Routes(r gin.IRouter) {
 	r.DELETE("/api/posts/:id", h.Delete)
 	r.POST("/api/posts/:id/publish", h.ActionPublish)
 	r.POST("/api/posts/unpublish_all", h.ActionUnpublishAll)
+	r.POST("/api/posts/:id/lock", h.ActionLock)
+	r.POST("/api/posts/:id/unlock", h.ActionUnlock)
 }
 
 var postsReadRule = access.Rule{Kind: "public"}
@@ -58,6 +60,10 @@ var postsDeleteRule = access.Rule{Kind: "any", Any: []access.Rule{{Kind: "owner"
 var postsPublishActionRule = access.Rule{Kind: "owner", Field: "author_id"}
 
 var postsUnpublishAllActionRule = access.Rule{Kind: "role", Value: "admin"}
+
+var postsLockActionRule = access.Rule{Kind: "role", Value: "admin"}
+
+var postsUnlockActionRule = access.Rule{Kind: "role", Value: "admin"}
 
 // postsFileFields lists the file fields of Article and what they accept.
 var postsFileFields = []files.FieldSpec{{Column: "cover", Accept: []string{"image/*"}, MaxSize: 2097152}}
@@ -409,6 +415,96 @@ func (h *Posts) ActionUnpublishAll(c *gin.Context) {
 		return
 	}
 	httpx.OK(c, result)
+}
+
+// ActionLock handles POST /api/posts/{id}/lock: the lock action.
+func (h *Posts) ActionLock(c *gin.Context) {
+	ctx := c.Request.Context()
+	session, err := h.auth.Session(c)
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if verdict := access.Check(postsLockActionRule, session); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	id, ok := validation.PostsID(c.Param("id"))
+	if !ok {
+		httpx.Fail(c, httpx.NotFound())
+		return
+	}
+	row, err := models.ScanArticle(h.db.QueryRow(ctx, `SELECT `+models.ArticleColumns+` FROM `+models.ArticleTable+` WHERE "id" = $1`, id))
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if verdict := access.CheckRow(postsLockActionRule, session, nil); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	body, perr := httpx.ParseBody(c)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	values, perr := validation.PostsLockInput.Parse(body)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	actx := &actions.Context{Gin: c, Ctx: c.Request.Context(), Session: session, DB: h.db, Now: time.Now().UTC()}
+	result, err := handlers.PostsLock(actx, actions.ParsePostsLockInput(values), row)
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	httpx.OK(c, models.PresentArticle(result))
+}
+
+// ActionUnlock handles POST /api/posts/{id}/unlock: the unlock action.
+func (h *Posts) ActionUnlock(c *gin.Context) {
+	ctx := c.Request.Context()
+	session, err := h.auth.Session(c)
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if verdict := access.Check(postsUnlockActionRule, session); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	id, ok := validation.PostsID(c.Param("id"))
+	if !ok {
+		httpx.Fail(c, httpx.NotFound())
+		return
+	}
+	row, err := models.ScanArticle(h.db.QueryRow(ctx, `SELECT `+models.ArticleColumns+` FROM `+models.ArticleTable+` WHERE "id" = $1`, id))
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if verdict := access.CheckRow(postsUnlockActionRule, session, nil); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	body, perr := httpx.ParseBody(c)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	values, perr := validation.PostsUnlockInput.Parse(body)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	actx := &actions.Context{Gin: c, Ctx: c.Request.Context(), Session: session, DB: h.db, Now: time.Now().UTC()}
+	result, err := handlers.PostsUnlock(actx, actions.ParsePostsUnlockInput(values), row)
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	httpx.OK(c, models.PresentArticle(result))
 }
 
 // loadAuthor fetches the author of each Article, keyed by id.

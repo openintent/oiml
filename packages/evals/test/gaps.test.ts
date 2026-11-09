@@ -137,6 +137,31 @@ describe("gap report", () => {
       "conditions through relations"
     );
     expect(
+      gapTopic("One dashboard per team: a page cannot be scoped to a single team, so the counts span every team")
+    ).toBe("pages with parameters");
+    expect(gapTopic("The counts are not pushed live. The overview page refetches every 15 seconds instead.")).toBe(
+      "realtime and live updates"
+    );
+    expect(
+      gapTopic("A visitor who opens a draft gets 401 or 403, not 404: a hidden row answers with a refusal, never 404")
+    ).toBe("hidden rows as not found");
+    expect(
+      gapTopic(
+        "The 24-hour RSVP cutoff is enforced by a schedule every 5 minutes, because a timer cannot fire before a date"
+      )
+    ).toBe("timers before a date");
+    expect(
+      gapTopic(
+        "Clearing overdue: the flag is set by a timer when due_at passes, but it is not cleared if the date moves"
+      )
+    ).toBe("computed and aggregate fields");
+    expect(gapTopic("The enrolled count is a stored field kept up to date by the handler")).toBe(
+      "computed and aggregate fields"
+    );
+    expect(gapTopic("The publish and unpublish handlers are stubs to fill in: publish sets status to published")).toBe(
+      "handlers left to implement"
+    );
+    expect(
       gapTopic("The article appearing in the public list at its scheduled time depends on that automatic publishing")
     ).toBe("scheduled and recurring work");
   });

@@ -72,10 +72,10 @@ func (h *Projects) List(c *gin.Context) {
 	if !access.Satisfied(projectsReadRule, session) {
 		alternatives := []string{}
 		if tenants := access.MemberTenantIDs(session, ""); len(tenants) > 0 {
-			alternatives = append(alternatives, "("+`"team_id" = ANY(`+where.Param(tenants)+`)`+" AND "+`"status" = `+where.Param("active")+")")
+			alternatives = append(alternatives, `("team_id" = ANY(`+where.Param(tenants)+`) AND "status" = `+where.Param("active")+`)`)
 		}
-		if tenants := access.MemberTenantIDs(session, "admin"); len(tenants) > 0 {
-			alternatives = append(alternatives, `"team_id" = ANY(`+where.Param(tenants)+`)`)
+		if tenants2 := access.MemberTenantIDs(session, "admin"); len(tenants2) > 0 {
+			alternatives = append(alternatives, `"team_id" = ANY(`+where.Param(tenants2)+`)`)
 		}
 		if len(alternatives) == 0 {
 			httpx.List(c, models.PresentProjects(nil), httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: 0})

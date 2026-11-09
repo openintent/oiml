@@ -172,7 +172,7 @@ func PresentTeamMembers(rows []*TeamMember) []PublicTeamMember {
 const ProjectTable = `"projects"`
 
 // ProjectColumns lists the columns of Project in model order, for SELECT and RETURNING.
-const ProjectColumns = `"id", "team_id", "name", "status", "created_at"`
+const ProjectColumns = `"id", "team_id", "name", "status", "created_at", "public"`
 
 // Project is a row of projects.
 type Project struct {
@@ -181,6 +181,7 @@ type Project struct {
 	Name      string    `json:"name"`
 	Status    string    `json:"status"`
 	CreatedAt time.Time `json:"created_at"`
+	Public    bool      `json:"public"`
 }
 
 // PublicProject is Project as the API returns it: hidden columns removed, dates rendered.
@@ -190,12 +191,13 @@ type PublicProject struct {
 	Name      string `json:"name"`
 	Status    string `json:"status"`
 	CreatedAt string `json:"created_at"`
+	Public    bool   `json:"public"`
 }
 
 // ScanProject reads one Project from a row selected with ProjectColumns.
 func ScanProject(row Scanner) (*Project, error) {
 	var r Project
-	if err := row.Scan(&r.ID, &r.TeamID, &r.Name, &r.Status, &r.CreatedAt); err != nil {
+	if err := row.Scan(&r.ID, &r.TeamID, &r.Name, &r.Status, &r.CreatedAt, &r.Public); err != nil {
 		return nil, err
 	}
 	return &r, nil
@@ -203,7 +205,7 @@ func ScanProject(row Scanner) (*Project, error) {
 
 // PresentProject returns the public shape of a Project.
 func PresentProject(row *Project) PublicProject {
-	return PublicProject{ID: row.ID, TeamID: row.TeamID, Name: row.Name, Status: row.Status, CreatedAt: FormatDateTime(row.CreatedAt)}
+	return PublicProject{ID: row.ID, TeamID: row.TeamID, Name: row.Name, Status: row.Status, CreatedAt: FormatDateTime(row.CreatedAt), Public: row.Public}
 }
 
 // PresentProjectPtr presents an optional Project; nil stays nil.
@@ -282,6 +284,62 @@ func PresentTasks(rows []*Task) []PublicTask {
 	out := make([]PublicTask, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, PresentTask(row))
+	}
+	return out
+}
+
+// NoteTable is the quoted table of Note.
+const NoteTable = `"notes"`
+
+// NoteColumns lists the columns of Note in model order, for SELECT and RETURNING.
+const NoteColumns = `"id", "project_id", "author_id", "body", "created_at"`
+
+// Note is a row of notes.
+type Note struct {
+	ID        string    `json:"id"`
+	ProjectID string    `json:"project_id"`
+	AuthorID  string    `json:"author_id"`
+	Body      string    `json:"body"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// PublicNote is Note as the API returns it: hidden columns removed, dates rendered.
+type PublicNote struct {
+	ID        string `json:"id"`
+	ProjectID string `json:"project_id"`
+	AuthorID  string `json:"author_id"`
+	Body      string `json:"body"`
+	CreatedAt string `json:"created_at"`
+}
+
+// ScanNote reads one Note from a row selected with NoteColumns.
+func ScanNote(row Scanner) (*Note, error) {
+	var r Note
+	if err := row.Scan(&r.ID, &r.ProjectID, &r.AuthorID, &r.Body, &r.CreatedAt); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// PresentNote returns the public shape of a Note.
+func PresentNote(row *Note) PublicNote {
+	return PublicNote{ID: row.ID, ProjectID: row.ProjectID, AuthorID: row.AuthorID, Body: row.Body, CreatedAt: FormatDateTime(row.CreatedAt)}
+}
+
+// PresentNotePtr presents an optional Note; nil stays nil.
+func PresentNotePtr(row *Note) *PublicNote {
+	if row == nil {
+		return nil
+	}
+	out := PresentNote(row)
+	return &out
+}
+
+// PresentNotes presents a list of Note, never nil.
+func PresentNotes(rows []*Note) []PublicNote {
+	out := make([]PublicNote, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, PresentNote(row))
 	}
 	return out
 }

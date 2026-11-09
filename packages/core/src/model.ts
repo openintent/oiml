@@ -129,21 +129,26 @@ export type Field = z.infer<typeof Field>;
 /** One predicate of a rule; owner and member may follow a path of relation fields (project_id.owner_id) */
 const BASE_PREDICATE =
   "(?:public|authenticated|none|owner:[a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)*|role:[A-Za-z0-9_-]+|member:[a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)*(?::[A-Za-z0-9_-]+)?)";
-/** A row condition a predicate may carry: `when <field> = <value>` or `!=`, on a field of the entity itself */
-const WHEN_CLAUSE = "(?: when [a-z][a-z0-9_]* (?:=|!=) [A-Za-z0-9_.+-]+)?";
+/** A field, or a path of relation fields ending in one: `published`, `project_id.public` */
+const FIELD_PATH = "[a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)*";
+/** A row condition a predicate may carry: `when <field> = <value>` or `!=`; the field may be a path through relations */
+const WHEN_CLAUSE = `(?: when ${FIELD_PATH} (?:=|!=) [A-Za-z0-9_.+-]+)?`;
 const PREDICATE_SOURCE = `${BASE_PREDICATE}${WHEN_CLAUSE}`;
-/** A rule: one predicate, or alternatives joined with " or ", any of which allows */
-export const RULE_PATTERN = new RegExp(`^${PREDICATE_SOURCE}(?: or ${PREDICATE_SOURCE})*$`);
+/** A conjunction: predicates joined with " and ", all of which must allow */
+const CONJUNCTION_SOURCE = `${PREDICATE_SOURCE}(?: and ${PREDICATE_SOURCE})*`;
+/** A rule: one conjunction, or alternatives joined with " or ", any of which allows; "and" binds tighter than "or" */
+export const RULE_PATTERN = new RegExp(`^${CONJUNCTION_SOURCE}(?: or ${CONJUNCTION_SOURCE})*$`);
 export const Rule = z
   .string()
   .regex(
     RULE_PATTERN,
-    "public | authenticated | none | owner:<field> | role:<value> | member:<field>[:<role>], each optionally followed by ' when <field> = <value>' (or !=); <field> may follow relation fields (project_id.owner_id); alternatives are joined with ' or '"
+    "public | authenticated | none | owner:<field> | role:<value> | member:<field>[:<role>], each optionally followed by ' when <field> = <value>' (or !=); <field> may follow relation fields (project_id.owner_id); predicates that must all hold are joined with ' and ', alternatives with ' or '"
   );
 export type Rule = z.infer<typeof Rule>;
 
-/** The row condition of a predicate, as written: `when published = true` */
+/** The row condition of a predicate, as written: `when published = true`, `when project_id.public = true` */
 export interface RuleCondition {
+  /** A field of the entity, or a dotted path of relation fields ending in a field of the entity they reach */
   field: string;
   op: "=" | "!=";
   /** The literal as written: true, false, null, a number, an enum value or a string without spaces */
@@ -152,8 +157,14 @@ export interface RuleCondition {
 
 /** A predicate split into its base and its when condition, when it has one */
 export function splitWhen(predicate: string): { base: string; when?: RuleCondition } {
-  const m = predicate.match(/^(.*?) when ([a-z][a-z0-9_]*) (=|!=) (\S+)$/);
+  const m = predicate.match(/^(.*?) when ([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*) (=|!=) (\S+)$/);
   return m ? { base: m[1], when: { field: m[2], op: m[3] as "=" | "!=", value: m[4] } } : { base: predicate };
+}
+
+/** A condition's text taken apart: the field it compares, its path and literal; undefined when it is not one */
+export function splitCondition(text: string): RuleCondition | undefined {
+  const m = text.match(/^([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*) (=|!=) (\S+)$/);
+  return m ? { field: m[1], op: m[2] as "=" | "!=", value: m[3] } : undefined;
 }
 
 /** Why a when literal does not fit the field it tests, or undefined when it does */
@@ -178,12 +189,25 @@ export function conditionProblem(field: Field, raw: string): string | undefined 
   }
 }
 
-/** The predicates of a rule: one, or the alternatives it joins with " or " */
-export function rulePredicates(rule: string): string[] {
+/** The alternatives of a rule: one, or the conjunctions it joins with " or "; each is a predicate or " and "-joined predicates */
+export function ruleAlternativeTexts(rule: string): string[] {
   return rule
     .split(" or ")
     .map(p => p.trim())
     .filter(Boolean);
+}
+
+/** The predicates a conjunction (or a single predicate) is made of: split on " and " */
+export function conjunctionParts(alternative: string): string[] {
+  return alternative
+    .split(" and ")
+    .map(p => p.trim())
+    .filter(Boolean);
+}
+
+/** Every predicate of a rule, across its alternatives and conjunctions */
+export function rulePredicates(rule: string): string[] {
+  return ruleAlternativeTexts(rule).flatMap(conjunctionParts);
 }
 
 /** An owner or member predicate taken apart: the fields it follows (the last one is tested) and, for member, the least role */
@@ -196,7 +220,7 @@ export function predicateParts(
   return role !== undefined ? { kind, path, role } : { kind, path };
 }
 
-/** The field an owner predicate without a path names, when the rule has one: on create it is set from the session */
+/** The field an owner predicate without a path names, when the rule has one (inside a conjunction too): on create it is set from the session */
 export function directOwnerField(rule: string | undefined): string | undefined {
   for (const predicate of rulePredicates(rule ?? "")) {
     const parts = predicateParts(predicate);
@@ -414,10 +438,13 @@ export const Timer = z
     after: Duration.optional(),
     /** A row action of a resource over the entity, run as the system for the row when the time passes */
     run: RunRef,
-    /** A row condition in the rules' spelling, checked again when the job fires: `status = scheduled` */
+    /** A row condition in the rules' spelling, checked again when the job fires: `status = scheduled`, `thread_id.locked = false` */
     when: z
       .string()
-      .regex(/^[a-z][a-z0-9_]* (=|!=) [A-Za-z0-9_.+-]+$/, "<field> = <value> or <field> != <value>")
+      .regex(
+        /^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)* (=|!=) [A-Za-z0-9_.+-]+$/,
+        "<field> = <value> or <field> != <value>; the field may follow relation fields"
+      )
       .optional()
   })
   .strict();
@@ -736,20 +763,41 @@ export function validateModel(model: Model): Diagnostic[] {
   };
 
   /** One predicate of a rule on `entity` (see checkRule) */
+  /**
+   * A when condition on `entityName`: its field may be a path of relation fields; every segment but the last must
+   * be a relation field of the entity reached so far (M032), and the literal must fit the final field (M033).
+   */
+  const checkCondition = (when: RuleCondition, entityName: string, rpath: string) => {
+    const path = when.field.split(".");
+    let current = entityName;
+    for (const segment of path.slice(0, -1)) {
+      const f = model.entities[current].fields[segment];
+      if (!f) {
+        error("M032", `when field ${segment} does not exist on ${current}`, rpath);
+        return;
+      }
+      if (!f.relation || !model.entities[f.relation.entity]) {
+        error("M032", `when path ${when.field}: ${segment} is not a relation field on ${current}`, rpath);
+        return;
+      }
+      current = f.relation.entity;
+    }
+    const field = path[path.length - 1];
+    const f = model.entities[current].fields[field];
+    if (!f) error("M032", `when field ${field} does not exist on ${current}`, rpath);
+    else {
+      const problem = conditionProblem(f, when.value);
+      if (problem) error("M033", `when ${when.field} ${when.op} ${when.value}: ${problem}`, rpath);
+    }
+  };
+
   const checkPredicate = (full: string, entityName: string | null, rpath: string, row: boolean) => {
     const { base: predicate, when } = splitWhen(full);
     if (when) {
       if (!row || !entityName || !model.entities[entityName])
         error("M032", `rule ${full}: a when condition needs a row; drop it here`, rpath);
       else if (predicate === "none") error("M032", `none takes no when condition`, rpath);
-      else {
-        const f = model.entities[entityName].fields[when.field];
-        if (!f) error("M032", `when field ${when.field} does not exist on ${entityName}`, rpath);
-        else {
-          const problem = conditionProblem(f, when.value);
-          if (problem) error("M033", `when ${when.field} ${when.op} ${when.value}: ${problem}`, rpath);
-        }
-      }
+      else checkCondition(when, entityName, rpath);
     }
     const parts = predicateParts(predicate);
     if (parts) {
@@ -820,10 +868,18 @@ export function validateModel(model: Model): Diagnostic[] {
 
   /** A rule on `entity`, used by its operations or an action over it (`row` true) or by nothing row-shaped */
   const checkRule = (rule: string, entityName: string | null, rpath: string, row: boolean) => {
-    const predicates = rulePredicates(rule);
-    if (predicates.length > 1 && predicates.includes("public"))
+    const alternatives = ruleAlternativeTexts(rule);
+    if (alternatives.length > 1 && alternatives.includes("public"))
       warn("M029", `rule "${rule}": public allows everyone, so the other alternatives never matter`, rpath);
-    for (const predicate of new Set(predicates)) checkPredicate(predicate, entityName, rpath, row);
+    for (const alternative of alternatives) {
+      const parts = conjunctionParts(alternative);
+      if (parts.length > 1) {
+        if (parts.includes("none")) error("M034", `"${alternative}": none in a conjunction never allows`, rpath);
+        if (parts.some(part => splitWhen(part).base === "public"))
+          warn("M034", `"${alternative}": public adds nothing to a conjunction`, rpath);
+      }
+    }
+    for (const predicate of new Set(rulePredicates(rule))) checkPredicate(predicate, entityName, rpath, row);
   };
 
   for (const [entityName, entity] of Object.entries(model.entities)) {
@@ -1189,13 +1245,8 @@ export function validateModel(model: Model): Diagnostic[] {
         if (field.required && field.default === undefined)
           error("M133", `run ${timer.run} needs input ${key}, which a timer cannot give`, `${tpath}.run`);
     if (timer.when) {
-      const [field, op, value] = timer.when.split(" ");
-      const f = entity.fields[field];
-      if (!f) error("M032", `when field ${field} does not exist on ${timer.on}`, `${tpath}.when`);
-      else {
-        const problem = conditionProblem(f, value);
-        if (problem) error("M033", `when ${field} ${op} ${value}: ${problem}`, `${tpath}.when`);
-      }
+      const when = splitCondition(timer.when);
+      if (when) checkCondition(when, timer.on, `${tpath}.when`);
     }
   }
 

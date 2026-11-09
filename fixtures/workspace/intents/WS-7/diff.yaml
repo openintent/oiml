@@ -1,0 +1,162 @@
+osl: "1.0"
+summary: A public project opens its tasks to everyone through a condition on the project; notes need membership and bind their author
+ops:
+  - op: add_field
+    entity: Project
+    name: public
+    field:
+      { type: boolean, required: true, default: false, description: Anyone may read a public project and its tasks }
+  - op: set_rules
+    entity: Task
+    rules:
+      read: "public when project_id.public = true or owner:assignee_id or member:project_id.team_id:admin"
+      create: "member:project_id.team_id"
+      update: "owner:assignee_id or member:project_id.team_id:admin"
+      delete: "member:project_id.team_id:admin"
+  - op: add_entity
+    name: Note
+    entity:
+      fields:
+        id: { type: uuid, primary: true }
+        project_id:
+          type: uuid
+          required: true
+          relation: { entity: Project, name: project, reverse: notes, on_delete: cascade }
+        author_id:
+          type: uuid
+          required: true
+          relation: { entity: User, name: author, on_delete: cascade }
+        body: { type: text, required: true, validate: { min_length: 1 } }
+        created_at: { type: datetime, required: true, default: now }
+      rules:
+        read: "member:project_id.team_id"
+        create: "member:project_id.team_id and owner:author_id"
+        update: "owner:author_id"
+        delete: "owner:author_id or member:project_id.team_id:admin"
+  - op: add_resource
+    name: notes
+    resource:
+      entity: Note
+      operations: [list, get, create, update, delete]
+      list: { filters: [project_id], order: [[created_at, asc]], include: [author] }
+  - op: add_page
+    name: notes
+    page: { resource: notes, layout: table, columns: [body, project_id, author_id, created_at] }
+  - op: set_sidebar
+    sidebar:
+      items:
+        - { page: teams, icon: building }
+        - { page: projects, icon: folder-kanban }
+        - { page: tasks, icon: list-checks }
+        - { page: notes, icon: sticky-note }
+        - { page: members, icon: users }
+      footer: { user: true, settings: true }
+  - op: add_scenario
+    scenario:
+      name: public projects and notes
+      steps:
+        - as: alice
+          op: teams.create
+          body: { name: Open Source Co }
+          expect: { status: 201 }
+          capture: { team: data.id }
+        - as: alice
+          op: auth.me
+          expect: { status: 200 }
+          capture: { alice_id: data.id }
+        - as: bob
+          op: auth.me
+          expect: { status: 200 }
+          capture: { bob_id: data.id }
+        - as: alice
+          op: members.create
+          body: { team_id: "{team}", user_id: "{bob_id}" }
+          expect: { status: 201 }
+        - as: alice
+          op: projects.create
+          body: { name: Public roadmap, team_id: "{team}", public: true }
+          expect: { status: 201, body: { data: { public: true } } }
+          capture: { open: data.id }
+        - as: alice
+          op: projects.create
+          body: { name: Internal, team_id: "{team}" }
+          expect: { status: 201, body: { data: { public: false } } }
+          capture: { internal: data.id }
+        - as: alice
+          op: tasks.create
+          body: { title: Ship v1, project_id: "{open}", assignee_id: "{bob_id}" }
+          expect: { status: 201 }
+          capture: { shipped: data.id }
+        - as: alice
+          op: tasks.create
+          body: { title: Secret plan, project_id: "{internal}", assignee_id: "{bob_id}" }
+          expect: { status: 201 }
+          capture: { secret: data.id }
+        - op: projects.get
+          path: { id: "{open}" }
+          expect: { status: 401 }
+        - op: tasks.get
+          path: { id: "{shipped}" }
+          expect: { status: 200, body: { data: { title: Ship v1 } } }
+        - op: tasks.get
+          path: { id: "{secret}" }
+          expect: { status: 401 }
+        - op: tasks.list
+          query: { project_id: "{open}" }
+          expect: { status: 200, body: { data: [{ title: Ship v1 }] } }
+        - op: tasks.list
+          query: { project_id: "{internal}" }
+          expect: { status: 200, body: { data: [] } }
+        - as: carol
+          op: tasks.get
+          path: { id: "{secret}" }
+          expect: { status: 403 }
+        - as: bob
+          op: notes.create
+          body: { project_id: "{open}", body: Looks good, author_id: "{alice_id}" }
+          expect: { status: 400 }
+        - as: bob
+          op: notes.create
+          body: { project_id: "{open}", body: Looks good }
+          expect: { status: 201, body: { data: { body: Looks good, author_id: "{actor.id}" } } }
+          capture: { note: data.id }
+        - as: carol
+          op: notes.create
+          body: { project_id: "{open}", body: Let me in }
+          expect: { status: 403 }
+        - op: notes.create
+          body: { project_id: "{open}", body: Anonymous }
+          expect: { status: 401 }
+        - op: notes.list
+          query: { project_id: "{open}" }
+          expect: { status: 401 }
+        - as: carol
+          op: notes.list
+          query: { project_id: "{open}" }
+          expect: { status: 200, body: { data: [] } }
+        - as: alice
+          op: notes.list
+          query: { project_id: "{open}" }
+          expect: { status: 200, body: { data: [{ body: Looks good }] } }
+        - as: carol
+          op: notes.get
+          path: { id: "{note}" }
+          expect: { status: 403 }
+        - as: alice
+          op: notes.update
+          path: { id: "{note}" }
+          body: { body: Edited by the team owner }
+          expect: { status: 403 }
+        - as: bob
+          op: notes.update
+          path: { id: "{note}" }
+          body: { body: Looks great }
+          expect: { status: 200, body: { data: { body: Looks great } } }
+        - as: carol
+          op: notes.delete
+          path: { id: "{note}" }
+          expect: { status: 403 }
+        - as: alice
+          op: notes.delete
+          path: { id: "{note}" }
+          expect: { status: 204 }

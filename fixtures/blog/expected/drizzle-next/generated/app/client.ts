@@ -5,7 +5,7 @@ import { QueryClient } from "@tanstack/react-query";
 import type { z } from "zod";
 import type { FileRecord } from "../files";
 import type { PublicArticle, PublicComment, PublicUser } from "../present";
-import type { commentsCreateInput, commentsListQuery, commentsUpdateInput, postsCreateInput, postsListQuery, postsPublishInput, postsUnpublishAllInput, postsUpdateInput, sendDigestInput, usersBanInput, usersListQuery, usersUpdateInput } from "../validation";
+import type { commentsCreateInput, commentsListQuery, commentsUpdateInput, postsCreateInput, postsListQuery, postsLockInput, postsPublishInput, postsUnlockInput, postsUnpublishAllInput, postsUpdateInput, sendDigestInput, usersBanInput, usersListQuery, usersUpdateInput } from "../validation";
 
 export class ApiError extends Error {
   constructor(
@@ -79,6 +79,8 @@ export type Inputs = {
     delete: { id: string };
     publish: z.input<typeof postsPublishInput> & { id: string };
     unpublish_all: z.input<typeof postsUnpublishAllInput>;
+    lock: z.input<typeof postsLockInput> & { id: string };
+    unlock: z.input<typeof postsUnlockInput> & { id: string };
   };
   comments: {
     list: z.input<typeof commentsListQuery>;
@@ -122,6 +124,8 @@ export type Outputs = {
     delete: null;
     publish: PublicArticle;
     unpublish_all: { count: number };
+    lock: PublicArticle;
+    unlock: PublicArticle;
   };
   comments: {
     list: { data: (PublicComment & { author: PublicUser | null })[]; page: Page };
@@ -171,7 +175,9 @@ export const client = {
     update: ({ id, data }: Inputs["posts"]["update"]) => call<PublicArticle>("PATCH", "/api/posts" + "/" + id, { body: data }),
     delete: ({ id }: Inputs["posts"]["delete"]) => call<null>("DELETE", "/api/posts" + "/" + id),
     publish: ({ id, ...input }: Inputs["posts"]["publish"]) => call<PublicArticle>("POST", "/api/posts" + "/" + id + "/publish", { body: input }),
-    unpublish_all: (input: Inputs["posts"]["unpublish_all"]) => call<{ count: number }>("POST", "/api/posts/unpublish_all", { body: input })
+    unpublish_all: (input: Inputs["posts"]["unpublish_all"]) => call<{ count: number }>("POST", "/api/posts/unpublish_all", { body: input }),
+    lock: ({ id, ...input }: Inputs["posts"]["lock"]) => call<PublicArticle>("POST", "/api/posts" + "/" + id + "/lock", { body: input }),
+    unlock: ({ id, ...input }: Inputs["posts"]["unlock"]) => call<PublicArticle>("POST", "/api/posts" + "/" + id + "/unlock", { body: input })
   },
   comments: {
     list: (input: Inputs["comments"]["list"]) => call<Outputs["comments"]["list"]>("GET", "/api/comments", { query: input as Record<string, unknown>, whole: true }),

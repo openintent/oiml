@@ -17,7 +17,7 @@ export type HookContext = { request: Request; session: Session | null };
 
 const RULES = {
   read: {"kind":"public"} as Rule,
-  create: {"kind":"owner","field":"author_id"} as Rule,
+  create: {"kind":"owner","field":"author_id","when":{"field":"article_id.locked","op":"eq","value":false}} as Rule,
   update: {"kind":"owner","field":"author_id"} as Rule,
   delete: {"kind":"any","rules":[{"kind":"owner","field":"author_id"},{"kind":"owner","field":"article_id.author_id"},{"kind":"role","value":"admin"}]} as Rule
 };
@@ -25,6 +25,11 @@ const RULES = {
 /** The row (or create body) with the values its rules reach through relations, under their dotted keys */
 async function withRuleValues(row: Record<string, unknown>): Promise<Record<string, unknown>> {
   const out: Record<string, unknown> = { ...row };
+  {
+    let value: unknown = row.article_id;
+    if (value != null) value = (await db.select({ v: articlesTable.locked }).from(articlesTable).where(eq(articlesTable.id, value as schema.Article["id"])))[0]?.v ?? null;
+    out["article_id.locked"] = value;
+  }
   {
     let value: unknown = row.article_id;
     if (value != null) value = (await db.select({ v: articlesTable.author_id }).from(articlesTable).where(eq(articlesTable.id, value as schema.Article["id"])))[0]?.v ?? null;
@@ -89,6 +94,8 @@ export const comments = {
       if (!verdict.ok) return denied(verdict);
       const body = await parseBody(commentsCreateInput, request);
       if (!body.ok) return body.response;
+      const bodyVerdict = checkRule(RULES.create, session, await withRuleValues({ ...body.data, author_id: session!.user.id }));
+      if (!bodyVerdict.ok) return denied(bodyVerdict);
       const hookContext: HookContext = { request, session };
       const values = await hooks.beforeCreate({ ...body.data, author_id: session!.user.id }, hookContext);
       const [row] = await db.insert(commentsTable).values(values).returning();

@@ -3,8 +3,8 @@
 
 import { QueryClient } from "@tanstack/react-query";
 import type { z } from "zod";
-import type { PublicProject, PublicTask, PublicTeam, PublicTeamMember, PublicUser } from "../present";
-import type { membersCreateInput, membersListQuery, membersUpdateInput, projectsCreateInput, projectsListQuery, projectsUpdateInput, tasksCreateInput, tasksListQuery, tasksRemindInput, tasksUpdateInput, teamsCreateInput, teamsListQuery, teamsUpdateInput, usersListQuery } from "../validation";
+import type { PublicNote, PublicProject, PublicTask, PublicTeam, PublicTeamMember, PublicUser } from "../present";
+import type { membersCreateInput, membersListQuery, membersUpdateInput, notesCreateInput, notesListQuery, notesUpdateInput, projectsCreateInput, projectsListQuery, projectsUpdateInput, tasksCreateInput, tasksListQuery, tasksRemindInput, tasksUpdateInput, teamsCreateInput, teamsListQuery, teamsUpdateInput, usersListQuery } from "../validation";
 
 export class ApiError extends Error {
   constructor(
@@ -89,6 +89,13 @@ export type Inputs = {
     delete: { id: string };
     remind: z.input<typeof tasksRemindInput> & { id: string };
   };
+  notes: {
+    list: z.input<typeof notesListQuery>;
+    get: { id: string };
+    create: z.input<typeof notesCreateInput>;
+    update: { id: string; data: z.input<typeof notesUpdateInput> };
+    delete: { id: string };
+  };
 };
 
 export type Outputs = {
@@ -134,6 +141,13 @@ export type Outputs = {
     update: PublicTask;
     delete: null;
     remind: PublicTask;
+  };
+  notes: {
+    list: { data: (PublicNote & { author: PublicUser | null })[]; page: Page };
+    get: PublicNote;
+    create: PublicNote;
+    update: PublicNote;
+    delete: null;
   };
 };
 
@@ -187,6 +201,13 @@ export const client = {
     update: ({ id, data }: Inputs["tasks"]["update"]) => call<PublicTask>("PATCH", "/api/tasks" + "/" + id, { body: data }),
     delete: ({ id }: Inputs["tasks"]["delete"]) => call<null>("DELETE", "/api/tasks" + "/" + id),
     remind: ({ id, ...input }: Inputs["tasks"]["remind"]) => call<PublicTask>("POST", "/api/tasks" + "/" + id + "/remind", { body: input })
+  },
+  notes: {
+    list: (input: Inputs["notes"]["list"]) => call<Outputs["notes"]["list"]>("GET", "/api/notes", { query: input as Record<string, unknown>, whole: true }),
+    get: ({ id }: Inputs["notes"]["get"]) => call<Outputs["notes"]["get"]>("GET", "/api/notes" + "/" + id),
+    create: (input: Inputs["notes"]["create"]) => call<PublicNote>("POST", "/api/notes", { body: input }),
+    update: ({ id, data }: Inputs["notes"]["update"]) => call<PublicNote>("PATCH", "/api/notes" + "/" + id, { body: data }),
+    delete: ({ id }: Inputs["notes"]["delete"]) => call<null>("DELETE", "/api/notes" + "/" + id)
   }
 };
 

@@ -656,7 +656,7 @@
           "comments"
         ],
         "operationId": "comments_create",
-        "description": "Only the row's owner (author_id).",
+        "description": "Only the row's owner (author_id), only when article_id.locked = false.",
         "security": [
           {
             "cookieAuth": []
@@ -1407,6 +1407,11 @@
                               }
                             ]
                           },
+                          "locked": {
+                            "type": "boolean",
+                            "description": "Set by the lock and unlock actions",
+                            "readOnly": true
+                          },
                           "author": {
                             "oneOf": [
                               {
@@ -1428,6 +1433,7 @@
                           "tags",
                           "cover",
                           "publish_at",
+                          "locked",
                           "author"
                         ]
                       }
@@ -1677,6 +1683,11 @@
                             }
                           ]
                         },
+                        "locked": {
+                          "type": "boolean",
+                          "description": "Set by the lock and unlock actions",
+                          "readOnly": true
+                        },
                         "author": {
                           "oneOf": [
                             {
@@ -1698,6 +1709,7 @@
                         "tags",
                         "cover",
                         "publish_at",
+                        "locked",
                         "author"
                       ]
                     }
@@ -1885,6 +1897,67 @@
         }
       }
     },
+    "/api/posts/{id}/lock": {
+      "post": {
+        "tags": [
+          "posts"
+        ],
+        "operationId": "posts_lock",
+        "summary": "Close the article to new comments",
+        "description": "Only users with role admin.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Article"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
     "/api/posts/{id}/publish": {
       "post": {
         "tags": [
@@ -1893,6 +1966,67 @@
         "operationId": "posts_publish",
         "summary": "Mark the article published",
         "description": "Only the row's owner (author_id).",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Article"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/posts/{id}/unlock": {
+      "post": {
+        "tags": [
+          "posts"
+        ],
+        "operationId": "posts_unlock",
+        "summary": "Reopen the article to comments",
+        "description": "Only users with role admin.",
         "security": [
           {
             "cookieAuth": []
@@ -2523,6 +2657,11 @@
                 "type": "null"
               }
             ]
+          },
+          "locked": {
+            "type": "boolean",
+            "description": "Set by the lock and unlock actions",
+            "readOnly": true
           }
         },
         "required": [
@@ -2534,7 +2673,8 @@
           "posted_at",
           "tags",
           "cover",
-          "publish_at"
+          "publish_at",
+          "locked"
         ]
       },
       "Comment": {

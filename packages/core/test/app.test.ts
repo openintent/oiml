@@ -61,10 +61,19 @@ describe("app section", () => {
       path: "/posts",
       title: "Posts"
     });
-    expect(posts.columns).toEqual(["title", "published", "posted_at"]);
+    expect(posts.columns).toEqual(["title", "published", "locked", "posted_at"]);
     const users = ir.app!.pages.find(p => p.name === "users")!;
     expect(users.fields).toEqual(["id", "email", "name", "role", "created_at", "banned", "banned_at", "ban_reason"]);
-    expect(posts.fields).toEqual(["title", "content", "published", "cover", "tags", "posted_at", "author_id"]);
+    expect(posts.fields).toEqual([
+      "title",
+      "content",
+      "published",
+      "locked",
+      "cover",
+      "tags",
+      "posted_at",
+      "author_id"
+    ]);
     const about = ir.app!.pages.find(p => p.name === "about")!;
     expect(about).toMatchObject({ kind: "custom", path: "/about", title: "About", columns: [], fields: [] });
     expect(ir.app!.sidebar!.items.map(i => [i.label, i.path, i.icon])).toEqual([

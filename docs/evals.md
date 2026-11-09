@@ -171,6 +171,21 @@ per organisation taken from the URL, a landing page after sign-in, and gap-free 
 and entered the backlog as open. Top of the backlog now: conditions through relations, files in list columns,
 computed fields and invites.
 
+The fourth turn built conditions through relations and conjunctions (`docs/designs/conditions-through-relations.md`):
+a `when` may follow relation fields (`public when project_id.public = true`, `owner:author_id when
+article_id.locked = false`, on timers too), resolved like owner paths and as subqueries on lists, and predicates
+may be joined with `and` (`member:project_id.team_id and owner:author_id`), every part allowing, a plain owner part
+still binding the owner on create. Two semantics were settled on the way: a rule with alternatives answers 401
+whenever the caller has no session and an alternative wanted one, and a list open to anonymous callers through a
+conditioned `public` guards its owner alternatives on the session. Workspace WS-7 (tasks of public projects, notes
+with the conjunction) and blog FEAT-10 (locked articles) prove both on every backend; intents now apply in natural
+order, so FEAT-10 follows FEAT-9. Rounds 1 to 5 re-graded without loss; round 6 (seed 47, ten intents, `--no-full`,
+$1.98) had nine valid diffs, five of them using the new constructs unprompted (three conjunctions, three conditions
+through relations), and neither cluster appeared. Its lines that landed on built topics were, again, other gaps in
+borrowed words, and became topics: hidden rows answered 404 rather than 403 (three cases), a timer firing before its
+date, pages per tenant (already a topic), live counts (declined), and handler-stub notes (declined, by design). Top
+of the backlog now: hidden rows as not found, computed and aggregate fields, pages with parameters, invites.
+
 ### One command per round
 
 `pnpm evals:round [--round name] [--count n] [--seed n] [--no-full] [--max-cost usd]` is the unit the loop repeats:

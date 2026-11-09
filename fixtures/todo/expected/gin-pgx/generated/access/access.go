@@ -15,20 +15,23 @@ import (
 )
 
 // Rule is an access rule from the model: public, authenticated, none, owner (Field), role (Value),
-// member (Field names the row's tenant column, Role the least privileged role allowed, or "") or any
-// (Any lists alternatives, one of which must allow). Field is a column, or the dotted path of a value
-// reached through relations, which the handler resolves into the Row before checking. When, if set,
-// allows only rows whose column compares to its value as it says.
+// member (Field names the row's tenant column, Role the least privileged role allowed, or ""), all (All
+// lists the parts of a conjunction, every one of which must allow) or any (Any lists alternatives, one of
+// which must allow). Field is a column, or the dotted path of a value reached through relations, which the
+// handler resolves into the Row before checking. When, if set, allows only rows whose field compares to
+// its value as it says.
 type Rule struct {
 	Kind  string
 	Field string
 	Value string
 	Role  string
+	All   []Rule
 	Any   []Rule
 	When  *Condition
 }
 
-// Condition is a row condition: the column, "eq" or "ne", and the literal from the model.
+// Condition is a row condition: the column (or the dotted path of a value reached through relations),
+// "eq" or "ne", and the literal from the model.
 type Condition struct {
 	Field string
 	Op    string
@@ -86,6 +89,8 @@ func Check(rule Rule, session *auth.Session) *Verdict {
 			return &Verdict{Status: http.StatusForbidden}
 		}
 		return nil
+	case "all":
+		return allOf(rule.All, func(part Rule) *Verdict { return Check(part, session) })
 	case "any":
 		return anyOf(rule.Any, func(alternative Rule) *Verdict { return Check(alternative, session) })
 	}
@@ -93,8 +98,11 @@ func Check(rule Rule, session *auth.Session) *Verdict {
 }
 
 // CheckRow evaluates a rule against a loaded row (or the body of a create): row holds the values the
-// rule's fields name, the owner for owner rules and the tenant for member rules.
+// rule's fields name, the owner for owner rules, the tenant for member rules and the values conditions test.
 func CheckRow(rule Rule, session *auth.Session, row Row) *Verdict {
+	if rule.Kind == "all" {
+		return allOf(rule.All, func(part Rule) *Verdict { return CheckRow(part, session, row) })
+	}
 	if rule.Kind == "any" {
 		return anyOf(rule.Any, func(alternative Rule) *Verdict { return CheckRow(alternative, session, row) })
 	}
@@ -119,6 +127,13 @@ func Satisfied(rule Rule, session *auth.Session) bool {
 		return session != nil && rule.When == nil
 	case "role":
 		return session != nil && session.Role() == rule.Value && rule.When == nil
+	case "all":
+		for _, part := range rule.All {
+			if !Satisfied(part, session) {
+				return false
+			}
+		}
+		return true
 	case "any":
 		for _, alternative := range rule.Any {
 			if Satisfied(alternative, session) {
@@ -129,16 +144,27 @@ func Satisfied(rule Rule, session *auth.Session) bool {
 	return false
 }
 
-// anyOf allows when any alternative does; otherwise it is 401 when every alternative was.
+// allOf allows when every part does; otherwise it answers what the first refusing part answered.
+func allOf(parts []Rule, check func(Rule) *Verdict) *Verdict {
+	for _, part := range parts {
+		if verdict := check(part); verdict != nil {
+			return verdict
+		}
+	}
+	return nil
+}
+
+// anyOf allows when any alternative does; otherwise it is 401 when the caller has no session and an
+// alternative wanted one, else 403.
 func anyOf(alternatives []Rule, check func(Rule) *Verdict) *Verdict {
-	status := http.StatusUnauthorized
+	status := http.StatusForbidden
 	for _, alternative := range alternatives {
 		verdict := check(alternative)
 		if verdict == nil {
 			return nil
 		}
-		if verdict.Status != http.StatusUnauthorized {
-			status = http.StatusForbidden
+		if verdict.Status == http.StatusUnauthorized {
+			status = http.StatusUnauthorized
 		}
 	}
 	return &Verdict{Status: status}

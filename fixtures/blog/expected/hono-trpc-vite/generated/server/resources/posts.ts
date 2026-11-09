@@ -10,7 +10,7 @@ import { emit } from "../../events";
 import { scheduleTimers } from "../../scheduling";
 import { resolveFileRefs } from "../../files";
 import { presentArticle, presentUser } from "../../present";
-import { postsCreateInput, postsId, postsListQuery, postsPublishInput, postsUnpublishAllInput, postsUpdateInput } from "../../validation";
+import { postsCreateInput, postsId, postsListQuery, postsLockInput, postsPublishInput, postsUnlockInput, postsUnpublishAllInput, postsUpdateInput } from "../../validation";
 import { handlers } from "../../actions";
 import { checkRule, type Rule } from "../access";
 import type { Session } from "../auth";
@@ -29,7 +29,9 @@ const RULES = {
 
 const ACTION_RULES = {
   publish: {"kind":"owner","field":"author_id"} as Rule,
-  unpublish_all: {"kind":"role","value":"admin"} as Rule
+  unpublish_all: {"kind":"role","value":"admin"} as Rule,
+  lock: {"kind":"role","value":"admin"} as Rule,
+  unlock: {"kind":"role","value":"admin"} as Rule
 };
 
 /** Ids as clients send them; parseId applies postsId and answers NOT_FOUND to a malformed one. */
@@ -179,6 +181,44 @@ export const postsRouter = router({
       const result = await handlers.posts_unpublish_all({ input, row: undefined, session: ctx.session, db, now: new Date() });
 
       return result;
+    } catch (err) {
+      throw toTRPCError(err, "write");
+    }
+  }),
+
+  /** POST /api/posts/{id}/lock */
+  lock: publicProcedure.input(postsLockInput.extend({ id: ID })).mutation(async ({ ctx, input: raw }) => {
+    const { id: rawId, ...input } = raw;
+    checkRule(ACTION_RULES.lock, ctx.session);
+    const id = parseId(postsId, rawId);
+    const current = await db.query.articles.findFirst({ where: eq(articlesTable.id, id) }).catch(err => {
+      throw toTRPCError(err, "read");
+    });
+    if (!current) throw notFound();
+    checkRule(ACTION_RULES.lock, ctx.session, current);
+    try {
+      const result = await handlers.posts_lock({ input, row: current, session: ctx.session, db, now: new Date() });
+
+      return presentArticle(result);
+    } catch (err) {
+      throw toTRPCError(err, "write");
+    }
+  }),
+
+  /** POST /api/posts/{id}/unlock */
+  unlock: publicProcedure.input(postsUnlockInput.extend({ id: ID })).mutation(async ({ ctx, input: raw }) => {
+    const { id: rawId, ...input } = raw;
+    checkRule(ACTION_RULES.unlock, ctx.session);
+    const id = parseId(postsId, rawId);
+    const current = await db.query.articles.findFirst({ where: eq(articlesTable.id, id) }).catch(err => {
+      throw toTRPCError(err, "read");
+    });
+    if (!current) throw notFound();
+    checkRule(ACTION_RULES.unlock, ctx.session, current);
+    try {
+      const result = await handlers.posts_unlock({ input, row: current, session: ctx.session, db, now: new Date() });
+
+      return presentArticle(result);
     } catch (err) {
       throw toTRPCError(err, "write");
     }

@@ -13,7 +13,7 @@ import { scheduleTimers } from "../scheduling";
 import { resolveFileRefs } from "../files";
 import { created, handleError, noContent, notFound, ok, parseBody, parseId, parseQuery } from "../http";
 import { presentArticle, presentUser } from "../present";
-import { postsCreateInput, postsId, postsListQuery, postsPublishInput, postsUnpublishAllInput, postsUpdateInput } from "../validation";
+import { postsCreateInput, postsId, postsListQuery, postsLockInput, postsPublishInput, postsUnlockInput, postsUnpublishAllInput, postsUpdateInput } from "../validation";
 import { hooks } from "@/src/extensions/posts";
 
 export type RouteContext = { params: Promise<{ id: string }> };
@@ -28,7 +28,9 @@ const RULES = {
 
 const ACTION_RULES = {
   publish: {"kind":"owner","field":"author_id"} as Rule,
-  unpublish_all: {"kind":"role","value":"admin"} as Rule
+  unpublish_all: {"kind":"role","value":"admin"} as Rule,
+  lock: {"kind":"role","value":"admin"} as Rule,
+  unlock: {"kind":"role","value":"admin"} as Rule
 };
 
 /** File fields and what they accept */
@@ -199,6 +201,50 @@ export const posts = {
       const result = await handlers.posts_unpublish_all({ input: body.data, row: undefined, session, db, now: new Date() });
 
       return ok(result);
+    } catch (err) {
+      return handleError(err, "write");
+    }
+  },
+
+  /** POST /api/posts/{id}/lock */
+  async lock(request: Request, ctx: RouteContext): Promise<Response> {
+    try {
+      const session = await getSession(request);
+      const verdict = checkRule(ACTION_RULES.lock, session);
+      if (!verdict.ok) return denied(verdict);
+      const id = parseId(postsId, (await ctx.params).id);
+      if (!id.ok) return id.response;
+      const current = await db.query.articles.findFirst({ where: eq(articlesTable.id, id.data) });
+      if (!current) return notFound();
+      const rowVerdict = checkRule(ACTION_RULES.lock, session, current);
+      if (!rowVerdict.ok) return denied(rowVerdict);
+      const body = await parseBody(postsLockInput, request);
+      if (!body.ok) return body.response;
+      const result = await handlers.posts_lock({ input: body.data, row: current, session, db, now: new Date() });
+
+      return ok(presentArticle(result));
+    } catch (err) {
+      return handleError(err, "write");
+    }
+  },
+
+  /** POST /api/posts/{id}/unlock */
+  async unlock(request: Request, ctx: RouteContext): Promise<Response> {
+    try {
+      const session = await getSession(request);
+      const verdict = checkRule(ACTION_RULES.unlock, session);
+      if (!verdict.ok) return denied(verdict);
+      const id = parseId(postsId, (await ctx.params).id);
+      if (!id.ok) return id.response;
+      const current = await db.query.articles.findFirst({ where: eq(articlesTable.id, id.data) });
+      if (!current) return notFound();
+      const rowVerdict = checkRule(ACTION_RULES.unlock, session, current);
+      if (!rowVerdict.ok) return denied(rowVerdict);
+      const body = await parseBody(postsUnlockInput, request);
+      if (!body.ok) return body.response;
+      const result = await handlers.posts_unlock({ input: body.data, row: current, session, db, now: new Date() });
+
+      return ok(presentArticle(result));
     } catch (err) {
       return handleError(err, "write");
     }

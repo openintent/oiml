@@ -71,6 +71,7 @@ export const membersRouter = router({
   }),
 
   create: publicProcedure.input(membersCreateInput).mutation(async ({ ctx, input }) => {
+    checkRule(RULES.create, ctx.session);
     checkRule(RULES.create, ctx.session, input);
     const hookContext: HookContext = { session: ctx.session, req: ctx.req };
     try {

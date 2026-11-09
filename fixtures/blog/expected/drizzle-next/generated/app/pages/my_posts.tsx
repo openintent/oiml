@@ -45,6 +45,14 @@ function canPublish(user: SessionUser | null, row: Detail): boolean {
   return user !== null && row.author_id === user.id;
 }
 
+function canLock(user: SessionUser | null, row: Detail): boolean {
+  return user !== null && (user as { role?: unknown }).role === "admin";
+}
+
+function canUnlock(user: SessionUser | null, row: Detail): boolean {
+  return user !== null && (user as { role?: unknown }).role === "admin";
+}
+
 function canUnpublishAll(user: SessionUser | null): boolean {
   return user !== null && (user as { role?: unknown }).role === "admin";
 }
@@ -411,6 +419,20 @@ function MyPostsDetailInner() {
       await queryClient.invalidateQueries({ queryKey: KEY });
     }
   });
+  const lockAction = useMutation({
+    mutationFn: (input: Inputs["posts"]["lock"]) => client.posts.lock(input),
+    onSuccess: async () => {
+      setOpenAction(null);
+      await queryClient.invalidateQueries({ queryKey: KEY });
+    }
+  });
+  const unlockAction = useMutation({
+    mutationFn: (input: Inputs["posts"]["unlock"]) => client.posts.unlock(input),
+    onSuccess: async () => {
+      setOpenAction(null);
+      await queryClient.invalidateQueries({ queryKey: KEY });
+    }
+  });
   if (query.isPending) return <PaneSkeleton />;
   if (query.error) return <ErrorNote error={query.error} className="m-6" />;
   const row: Detail = query.data;
@@ -422,6 +444,16 @@ function MyPostsDetailInner() {
           {canPublish(user, row) ? (
             <Button variant="outline" size="sm" disabled={publishAction.isPending} onClick={() => publishAction.mutate({ id })}>
               Publish
+            </Button>
+          ) : null}
+          {canLock(user, row) ? (
+            <Button variant="outline" size="sm" disabled={lockAction.isPending} onClick={() => lockAction.mutate({ id })}>
+              Lock
+            </Button>
+          ) : null}
+          {canUnlock(user, row) ? (
+            <Button variant="outline" size="sm" disabled={unlockAction.isPending} onClick={() => unlockAction.mutate({ id })}>
+              Unlock
             </Button>
           ) : null}
           {canUpdate(user, row) ? (
@@ -446,6 +478,8 @@ function MyPostsDetailInner() {
     >
 
       <ErrorNote error={publishAction.error} className="mb-4" />
+      <ErrorNote error={lockAction.error} className="mb-4" />
+      <ErrorNote error={unlockAction.error} className="mb-4" />
       {editing ? (
         <MyPostsForm
           fields={MYPOSTS_UPDATE}

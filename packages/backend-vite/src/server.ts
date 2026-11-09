@@ -777,8 +777,9 @@ ${whereLines}
     const owner = create.ownerField ? `, ${create.ownerField}: ${me}` : "";
     const emitLines = events("created").map(e => `      await emit(${q(e.name)}, present${T}(row));`);
     const defaults = conditionDefaults(entity, create.rule);
+    // The session is checked first: the body check reads the owner id from it and may query related rows
     const bodyCheck = needsBodyCheck(create.rule)
-      ? `, ${rowArg(create.rule, owner || defaults ? `{ ${defaults}...input${owner} }` : "input")}`
+      ? `\n    checkRule(RULES.create, ctx.session, ${rowArg(create.rule, owner || defaults ? `{ ${defaults}...input${owner} }` : "input")});`
       : "";
     const insert =
       isTenant && tenancy && membershipTable
@@ -789,7 +790,7 @@ ${whereLines}
       });`
         : `      const [row] = await db.insert(${table}).values(values).returning();`;
     procedures.push(`  create: publicProcedure.input(${resource.name}CreateInput).mutation(async ({ ctx, input }) => {
-    checkRule(RULES.create, ctx.session${bodyCheck});
+    checkRule(RULES.create, ctx.session);${bodyCheck}
     const hookContext: HookContext = { session: ctx.session, req: ctx.req };
     try {
       const values = await hooks.beforeCreate({ ...${resolveFiles("input")}${owner} }, hookContext);

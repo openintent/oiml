@@ -74,3 +74,22 @@ export function toTitleCase(input: string): string {
     .map(w => w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ");
 }
+
+/**
+ * Natural order for ids with numbers in them, so FEAT-10 follows FEAT-9: digit runs compare as numbers, the
+ * rest as text. Intents apply in this order.
+ */
+export function compareIds(a: string, b: string): number {
+  const chunks = (s: string) => s.match(/\d+|\D+/g) ?? [];
+  const as = chunks(a);
+  const bs = chunks(b);
+  for (let i = 0; i < Math.min(as.length, bs.length); i++) {
+    const x = as[i];
+    const y = bs[i];
+    if (x === y) continue;
+    const digits = /^\d/.test(x) && /^\d/.test(y);
+    if (digits && Number(x) !== Number(y)) return Number(x) - Number(y);
+    if (!digits) return x < y ? -1 : 1;
+  }
+  return as.length - bs.length || (a < b ? -1 : a > b ? 1 : 0);
+}

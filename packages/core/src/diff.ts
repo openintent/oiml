@@ -8,6 +8,8 @@ import {
   Actor,
   App,
   Auth,
+  conjunctionParts,
+  DashboardTile,
   Entity,
   Event,
   Field,
@@ -15,17 +17,17 @@ import {
   Index,
   Model,
   Page,
-  DashboardTile,
-  Schedule,
-  Timer,
+  predicateParts,
   Resource,
+  ruleAlternativeTexts,
   Rules,
   Scenario,
+  Schedule,
   SeedStep,
   Sidebar,
-  predicateParts,
+  splitCondition,
   splitWhen,
-  rulePredicates,
+  Timer,
   type Model as ModelType
 } from "./model.js";
 
@@ -221,9 +223,16 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
           if (resource.update?.fields) resource.update.fields = resource.update.fields.filter(f => f !== op.name);
           void resourceName;
         }
-        for (const t of model.timers)
-          if (t.on === op.entity && (t.at === op.name || t.when?.split(" ")[0] === op.name))
+        for (const t of model.timers) {
+          if (t.on === op.entity && t.at === op.name)
             fail(`a timer on ${op.entity} still uses ${op.name}; change timers first`);
+          if (t.when)
+            mapConditionFields(model, t.on, t.when, (e, f) => {
+              if (e === op.entity && f === op.name)
+                fail(`a timer on ${t.on} still uses ${op.entity}.${op.name} in its condition; change timers first`);
+              return f;
+            });
+        }
         for (const page of pagesOver(model, op.entity)) {
           if (page.columns) page.columns = page.columns.filter(f => f !== op.name);
           if (page.fields) page.fields = page.fields.filter(f => f !== op.name);
@@ -269,12 +278,9 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
           if (tile.group_by) tile.group_by = swap(tile.group_by);
         }
         for (const t of model.timers) {
-          if (t.on !== op.entity) continue;
-          t.at = swap(t.at);
-          if (t.when) {
-            const [field, ...rest] = t.when.split(" ");
-            t.when = [swap(field), ...rest].join(" ");
-          }
+          if (t.on === op.entity) t.at = swap(t.at);
+          if (t.when)
+            t.when = mapConditionFields(model, t.on, t.when, (e, f) => (e === op.entity && f === op.from ? op.to : f));
         }
         if (model.auth?.identity === op.entity && model.auth.email_field === op.from) model.auth.email_field = op.to;
         const forEntity = (renames.fields[op.entity] ??= {});
@@ -491,22 +497,47 @@ function mapRuleFields(
   rule: string,
   fn: (entity: string, field: string) => string
 ): string {
-  return rulePredicates(rule)
-    .map(full => {
-      const { base: predicate, when } = splitWhen(full);
-      // The condition names a field of the entity itself
-      const tail = when ? ` when ${fn(entityName, when.field)} ${when.op} ${when.value}` : "";
-      const parts = predicateParts(predicate);
-      if (!parts) return `${predicate}${tail}`;
-      let current = entityName;
-      const path = parts.path.map((segment, i) => {
-        const mapped = fn(current, segment);
-        if (i < parts.path.length - 1) current = model.entities[current]?.fields[segment]?.relation?.entity ?? current;
-        return mapped;
-      });
-      return `${parts.kind}:${path.join(".")}${parts.role !== undefined ? `:${parts.role}` : ""}${tail}`;
-    })
+  /** A dotted path mapped segment by segment, each against the entity it is on */
+  const mapPath = (segments: string[]): string[] => {
+    let current = entityName;
+    return segments.map((segment, i) => {
+      const mapped = fn(current, segment);
+      if (i < segments.length - 1) current = model.entities[current]?.fields[segment]?.relation?.entity ?? current;
+      return mapped;
+    });
+  };
+  return ruleAlternativeTexts(rule)
+    .map(alternative =>
+      conjunctionParts(alternative)
+        .map(full => {
+          const { base: predicate, when } = splitWhen(full);
+          // The condition names a field of the entity itself, or a path from it
+          const tail = when ? ` when ${mapPath(when.field.split(".")).join(".")} ${when.op} ${when.value}` : "";
+          const parts = predicateParts(predicate);
+          if (!parts) return `${predicate}${tail}`;
+          return `${parts.kind}:${mapPath(parts.path).join(".")}${parts.role !== undefined ? `:${parts.role}` : ""}${tail}`;
+        })
+        .join(" and ")
+    )
     .join(" or ");
+}
+
+/** A timer's when condition with its field path mapped segment by segment through `fn(entity, field)` */
+function mapConditionFields(
+  model: ModelType,
+  entityName: string,
+  when: string,
+  fn: (entity: string, field: string) => string
+): string {
+  const parsed = splitCondition(when);
+  if (!parsed) return when;
+  let current = entityName;
+  const path = parsed.field.split(".").map((segment, i, all) => {
+    const mapped = fn(current, segment);
+    if (i < all.length - 1) current = model.entities[current]?.fields[segment]?.relation?.entity ?? current;
+    return mapped;
+  });
+  return `${path.join(".")} ${parsed.op} ${parsed.value}`;
 }
 
 /** Dashboard tiles whose resource is over the entity */

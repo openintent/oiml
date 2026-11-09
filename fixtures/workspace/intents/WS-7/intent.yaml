@@ -1,0 +1,12 @@
+osl: "1.0"
+title: Public projects and project notes
+ask: >-
+  A team can mark a project as public: anyone, signed in or not, can read the tasks of a public project, while the
+  tasks of every other project stay as they are. Members also leave notes on a project. Only a member of the
+  project's team can write a note, and a note always belongs to the member who wrote it, whatever the request
+  says. The writer can edit their own note; the writer or a team admin can delete it. People outside the team see
+  no notes.
+acceptance:
+  - A visitor who is not signed in reads a public project's tasks and is refused a private project's task
+  - A member creates a note that carries their own id as its author; a non-member is refused
+  - A note's writer updates it, another member cannot; a team admin deletes it

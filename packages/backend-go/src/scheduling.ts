@@ -1,6 +1,6 @@
-import type { ActionIR, ColumnIR, IR, ScheduleIR, TimerIR } from "@osl/core";
+import type { ActionIR, EntityIR, IR, ScheduleIR, TimerIR } from "@osl/core";
 import { columnsConst, scanFunc, tableConst } from "./models.js";
-import { HEADER, entityByName, exported, goFile, q, quoteIdent, rowGoType, typeName } from "./util.js";
+import { HEADER, column, entityByName, exported, goFile, q, quoteIdent, rowGoType, typeName } from "./util.js";
 import { actionInputType } from "./actions.js";
 
 export function hasScheduling(ir: IR): boolean {
@@ -22,15 +22,40 @@ function runStatement(action: ActionIR, args: string): string {
   return action.returns.kind === "none" ? `return ${call}` : `_, err := ${call}\n\treturn err`;
 }
 
-/** A Go expression comparing a row's column with a condition literal, with the pointer handling the column needs */
-function holdsExpr(timer: TimerIR, col: ColumnIR): string {
-  const when = timer.when!;
-  const field = `row.${exported(when.column)}`;
-  const pointer = rowGoType(col).startsWith("*");
+/** A Go expression comparing `field` (a pointer when `pointer`) with a condition literal */
+function compareExpr(field: string, pointer: boolean, when: NonNullable<TimerIR["when"]>): string {
   if (when.value === null) return `${field} ${when.op === "eq" ? "==" : "!="} nil`;
   const literal = typeof when.value === "string" ? q(when.value) : String(when.value);
   if (!pointer) return `${field} ${when.op === "eq" ? "==" : "!="} ${literal}`;
   return when.op === "eq" ? `${field} != nil && *${field} == ${literal}` : `${field} == nil || *${field} != ${literal}`;
+}
+
+/**
+ * The body of a timer's holds function: a comparison on the row's own column, or, for a condition through a
+ * relation, one query per hop down to the value it reaches, compared as a pointer (missing rows are nil).
+ */
+function holdsBody(ir: IR, timer: TimerIR, entity: EntityIR): string {
+  const when = timer.when;
+  if (!when) return "\t_, _ = ctx, row\n\treturn true, nil";
+  const hops = when.via ?? [];
+  if (hops.length === 0) {
+    const col = entity.columns.find(c => c.name === when.column)!;
+    return `\t_ = ctx\n\treturn ${compareExpr(`row.${exported(when.column)}`, rowGoType(col).startsWith("*"), when)}, nil`;
+  }
+  const lines: string[] = [];
+  let source = `row.${exported(hops[0].column)}`;
+  hops.forEach((hop, i) => {
+    const hopEntity = entityByName(ir, hop.entity);
+    const next = i + 1 < hops.length ? hops[i + 1].column : when.column;
+    const type = rowGoType({ ...column(hopEntity, next), nullable: false });
+    const v = `v${i}`;
+    lines.push(`\tvar ${v} *${type}`);
+    const query = `\tif err := pool.QueryRow(ctx, \`SELECT ${quoteIdent(next)} FROM \`+models.${tableConst(hopEntity)}+\` WHERE ${quoteIdent(hop.targetColumn)} = $1\`, ${source}).Scan(&${v}); err != nil && !errors.Is(err, pgx.ErrNoRows) {\n\t\treturn false, err\n\t}`;
+    lines.push(i === 0 ? query : `\tif ${source} != nil {\n${query.replace(/^\t/gm, "\t\t")}\n\t}`);
+    source = v;
+  });
+  lines.push(`\treturn ${compareExpr(source, true, when)}, nil`);
+  return lines.join("\n");
 }
 
 /** generated/scheduling/scheduling.go: schedules and timers, run as the system through River */
@@ -173,8 +198,8 @@ ${pointer ? `	if row.${exported(t.column)} == nil {\n\t\treturn nil\n\t}\n\tdue 
 	return &due
 }
 
-func holds${N}(row *models.${T}) bool {
-	${t.when ? `return ${holdsExpr(t, entity.columns.find(c => c.name === t.when!.column)!)}` : "_ = row\n\treturn true"}
+func holds${N}(ctx context.Context, row *models.${T}) (bool, error) {
+${holdsBody(ir, t, entity)}
 }
 
 func run${N}(ctx context.Context, row *models.${T}, now time.Time) error {
@@ -207,8 +232,11 @@ func dueRows${N}(ctx context.Context, now time.Time) ([]*models.${T}, error) {
 			return err
 		}
 		at := due${N}(row)
-		if at == nil || at.UTC().Format(time.RFC3339Nano) != due || !holds${N}(row) {
+		if at == nil || at.UTC().Format(time.RFC3339Nano) != due {
 			return nil
+		}
+		if ok, err := holds${N}(ctx, row); err != nil || !ok {
+			return err
 		}
 		return run${N}(ctx, row, time.Now().UTC())`;
   });
@@ -220,7 +248,11 @@ func dueRows${N}(ctx context.Context, now time.Time) ([]*models.${T}, error) {
 			return ran, err
 		}
 		for _, row := range rows {
-			if !holds${N}(row) {
+			ok, err := holds${N}(ctx, row)
+			if err != nil {
+				return ran, err
+			}
+			if !ok {
 				continue
 			}
 			if err := run${N}(ctx, row, now); err != nil {

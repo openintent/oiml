@@ -75,6 +75,26 @@ type PostsUnpublishAllResult struct {
 	Count int `json:"count"`
 }
 
+// PostsLockInput is the validated body of POST /api/posts/{id}/lock.
+type PostsLockInput struct{}
+
+// ParsePostsLockInput reads the validated values into the typed input.
+func ParsePostsLockInput(values models.Values) PostsLockInput {
+	var input PostsLockInput
+	_ = values
+	return input
+}
+
+// PostsUnlockInput is the validated body of POST /api/posts/{id}/unlock.
+type PostsUnlockInput struct{}
+
+// ParsePostsUnlockInput reads the validated values into the typed input.
+func ParsePostsUnlockInput(values models.Values) PostsUnlockInput {
+	var input PostsUnlockInput
+	_ = values
+	return input
+}
+
 // SendDigestInput is the validated body of POST /api/actions/send_digest.
 type SendDigestInput struct {
 	Subject string

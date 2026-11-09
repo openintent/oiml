@@ -7,10 +7,11 @@ import { existsSync } from "node:fs";
 import { cp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
-  Model,
   applyDiff,
+  compareIds,
   compile,
   fromYaml,
+  Model,
   parseDiff,
   toYaml,
   type Diff,
@@ -132,7 +133,7 @@ export async function baseIntents(
   const dir = path.join(repoRoot, "fixtures", c.base.fixture);
   const intentsDir = path.join(dir, "intents");
   if (!existsSync(intentsDir)) throw new Error(`${c.id}: fixture ${c.base.fixture} has no intents at ${intentsDir}`);
-  const all = (await readdir(intentsDir)).filter(n => !n.startsWith(".")).sort();
+  const all = (await readdir(intentsDir)).filter(n => !n.startsWith(".")).sort(compareIds);
   let ids = all;
   if (c.base.through) {
     const index = all.indexOf(c.base.through);

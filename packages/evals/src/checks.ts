@@ -55,11 +55,17 @@ export function ruleText(rule: RuleIR): string {
   return normalizeRule(coreRuleText(rule));
 }
 
-/** Alternatives sorted, so "a or b" equals "b or a" */
+/** Alternatives sorted, and the parts of each conjunction, so "a or b" equals "b or a" and "a and b" equals "b and a" */
 export function normalizeRule(text: string): string {
   return text
     .split(" or ")
-    .map(s => s.trim())
+    .map(alternative =>
+      alternative
+        .split(" and ")
+        .map(s => s.trim())
+        .sort()
+        .join(" and ")
+    )
     .sort()
     .join(" or ");
 }
@@ -68,7 +74,12 @@ export function normalizeRule(text: string): string {
 function stripConditions(text: string): string {
   return text
     .split(" or ")
-    .map(p => p.replace(/ when .*$/, ""))
+    .map(alternative =>
+      alternative
+        .split(" and ")
+        .map(p => p.replace(/ when .*$/, ""))
+        .join(" and ")
+    )
     .join(" or ");
 }
 

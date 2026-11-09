@@ -7,6 +7,7 @@ import { teamsRouter } from "./resources/teams";
 import { membersRouter } from "./resources/members";
 import { projectsRouter } from "./resources/projects";
 import { tasksRouter } from "./resources/tasks";
+import { notesRouter } from "./resources/notes";
 import { router } from "./trpc";
 
 export const appRouter = router({
@@ -15,7 +16,8 @@ export const appRouter = router({
   teams: teamsRouter,
   members: membersRouter,
   projects: projectsRouter,
-  tasks: tasksRouter
+  tasks: tasksRouter,
+  notes: notesRouter
 });
 
 export type AppRouter = typeof appRouter;

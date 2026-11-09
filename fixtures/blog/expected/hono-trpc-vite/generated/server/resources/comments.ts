@@ -18,7 +18,7 @@ export type HookContext = { session: Session | null; req: Request };
 
 const RULES = {
   read: {"kind":"public"} as Rule,
-  create: {"kind":"owner","field":"author_id"} as Rule,
+  create: {"kind":"owner","field":"author_id","when":{"field":"article_id.locked","op":"eq","value":false}} as Rule,
   update: {"kind":"owner","field":"author_id"} as Rule,
   delete: {"kind":"any","rules":[{"kind":"owner","field":"author_id"},{"kind":"owner","field":"article_id.author_id"},{"kind":"role","value":"admin"}]} as Rule
 };
@@ -29,6 +29,11 @@ const ID = z.string();
 /** The row (or create body) with the values its rules reach through relations, under their dotted keys */
 async function withRuleValues(row: Record<string, unknown>): Promise<Record<string, unknown>> {
   const out: Record<string, unknown> = { ...row };
+  {
+    let value: unknown = row.article_id;
+    if (value != null) value = (await db.select({ v: articlesTable.locked }).from(articlesTable).where(eq(articlesTable.id, value as schema.Article["id"])))[0]?.v ?? null;
+    out["article_id.locked"] = value;
+  }
   {
     let value: unknown = row.article_id;
     if (value != null) value = (await db.select({ v: articlesTable.author_id }).from(articlesTable).where(eq(articlesTable.id, value as schema.Article["id"])))[0]?.v ?? null;
@@ -79,6 +84,7 @@ export const commentsRouter = router({
 
   create: publicProcedure.input(commentsCreateInput).mutation(async ({ ctx, input }) => {
     checkRule(RULES.create, ctx.session);
+    checkRule(RULES.create, ctx.session, await withRuleValues({ ...input, author_id: ctx.session!.user.id }));
     const hookContext: HookContext = { session: ctx.session, req: ctx.req };
     try {
       const values = await hooks.beforeCreate({ ...input, author_id: ctx.session!.user.id }, hookContext);

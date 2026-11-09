@@ -92,6 +92,7 @@ export const projectsRouter = router({
   }),
 
   create: publicProcedure.input(projectsCreateInput).mutation(async ({ ctx, input }) => {
+    checkRule(RULES.create, ctx.session);
     checkRule(RULES.create, ctx.session, { status: "active", ...input });
     const hookContext: HookContext = { session: ctx.session, req: ctx.req };
     try {

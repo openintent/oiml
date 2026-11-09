@@ -168,7 +168,7 @@ function openapiPath(path: string): string {
 
 function ruleNote(rule: OperationIR["rule"]): string {
   const note = baseNote(rule);
-  if (rule.kind === "any" || rule.kind === "none" || !rule.when) return note;
+  if (rule.kind === "any" || rule.kind === "all" || rule.kind === "none" || !rule.when) return note;
   return `${note.replace(/\.$/, "")}, only${conditionText(rule.when)}.`;
 }
 
@@ -188,6 +188,8 @@ function baseNote(rule: OperationIR["rule"]): string {
       return `Only users with role ${rule.value}.`;
     case "member":
       return `Only members of the ${rule.via ? `tenant reached through ${ruleKey(rule)}` : `row's tenant (${rule.field})`}${rule.role ? ` with at least role ${rule.role}` : ""}.`;
+    case "all":
+      return `All of: ${rule.rules.map(r => ruleNote(r).replace(/\.$/, "")).join("; ")}.`;
     case "any":
       return `Any of: ${rule.rules.map(r => ruleNote(r).replace(/\.$/, "")).join("; ")}.`;
   }

@@ -114,8 +114,9 @@ func dueTaskDueAt(row *models.Task) *time.Time {
 	return &due
 }
 
-func holdsTaskDueAt(row *models.Task) bool {
-	return row.Done == false
+func holdsTaskDueAt(ctx context.Context, row *models.Task) (bool, error) {
+	_ = ctx
+	return row.Done == false, nil
 }
 
 func runTaskDueAt(ctx context.Context, row *models.Task, now time.Time) error {
@@ -149,8 +150,11 @@ func RunTimerJob(ctx context.Context, name string, id json.RawMessage, due strin
 			return err
 		}
 		at := dueTaskDueAt(row)
-		if at == nil || at.UTC().Format(time.RFC3339Nano) != due || !holdsTaskDueAt(row) {
+		if at == nil || at.UTC().Format(time.RFC3339Nano) != due {
 			return nil
+		}
+		if ok, err := holdsTaskDueAt(ctx, row); err != nil || !ok {
+			return err
 		}
 		return runTaskDueAt(ctx, row, time.Now().UTC())
 	}
@@ -166,7 +170,11 @@ func RunDueTimers(ctx context.Context, now time.Time) (int, error) {
 			return ran, err
 		}
 		for _, row := range rows {
-			if !holdsTaskDueAt(row) {
+			ok, err := holdsTaskDueAt(ctx, row)
+			if err != nil {
+				return ran, err
+			}
+			if !ok {
 				continue
 			}
 			if err := runTaskDueAt(ctx, row, now); err != nil {

@@ -7,7 +7,10 @@ import type { Session } from "./auth";
 /** A row condition on a rule: it allows only rows whose `field` compares to `value` as `op` says */
 export type Condition = { field: string; op: "eq" | "ne"; value: unknown };
 
-/** A rule from the model. `field` is a column, or the dotted path of a value reached through relations. */
+/**
+ * A rule from the model. `field` is a column, or the dotted path of a value reached through relations; a
+ * condition's `field` may be such a path too. `all` is a conjunction (every part allows), `any` alternatives.
+ */
 export type Rule =
   | { kind: "public"; when?: Condition }
   | { kind: "authenticated"; when?: Condition }
@@ -15,6 +18,7 @@ export type Rule =
   | { kind: "owner"; field: string; when?: Condition }
   | { kind: "role"; value: string; when?: Condition }
   | { kind: "member"; field: string; role?: string; when?: Condition }
+  | { kind: "all"; rules: Rule[] }
   | { kind: "any"; rules: Rule[] };
 
 export type Verdict = { ok: true } | { ok: false; status: 401 | 403 };
@@ -53,6 +57,8 @@ export function satisfied(rule: Rule, session: Session | null): boolean {
       return session !== null && !rule.when;
     case "role":
       return session !== null && (session.user as Record<string, unknown>).role === rule.value && !rule.when;
+    case "all":
+      return rule.rules.every(part => satisfied(part, session));
     case "any":
       return rule.rules.some(alternative => satisfied(alternative, session));
     default:
@@ -62,23 +68,32 @@ export function satisfied(rule: Rule, session: Session | null): boolean {
 
 /**
  * Check a rule for a session and, when the rule is about a row, that row (or the body of a create). A rule
- * with alternatives allows when any of them does; otherwise it answers 401 when every alternative did.
+ * with alternatives allows when any of them does; otherwise it answers 401 when the caller has no session and
+ * an alternative wanted one, else 403. A conjunction allows when every part does, and answers what the first
+ * refusing part answered.
  * A condition is checked once the row is there; before that, the rule allows what its predicate allows.
  */
 export function verdict(rule: Rule, session: Session | null, row?: Record<string, unknown> | null): Verdict {
   const base = predicateVerdict(rule, session, row);
-  if (!base.ok || rule.kind === "any" || rule.kind === "none" || !rule.when || !row) return base;
+  if (!base.ok || rule.kind === "any" || rule.kind === "all" || rule.kind === "none" || !rule.when || !row) return base;
   return holds(rule.when, row) ? ALLOW : { ok: false, status: 403 };
 }
 
 function predicateVerdict(rule: Rule, session: Session | null, row?: Record<string, unknown> | null): Verdict {
   switch (rule.kind) {
+    case "all": {
+      for (const part of rule.rules) {
+        const result = verdict(part, session, row);
+        if (!result.ok) return result;
+      }
+      return ALLOW;
+    }
     case "any": {
-      let status: 401 | 403 = 401;
+      let status: 401 | 403 = 403;
       for (const alternative of rule.rules) {
         const result = verdict(alternative, session, row);
         if (result.ok) return ALLOW;
-        if (result.status !== 401) status = 403;
+        if (result.status === 401) status = 401;
       }
       return { ok: false, status };
     }

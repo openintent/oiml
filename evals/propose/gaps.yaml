@@ -36,30 +36,33 @@ gaps:
     kind: not_delivered
     status: open
     first_seen: run6-rules-opus-5-5
-    last_seen: r5
+    last_seen: r6
     cases: 3
     note: Where the SaaS set starts; needs an invitation that an account not yet registered can accept.
   - key: rule conjunctions
     kind: not_delivered
-    status: open
+    status: built
     first_seen: gen-r1-opus-5-5
     last_seen: r3
     cases: 1
-    note: A create rule cannot require membership and bind the author to the session at once; rules have
-      alternatives, not conjunctions.
+    construct: predicates joined with " and " (every part must allow; a plain owner part still binds the
+      owner on create)
+    version: unreleased
+    note: A create rule can now require membership and bind the author to the session at once; built
+      2026-11-08 with workspace WS-7 (Note.create "member:project_id.team_id and owner:author_id").
   - key: payments and billing
     kind: not_delivered
     status: declined
     first_seen: run6-rules-opus-5-5
-    last_seen: r5
+    last_seen: r6
     cases: 2
     note: Out of scope for the schema; a handler written with osl implement calls the provider.
   - key: realtime and live updates
     kind: not_delivered
     status: declined
     first_seen: run6-rules-opus-5-5
-    last_seen: r5
-    cases: 1
+    last_seen: r6
+    cases: 2
     note: No push or subscriptions in the model; the reference says so.
   - key: server-owned fields
     kind: not_delivered
@@ -82,7 +85,7 @@ gaps:
     kind: not_delivered
     status: open
     first_seen: r2
-    last_seen: r4
+    last_seen: r6
     cases: 2
   - key: uniqueness and constraints
     kind: not_delivered
@@ -116,15 +119,20 @@ gaps:
     cases: 1
   - key: conditions through relations
     kind: not_delivered
-    status: open
+    status: built
     first_seen: r5
     last_seen: r5
     cases: 1
+    construct: when <path>.<field> = <value> on any predicate and on timers (project_id.public = true),
+      as subqueries on lists
+    version: unreleased
+    note: Built 2026-11-08 with workspace WS-7 (tasks of public projects readable by anyone) and blog
+      FEAT-10 (no comments on a locked article).
   - key: pages with parameters
     kind: not_delivered
     status: open
     first_seen: r5
-    last_seen: r5
+    last_seen: r6
     cases: 2
   - key: sequences and reference numbers
     kind: not_delivered
@@ -138,3 +146,35 @@ gaps:
     first_seen: r5
     last_seen: r5
     cases: 1
+  - key: relations beyond many-to-one
+    kind: not_delivered
+    status: open
+    first_seen: r6
+    last_seen: r6
+    cases: 1
+    note: A list cannot include a row reached through a junction (course -> course_instructors -> user), so
+      many-to-many shows ids where names are wanted.
+  - key: hidden rows as not found
+    kind: not_delivered
+    status: open
+    first_seen: r6
+    last_seen: r6
+    cases: 3
+    note: A get of a row the read rule hides answers 401 or 403; agents keep wanting 404 so a hidden row's
+      existence does not leak. A candidate setting on the read rule or the resource.
+  - key: timers before a date
+    kind: not_delivered
+    status: open
+    first_seen: r6
+    last_seen: r6
+    cases: 1
+    note: A timer fires at the field plus after; nothing fires before it (a reminder 24h ahead of an
+      event, an RSVP cutoff). A negative offset or a before duration on timers.
+  - key: handlers left to implement
+    kind: not_delivered
+    status: declined
+    first_seen: r6
+    last_seen: r6
+    cases: 2
+    note: By design, an action's body is a handler osl implement writes; a scenario checks what the handler
+      did, not how. Not a gap in the model.

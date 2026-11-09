@@ -72,7 +72,7 @@ func PresentUsers(rows []*User) []PublicUser {
 const ArticleTable = `"articles"`
 
 // ArticleColumns lists the columns of Article in model order, for SELECT and RETURNING.
-const ArticleColumns = `"id", "title", "content", "published", "author_id", "posted_at", "tags", "cover", "publish_at"`
+const ArticleColumns = `"id", "title", "content", "published", "author_id", "posted_at", "tags", "cover", "publish_at", "locked"`
 
 // Article is a row of articles.
 type Article struct {
@@ -85,6 +85,7 @@ type Article struct {
 	Tags      []string   `json:"tags"`
 	Cover     *FileRef   `json:"cover"`
 	PublishAt *time.Time `json:"publish_at"`
+	Locked    bool       `json:"locked"`
 }
 
 // PublicArticle is Article as the API returns it: hidden columns removed, dates rendered.
@@ -98,12 +99,13 @@ type PublicArticle struct {
 	Tags      []string    `json:"tags"`
 	Cover     *PublicFile `json:"cover"`
 	PublishAt *string     `json:"publish_at"`
+	Locked    bool        `json:"locked"`
 }
 
 // ScanArticle reads one Article from a row selected with ArticleColumns.
 func ScanArticle(row Scanner) (*Article, error) {
 	var r Article
-	if err := row.Scan(&r.ID, &r.Title, &r.Content, &r.Published, &r.AuthorID, &r.PostedAt, &r.Tags, &r.Cover, &r.PublishAt); err != nil {
+	if err := row.Scan(&r.ID, &r.Title, &r.Content, &r.Published, &r.AuthorID, &r.PostedAt, &r.Tags, &r.Cover, &r.PublishAt, &r.Locked); err != nil {
 		return nil, err
 	}
 	return &r, nil
@@ -111,7 +113,7 @@ func ScanArticle(row Scanner) (*Article, error) {
 
 // PresentArticle returns the public shape of a Article.
 func PresentArticle(row *Article) PublicArticle {
-	return PublicArticle{ID: row.ID, Title: row.Title, Content: row.Content, Published: row.Published, AuthorID: row.AuthorID, PostedAt: FormatDateTime(row.PostedAt), Tags: row.Tags, Cover: PresentFileRefPtr(row.Cover), PublishAt: FormatDateTimePtr(row.PublishAt)}
+	return PublicArticle{ID: row.ID, Title: row.Title, Content: row.Content, Published: row.Published, AuthorID: row.AuthorID, PostedAt: FormatDateTime(row.PostedAt), Tags: row.Tags, Cover: PresentFileRefPtr(row.Cover), PublishAt: FormatDateTimePtr(row.PublishAt), Locked: row.Locked}
 }
 
 // PresentArticlePtr presents an optional Article; nil stays nil.

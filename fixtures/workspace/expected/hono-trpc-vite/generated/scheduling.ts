@@ -53,7 +53,7 @@ interface TimerDef<Row> {
   name: string;
   entity: string;
   dueOf(row: Row): Date | null;
-  holds(row: Row): boolean;
+  holds(row: Row): Promise<boolean>;
   id(row: Row): unknown;
   load(id: unknown): Promise<Row | undefined>;
   dueRows(now: Date): Promise<Row[]>;
@@ -65,7 +65,7 @@ const task_due_at: TimerDef<schema.Task> = {
   name: "task_due_at",
   entity: "Task",
   dueOf: row => due(row.due_at, 0),
-  holds: row => String(row.done) === "false",
+  holds: async row => String(row.done) === "false",
   id: row => row.id,
   load: async id => (await db.select().from(schema.tasks).where(eq(schema.tasks.id, id as schema.Task["id"])))[0],
   dueRows: now =>
@@ -98,7 +98,7 @@ export async function runTimerJob(name: string, payload: { id: unknown; due: str
   const row = await timer.load(payload.id);
   if (!row) return false;
   const at = timer.dueOf(row);
-  if (!at || at.toISOString() !== payload.due || !timer.holds(row)) return false;
+  if (!at || at.toISOString() !== payload.due || !(await timer.holds(row))) return false;
   await timer.run(row, now);
   return true;
 }
@@ -108,7 +108,7 @@ export async function runDueTimers(now: Date): Promise<number> {
   let ran = 0;
   for (const timer of TIMERS) {
     for (const row of await timer.dueRows(now)) {
-      if (!timer.holds(row)) continue;
+      if (!(await timer.holds(row))) continue;
       await timer.run(row, now);
       ran++;
     }

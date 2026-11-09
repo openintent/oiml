@@ -18,14 +18,19 @@ export function presentTeamMember(row: schema.TeamMember): PublicTeamMember {
   return { id: row.id, team_id: row.team_id, user_id: row.user_id, role: row.role, created_at: row.created_at };
 }
 
-export type PublicProject = Pick<schema.Project, "id" | "team_id" | "name" | "status" | "created_at">;
+export type PublicProject = Pick<schema.Project, "id" | "team_id" | "name" | "status" | "created_at" | "public">;
 export function presentProject(row: schema.Project): PublicProject {
-  return { id: row.id, team_id: row.team_id, name: row.name, status: row.status, created_at: row.created_at };
+  return { id: row.id, team_id: row.team_id, name: row.name, status: row.status, created_at: row.created_at, public: row.public };
 }
 
 export type PublicTask = Pick<schema.Task, "id" | "project_id" | "title" | "done" | "assignee_id" | "created_at" | "due_at" | "reminded_at">;
 export function presentTask(row: schema.Task): PublicTask {
   return { id: row.id, project_id: row.project_id, title: row.title, done: row.done, assignee_id: row.assignee_id, created_at: row.created_at, due_at: row.due_at, reminded_at: row.reminded_at };
+}
+
+export type PublicNote = Pick<schema.Note, "id" | "project_id" | "author_id" | "body" | "created_at">;
+export function presentNote(row: schema.Note): PublicNote {
+  return { id: row.id, project_id: row.project_id, author_id: row.author_id, body: row.body, created_at: row.created_at };
 }
 
 export type PublicOslAuthToken = Pick<schema.OslAuthToken, "id" | "token_hash" | "email" | "purpose" | "expires_at" | "created_at">;

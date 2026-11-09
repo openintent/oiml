@@ -1,0 +1,10 @@
+osl: "1.0"
+title: Locked articles
+ask: >-
+  An admin can lock an article so it takes no new comments, and unlock it later. Nobody locks or unlocks an
+  article by editing it, and nobody but an admin does it at all. While an article is locked, every attempt to
+  comment on it is refused, the author's included; comments already there stay readable.
+acceptance:
+  - A member trying to lock an article gets 403; an admin's lock succeeds and the article shows it is locked
+  - A comment on a locked article is refused, and allowed again once the admin unlocks it
+  - Setting the lock through an article edit is refused

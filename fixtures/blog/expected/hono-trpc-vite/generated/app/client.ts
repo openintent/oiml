@@ -59,7 +59,9 @@ export const client = {
     update: (input: Inputs["posts"]["update"]) => trpc.posts.update.mutate(input),
     delete: (input: Inputs["posts"]["delete"]) => trpc.posts.delete.mutate(input),
     publish: (input: Inputs["posts"]["publish"]) => trpc.posts.publish.mutate(input),
-    unpublish_all: (input: Inputs["posts"]["unpublish_all"]) => trpc.posts.unpublish_all.mutate(input)
+    unpublish_all: (input: Inputs["posts"]["unpublish_all"]) => trpc.posts.unpublish_all.mutate(input),
+    lock: (input: Inputs["posts"]["lock"]) => trpc.posts.lock.mutate(input),
+    unlock: (input: Inputs["posts"]["unlock"]) => trpc.posts.unlock.mutate(input)
   },
   comments: {
     list: (input: Inputs["comments"]["list"]) => trpc.comments.list.query(input),

@@ -69,14 +69,16 @@ export const projectsCreateInput = z
   .object({
     team_id: z.string().uuid(),
     name: z.string().min(1).max(120),
-    status: z.enum(["active", "archived"]).optional()
+    status: z.enum(["active", "archived"]).optional(),
+    public: z.boolean().optional()
   })
   .strict();
 export const projectsUpdateInput = z
   .object({
     team_id: z.string().uuid().optional(),
     name: z.string().min(1).max(120).optional(),
-    status: z.enum(["active", "archived"]).optional()
+    status: z.enum(["active", "archived"]).optional(),
+    public: z.boolean().optional()
   })
   .strict();
 
@@ -106,6 +108,27 @@ export const tasksUpdateInput = z
     done: z.boolean().optional(),
     assignee_id: z.string().uuid().nullish(),
     due_at: z.string().datetime({ offset: true }).transform(value => new Date(value)).nullish()
+  })
+  .strict();
+
+export const notesId = z.string().uuid();
+export const notesListQuery = z
+  .object({
+    page: z.coerce.number().int().min(1).default(1),
+    page_size: z.coerce.number().int().min(1).max(200).default(20),
+    project_id: z.string().uuid().optional()
+  })
+  .strict();
+export const notesCreateInput = z
+  .object({
+    project_id: z.string().uuid(),
+    body: z.string().min(1)
+  })
+  .strict();
+export const notesUpdateInput = z
+  .object({
+    project_id: z.string().uuid().optional(),
+    body: z.string().min(1).optional()
   })
   .strict();
 

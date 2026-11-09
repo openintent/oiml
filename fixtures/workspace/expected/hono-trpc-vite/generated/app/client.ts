@@ -70,6 +70,13 @@ export const client = {
     update: (input: Inputs["tasks"]["update"]) => trpc.tasks.update.mutate(input),
     delete: (input: Inputs["tasks"]["delete"]) => trpc.tasks.delete.mutate(input),
     remind: (input: Inputs["tasks"]["remind"]) => trpc.tasks.remind.mutate(input)
+  },
+  notes: {
+    list: (input: Inputs["notes"]["list"]) => trpc.notes.list.query(input),
+    get: (input: Inputs["notes"]["get"]) => trpc.notes.get.query(input),
+    create: (input: Inputs["notes"]["create"]) => trpc.notes.create.mutate(input),
+    update: (input: Inputs["notes"]["update"]) => trpc.notes.update.mutate(input),
+    delete: (input: Inputs["notes"]["delete"]) => trpc.notes.delete.mutate(input)
   }
 };
 

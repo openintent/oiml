@@ -34,7 +34,8 @@ export const articles = pgTable(
     posted_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
     tags: varchar({ length: 255 }).array(),
     cover: jsonb().$type<FileRef>(),
-    publish_at: timestamp({ withTimezone: true })
+    publish_at: timestamp({ withTimezone: true }),
+    locked: boolean().notNull().default(false)
   },
   t => [unique("articles_author_id_title_key").on(t.author_id, t.title), index("articles_author_id_idx").on(t.author_id)]
 );

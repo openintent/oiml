@@ -38,7 +38,19 @@ const TOPICS: [topic: string, pattern: RegExp][] = [
   ],
   [
     "pages with parameters",
-    /\b(from the (url|link)|url for each|a (separate|dedicated|public) (url|page|form) (for|per) each|per-(organisation|organization|team|project) (url|page)|path parameter|parameteri[sz]ed page|page cannot take .{0,30} from|picks? .{0,30} from the (link|url))/i
+    /\b(from the (url|link)|url for each|a (separate|dedicated|public) (url|page|form) (for|per) each|per-(organisation|organization|team|project) (url|page)|path parameter|parameteri[sz]ed page|page cannot take .{0,30} from|picks? .{0,30} from the (link|url)|(one|a) (dashboard|page|board|view) per (team|organi[sz]ation|project|school|user|tenant|club)|scoped to a (single )?(team|project|organi[sz]ation|tenant|school|club))/i
+  ],
+  [
+    "handlers left to implement",
+    /\b(handler stubs?|stubs? to fill in|handler (stub )?(you|to) (implement|write|fill)|written with osl implement|osl implement writes|the (field )?handler (must|sets|decides|computes|assigns))/i
+  ],
+  [
+    "hidden rows as not found",
+    /\b(not (a )?404|never 404|404 (instead|rather)|answers? .{0,30}\b404\b|as if (it|they) did not exist|with a refusal, never)/i
+  ],
+  [
+    "timers before a date",
+    /\b((timer|job)s? cannot (fire|run) before|fires? before (a|the|its)|before (a|the) (date|time|deadline|cutoff|start|event starts?)|\d+[ -]?(hours?|minutes?|days?|h|m|d) before|ahead of (the )?(date|time|start|deadline)|negative (offset|after|duration))/i
   ],
   [
     "sign-in flow settings",
@@ -75,7 +87,7 @@ const TOPICS: [topic: string, pattern: RegExp][] = [
   ],
   [
     "realtime and live updates",
-    /\b(real[- ]?time|websocket|live update|subscri|push notif|presence|stream|instantly|appears? on (its|their) own|without (a |the )?(page )?refresh|as soon as .{0,20} (happens|changes|is made))/i
+    /\b(real[- ]?time|websocket|live update|subscri|push notif|pushed live|presence|stream|instantly|appears? on (its|their) own|without (a |the )?(page )?refresh|as soon as .{0,20} (happens|changes|is made)|re-?fetch(es|ed|ing)? every|poll(s|ed|ing)? every)/i
   ],
   [
     "payments and billing",
@@ -89,7 +101,7 @@ const TOPICS: [topic: string, pattern: RegExp][] = [
   ["email and notifications", /\b(notif|e-?mail(s|ing)? (is|are|gets)? ?sent|send (an? )?e-?mail|sms|in-app message)/i],
   [
     "computed and aggregate fields",
-    /\b(count of|number of|total|sum|average|aggregate|derived|computed|denormali|increment|counter)/i
+    /\b(count of|number of|total|sum|average|aggregate|derived|computed|denormali|increment|counter|kept up to date|(stored|cached) (count|total|flag|field)|(enrolled|member|reply|like|view) count|is not cleared|not cleared (if|when)|cleared (when|if|once))/i
   ],
   [
     "uniqueness and constraints",
