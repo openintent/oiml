@@ -1,0 +1,32 @@
+id: blog5-newsroom-drafts
+tags: [entity, auth, rules, actions, fields, generated-origin]
+base: { empty: newsroom }
+intent:
+  title: Newsroom with editor approval
+  ask: >-
+    Our writers draft stories, and only an editor-in-chief (admin) can publish them. When a story goes live, the
+    site should stamp it with its publish date, and readers should see that date on every story. Nobody should be
+    able to backdate a story or fake that date, including the writers. Writers can edit their own drafts but not
+    other people's. Admins can edit, unpublish or delete any story. Readers don't need accounts to read published
+    stories, and they should never see drafts: a visitor who opens a draft by its id is told there is no such
+    story.
+  acceptance:
+    - A writer who tries to publish their own story gets a 403
+    - When an admin publishes a story, it shows a publish date equal to the moment it was approved
+    - A writer who sends their own publish date when saving a story does not change the date shown
+    - A visitor who is not signed in can read a published story but gets a 404 for a draft
+expect:
+  entities: ["Story|Article|Post"]
+  fields: { "Story|Article|Post": ["published_at|publish_date|published_on|publish_at"] }
+  field_props:
+    "Story|Article|Post.published_at|publish_date|published_on|publish_at": { read_only: true }
+  rules:
+    "Story|Article|Post":
+      hidden: not_found
+  actions_on: { "stories|articles|posts": { scope: row, rule: "role:admin" } }
+  scenarios: { min: 1, rejections: 2, statuses: [403, 404] }
+notes: >-
+  Promoted from generated round 6 (gen-r6-04), where the agent wrote "OSL answers a get of a row the read rule
+  hides with a refusal, never 404" in not_delivered. The publish date is a read_only field set by an admin action
+  (FEAT-7's pattern); the draft's 404 is `hidden: not_found` beside the story's rules, whose read rule opens
+  published stories to everyone and drafts to their author and admins.

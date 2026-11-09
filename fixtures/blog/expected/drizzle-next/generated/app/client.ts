@@ -4,8 +4,8 @@
 import { QueryClient } from "@tanstack/react-query";
 import type { z } from "zod";
 import type { FileRecord } from "../files";
-import type { PublicArticle, PublicComment, PublicUser } from "../present";
-import type { commentsCreateInput, commentsListQuery, commentsUpdateInput, postsCreateInput, postsListQuery, postsLockInput, postsPublishInput, postsUnlockInput, postsUnpublishAllInput, postsUpdateInput, sendDigestInput, usersBanInput, usersListQuery, usersUpdateInput } from "../validation";
+import type { PublicAnnouncement, PublicArticle, PublicComment, PublicUser } from "../present";
+import type { announcementsCreateInput, announcementsListQuery, announcementsPublishInput, announcementsUpdateInput, commentsCreateInput, commentsListQuery, commentsUpdateInput, postsCreateInput, postsListQuery, postsLockInput, postsPublishInput, postsUnlockInput, postsUnpublishAllInput, postsUpdateInput, sendDigestInput, usersBanInput, usersListQuery, usersUpdateInput } from "../validation";
 
 export class ApiError extends Error {
   constructor(
@@ -89,6 +89,14 @@ export type Inputs = {
     update: { id: string; data: z.input<typeof commentsUpdateInput> };
     delete: { id: string };
   };
+  announcements: {
+    list: z.input<typeof announcementsListQuery>;
+    get: { id: string };
+    create: z.input<typeof announcementsCreateInput>;
+    update: { id: string; data: z.input<typeof announcementsUpdateInput> };
+    delete: { id: string };
+    publish: z.input<typeof announcementsPublishInput> & { id: string };
+  };
 };
 
 export type Outputs = {
@@ -133,6 +141,14 @@ export type Outputs = {
     create: PublicComment;
     update: PublicComment;
     delete: null;
+  };
+  announcements: {
+    list: { data: (PublicAnnouncement & { author: PublicUser | null })[]; page: Page };
+    get: PublicAnnouncement & { author: PublicUser | null };
+    create: PublicAnnouncement;
+    update: PublicAnnouncement;
+    delete: null;
+    publish: PublicAnnouncement;
   };
 };
 
@@ -185,6 +201,14 @@ export const client = {
     create: (input: Inputs["comments"]["create"]) => call<PublicComment>("POST", "/api/comments", { body: input }),
     update: ({ id, data }: Inputs["comments"]["update"]) => call<PublicComment>("PATCH", "/api/comments" + "/" + id, { body: data }),
     delete: ({ id }: Inputs["comments"]["delete"]) => call<null>("DELETE", "/api/comments" + "/" + id)
+  },
+  announcements: {
+    list: (input: Inputs["announcements"]["list"]) => call<Outputs["announcements"]["list"]>("GET", "/api/announcements", { query: input as Record<string, unknown>, whole: true }),
+    get: ({ id }: Inputs["announcements"]["get"]) => call<Outputs["announcements"]["get"]>("GET", "/api/announcements" + "/" + id),
+    create: (input: Inputs["announcements"]["create"]) => call<PublicAnnouncement>("POST", "/api/announcements", { body: input }),
+    update: ({ id, data }: Inputs["announcements"]["update"]) => call<PublicAnnouncement>("PATCH", "/api/announcements" + "/" + id, { body: data }),
+    delete: ({ id }: Inputs["announcements"]["delete"]) => call<null>("DELETE", "/api/announcements" + "/" + id),
+    publish: ({ id, ...input }: Inputs["announcements"]["publish"]) => call<PublicAnnouncement>("POST", "/api/announcements" + "/" + id + "/publish", { body: input })
   }
 };
 

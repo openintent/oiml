@@ -95,6 +95,16 @@ func ParsePostsUnlockInput(values models.Values) PostsUnlockInput {
 	return input
 }
 
+// AnnouncementsPublishInput is the validated body of POST /api/announcements/{id}/publish.
+type AnnouncementsPublishInput struct{}
+
+// ParseAnnouncementsPublishInput reads the validated values into the typed input.
+func ParseAnnouncementsPublishInput(values models.Values) AnnouncementsPublishInput {
+	var input AnnouncementsPublishInput
+	_ = values
+	return input
+}
+
 // SendDigestInput is the validated body of POST /api/actions/send_digest.
 type SendDigestInput struct {
 	Subject string

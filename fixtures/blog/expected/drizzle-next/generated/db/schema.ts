@@ -52,6 +52,19 @@ export const comments = pgTable(
   t => [index("comments_article_id_idx").on(t.article_id), index("comments_author_id_idx").on(t.author_id)]
 );
 
+export const announcements = pgTable(
+  "announcements",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    title: varchar({ length: 200 }).notNull(),
+    body: text().notNull(),
+    published: boolean().notNull().default(false),
+    author_id: uuid().notNull().references(() => users.id, { onDelete: "cascade" }),
+    created_at: timestamp({ withTimezone: true }).notNull().defaultNow()
+  },
+  t => [index("announcements_author_id_idx").on(t.author_id)]
+);
+
 export const oslFiles = pgTable(
   "osl_files",
   {
@@ -113,6 +126,10 @@ export const commentsRelations = relations(comments, ({ one }) => ({
   author: one(users, { fields: [comments.author_id], references: [users.id], relationName: "author" })
 }));
 
+export const announcementsRelations = relations(announcements, ({ one }) => ({
+  author: one(users, { fields: [announcements.author_id], references: [users.id], relationName: "author" })
+}));
+
 export const oslFilesRelations = relations(oslFiles, ({ one }) => ({
   owner: one(users, { fields: [oslFiles.owner_id], references: [users.id], relationName: "owner" })
 }));
@@ -127,6 +144,8 @@ export type Article = typeof articles.$inferSelect;
 export type NewArticle = typeof articles.$inferInsert;
 export type Comment = typeof comments.$inferSelect;
 export type NewComment = typeof comments.$inferInsert;
+export type Announcement = typeof announcements.$inferSelect;
+export type NewAnnouncement = typeof announcements.$inferInsert;
 export type OslFile = typeof oslFiles.$inferSelect;
 export type NewOslFile = typeof oslFiles.$inferInsert;
 export type OslAuthToken = typeof oslAuthTokens.$inferSelect;

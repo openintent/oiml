@@ -190,6 +190,64 @@ func PresentComments(rows []*Comment) []PublicComment {
 	return out
 }
 
+// AnnouncementTable is the quoted table of Announcement.
+const AnnouncementTable = `"announcements"`
+
+// AnnouncementColumns lists the columns of Announcement in model order, for SELECT and RETURNING.
+const AnnouncementColumns = `"id", "title", "body", "published", "author_id", "created_at"`
+
+// Announcement is a row of announcements.
+type Announcement struct {
+	ID        string    `json:"id"`
+	Title     string    `json:"title"`
+	Body      string    `json:"body"`
+	Published bool      `json:"published"`
+	AuthorID  string    `json:"author_id"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// PublicAnnouncement is Announcement as the API returns it: hidden columns removed, dates rendered.
+type PublicAnnouncement struct {
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	Body      string `json:"body"`
+	Published bool   `json:"published"`
+	AuthorID  string `json:"author_id"`
+	CreatedAt string `json:"created_at"`
+}
+
+// ScanAnnouncement reads one Announcement from a row selected with AnnouncementColumns.
+func ScanAnnouncement(row Scanner) (*Announcement, error) {
+	var r Announcement
+	if err := row.Scan(&r.ID, &r.Title, &r.Body, &r.Published, &r.AuthorID, &r.CreatedAt); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// PresentAnnouncement returns the public shape of a Announcement.
+func PresentAnnouncement(row *Announcement) PublicAnnouncement {
+	return PublicAnnouncement{ID: row.ID, Title: row.Title, Body: row.Body, Published: row.Published, AuthorID: row.AuthorID, CreatedAt: FormatDateTime(row.CreatedAt)}
+}
+
+// PresentAnnouncementPtr presents an optional Announcement; nil stays nil.
+func PresentAnnouncementPtr(row *Announcement) *PublicAnnouncement {
+	if row == nil {
+		return nil
+	}
+	out := PresentAnnouncement(row)
+	return &out
+}
+
+// PresentAnnouncements presents a list of Announcement, never nil.
+func PresentAnnouncements(rows []*Announcement) []PublicAnnouncement {
+	out := make([]PublicAnnouncement, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, PresentAnnouncement(row))
+	}
+	return out
+}
+
 // OslFileTable is the quoted table of OslFile.
 const OslFileTable = `"osl_files"`
 

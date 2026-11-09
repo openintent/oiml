@@ -1,0 +1,112 @@
+osl: "1.0"
+summary: Milestones on projects, team-only through the project, with hidden rows answered as not found
+ops:
+  - op: add_entity
+    name: Milestone
+    entity:
+      fields:
+        id: { type: uuid, primary: true }
+        project_id:
+          type: uuid
+          required: true
+          relation: { entity: Project, name: project, reverse: milestones, on_delete: cascade }
+        title: { type: string, max_length: 200, required: true, validate: { min_length: 1 } }
+        due_on: { type: date, required: true }
+        done: { type: boolean, required: true, default: false }
+      rules:
+        read: "member:project_id.team_id"
+        create: "member:project_id.team_id"
+        update: "member:project_id.team_id"
+        delete: "member:project_id.team_id:admin"
+        hidden: not_found
+  - op: add_resource
+    name: milestones
+    resource:
+      entity: Milestone
+      operations: [list, get, create, update, delete]
+      list: { filters: [project_id, done], order: [[due_on, asc]] }
+  - op: add_page
+    name: milestones
+    page: { resource: milestones, layout: table, columns: [title, due_on, done, project_id] }
+  - op: set_sidebar
+    sidebar:
+      items:
+        - { page: teams, icon: building }
+        - { page: projects, icon: folder-kanban }
+        - { page: tasks, icon: list-checks }
+        - { page: milestones, icon: flag }
+        - { page: notes, icon: sticky-note }
+        - { page: members, icon: users }
+      footer: { user: true, settings: true }
+  - op: add_scenario
+    scenario:
+      name: hidden milestones
+      steps:
+        - as: alice
+          op: teams.create
+          body: { name: Rocket Co }
+          expect: { status: 201 }
+          capture: { team: data.id }
+        - as: bob
+          op: auth.me
+          expect: { status: 200 }
+          capture: { bob_id: data.id }
+        - as: alice
+          op: members.create
+          body: { team_id: "{team}", user_id: "{bob_id}" }
+          expect: { status: 201 }
+        - as: carol
+          op: teams.create
+          body: { name: Elsewhere }
+          expect: { status: 201 }
+        - as: alice
+          op: projects.create
+          body: { name: Launch, team_id: "{team}" }
+          expect: { status: 201 }
+          capture: { project: data.id }
+        - as: bob
+          op: milestones.create
+          body: { project_id: "{project}", title: Beta, due_on: "2027-03-01" }
+          expect: { status: 201, body: { data: { title: Beta, done: false } } }
+          capture: { milestone: data.id }
+        - as: carol
+          op: milestones.get
+          path: { id: "{milestone}" }
+          expect: { status: 404 }
+        - as: carol
+          op: milestones.update
+          path: { id: "{milestone}" }
+          body: { done: true }
+          expect: { status: 404 }
+        - as: carol
+          op: milestones.delete
+          path: { id: "{milestone}" }
+          expect: { status: 404 }
+        - as: carol
+          op: milestones.list
+          query: { project_id: "{project}" }
+          expect: { status: 200, body: { data: [] } }
+        - op: milestones.get
+          path: { id: "{milestone}" }
+          expect: { status: 401 }
+        - as: bob
+          op: milestones.get
+          path: { id: "{milestone}" }
+          expect: { status: 200, body: { data: { title: Beta } } }
+        - as: bob
+          op: milestones.update
+          path: { id: "{milestone}" }
+          body: { done: true }
+          expect: { status: 200, body: { data: { done: true } } }
+        - as: bob
+          op: milestones.delete
+          path: { id: "{milestone}" }
+          expect: { status: 403 }
+        - as: alice
+          op: milestones.delete
+          path: { id: "{milestone}" }
+          expect: { status: 204 }
+        - as: alice
+          op: milestones.get
+          path: { id: "{milestone}" }
+          expect: { status: 404 }

@@ -152,6 +152,28 @@ describe("gap report", () => {
     ).toBe("timers before a date");
     expect(
       gapTopic(
+        "Allowing task create only when the request carries the project's correct edit code is not expressible: rules never check a secret sent with the request"
+      )
+    ).toBe("shared secrets and access codes");
+    expect(gapTopic("A write-only edit code on a project is not expressible: a hidden field is never accepted")).toBe(
+      "shared secrets and access codes"
+    );
+    expect(
+      gapTopic(
+        "A timer cannot run off due_on because it is a date, not a datetime, and nothing compares a field against now"
+      )
+    ).toBe("timers on date fields");
+    expect(gapTopic("error timers[0].at: field due_on must be a datetime, not date")).toBe("timers on date fields");
+    expect(
+      gapTopic(
+        "The homepage cannot show the featured article as a wide banner. Dashboard pages only have count tiles and recent-row lists."
+      )
+    ).toBe("dashboard panels beyond counts");
+    expect(gapTopic("dashboard tiles only count rows and there is no sum or aggregate construct")).toBe(
+      "computed and aggregate fields"
+    );
+    expect(
+      gapTopic(
         "Clearing overdue: the flag is set by a timer when due_at passes, but it is not cleared if the date moves"
       )
     ).toBe("computed and aggregate fields");

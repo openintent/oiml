@@ -3,8 +3,8 @@
 
 import { QueryClient } from "@tanstack/react-query";
 import type { z } from "zod";
-import type { PublicNote, PublicProject, PublicTask, PublicTeam, PublicTeamMember, PublicUser } from "../present";
-import type { membersCreateInput, membersListQuery, membersUpdateInput, notesCreateInput, notesListQuery, notesUpdateInput, projectsCreateInput, projectsListQuery, projectsUpdateInput, tasksCreateInput, tasksListQuery, tasksRemindInput, tasksUpdateInput, teamsCreateInput, teamsListQuery, teamsUpdateInput, usersListQuery } from "../validation";
+import type { PublicMilestone, PublicNote, PublicProject, PublicTask, PublicTeam, PublicTeamMember, PublicUser } from "../present";
+import type { membersCreateInput, membersListQuery, membersUpdateInput, milestonesCreateInput, milestonesListQuery, milestonesUpdateInput, notesCreateInput, notesListQuery, notesUpdateInput, projectsCreateInput, projectsListQuery, projectsUpdateInput, tasksCreateInput, tasksListQuery, tasksRemindInput, tasksUpdateInput, teamsCreateInput, teamsListQuery, teamsUpdateInput, usersListQuery } from "../validation";
 
 export class ApiError extends Error {
   constructor(
@@ -96,6 +96,13 @@ export type Inputs = {
     update: { id: string; data: z.input<typeof notesUpdateInput> };
     delete: { id: string };
   };
+  milestones: {
+    list: z.input<typeof milestonesListQuery>;
+    get: { id: string };
+    create: z.input<typeof milestonesCreateInput>;
+    update: { id: string; data: z.input<typeof milestonesUpdateInput> };
+    delete: { id: string };
+  };
 };
 
 export type Outputs = {
@@ -147,6 +154,13 @@ export type Outputs = {
     get: PublicNote;
     create: PublicNote;
     update: PublicNote;
+    delete: null;
+  };
+  milestones: {
+    list: { data: (PublicMilestone)[]; page: Page };
+    get: PublicMilestone;
+    create: PublicMilestone;
+    update: PublicMilestone;
     delete: null;
   };
 };
@@ -208,6 +222,13 @@ export const client = {
     create: (input: Inputs["notes"]["create"]) => call<PublicNote>("POST", "/api/notes", { body: input }),
     update: ({ id, data }: Inputs["notes"]["update"]) => call<PublicNote>("PATCH", "/api/notes" + "/" + id, { body: data }),
     delete: ({ id }: Inputs["notes"]["delete"]) => call<null>("DELETE", "/api/notes" + "/" + id)
+  },
+  milestones: {
+    list: (input: Inputs["milestones"]["list"]) => call<Outputs["milestones"]["list"]>("GET", "/api/milestones", { query: input as Record<string, unknown>, whole: true }),
+    get: ({ id }: Inputs["milestones"]["get"]) => call<Outputs["milestones"]["get"]>("GET", "/api/milestones" + "/" + id),
+    create: (input: Inputs["milestones"]["create"]) => call<PublicMilestone>("POST", "/api/milestones", { body: input }),
+    update: ({ id, data }: Inputs["milestones"]["update"]) => call<PublicMilestone>("PATCH", "/api/milestones" + "/" + id, { body: data }),
+    delete: ({ id }: Inputs["milestones"]["delete"]) => call<null>("DELETE", "/api/milestones" + "/" + id)
   }
 };
 

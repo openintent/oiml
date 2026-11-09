@@ -1,6 +1,7 @@
 import type { ActionIR, EntityIR, GeneratedFile, IR, OperationIR, RelationIR, ResourceIR, RuleIR } from "@osl/core";
 import { actionsOf, globalActions } from "@osl/core";
 import {
+  hasVia,
   actionInputName,
   fileSpecsLiteral,
   listRuleFilter,
@@ -77,6 +78,17 @@ export function resourceFile(ir: IR, resource: ResourceIR): string {
   const membershipTable = tenancy ? `${tableExport(entityByName(ir, tenancy.membership))}Table` : null;
   const tableVar = (e: EntityIR) => `${tableExport(e)}Table`;
   const me = `session!.user.${identityPk(ir)}`;
+  /**
+   * The checks after a row is loaded: with hidden rows answered as not found, the read rule first (a hidden row
+   * answers 404), then the operation's own rule, both reading one resolution of the paths they follow.
+   */
+  const rowChecks = (own: RuleIR, rowVar: string): { lines: string; arg: string } => {
+    if (entity.hidden !== "not_found") return { lines: "", arg: rowArg(own, rowVar) };
+    const via = hasVia(entity.rules.read) || hasVia(own);
+    const arg = via ? `${rowVar}Values` : rowVar;
+    const resolve = via ? `\n      const ${arg} = await withRuleValues(${rowVar});` : "";
+    return { lines: `${resolve}\n      if (!checkRule(RULES.read, session, ${arg}).ok) return notFound();`, arg };
+  };
   const listFilter = list
     ? listRuleFilter(ir, entity, list.rule, {
         ruleRef: "RULES.read",
@@ -224,7 +236,7 @@ ${filterLines.join("\n")}
       const row = await ${query}.findFirst({ where: eq(${table}.${pk}, id.data)${withClause(get.include)} });
       if (!row) return notFound();
       const rowVerdict = checkRule(RULES.read, session, ${rowArg(get.rule, "row")});
-      if (!rowVerdict.ok) return denied(rowVerdict);
+      if (!rowVerdict.ok) return ${entity.hidden === "not_found" ? "notFound()" : "denied(rowVerdict)"};
       return ok(presentGetRow(row));
     } catch (err) {
       return handleError(err, "read");
@@ -275,6 +287,7 @@ ${emitLines.join("\n")}${timerLine}
     httpImports.add("parseBody");
     httpImports.add("parseId");
     const emitLines = events("updated").map(e => `      await emit(${q(e.name)}, present${T}(row));`);
+    const updateChecks = rowChecks(update.rule, "existing");
     methods.push(`  async update(request: Request, ctx: RouteContext): Promise<Response> {
     try {
       const session = await getSession(request);
@@ -283,8 +296,8 @@ ${emitLines.join("\n")}${timerLine}
       const id = parseId(${resource.name}Id, (await ctx.params).id);
       if (!id.ok) return id.response;
       const existing = await ${query}.findFirst({ where: eq(${table}.${pk}, id.data) });
-      if (!existing) return notFound();
-      const rowVerdict = checkRule(RULES.update, session, ${rowArg(update.rule, "existing")});
+      if (!existing) return notFound();${updateChecks.lines}
+      const rowVerdict = checkRule(RULES.update, session, ${updateChecks.arg});
       if (!rowVerdict.ok) return denied(rowVerdict);
       const body = await parseBody(${resource.name}UpdateInput, request);
       if (!body.ok) return body.response;
@@ -305,6 +318,7 @@ ${emitLines.join("\n")}${timerLine}
     httpImports.add("parseId");
     httpImports.add("noContent");
     const emitLines = events("deleted").map(e => `      await emit(${q(e.name)}, present${T}(existing));`);
+    const deleteChecks = rowChecks(remove.rule, "existing");
     methods.push(`  async delete(request: Request, ctx: RouteContext): Promise<Response> {
     try {
       const session = await getSession(request);
@@ -313,8 +327,8 @@ ${emitLines.join("\n")}${timerLine}
       const id = parseId(${resource.name}Id, (await ctx.params).id);
       if (!id.ok) return id.response;
       const existing = await ${query}.findFirst({ where: eq(${table}.${pk}, id.data) });
-      if (!existing) return notFound();
-      const rowVerdict = checkRule(RULES.delete, session, ${rowArg(remove.rule, "existing")});
+      if (!existing) return notFound();${deleteChecks.lines}
+      const rowVerdict = checkRule(RULES.delete, session, ${deleteChecks.arg});
       if (!rowVerdict.ok) return denied(rowVerdict);
       const hookContext: HookContext = { request, session };
       await hooks.beforeDelete(existing, hookContext);
@@ -340,7 +354,8 @@ ${emitLines.join("\n")}
         pk,
         idName: `${resource.name}Id`,
         T,
-        actionEvents: actionEvents(action.name)
+        actionEvents: actionEvents(action.name),
+        checks: rowChecks(action.rule, "current")
       })
     );
   }
@@ -390,7 +405,16 @@ ${methods.join(",\n\n")}
 function actionHandler(
   ir: IR,
   action: ActionIR,
-  row: { table: string; query: string; pk: string; idName: string; T: string; actionEvents: IR["events"] } | null
+  row: {
+    table: string;
+    query: string;
+    pk: string;
+    idName: string;
+    T: string;
+    actionEvents: IR["events"];
+    /** The checks after the row is loaded (a hidden row's 404 when the entity asks for it) and the row the action's own check reads */
+    checks: { lines: string; arg: string };
+  } | null
 ): string {
   const input = actionInputName(action);
   const present = action.returns.kind === "entity" ? `present${row!.T}` : null;
@@ -419,8 +443,8 @@ function actionHandler(
       const id = parseId(${row.idName}, (await ctx.params).id);
       if (!id.ok) return id.response;
       const current = await ${row.query}.findFirst({ where: eq(${row.table}.${row.pk}, id.data) });
-      if (!current) return notFound();
-      const rowVerdict = checkRule(${rulesRef}, session, ${rowArg(action.rule, "current")});
+      if (!current) return notFound();${row.checks.lines}
+      const rowVerdict = checkRule(${rulesRef}, session, ${row.checks.arg});
       if (!rowVerdict.ok) return denied(rowVerdict);
       const body = await parseBody(${input}, request);
       if (!body.ok) return body.response;

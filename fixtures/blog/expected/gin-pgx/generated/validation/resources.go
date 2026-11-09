@@ -70,6 +70,30 @@ var CommentsUpdateInput = Object{Fields: []Field{
 	{Name: "article_id", Type: UUID{}},
 }}
 
+// AnnouncementsID parses a announcements id from the path.
+func AnnouncementsID(raw string) (string, bool) {
+	return ParseUUIDID(raw)
+}
+
+// AnnouncementsListQuery validates the GET /api/announcements query string.
+var AnnouncementsListQuery = Query{PageSize: 20, Filters: []Filter{
+	{Name: "published", Type: Boolean{}},
+	{Name: "author_id", Type: UUID{}},
+}}
+
+// AnnouncementsCreateInput validates POST /api/announcements bodies.
+var AnnouncementsCreateInput = Object{Fields: []Field{
+	{Name: "title", Required: true, Type: String{MinLength: 1, MaxLength: 200}},
+	{Name: "body", Required: true, Type: String{}},
+}}
+
+// AnnouncementsUpdateInput validates PATCH /api/announcements/{id} bodies.
+var AnnouncementsUpdateInput = Object{Fields: []Field{
+	{Name: "title", Type: String{MinLength: 1, MaxLength: 200}},
+	{Name: "body", Type: String{}},
+	{Name: "author_id", Type: UUID{}},
+}}
+
 // UsersBanInput validates POST /api/users/{id}/ban bodies.
 var UsersBanInput = Object{Fields: []Field{
 	{Name: "reason", Required: true, Type: String{MinLength: 1, MaxLength: 200}},
@@ -86,6 +110,9 @@ var PostsLockInput = Object{}
 
 // PostsUnlockInput validates POST /api/posts/{id}/unlock bodies.
 var PostsUnlockInput = Object{}
+
+// AnnouncementsPublishInput validates POST /api/announcements/{id}/publish bodies.
+var AnnouncementsPublishInput = Object{}
 
 // SendDigestInput validates POST /api/actions/send_digest bodies.
 var SendDigestInput = Object{Fields: []Field{

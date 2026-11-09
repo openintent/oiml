@@ -6,6 +6,7 @@
 import type { ActionIR, EntityIR, GeneratedFile, IR, OperationIR, RelationIR, ResourceIR, RuleIR } from "@osl/core";
 import { actionsOf, globalActions } from "@osl/core";
 import {
+  hasVia,
   actionInputName,
   fileSpecsLiteral,
   fillEnums,
@@ -665,6 +666,18 @@ export function resourceRouterFile(ir: IR, resource: ResourceIR): string {
   const errorImports = new Set<string>(["parseId", "toTRPCError"]);
   const accessImports = new Set<string>(["checkRule"]);
   for (const name of listFilter?.access ?? []) accessImports.add(name);
+  if (entity.hidden === "not_found") accessImports.add("verdict");
+  /**
+   * The checks after a row is loaded: with hidden rows answered as not found, the read rule first (a hidden row
+   * answers 404), then the operation's own rule, both reading one resolution of the paths they follow.
+   */
+  const rowChecks = (own: RuleIR, rowVar: string, indent: string): { lines: string; arg: string } => {
+    if (entity.hidden !== "not_found") return { lines: "", arg: rowArg(own, rowVar) };
+    const via = hasVia(entity.rules.read) || hasVia(own);
+    const arg = via ? `${rowVar}Values` : rowVar;
+    const resolve = via ? `\n${indent}const ${arg} = await withRuleValues(${rowVar});` : "";
+    return { lines: `${resolve}\n${indent}if (!verdict(RULES.read, ctx.session, ${arg}).ok) throw notFound();`, arg };
+  };
   const usesEmit =
     ["created", "updated", "deleted"].some(a => events(a as "created").length > 0) ||
     actions.some(a => actionEvents(a.name).length > 0);
@@ -767,7 +780,11 @@ ${whereLines}
       throw toTRPCError(err, "read");
     });
     if (!row) throw notFound();
-    checkRule(RULES.read, ctx.session, ${rowArg(get.rule, "row")});
+    ${
+      entity.hidden === "not_found"
+        ? `if (!verdict(RULES.read, ctx.session, ${rowArg(get.rule, "row")}).ok) throw notFound();`
+        : `checkRule(RULES.read, ctx.session, ${rowArg(get.rule, "row")});`
+    }
     return presentGetRow(row);
   })`);
   }
@@ -808,6 +825,7 @@ ${emitLines.join("\n")}${timerLine}
     validationImports.add(`${resource.name}UpdateInput`);
     errorImports.add("notFound");
     const emitLines = events("updated").map(e => `      await emit(${q(e.name)}, present${T}(row));`);
+    const updateChecks = rowChecks(update.rule, "existing", "      ");
     procedures.push(`  update: publicProcedure
     .input(z.object({ id: ID, data: ${resource.name}UpdateInput }))
     .mutation(async ({ ctx, input }) => {
@@ -816,8 +834,8 @@ ${emitLines.join("\n")}${timerLine}
       const existing = await ${query}.findFirst({ where: eq(${table}.${pk}, id) }).catch(err => {
         throw toTRPCError(err, "read");
       });
-      if (!existing) throw notFound();
-      checkRule(RULES.update, ctx.session, ${rowArg(update.rule, "existing")});
+      if (!existing) throw notFound();${updateChecks.lines}
+      checkRule(RULES.update, ctx.session, ${updateChecks.arg});
       const hookContext: HookContext = { session: ctx.session, req: ctx.req };
       try {
         const patch = await hooks.beforeUpdate(existing, ${resolveFiles("input.data")}, hookContext);
@@ -835,14 +853,15 @@ ${emitLines.map(l => "  " + l).join("\n")}${timerLine}
   if (remove) {
     errorImports.add("notFound");
     const emitLines = events("deleted").map(e => `      await emit(${q(e.name)}, present${T}(existing));`);
+    const deleteChecks = rowChecks(remove.rule, "existing", "    ");
     procedures.push(`  delete: publicProcedure.input(z.object({ id: ID })).mutation(async ({ ctx, input }) => {
     checkRule(RULES.delete, ctx.session);
     const id = parseId(${resource.name}Id, input.id);
     const existing = await ${query}.findFirst({ where: eq(${table}.${pk}, id) }).catch(err => {
       throw toTRPCError(err, "read");
     });
-    if (!existing) throw notFound();
-    checkRule(RULES.delete, ctx.session, ${rowArg(remove.rule, "existing")});
+    if (!existing) throw notFound();${deleteChecks.lines}
+    checkRule(RULES.delete, ctx.session, ${deleteChecks.arg});
     const hookContext: HookContext = { session: ctx.session, req: ctx.req };
     try {
       await hooks.beforeDelete(existing, hookContext);
@@ -866,7 +885,8 @@ ${emitLines.join("\n")}
         pk,
         idName: `${resource.name}Id`,
         T,
-        actionEvents: actionEvents(action.name)
+        actionEvents: actionEvents(action.name),
+        checks: rowChecks(action.rule, "current", "    ")
       })
     );
   }
@@ -916,7 +936,16 @@ ${procedures.join(",\n\n")}
 function actionProcedure(
   ir: IR,
   action: ActionIR,
-  row: { table: string; query: string; pk: string; idName: string; T: string; actionEvents: IR["events"] } | null
+  row: {
+    table: string;
+    query: string;
+    pk: string;
+    idName: string;
+    T: string;
+    actionEvents: IR["events"];
+    /** The checks after the row is loaded (a hidden row's 404 when the entity asks for it) and the row the action's own check reads */
+    checks: { lines: string; arg: string };
+  } | null
 ): string {
   const input = actionInputName(action);
   const present = action.returns.kind === "entity" ? `present${row!.T}` : null;
@@ -938,8 +967,8 @@ function actionProcedure(
     const current = await ${row.query}.findFirst({ where: eq(${row.table}.${row.pk}, id) }).catch(err => {
       throw toTRPCError(err, "read");
     });
-    if (!current) throw notFound();
-    checkRule(${rulesRef}, ctx.session, ${rowArg(action.rule, "current")});
+    if (!current) throw notFound();${row.checks.lines}
+    checkRule(${rulesRef}, ctx.session, ${row.checks.arg});
     try {
       const result = await handlers.${action.handler}({ input, row: current, session: ctx.session, db, now: new Date() });
 ${emitLines.join("\n")}

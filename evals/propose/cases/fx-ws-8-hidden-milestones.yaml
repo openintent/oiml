@@ -1,0 +1,31 @@
+id: fx-ws-8-hidden-milestones
+tags: [fixture, entity, rules, relation, tenancy, scenario, app]
+base: { fixture: workspace, through: WS-7 }
+oracle: fixtures/workspace/intents/WS-8/diff.yaml
+intent:
+  title: Project milestones that outsiders cannot see exist
+  ask: >-
+    Teams track milestones on their projects: a title, a due date and whether it is done. Members of the project's
+    team add and edit milestones, and only a team admin removes one. Milestones belong to the team alone: someone
+    who is not a member of the project's team must not learn that a milestone exists, so opening, editing or
+    deleting one by its id answers as if there were none, not as forbidden. A visitor who is not signed in is
+    still asked to sign in.
+  acceptance:
+    - A member of another team opening, editing or deleting a milestone gets 404
+    - A member of the team reads a milestone; deleting it as a plain member is refused (403) and succeeds as an admin
+    - A visitor who is not signed in gets 401
+expect:
+  entities: ["Milestone|ProjectMilestone"]
+  relations: ["Milestone|ProjectMilestone.* -> Project"]
+  rules:
+    "Milestone|ProjectMilestone":
+      hidden: not_found
+      read: "member:project_id.team_id|member:project_id.team_id:member"
+      delete: "member:project_id.team_id:admin"
+  scenarios: { min: 1, rejections: 3, statuses: [404, 403, 401] }
+  touches: ["milestones|project_milestones"]
+notes: >-
+  Hidden rows as not found under a member rule through a path: the read check resolves the project's team before
+  it can hide the row, so this case covers the resolved-path code (ruleRow, withRuleValues) the blog case does not.
+  The anonymous 401 is deliberate: a rule that needs a session answers before any row is loaded, the same for every
+  id, and the ask says so. A diff that answers the outsider 403 fails the rules check on purpose.

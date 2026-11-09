@@ -243,6 +243,8 @@ export interface EntityIR {
   indexes: { name: string; columns: string[]; unique: boolean }[];
   relations: RelationIR[];
   rules: { read: RuleIR; create: RuleIR; update: RuleIR; delete: RuleIR };
+  /** What a row the read rule hides answers when addressed by id: a refusal, or the 404 a missing row gets */
+  hidden: "forbidden" | "not_found";
   /** The column that names a row to a person: the first short string column, else the primary key */
   display: string;
   /** Owned by OSL (files, auth tokens): migrated and checked for drift, never exposed as a resource or page */
@@ -898,6 +900,7 @@ export function compile(input: Model): IR {
           conditionOn(entityName)
         )
       },
+      hidden: entity.rules?.hidden ?? "forbidden",
       display: displayColumn(columns, primaryKey, foreignKeys)
     };
     if (isSystem) compiled.system = true;

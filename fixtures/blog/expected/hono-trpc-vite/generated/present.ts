@@ -19,6 +19,11 @@ export function presentComment(row: schema.Comment): PublicComment {
   return { id: row.id, body: row.body, article_id: row.article_id, author_id: row.author_id, created_at: row.created_at };
 }
 
+export type PublicAnnouncement = Pick<schema.Announcement, "id" | "title" | "body" | "published" | "author_id" | "created_at">;
+export function presentAnnouncement(row: schema.Announcement): PublicAnnouncement {
+  return { id: row.id, title: row.title, body: row.body, published: row.published, author_id: row.author_id, created_at: row.created_at };
+}
+
 export type PublicOslFile = Pick<schema.OslFile, "id" | "key" | "name" | "size" | "type" | "status" | "owner_id" | "created_at">;
 export function presentOslFile(row: schema.OslFile): PublicOslFile {
   return { id: row.id, key: row.key, name: row.name, size: row.size, type: row.type, status: row.status, owner_id: row.owner_id, created_at: row.created_at };

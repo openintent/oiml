@@ -77,6 +77,13 @@ export const client = {
     create: (input: Inputs["notes"]["create"]) => trpc.notes.create.mutate(input),
     update: (input: Inputs["notes"]["update"]) => trpc.notes.update.mutate(input),
     delete: (input: Inputs["notes"]["delete"]) => trpc.notes.delete.mutate(input)
+  },
+  milestones: {
+    list: (input: Inputs["milestones"]["list"]) => trpc.milestones.list.query(input),
+    get: (input: Inputs["milestones"]["get"]) => trpc.milestones.get.query(input),
+    create: (input: Inputs["milestones"]["create"]) => trpc.milestones.create.mutate(input),
+    update: (input: Inputs["milestones"]["update"]) => trpc.milestones.update.mutate(input),
+    delete: (input: Inputs["milestones"]["delete"]) => trpc.milestones.delete.mutate(input)
   }
 };
 

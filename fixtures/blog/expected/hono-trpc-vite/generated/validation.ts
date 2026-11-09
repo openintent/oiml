@@ -70,6 +70,29 @@ export const commentsUpdateInput = z
   })
   .strict();
 
+export const announcementsId = z.string().uuid();
+export const announcementsListQuery = z
+  .object({
+    page: z.number().int().min(1).default(1),
+    page_size: z.number().int().min(1).max(200).default(20),
+    published: z.boolean().optional(),
+    author_id: z.string().uuid().optional()
+  })
+  .strict();
+export const announcementsCreateInput = z
+  .object({
+    title: z.string().min(1).max(200),
+    body: z.string()
+  })
+  .strict();
+export const announcementsUpdateInput = z
+  .object({
+    title: z.string().min(1).max(200).optional(),
+    body: z.string().optional(),
+    author_id: z.string().uuid().optional()
+  })
+  .strict();
+
 export const usersBanInput = z
   .object({
     reason: z.string().min(1).max(200)
@@ -88,6 +111,9 @@ export type PostsLockInput = z.infer<typeof postsLockInput>;
 
 export const postsUnlockInput = z.object({}).strict();
 export type PostsUnlockInput = z.infer<typeof postsUnlockInput>;
+
+export const announcementsPublishInput = z.object({}).strict();
+export type AnnouncementsPublishInput = z.infer<typeof announcementsPublishInput>;
 
 export const sendDigestInput = z
   .object({

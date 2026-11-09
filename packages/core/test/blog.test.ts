@@ -27,7 +27,8 @@ describe("blog fixture", () => {
       "FEAT-7",
       "FEAT-8",
       "FEAT-9",
-      "FEAT-10"
+      "FEAT-10",
+      "FEAT-11"
     ]);
 
     for (const id of ids) {
@@ -38,7 +39,7 @@ describe("blog fixture", () => {
     expect(again.status).toBe("noop");
 
     const project = await loadProject(root);
-    expect(project.lock.revisions).toHaveLength(10);
+    expect(project.lock.revisions).toHaveLength(11);
     const ir = project.ir;
 
     const article = ir.entities.find(e => e.name === "Article")!;
@@ -85,7 +86,8 @@ describe("blog fixture", () => {
       "comments and moderation",
       "banning",
       "scheduled publishing",
-      "locked articles"
+      "locked articles",
+      "private drafts"
     ]);
     expect(ir.examples.seed.map(s => s.op)).toEqual(["posts.create", "posts.create"]);
     expect(ir.actions.map(a => `${a.resource ?? "actions"}.${a.name}:${a.scope}`)).toEqual([
@@ -94,6 +96,7 @@ describe("blog fixture", () => {
       "posts.unpublish_all:collection",
       "posts.lock:row",
       "posts.unlock:row",
+      "announcements.publish:row",
       "actions.send_digest:global"
     ]);
     const publish = ir.actions.find(a => a.handler === "posts_publish");

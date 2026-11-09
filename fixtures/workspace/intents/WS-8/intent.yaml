@@ -1,0 +1,12 @@
+osl: "1.0"
+title: Project milestones that outsiders cannot see exist
+ask: >-
+  Teams track milestones on their projects: a title, a due date and whether it is done. Members of the project's
+  team add and edit milestones, and only a team admin removes one. Milestones belong to the team alone: someone
+  who is not a member of the project's team must not learn that a milestone exists, so opening, editing or
+  deleting one by its id answers as if there were none, not as forbidden. A visitor who is not signed in is
+  still asked to sign in.
+acceptance:
+  - A member of another team opening, editing or deleting a milestone gets 404
+  - A member of the team reads a milestone; deleting it as a plain member is refused (403) and succeeds as an admin
+  - A visitor who is not signed in gets 401

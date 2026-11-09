@@ -220,6 +220,15 @@ export function predicateParts(
   return role !== undefined ? { kind, path, role } : { kind, path };
 }
 
+/** Whether a rule can hide one row and allow another: an owner or member predicate, or a condition, somewhere in it */
+export function ruleHidesRows(rule: string | undefined): boolean {
+  if (!rule) return false;
+  return rulePredicates(rule).some(predicate => {
+    const { base, when } = splitWhen(predicate);
+    return when !== undefined || base.startsWith("owner:") || base.startsWith("member:");
+  });
+}
+
 /** The field an owner predicate without a path names, when the rule has one (inside a conjunction too): on create it is set from the session */
 export function directOwnerField(rule: string | undefined): string | undefined {
   for (const predicate of rulePredicates(rule ?? "")) {
@@ -229,8 +238,21 @@ export function directOwnerField(rule: string | undefined): string | undefined {
   return undefined;
 }
 
+/** What a row the read rule hides answers when addressed by id: a refusal (401 or 403), or the 404 a missing row gets */
+export const HiddenRows = z.enum(["forbidden", "not_found"]);
+export type HiddenRows = z.infer<typeof HiddenRows>;
+
+export const RULE_OPERATIONS = ["read", "create", "update", "delete"] as const;
+
 export const Rules = z
-  .object({ read: Rule.optional(), create: Rule.optional(), update: Rule.optional(), delete: Rule.optional() })
+  .object({
+    read: Rule.optional(),
+    create: Rule.optional(),
+    update: Rule.optional(),
+    delete: Rule.optional(),
+    /** not_found: a get, update, delete or row action of a row the read rule hides answers 404 like a missing row */
+    hidden: HiddenRows.optional()
+  })
   .strict();
 export type Rules = z.infer<typeof Rules>;
 
@@ -928,9 +950,16 @@ export function validateModel(model: Model): Diagnostic[] {
           fpath
         );
     }
-    for (const [action, rule] of Object.entries(entity.rules ?? {})) {
+    for (const action of RULE_OPERATIONS) {
+      const rule = entity.rules?.[action];
       if (rule) checkRule(rule, entityName, `${base}.rules.${action}`, true);
     }
+    if (entity.rules?.hidden === "not_found" && !ruleHidesRows(entity.rules.read))
+      warn(
+        "M035",
+        "rules.hidden has no effect: the read rule allows or refuses every row alike, so no row is ever hidden",
+        `${base}.rules.hidden`
+      );
     for (const [i, index] of (entity.indexes ?? []).entries()) {
       for (const f of index.fields)
         if (!fieldNames.has(f)) error("M030", `index field ${f} does not exist`, `${base}.indexes[${i}]`);

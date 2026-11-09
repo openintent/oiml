@@ -303,6 +303,46 @@ const DENY_ROW = (ruleVar: string, rule: RuleIR, rowLiteral: string, op: "read" 
     ? `\truleRow, err := h.ruleRow(ctx, ${rowLiteral})\n${fail(op)}\n\tif verdict := access.CheckRow(${ruleVar}, session, ruleRow); verdict != nil {\n\t\taccess.Deny(c, verdict)\n\t\treturn\n\t}`
     : `\tif verdict := access.CheckRow(${ruleVar}, session, ${rowLiteral}); verdict != nil {\n\t\taccess.Deny(c, verdict)\n\t\treturn\n\t}`;
 
+/** Answer not found when the read rule hides the row from the caller, so a hidden row looks like a missing one (Get) */
+const HIDE_ROW = (ruleVar: string, rule: RuleIR, rowLiteral: string, op: "read" | "write" | "delete") =>
+  hasVia(rule)
+    ? `\truleRow, err := h.ruleRow(ctx, ${rowLiteral})\n${fail(op)}\n\tif access.CheckRow(${ruleVar}, session, ruleRow) != nil {\n\t\thttpx.Fail(c, httpx.NotFound())\n\t\treturn\n\t}`
+    : `\tif access.CheckRow(${ruleVar}, session, ${rowLiteral}) != nil {\n\t\thttpx.Fail(c, httpx.NotFound())\n\t\treturn\n\t}`;
+
+/**
+ * The checks of an operation that loaded a row: with hidden rows answered as not found, the read rule first (a
+ * hidden row answers 404), then the operation's own rule; one ruleRow resolution serves both when paths are involved.
+ */
+function rowChecks(
+  entity: EntityIR,
+  readVar: string,
+  ownVar: string,
+  own: RuleIR,
+  rowVar: string,
+  op: "read" | "write" | "delete",
+  allRules: RuleIR[]
+): string {
+  const hidden = entity.hidden === "not_found";
+  const read = entity.rules.read;
+  const readVia = hidden && hasVia(read);
+  const ownVia = hasVia(own);
+  const lines: string[] = [];
+  if (readVia || ownVia) {
+    const columns = [
+      ...new Set([...(readVia ? rowColumns(read, allRules) : []), ...(ownVia ? rowColumns(own, allRules) : [])])
+    ];
+    lines.push(`\truleRow, err := h.ruleRow(ctx, ${rowFromStruct(columns, rowVar)})`, fail(op));
+  }
+  if (hidden)
+    lines.push(
+      `\tif access.CheckRow(${readVar}, session, ${readVia ? "ruleRow" : rowFromStruct(rowColumns(read, allRules), rowVar)}) != nil {\n\t\thttpx.Fail(c, httpx.NotFound())\n\t\treturn\n\t}`
+    );
+  lines.push(
+    `\tif verdict := access.CheckRow(${ownVar}, session, ${ownVia ? "ruleRow" : rowFromStruct(rowColumns(own, allRules), rowVar)}); verdict != nil {\n\t\taccess.Deny(c, verdict)\n\t\treturn\n\t}`
+  );
+  return lines.join("\n");
+}
+
 const PARSE_ID = (idFn: string) =>
   `\tid, ok := validation.${idFn}(c.Param("id"))\n\tif !ok {\n\t\thttpx.Fail(c, httpx.NotFound())\n\t\treturn\n\t}`;
 
@@ -464,7 +504,9 @@ function actionHandlerMethod(
     );
     lines.push(fail("write"));
     const allRules = [...Object.values(row.entity.rules), ...actionsOf(ir, row.resource.name).map(a => a.rule)];
-    lines.push(DENY_ROW(ruleVar, action.rule, rowFromStruct(rowColumns(action.rule, allRules), "row"), "write"));
+    lines.push(
+      rowChecks(row.entity, `${local(row.resource.name)}ReadRule`, ruleVar, action.rule, "row", "write", allRules)
+    );
     args.push("row");
   }
   lines.push(PARSE_BODY(`validation.${actionInputVar(action)}`, "values"));
@@ -680,7 +722,7 @@ ${DENY(ruleVar("read"))}
 ${PARSE_ID(idFunc(resource))}
 	row, err := ${scan}(h.db.QueryRow(ctx, \`SELECT \`+${columnsC}+\` FROM \`+${tableC}+\` WHERE ${pkIdent} = $1\`, id))
 ${fail("read")}
-${DENY_ROW(ruleVar("read"), entity.rules.read, rowFromStruct(rowColumns(entity.rules.read, allRules), "row"), "read")}
+${(entity.hidden === "not_found" ? HIDE_ROW : DENY_ROW)(ruleVar("read"), entity.rules.read, rowFromStruct(rowColumns(entity.rules.read, allRules), "row"), "read")}
 ${body}
 }`);
   }
@@ -748,7 +790,7 @@ ${DENY(ruleVar("update"))}
 ${PARSE_ID(idFunc(resource))}
 	existing, err := ${scan}(h.db.QueryRow(ctx, \`SELECT \`+${columnsC}+\` FROM \`+${tableC}+\` WHERE ${pkIdent} = $1\`, id))
 ${fail("write")}
-${DENY_ROW(ruleVar("update"), entity.rules.update, rowFromStruct(rowColumns(entity.rules.update, allRules), "existing"), "write")}
+${rowChecks(entity, ruleVar("read"), ruleVar("update"), entity.rules.update, "existing", "write", allRules)}
 ${PARSE_BODY(`validation.${inputVar(resource, "update")}`, "patch")}
 ${resolveFiles("patch")}	hookCtx := &hooks.Context{Gin: c, Session: session}
 	patch, err = ${hooksPkg}.BeforeUpdate(hookCtx, existing, patch)
@@ -780,7 +822,7 @@ ${DENY(ruleVar("delete"))}
 ${PARSE_ID(idFunc(resource))}
 	existing, err := ${scan}(h.db.QueryRow(ctx, \`SELECT \`+${columnsC}+\` FROM \`+${tableC}+\` WHERE ${pkIdent} = $1\`, id))
 ${fail("delete")}
-${DENY_ROW(ruleVar("delete"), entity.rules.delete, rowFromStruct(rowColumns(entity.rules.delete, allRules), "existing"), "delete")}
+${rowChecks(entity, ruleVar("read"), ruleVar("delete"), entity.rules.delete, "existing", "delete", allRules)}
 	hookCtx := &hooks.Context{Gin: c, Session: session}
 	if err := ${hooksPkg}.BeforeDelete(hookCtx, existing); err != nil {
 		httpx.HandleError(c, err, "delete")

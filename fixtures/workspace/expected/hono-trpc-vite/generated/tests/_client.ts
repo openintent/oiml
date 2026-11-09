@@ -40,6 +40,12 @@ const COERCE: Record<string, Record<string, "int" | "number" | "boolean" | "stri
     "page": "int",
     "page_size": "int",
     "project_id": "string"
+  },
+  "milestones.list": {
+    "page": "int",
+    "page_size": "int",
+    "project_id": "string",
+    "done": "boolean"
   }
 };
 

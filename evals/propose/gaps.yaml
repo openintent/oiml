@@ -36,7 +36,7 @@ gaps:
     kind: not_delivered
     status: open
     first_seen: run6-rules-opus-5-5
-    last_seen: r6
+    last_seen: r7
     cases: 3
     note: Where the SaaS set starts; needs an invitation that an account not yet registered can accept.
   - key: rule conjunctions
@@ -61,7 +61,7 @@ gaps:
     kind: not_delivered
     status: declined
     first_seen: run6-rules-opus-5-5
-    last_seen: r6
+    last_seen: r7
     cases: 2
     note: No push or subscriptions in the model; the reference says so.
   - key: server-owned fields
@@ -85,7 +85,7 @@ gaps:
     kind: not_delivered
     status: open
     first_seen: r2
-    last_seen: r6
+    last_seen: r7
     cases: 2
   - key: uniqueness and constraints
     kind: not_delivered
@@ -138,7 +138,7 @@ gaps:
     kind: not_delivered
     status: open
     first_seen: r5
-    last_seen: r5
+    last_seen: r7
     cases: 1
   - key: sign-in flow settings
     kind: not_delivered
@@ -152,21 +152,25 @@ gaps:
     first_seen: r6
     last_seen: r6
     cases: 1
-    note: A list cannot include a row reached through a junction (course -> course_instructors -> user), so
-      many-to-many shows ids where names are wanted.
+    note: A list cannot include a row reached through a junction (course -> course_instructors -> user),
+      so many-to-many shows ids where names are wanted.
   - key: hidden rows as not found
     kind: not_delivered
-    status: open
+    status: built
     first_seen: r6
     last_seen: r6
     cases: 3
-    note: A get of a row the read rule hides answers 401 or 403; agents keep wanting 404 so a hidden row's
-      existence does not leak. A candidate setting on the read rule or the resource.
+    construct: "rules.hidden: not_found (a get, update, delete or row action of a row the read rule
+      hides answers the 404 a missing row gets)"
+    version: unreleased
+    note: Built 2026-11-09 with blog FEAT-11 (announcements with private drafts) and workspace WS-8
+      (project milestones through a member path); the check before the row is loaded still answers
+      401 or 403.
   - key: timers before a date
     kind: not_delivered
     status: open
     first_seen: r6
-    last_seen: r6
+    last_seen: r7
     cases: 1
     note: A timer fires at the field plus after; nothing fires before it (a reminder 24h ahead of an
       event, an RSVP cutoff). A negative offset or a before duration on timers.
@@ -176,5 +180,23 @@ gaps:
     first_seen: r6
     last_seen: r6
     cases: 2
-    note: By design, an action's body is a handler osl implement writes; a scenario checks what the handler
-      did, not how. Not a gap in the model.
+    note: By design, an action's body is a handler osl implement writes; a scenario checks what the
+      handler did, not how. Not a gap in the model.
+  - key: shared secrets and access codes
+    kind: not_delivered
+    status: open
+    first_seen: r7
+    last_seen: r7
+    cases: 1
+  - key: dashboard panels beyond counts
+    kind: not_delivered
+    status: open
+    first_seen: r7
+    last_seen: r7
+    cases: 1
+  - key: timers on date fields
+    kind: not_delivered
+    status: open
+    first_seen: r7
+    last_seen: r7
+    cases: 1

@@ -1,0 +1,122 @@
+osl: "1.0"
+summary: Announcements whose drafts answer not found to everyone but the author and admins; publish is a row action
+ops:
+  - op: add_entity
+    name: Announcement
+    entity:
+      fields:
+        id: { type: uuid, primary: true }
+        title: { type: string, max_length: 200, required: true, validate: { min_length: 1 } }
+        body: { type: text, required: true }
+        published:
+          { type: boolean, required: true, default: false, read_only: true, description: Set by the publish action }
+        author_id:
+          type: uuid
+          required: true
+          relation: { entity: User, name: author, on_delete: cascade }
+        created_at: { type: datetime, required: true, default: now }
+      rules:
+        read: "public when published = true or owner:author_id or role:admin"
+        create: "owner:author_id"
+        update: "owner:author_id or role:admin"
+        delete: "owner:author_id or role:admin"
+        hidden: not_found
+  - op: add_resource
+    name: announcements
+    resource:
+      entity: Announcement
+      operations: [list, get, create, update, delete]
+      list: { filters: [published, author_id], order: [[created_at, desc]], include: [author] }
+      get: { include: [author] }
+      actions:
+        publish:
+          description: Publish the announcement
+          rule: "owner:author_id or role:admin"
+  - op: add_page
+    name: announcements
+    page:
+      resource: announcements
+      layout: table
+      columns: [title, published, created_at]
+      fields: [title, body, published, author_id, created_at]
+  - op: set_sidebar
+    sidebar:
+      items:
+        - { page: overview, icon: house }
+        - { page: my_posts, icon: pen-line }
+        - { page: posts, icon: file-text }
+        - { page: announcements, icon: megaphone }
+        - { page: archive, icon: archive }
+        - { page: moderation, icon: shield }
+        - { page: users, icon: users }
+        - { page: about, icon: info }
+      footer: { user: true, settings: true }
+  - op: add_scenario
+    scenario:
+      name: private drafts
+      steps:
+        - as: alice
+          op: announcements.create
+          body: { title: Maintenance window, body: Saturday night }
+          expect: { status: 201, body: { data: { published: false, author_id: "{actor.id}" } } }
+          capture: { draft: data.id }
+        - op: announcements.get
+          path: { id: "{draft}" }
+          expect: { status: 404 }
+        - as: bob
+          op: announcements.get
+          path: { id: "{draft}" }
+          expect: { status: 404 }
+        - as: bob
+          op: announcements.update
+          path: { id: "{draft}" }
+          body: { title: Hijacked }
+          expect: { status: 404 }
+        - as: bob
+          op: announcements.delete
+          path: { id: "{draft}" }
+          expect: { status: 404 }
+        - as: bob
+          op: announcements.publish
+          path: { id: "{draft}" }
+          expect: { status: 404 }
+        - as: admin
+          op: announcements.get
+          path: { id: "{draft}" }
+          expect: { status: 200, body: { data: { title: Maintenance window } } }
+        - as: alice
+          op: announcements.get
+          path: { id: "{draft}" }
+          expect: { status: 200, body: { data: { published: false } } }
+        - op: announcements.list
+          expect: { status: 200, body: { data: [], page: { total: 0 } } }
+        - as: bob
+          op: announcements.list
+          expect: { status: 200, body: { data: [] } }
+        - as: alice
+          op: announcements.list
+          expect: { status: 200, body: { data: [{ title: Maintenance window }] } }
+        - op: announcements.publish
+          path: { id: "{draft}" }
+          expect: { status: 401 }
+        - as: alice
+          op: announcements.publish
+          path: { id: "{draft}" }
+          expect: { status: 200, body: { data: { published: true } } }
+        - op: announcements.get
+          path: { id: "{draft}" }
+          expect: { status: 200, body: { data: { title: Maintenance window, published: true } } }
+        - as: bob
+          op: announcements.update
+          path: { id: "{draft}" }
+          body: { title: Hijacked }
+          expect: { status: 403 }
+        - as: bob
+          op: announcements.get
+          path: { id: 6f1d2a3b-4c5d-4e6f-8a9b-0c1d2e3f4a5b }
+          expect: { status: 404 }
+        - as: admin
+          op: announcements.update
+          path: { id: "{draft}" }
+          body: { title: Window moved }
+          expect: { status: 200, body: { data: { title: Window moved } } }

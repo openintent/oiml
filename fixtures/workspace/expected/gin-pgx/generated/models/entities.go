@@ -344,6 +344,62 @@ func PresentNotes(rows []*Note) []PublicNote {
 	return out
 }
 
+// MilestoneTable is the quoted table of Milestone.
+const MilestoneTable = `"milestones"`
+
+// MilestoneColumns lists the columns of Milestone in model order, for SELECT and RETURNING.
+const MilestoneColumns = `"id", "project_id", "title", "due_on", "done"`
+
+// Milestone is a row of milestones.
+type Milestone struct {
+	ID        string    `json:"id"`
+	ProjectID string    `json:"project_id"`
+	Title     string    `json:"title"`
+	DueOn     time.Time `json:"due_on"`
+	Done      bool      `json:"done"`
+}
+
+// PublicMilestone is Milestone as the API returns it: hidden columns removed, dates rendered.
+type PublicMilestone struct {
+	ID        string `json:"id"`
+	ProjectID string `json:"project_id"`
+	Title     string `json:"title"`
+	DueOn     string `json:"due_on"`
+	Done      bool   `json:"done"`
+}
+
+// ScanMilestone reads one Milestone from a row selected with MilestoneColumns.
+func ScanMilestone(row Scanner) (*Milestone, error) {
+	var r Milestone
+	if err := row.Scan(&r.ID, &r.ProjectID, &r.Title, &r.DueOn, &r.Done); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// PresentMilestone returns the public shape of a Milestone.
+func PresentMilestone(row *Milestone) PublicMilestone {
+	return PublicMilestone{ID: row.ID, ProjectID: row.ProjectID, Title: row.Title, DueOn: FormatDate(row.DueOn), Done: row.Done}
+}
+
+// PresentMilestonePtr presents an optional Milestone; nil stays nil.
+func PresentMilestonePtr(row *Milestone) *PublicMilestone {
+	if row == nil {
+		return nil
+	}
+	out := PresentMilestone(row)
+	return &out
+}
+
+// PresentMilestones presents a list of Milestone, never nil.
+func PresentMilestones(rows []*Milestone) []PublicMilestone {
+	out := make([]PublicMilestone, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, PresentMilestone(row))
+	}
+	return out
+}
+
 // OslAuthTokenTable is the quoted table of OslAuthToken.
 const OslAuthTokenTable = `"osl_auth_tokens"`
 

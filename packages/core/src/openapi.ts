@@ -172,6 +172,11 @@ function ruleNote(rule: OperationIR["rule"]): string {
   return `${note.replace(/\.$/, "")}, only${conditionText(rule.when)}.`;
 }
 
+/** The sentence an operation that loads a row gains when the entity answers hidden rows as not found */
+function hiddenNote(entity: EntityIR | null, loadsRow: boolean): string {
+  return loadsRow && entity?.hidden === "not_found" ? " A row the read rule hides answers 404." : "";
+}
+
 function baseNote(rule: OperationIR["rule"]): string {
   switch (rule.kind) {
     case "public":
@@ -217,7 +222,8 @@ export function openapiDocument(ir: IR): Record<string, unknown> {
       const base = {
         tags: [resource.name],
         operationId: `${resource.name}_${op.kind}`,
-        description: ruleNote(op.rule),
+        description:
+          ruleNote(op.rule) + hiddenNote(entity, op.kind === "get" || op.kind === "update" || op.kind === "delete"),
         security: session
       };
       switch (op.kind) {
@@ -337,7 +343,7 @@ export function openapiDocument(ir: IR): Record<string, unknown> {
       tags: [tag],
       operationId: actionOperationId(action),
       summary: action.description ?? `${toTitleCase(action.name)}${action.resource ? ` (${action.resource})` : ""}`,
-      description: ruleNote(action.rule),
+      description: ruleNote(action.rule) + hiddenNote(entity, action.scope === "row"),
       security: session,
       parameters,
       ...(action.input.length

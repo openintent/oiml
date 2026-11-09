@@ -133,5 +133,32 @@ var NotesUpdateInput = Object{Fields: []Field{
 	{Name: "body", Type: String{MinLength: 1}},
 }}
 
+// MilestonesID parses a milestones id from the path.
+func MilestonesID(raw string) (string, bool) {
+	return ParseUUIDID(raw)
+}
+
+// MilestonesListQuery validates the GET /api/milestones query string.
+var MilestonesListQuery = Query{PageSize: 20, Filters: []Filter{
+	{Name: "project_id", Type: UUID{}},
+	{Name: "done", Type: Boolean{}},
+}}
+
+// MilestonesCreateInput validates POST /api/milestones bodies.
+var MilestonesCreateInput = Object{Fields: []Field{
+	{Name: "project_id", Required: true, Type: UUID{}},
+	{Name: "title", Required: true, Type: String{MinLength: 1, MaxLength: 200}},
+	{Name: "due_on", Required: true, Type: Date{}},
+	{Name: "done", Type: Boolean{}},
+}}
+
+// MilestonesUpdateInput validates PATCH /api/milestones/{id} bodies.
+var MilestonesUpdateInput = Object{Fields: []Field{
+	{Name: "project_id", Type: UUID{}},
+	{Name: "title", Type: String{MinLength: 1, MaxLength: 200}},
+	{Name: "due_on", Type: Date{}},
+	{Name: "done", Type: Boolean{}},
+}}
+
 // TasksRemindInput validates POST /api/tasks/{id}/remind bodies.
 var TasksRemindInput = Object{}

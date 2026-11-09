@@ -6,6 +6,7 @@ package handlers
 import (
 	"blog/generated/actions"
 	"blog/generated/models"
+	announcementspublish "blog/src/actions/announcements_publish"
 	postslock "blog/src/actions/posts_lock"
 	postspublish "blog/src/actions/posts_publish"
 	postsunlock "blog/src/actions/posts_unlock"
@@ -28,6 +29,9 @@ var PostsLock func(ctx *actions.Context, input actions.PostsLockInput, row *mode
 
 // PostsUnlock handles POST /api/posts/{id}/unlock; its body is src/actions/posts_unlock/handler.go.
 var PostsUnlock func(ctx *actions.Context, input actions.PostsUnlockInput, row *models.Article) (*models.Article, error) = postsunlock.Handle
+
+// AnnouncementsPublish handles POST /api/announcements/{id}/publish; its body is src/actions/announcements_publish/handler.go.
+var AnnouncementsPublish func(ctx *actions.Context, input actions.AnnouncementsPublishInput, row *models.Announcement) (*models.Announcement, error) = announcementspublish.Handle
 
 // SendDigest handles POST /api/actions/send_digest; its body is src/actions/send_digest/handler.go.
 var SendDigest func(ctx *actions.Context, input actions.SendDigestInput) (actions.SendDigestResult, error) = senddigest.Handle

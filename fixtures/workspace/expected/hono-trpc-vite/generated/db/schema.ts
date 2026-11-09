@@ -2,7 +2,7 @@
 // Do not edit: this file is rewritten on every osl generate.
 
 import { relations } from "drizzle-orm";
-import { boolean, index, pgEnum, pgTable, text, timestamp, unique, uuid, varchar } from "drizzle-orm/pg-core";
+import { boolean, date, index, pgEnum, pgTable, text, timestamp, unique, uuid, varchar } from "drizzle-orm/pg-core";
 
 export const teamMemberRoleEnum = pgEnum("team_member_role", ["owner", "admin", "member"]);
 export const projectStatusEnum = pgEnum("project_status", ["active", "archived"]);
@@ -74,6 +74,18 @@ export const notes = pgTable(
   t => [index("notes_project_id_idx").on(t.project_id), index("notes_author_id_idx").on(t.author_id)]
 );
 
+export const milestones = pgTable(
+  "milestones",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    project_id: uuid().notNull().references(() => projects.id, { onDelete: "cascade" }),
+    title: varchar({ length: 200 }).notNull(),
+    due_on: date().notNull(),
+    done: boolean().notNull().default(false)
+  },
+  t => [index("milestones_project_id_idx").on(t.project_id)]
+);
+
 export const oslAuthTokens = pgTable("osl_auth_tokens", {
   id: uuid().primaryKey().defaultRandom(),
   token_hash: varchar({ length: 255 }).notNull().unique(),
@@ -100,7 +112,8 @@ export const teamMembersRelations = relations(teamMembers, ({ one }) => ({
 export const projectsRelations = relations(projects, ({ one, many }) => ({
   team: one(teams, { fields: [projects.team_id], references: [teams.id], relationName: "team" }),
   tasks: many(tasks, { relationName: "project" }),
-  notes: many(notes, { relationName: "project" })
+  notes: many(notes, { relationName: "project" }),
+  milestones: many(milestones, { relationName: "project" })
 }));
 
 export const tasksRelations = relations(tasks, ({ one }) => ({
@@ -111,6 +124,10 @@ export const tasksRelations = relations(tasks, ({ one }) => ({
 export const notesRelations = relations(notes, ({ one }) => ({
   project: one(projects, { fields: [notes.project_id], references: [projects.id], relationName: "project" }),
   author: one(users, { fields: [notes.author_id], references: [users.id], relationName: "author" })
+}));
+
+export const milestonesRelations = relations(milestones, ({ one }) => ({
+  project: one(projects, { fields: [milestones.project_id], references: [projects.id], relationName: "project" })
 }));
 
 export type User = typeof users.$inferSelect;
@@ -125,5 +142,7 @@ export type Task = typeof tasks.$inferSelect;
 export type NewTask = typeof tasks.$inferInsert;
 export type Note = typeof notes.$inferSelect;
 export type NewNote = typeof notes.$inferInsert;
+export type Milestone = typeof milestones.$inferSelect;
+export type NewMilestone = typeof milestones.$inferInsert;
 export type OslAuthToken = typeof oslAuthTokens.$inferSelect;
 export type NewOslAuthToken = typeof oslAuthTokens.$inferInsert;

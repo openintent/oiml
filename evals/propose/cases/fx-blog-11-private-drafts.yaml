@@ -1,0 +1,33 @@
+id: fx-blog-11-private-drafts
+tags: [fixture, entity, rules, actions, relation, scenario, app]
+base: { fixture: blog, through: FEAT-10 }
+oracle: fixtures/blog/intents/FEAT-11/diff.yaml
+intent:
+  title: Announcements with private drafts
+  ask: >-
+    Staff post site announcements. Any signed-in user drafts one; a draft is visible only to its author and to
+    admins, and for everyone else it does not exist: opening, editing, deleting or publishing someone else's draft
+    answers as if there were no such announcement, not as forbidden. The author or an admin publishes it, and a
+    published announcement is readable by anyone, signed in or not. Only the author or an admin may edit or delete
+    an announcement, published or not.
+  acceptance:
+    - A visitor and another user opening a draft get 404; the author and an admin get it
+    - Another user editing, deleting or publishing someone else's draft gets 404
+    - Once published, anyone reads it, and another user editing it is refused (403)
+expect:
+  entities: ["Announcement|Notice|Bulletin"]
+  relations: ["Announcement|Notice|Bulletin.* -> User"]
+  rules:
+    "Announcement|Notice|Bulletin":
+      hidden: not_found
+      read: >-
+        public when published = true or owner:author_id or role:admin|public when published = true or
+        owner:author_id|public when status = published or owner:author_id or role:admin|public when is_published =
+        true or owner:author_id or role:admin
+  scenarios: { min: 1, rejections: 3, statuses: [404, 403] }
+  touches: ["announcements|notices|bulletins"]
+notes: >-
+  The first case of hidden rows answered as not found: `hidden: not_found` beside the rules turns the refusal of a
+  draft the read rule hides into the 404 a missing row gets, on get, update, delete and the publish action alike,
+  while an update of a visible row the update rule refuses stays 403. A diff that keeps the default and lets a draft
+  answer 401 or 403, or that leaves the 404 to not_delivered, fails the rules check on purpose.

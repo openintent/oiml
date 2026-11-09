@@ -41,8 +41,9 @@ table: posts            # optional, default snake_case plural of the name
 description: optional
 fields:
   <name>: Field         # order matters for the generated code
-rules: { read, create, update, delete }   # each: a predicate, or several joined with " or " (any allows) and " and " (all must)
+rules: { read, create, update, delete, hidden }   # each rule: a predicate, or several joined with " or " (any allows) and " and " (all must)
 # predicate: public | authenticated | none | owner:<field> | role:<value> | member:<field>[:<role>]; <field> may be a path (article_id.author_id)
+# hidden: forbidden (default) | not_found   # what a row the read rule hides answers when addressed by id
 indexes: [{ fields: [a, b], unique: false, name: optional }]
 unique: [[a, b]]        # multi-column unique constraints
 \`\`\`
@@ -67,6 +68,13 @@ member of the project's team create, and binds author_id to the session as a pla
 cannot file a note under another name. \`and\` binds tighter than \`or\` (\`a and b or c\`); \`none\` never belongs
 in a conjunction and \`public\` adds nothing to one (M034). When a conjunction refuses, the status is 401 only when the
 part that failed needed a session and there was none, otherwise 403.
+\`hidden: not_found\` beside the rules answers a get, update, delete or row action of a row the read rule hides from the
+caller with the same 404 a missing row gets, so a draft or another team's row does not reveal that it exists; the
+operation's own first check (401 without a session when every alternative needs one, 403 for a wrong role) still
+answers before the row is loaded, the same for every id. The default, \`forbidden\`, answers 401 or 403. Set
+\`not_found\` when the ask says a hidden row must look as if it did not exist (a 404, "never see", "does not exist
+for them"); keep the default when the ask says refused or says nothing. It has no effect when the read rule never
+hides a row (M035).
 \`owner:<field>\` needs auth; the field must be a relation to the identity entity (or the identity's own primary key).
 A path follows relation fields to a row that is not the one being accessed: \`owner:article_id.author_id\` on Comment is
 the author of the comment's article, \`member:project_id.team_id\` on Task is membership of the task's project's team.
@@ -138,8 +146,9 @@ case-insensitive substring. Writable fields exclude primary keys, hidden and rea
 \`include\` names relations: forward ones declared on the entity's fields and reverse ones declared with \`reverse\`.
 List returns \`{ data: [...], page: { page, page_size, total } }\`; get, create and update return \`{ data }\`; delete returns 204.
 Errors are \`{ error: { code, message } }\` with 400 validation, 401 no session, 403 the rule refuses (also a get of a row
-the read rule hides from this user: never 404), 404 no such row or an id with the wrong format, 409 conflict (a unique
-value already taken, or a delete another row still references).
+the read rule hides from this user, unless the entity sets \`hidden: not_found\`), 404 no such row, an id with the wrong
+format or, with \`hidden: not_found\`, a row the read rule hides, 409 conflict (a unique value already taken, or a delete
+another row still references).
 The identity entity cannot have a create operation; users register through \`POST /api/auth/register\`.
 
 ## Actions

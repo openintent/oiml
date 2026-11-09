@@ -33,6 +33,11 @@ export function presentNote(row: schema.Note): PublicNote {
   return { id: row.id, project_id: row.project_id, author_id: row.author_id, body: row.body, created_at: row.created_at };
 }
 
+export type PublicMilestone = Pick<schema.Milestone, "id" | "project_id" | "title" | "due_on" | "done">;
+export function presentMilestone(row: schema.Milestone): PublicMilestone {
+  return { id: row.id, project_id: row.project_id, title: row.title, due_on: row.due_on, done: row.done };
+}
+
 export type PublicOslAuthToken = Pick<schema.OslAuthToken, "id" | "token_hash" | "email" | "purpose" | "expires_at" | "created_at">;
 export function presentOslAuthToken(row: schema.OslAuthToken): PublicOslAuthToken {
   return { id: row.id, token_hash: row.token_hash, email: row.email, purpose: row.purpose, expires_at: row.expires_at, created_at: row.created_at };

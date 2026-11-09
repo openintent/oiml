@@ -49,6 +49,18 @@ const TOPICS: [topic: string, pattern: RegExp][] = [
     /\b(not (a )?404|never 404|404 (instead|rather)|answers? .{0,30}\b404\b|as if (it|they) did not exist|with a refusal, never)/i
   ],
   [
+    "shared secrets and access codes",
+    /\b(edit code|access code|passcode|invite code|secret code|write-only (field|code|secret)|secret sent with|carries the .{0,30}\b(code|secret|token)\b|shared[- ]secret|admin key|api[- ]key)\b/i
+  ],
+  [
+    "timers on date fields",
+    /\b(must be a datetime, not date|because it is a date, not a datetime|is a date, not a datetime|timer .{0,40}\bdate field|run off .{0,20}\bdate\b)/i
+  ],
+  [
+    "dashboard panels beyond counts",
+    /\b(wide banner|hero (banner|section)|featured .{0,30}\b(banner|panel|spotlight)|dashboard pages only have|only (have |has )?count tiles and recent|tiles and recent-row lists)\b/i
+  ],
+  [
     "timers before a date",
     /\b((timer|job)s? cannot (fire|run) before|fires? before (a|the|its)|before (a|the) (date|time|deadline|cutoff|start|event starts?)|\d+[ -]?(hours?|minutes?|days?|h|m|d) before|ahead of (the )?(date|time|start|deadline)|negative (offset|after|duration))/i
   ],

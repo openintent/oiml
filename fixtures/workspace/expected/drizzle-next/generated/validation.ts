@@ -132,5 +132,31 @@ export const notesUpdateInput = z
   })
   .strict();
 
+export const milestonesId = z.string().uuid();
+export const milestonesListQuery = z
+  .object({
+    page: z.coerce.number().int().min(1).default(1),
+    page_size: z.coerce.number().int().min(1).max(200).default(20),
+    project_id: z.string().uuid().optional(),
+    done: z.enum(["true", "false"]).transform(value => value === "true").optional()
+  })
+  .strict();
+export const milestonesCreateInput = z
+  .object({
+    project_id: z.string().uuid(),
+    title: z.string().min(1).max(200),
+    due_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    done: z.boolean().optional()
+  })
+  .strict();
+export const milestonesUpdateInput = z
+  .object({
+    project_id: z.string().uuid().optional(),
+    title: z.string().min(1).max(200).optional(),
+    due_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    done: z.boolean().optional()
+  })
+  .strict();
+
 export const tasksRemindInput = z.object({}).strict();
 export type TasksRemindInput = z.infer<typeof tasksRemindInput>;

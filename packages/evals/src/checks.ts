@@ -298,6 +298,11 @@ export function checkExpectations(expect: Expect, checked: Checked): string[] {
       continue;
     }
     for (const [op, want] of Object.entries(rules)) {
+      if (op === "hidden") {
+        if (!want.split("|").includes(irEntity.hidden))
+          fail(`${entity}.rules.hidden is ${irEntity.hidden}, expected ${want}`);
+        continue;
+      }
       const rule = irEntity.rules[op as keyof typeof irEntity.rules];
       if (!ruleMatches(want, rule)) fail(`${entity}.rules.${op} is ${ruleText(rule)}, expected ${want}`);
     }

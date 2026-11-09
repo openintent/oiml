@@ -24,6 +24,12 @@ const COERCE: Record<string, Record<string, "int" | "number" | "boolean" | "stri
     "page": "int",
     "page_size": "int",
     "article_id": "string"
+  },
+  "announcements.list": {
+    "page": "int",
+    "page_size": "int",
+    "published": "boolean",
+    "author_id": "string"
   }
 };
 

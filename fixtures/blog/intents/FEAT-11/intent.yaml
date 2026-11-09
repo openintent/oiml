@@ -1,0 +1,12 @@
+osl: "1.0"
+title: Announcements with private drafts
+ask: >-
+  Staff post site announcements. Any signed-in user drafts one; a draft is visible only to its author and to
+  admins, and for everyone else it does not exist: opening, editing, deleting or publishing someone else's draft
+  answers as if there were no such announcement, not as forbidden. The author or an admin publishes it, and a
+  published announcement is readable by anyone, signed in or not. Only the author or an admin may edit or delete
+  an announcement, published or not.
+acceptance:
+  - A visitor and another user opening a draft get 404; the author and an admin get it
+  - Another user editing, deleting or publishing someone else's draft gets 404
+  - Once published, anyone reads it, and another user editing it is refused (403)

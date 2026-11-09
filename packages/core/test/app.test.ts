@@ -80,6 +80,7 @@ describe("app section", () => {
       ["Home", "/", "house"],
       ["My articles", "/my-posts", "pen-line"],
       ["Posts", "/posts", "file-text"],
+      ["Announcements", "/announcements", "megaphone"],
       ["Archive", "/archive", "archive"],
       ["Moderation", "/moderation", "shield"],
       ["Users", "/users", "users"],

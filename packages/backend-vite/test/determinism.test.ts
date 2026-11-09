@@ -49,7 +49,9 @@ describe("hono-trpc-vite backend", () => {
     expect(paths).toContain("src/routes/about.tsx");
     expect(paths).toContain("src/components/app-sidebar.tsx");
     const nav = files.find(f => f.path === "generated/app/nav.ts")!.content;
-    expect(nav).toContain('import { Archive, FileText, House, Info, PenLine, Shield, Users } from "lucide-react";');
+    expect(nav).toContain(
+      'import { Archive, FileText, House, Info, Megaphone, PenLine, Shield, Users } from "lucide-react";'
+    );
     expect(nav).toContain("footer: { user: true, settings: true }");
     // the identity page has no create, so no "new" route
     expect(paths).not.toContain("src/routes/users.new.tsx");

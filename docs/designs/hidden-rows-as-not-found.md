@@ -1,5 +1,16 @@
 # Design: hidden rows as not found
 
+**Status: built 2026-11-09.** What changed from the design below while building: nothing in the grammar or the
+statuses; the hidden-row check and the operation's own check share one resolution of the paths they follow (one
+`withRuleValues` call, one `ruleRow` query) rather than two; the blog scenario's anonymous read after publishing
+does not name the author, since the banning scenario renames her earlier in the same run. Proof: blog FEAT-11
+(announcements with private drafts), workspace WS-8 (project milestones), conformance 9/9 on all backends (blog 127,
+workspace 126, todo 39 tests per backend), the oracle grader 25/25, rounds 1 to 6 re-graded without loss, eval cases
+`fx-blog-11-private-drafts`, `fx-ws-8-hidden-milestones` and `blog5-newsroom-drafts` (the newsroom ask of round 6).
+Round r7 (seed 53, ten intents, `--no-full`, $1.49) had nine valid diffs and one honest decline (an edit code sent
+with each request), one diff setting `hidden: not_found` unprompted on a club forum's private spaces, and the cluster
+gone; its regression flags were other gaps in borrowed words, now topics of their own.
+
 The top open gap after the relations round, and the one agents have asked for in every round since r2: a get of a
 row the read rule hides answers 401 or 403, and the ask wanted 404, so that a draft, another tenant's course or
 another user's task does not announce that it exists. The reference says the opposite today ("a get of a row the

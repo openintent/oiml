@@ -8,6 +8,7 @@ import { membersRouter } from "./resources/members";
 import { projectsRouter } from "./resources/projects";
 import { tasksRouter } from "./resources/tasks";
 import { notesRouter } from "./resources/notes";
+import { milestonesRouter } from "./resources/milestones";
 import { router } from "./trpc";
 
 export const appRouter = router({
@@ -17,7 +18,8 @@ export const appRouter = router({
   members: membersRouter,
   projects: projectsRouter,
   tasks: tasksRouter,
-  notes: notesRouter
+  notes: notesRouter,
+  milestones: milestonesRouter
 });
 
 export type AppRouter = typeof appRouter;

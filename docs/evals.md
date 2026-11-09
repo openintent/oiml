@@ -186,6 +186,19 @@ borrowed words, and became topics: hidden rows answered 404 rather than 403 (thr
 date, pages per tenant (already a topic), live counts (declined), and handler-stub notes (declined, by design). Top
 of the backlog now: hidden rows as not found, computed and aggregate fields, pages with parameters, invites.
 
+The fifth turn built hidden rows as not found (`docs/designs/hidden-rows-as-not-found.md`): `hidden: not_found`
+beside an entity's rules answers a get, update, delete or row action of a row the read rule hides with the 404 a
+missing row gets, after the operation's own first check (401 or 403 before any row is loaded, the same for every
+id); the default `forbidden` keeps the earlier statuses, and M035 warns when the read rule never hides a row. Blog
+FEAT-11 (announcements with private drafts) and workspace WS-8 (project milestones under a member path) prove it on
+every backend, the second covering the resolved-path code, and the two checks share one resolution of the paths.
+Rounds 1 to 6 re-graded without loss; round 7 (seed 53, ten intents, `--no-full`, $1.49) had nine valid diffs and
+one honest decline (an edit code sent with every request, which no rule can check), one diff setting
+`hidden: not_found` unprompted, and the cluster gone. Its four regression flags were again other gaps in borrowed
+words and became topics: shared secrets and access codes, timers on date fields (a timer wants a `date` field),
+dashboard panels beyond counts (a featured article as a banner). Top of the backlog now: computed and aggregate
+fields, invites, realtime and live updates, sequences and reference numbers.
+
 ### One command per round
 
 `pnpm evals:round [--round name] [--count n] [--seed n] [--no-full] [--max-cost usd]` is the unit the loop repeats:
