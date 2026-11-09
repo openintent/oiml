@@ -8,6 +8,7 @@ import {
   EVENT_ON_PATTERN,
   OAUTH_PRESETS,
   defaultPagePath,
+  durationSeconds,
   loadModel,
   predicateParts,
   splitWhen,
@@ -311,6 +312,35 @@ export interface FilesIR {
   read: RuleIR;
 }
 
+/** A handler the queue runs as the system: the action's handler, resolved */
+export interface SystemRunIR {
+  /** Resource of a collection or row action; absent for a global action */
+  resource?: string;
+  action: string;
+  handler: string;
+}
+
+export interface ScheduleIR {
+  /** Unique within the model: the handler name, numbered when scheduled twice */
+  name: string;
+  cron: string;
+  run: SystemRunIR;
+  input: Record<string, string | number | boolean>;
+}
+
+export interface TimerIR {
+  /** Unique within the model */
+  name: string;
+  entity: string;
+  table: string;
+  /** The datetime column the due time comes from */
+  column: string;
+  afterSeconds: number;
+  run: SystemRunIR;
+  /** Checked again when the job fires */
+  when?: RuleConditionIR;
+}
+
 export interface EventIR {
   name: string;
   handler: string;
@@ -328,7 +358,7 @@ export interface StepIR {
   name?: string;
   as?: string;
   op: string;
-  kind: "resource" | "action" | "auth" | "file";
+  kind: "resource" | "action" | "auth" | "file" | "timer" | "schedule" | "email";
   resource?: string;
   /** resource steps: the operation; action steps: the action name; auth and file steps: their operation */
   operation: string;
@@ -440,7 +470,9 @@ export interface IR {
   /** Every action, resource-bound ones with `resource` set */
   actions: ActionIR[];
   events: EventIR[];
-  /** Present when any event is delivered through the queue */
+  schedules: ScheduleIR[];
+  timers: TimerIR[];
+  /** Present when any event is delivered through the queue, or a schedule or timer exists */
   jobs?: { queue: true };
   examples: ExamplesIR;
   app?: AppIR;
@@ -1102,6 +1134,15 @@ export function compile(input: Model): IR {
         };
         break;
       }
+      case "timer":
+        resolved = { kind: "timer", operation: "run", method: "POST", pathTemplate: "/api/osl-hooks/timers/run" };
+        break;
+      case "schedule":
+        resolved = { kind: "schedule", operation: "run", method: "POST", pathTemplate: "/api/osl-hooks/schedules/run" };
+        break;
+      case "email":
+        resolved = { kind: "email", operation: "sent", method: "GET", pathTemplate: "/api/osl-hooks/emails" };
+        break;
       case "file":
         resolved =
           target.operation === "upload"
@@ -1243,6 +1284,42 @@ export function compile(input: Model): IR {
     }
   }
 
+  // Schedules and timers run action handlers as the system through the job queue
+  const systemRun = (run: string): SystemRunIR => {
+    const [ns, name] = run.split(".");
+    const action = actions.find(a => a.name === name && (ns === "actions" ? !a.resource : a.resource === ns))!;
+    return action.resource
+      ? { resource: action.resource, action: action.name, handler: action.handler }
+      : { action: action.name, handler: action.handler };
+  };
+  const scheduleNames = new Map<string, number>();
+  const schedules: ScheduleIR[] = model.schedules.map(sch => {
+    const run = systemRun(sch.run);
+    const seen = (scheduleNames.get(run.handler) ?? 0) + 1;
+    scheduleNames.set(run.handler, seen);
+    return { name: seen === 1 ? run.handler : `${run.handler}_${seen}`, cron: sch.cron, run, input: sch.input ?? {} };
+  });
+  const timerNames = new Map<string, number>();
+  const timers: TimerIR[] = model.timers.map(t => {
+    const run = systemRun(t.run);
+    const base = `${toSnakeCase(t.on)}_${t.at}`;
+    const seen = (timerNames.get(base) ?? 0) + 1;
+    timerNames.set(base, seen);
+    const timer: TimerIR = {
+      name: seen === 1 ? base : `${base}_${seen}`,
+      entity: t.on,
+      table: tableOf(t.on),
+      column: t.at,
+      afterSeconds: t.after ? durationSeconds(t.after) : 0,
+      run
+    };
+    if (t.when) {
+      const [field, op, value] = t.when.split(" ");
+      timer.when = conditionOn(t.on)(field, op === "=" ? "eq" : "ne", value);
+    }
+    return timer;
+  });
+
   const ir: IR = {
     version: "2.0",
     name: model.name,
@@ -1256,7 +1333,9 @@ export function compile(input: Model): IR {
     resources,
     actions,
     events,
-    jobs: events.some(e => e.delivery === "queue") ? { queue: true } : undefined,
+    schedules,
+    timers,
+    jobs: events.some(e => e.delivery === "queue") || schedules.length || timers.length ? { queue: true } : undefined,
     examples,
     app
   };

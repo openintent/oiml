@@ -124,6 +124,18 @@ describe("gap report", () => {
     expect(gapTopic("The model cannot require go_live_at only for cards whose status is scheduled")).toBe(
       "conditional validation"
     );
+    expect(gapTopic("The PRJ-0042 format: the model has no sequence or format construct")).toBe(
+      "sequences and reference numbers"
+    );
+    expect(
+      gapTopic("A separate public URL for each organisation's roadmap: pages cannot take the organisation from the URL")
+    ).toBe("pages with parameters");
+    expect(
+      gapTopic("Sending a new Google user to the teams page after sign-in: no setting for where a sign-in lands")
+    ).toBe("sign-in flow settings");
+    expect(gapTopic("A task's read rule can only check the task's own fields, not whether its project is public")).toBe(
+      "conditions through relations"
+    );
     expect(
       gapTopic("The article appearing in the public list at its scheduled time depends on that automatic publishing")
     ).toBe("scheduled and recurring work");

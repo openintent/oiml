@@ -157,7 +157,7 @@ export const tasks = {
       if (!rowVerdict.ok) return denied(rowVerdict);
       const body = await parseBody(tasksCompleteInput, request);
       if (!body.ok) return body.response;
-      const result = await handlers.tasks_complete({ input: body.data, row: current, session, db });
+      const result = await handlers.tasks_complete({ input: body.data, row: current, session, db, now: new Date() });
 
       return ok(presentTask(result));
     } catch (err) {
@@ -173,7 +173,7 @@ export const tasks = {
       if (!verdict.ok) return denied(verdict);
       const body = await parseBody(tasksClearDoneInput, request);
       if (!body.ok) return body.response;
-      const result = await handlers.tasks_clear_done({ input: body.data, row: undefined, session, db });
+      const result = await handlers.tasks_clear_done({ input: body.data, row: undefined, session, db, now: new Date() });
 
       return ok(result);
     } catch (err) {

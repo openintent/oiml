@@ -4,7 +4,7 @@
 import { QueryClient } from "@tanstack/react-query";
 import type { z } from "zod";
 import type { PublicProject, PublicTask, PublicTeam, PublicTeamMember, PublicUser } from "../present";
-import type { membersCreateInput, membersListQuery, membersUpdateInput, projectsCreateInput, projectsListQuery, projectsUpdateInput, tasksCreateInput, tasksListQuery, tasksUpdateInput, teamsCreateInput, teamsListQuery, teamsUpdateInput, usersListQuery } from "../validation";
+import type { membersCreateInput, membersListQuery, membersUpdateInput, projectsCreateInput, projectsListQuery, projectsUpdateInput, tasksCreateInput, tasksListQuery, tasksRemindInput, tasksUpdateInput, teamsCreateInput, teamsListQuery, teamsUpdateInput, usersListQuery } from "../validation";
 
 export class ApiError extends Error {
   constructor(
@@ -87,6 +87,7 @@ export type Inputs = {
     create: z.input<typeof tasksCreateInput>;
     update: { id: string; data: z.input<typeof tasksUpdateInput> };
     delete: { id: string };
+    remind: z.input<typeof tasksRemindInput> & { id: string };
   };
 };
 
@@ -132,6 +133,7 @@ export type Outputs = {
     create: PublicTask;
     update: PublicTask;
     delete: null;
+    remind: PublicTask;
   };
 };
 
@@ -183,7 +185,8 @@ export const client = {
     get: ({ id }: Inputs["tasks"]["get"]) => call<Outputs["tasks"]["get"]>("GET", "/api/tasks" + "/" + id),
     create: (input: Inputs["tasks"]["create"]) => call<PublicTask>("POST", "/api/tasks", { body: input }),
     update: ({ id, data }: Inputs["tasks"]["update"]) => call<PublicTask>("PATCH", "/api/tasks" + "/" + id, { body: data }),
-    delete: ({ id }: Inputs["tasks"]["delete"]) => call<null>("DELETE", "/api/tasks" + "/" + id)
+    delete: ({ id }: Inputs["tasks"]["delete"]) => call<null>("DELETE", "/api/tasks" + "/" + id),
+    remind: ({ id, ...input }: Inputs["tasks"]["remind"]) => call<PublicTask>("POST", "/api/tasks" + "/" + id + "/remind", { body: input })
   }
 };
 

@@ -104,6 +104,26 @@ export class Client {
     return { status: response.status, body };
   }
 
+  /** A plain REST call beside tRPC: the test hooks */
+  async rest(method: string, path: string, body?: unknown, query: Record<string, string> = {}): Promise<Reply> {
+    const url = new URL(path, BASE_URL);
+    for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value);
+    const headers: Record<string, string> = {};
+    if (body !== undefined) headers["content-type"] = "application/json";
+    if (this.cookie) headers["cookie"] = this.cookie;
+    const response = await fetch(url, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
+    const text = await response.text();
+    let json: unknown = null;
+    if (text) {
+      try {
+        json = JSON.parse(text);
+      } catch {
+        json = text;
+      }
+    }
+    return { status: response.status, body: json };
+  }
+
   /** The contract's files.upload: begin, PUT the bytes where told, complete. Answers the completed file, or the step that failed. */
   async upload(input: { name: string; type: string; content: string }): Promise<Reply> {
     const bytes = Buffer.from(input.content, "utf8");
@@ -263,6 +283,12 @@ function callExpr(ir: IR, step: SeedStepIR): string {
       if (step.operation === "upload")
         return `client.upload(${body} as { name: string; type: string; content: string })`;
       return call("files.get", `{ id: ${idExpr()} }`, "query", "data");
+    case "timer":
+      return `client.rest("POST", "/api/osl-hooks/timers/run", ${body})`;
+    case "schedule":
+      return `client.rest("POST", "/api/osl-hooks/schedules/run", ${body})`;
+    case "email":
+      return `client.rest("GET", "/api/osl-hooks/emails", undefined, resolve(${JSON.stringify(step.query)}, scope) as Record<string, string>)`;
   }
   throw new Error(`unsupported step ${step.op}`);
 }

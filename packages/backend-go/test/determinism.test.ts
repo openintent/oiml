@@ -92,6 +92,7 @@ describe("gin-pgx backend", () => {
       "generated/tests/08_magic_link_test.go",
       "generated/tests/09_comments_and_moderation_test.go",
       "generated/tests/10_banning_test.go",
+      "generated/tests/11_scheduled_publishing_test.go",
       "generated/tests/support_test.go"
     ]);
     const runtime = ginPgxBackend.runtime(project.config);

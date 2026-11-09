@@ -425,7 +425,9 @@ function actionHandlerMethod(
     args.push("row");
   }
   lines.push(PARSE_BODY(`validation.${actionInputVar(action)}`, "values"));
-  lines.push(`\tactx := &actions.Context{Gin: c, Session: session, DB: h.db}`);
+  lines.push(
+    `\tactx := &actions.Context{Gin: c, Ctx: c.Request.Context(), Session: session, DB: h.db, Now: time.Now().UTC()}`
+  );
   const call = `handlers.${exported(action.handler)}(${args.join(", ")})`;
   if (action.returns.kind === "none") {
     lines.push(`\tif err := ${call}; err != nil {\n\t\thttpx.HandleError(c, err, "write")\n\t\treturn\n\t}`);
@@ -491,6 +493,7 @@ export function resourceFile(ir: IR, resource: ResourceIR, modulePath: string): 
   if (files.length && (create || update)) imports.add(`${modulePath}/generated/files`);
   if (actions.length) {
     imports.add(`${modulePath}/generated/actions`);
+    imports.add("time");
     imports.add(`${modulePath}/generated/actions/handlers`);
   }
   const allRules = [...Object.values(entity.rules), ...actions.map(a => a.rule)];
@@ -639,6 +642,12 @@ ${body}
 }`);
   }
 
+  // A row written with a timed field set schedules the entity's timers
+  const hasTimers = ir.timers.some(t => t.entity === entity.name);
+  if (hasTimers) imports.add(`${modulePath}/generated/scheduling`);
+  const timerLines = hasTimers
+    ? `\tif err := scheduling.Schedule${typeName(entity)}(ctx, row); err != nil {\n\t\thttpx.HandleError(c, err, "write")\n\t\treturn\n\t}\n`
+    : "";
   if (create) {
     const emits = emitLines(eventsFor("created"), `${present}(row)`, "write");
     if (emits.length) imports.add(`${modulePath}/generated/events`);
@@ -676,7 +685,7 @@ ${bodyCheck}${resolveFiles("values")}${create.ownerField ? `\tvalues[${q(create.
 	values, err = ${hooksPkg}.BeforeCreate(hookCtx, values)
 ${fail("write")}
 ${insert}
-${emits.length ? emits.join("\n") + "\n" : ""}	if err := ${hooksPkg}.AfterCreate(hookCtx, row); err != nil {
+${emits.length ? emits.join("\n") + "\n" : ""}${timerLines}	if err := ${hooksPkg}.AfterCreate(hookCtx, row); err != nil {
 		httpx.HandleError(c, err, "write")
 		return
 	}
@@ -708,7 +717,7 @@ ${fail("write")}
 	sql, args := db.Update(${tableC}, patch, ${goRaw(pkIdent)}, id, ${columnsC})
 	row, err := ${scan}(h.db.QueryRow(ctx, sql, args...))
 ${fail("write")}
-${emits.length ? emits.join("\n") + "\n" : ""}	if err := ${hooksPkg}.AfterUpdate(hookCtx, row); err != nil {
+${emits.length ? emits.join("\n") + "\n" : ""}${timerLines}	if err := ${hooksPkg}.AfterUpdate(hookCtx, row); err != nil {
 		httpx.HandleError(c, err, "write")
 		return
 	}
@@ -778,6 +787,7 @@ export function globalActionsFile(ir: IR, modulePath: string): string {
     `${modulePath}/generated/validation`
   ]);
   if (actions.some(a => a.returns.kind === "entity")) imports.add(`${modulePath}/generated/models`);
+  imports.add("time");
   const ruleVar = (action: ActionIR) => `global${exported(action.name)}ActionRule`;
   const sections: string[] = [];
   sections.push(`// GlobalActions serves the actions not tied to a resource.

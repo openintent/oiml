@@ -12,6 +12,7 @@ import { fileContent, receiveContent } from "../files";
 import { APP_URL, oauthCallback, oauthStart } from "../auth-providers";
 import { sessionCookie } from "./auth";
 import { startWorker } from "../jobs";
+import { emailsSent, schedulesRun, testHooksEnabled, timersRun } from "../test-hooks";
 import { createContext } from "./context";
 import { appRouter } from "./router";
 
@@ -54,6 +55,15 @@ export function createApp(): Hono {
       return restError(c, err);
     }
   });
+  // Test hooks: a clock for timers and schedules, and the captured mailbox. Only with OSL_TEST_HOOKS=1.
+  if (testHooksEnabled()) {
+    app.post("/api/osl-hooks/timers/run", async c => c.json({ data: await timersRun(await c.req.json().catch(() => ({}))) }));
+    app.post("/api/osl-hooks/schedules/run", async c => {
+      const result = await schedulesRun(await c.req.json().catch(() => ({})));
+      return result ? c.json({ data: result }) : c.json({ error: { code: "unknown_schedule", message: "no schedule runs that action" } }, 400);
+    });
+    app.get("/api/osl-hooks/emails", c => c.json({ data: emailsSent({ to: c.req.query("to"), subject: c.req.query("subject") }) }));
+  }
   // OAuth: the browser is sent to the provider and comes back signed in.
   app.get("/api/auth/oauth/:name", async c => {
     try {

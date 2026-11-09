@@ -7,6 +7,8 @@ import { trpcServer } from "@hono/trpc-server";
 import { TRPCError } from "@trpc/server";
 import { getHTTPStatusCodeFromError } from "@trpc/server/http";
 import { Hono, type Context as HonoContext } from "hono";
+import { startWorker } from "../jobs";
+import { emailsSent, schedulesRun, testHooksEnabled, timersRun } from "../test-hooks";
 import { createContext } from "./context";
 import { appRouter } from "./router";
 
@@ -25,7 +27,15 @@ export function createApp(): Hono {
   app.get("/healthz", c => c.json({ ok: true }));
   app.get("/health", c => c.json({ ok: true }));
   app.use("/trpc/*", trpcServer({ router: appRouter, createContext }));
-
+  // Test hooks: a clock for timers and schedules, and the captured mailbox. Only with OSL_TEST_HOOKS=1.
+  if (testHooksEnabled()) {
+    app.post("/api/osl-hooks/timers/run", async c => c.json({ data: await timersRun(await c.req.json().catch(() => ({}))) }));
+    app.post("/api/osl-hooks/schedules/run", async c => {
+      const result = await schedulesRun(await c.req.json().catch(() => ({})));
+      return result ? c.json({ data: result }) : c.json({ error: { code: "unknown_schedule", message: "no schedule runs that action" } }, 400);
+    });
+    app.get("/api/osl-hooks/emails", c => c.json({ data: emailsSent({ to: c.req.query("to"), subject: c.req.query("subject") }) }));
+  }
   // After `vite build`, the API also serves the web app, with the SPA fallback for its routes.
   // In development Vite serves it instead and proxies /trpc and /api here.
   if (existsSync("./dist")) {
@@ -35,4 +45,7 @@ export function createApp(): Hono {
   return app;
 }
 
-export async function startBackground(): Promise<void> {}
+/** Start what the process's role needs besides answering requests: the job worker unless OSL_ROLE=web. */
+export async function startBackground(): Promise<void> {
+  await startWorker();
+}

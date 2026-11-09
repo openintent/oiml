@@ -7,6 +7,7 @@ import { db } from "../../db/client";
 import * as schema from "../../db/schema";
 import { articles as articlesTable } from "../../db/schema";
 import { emit } from "../../events";
+import { scheduleTimers } from "../../scheduling";
 import { resolveFileRefs } from "../../files";
 import { presentArticle, presentUser } from "../../present";
 import { postsCreateInput, postsId, postsListQuery, postsPublishInput, postsUnpublishAllInput, postsUpdateInput } from "../../validation";
@@ -100,6 +101,7 @@ export const postsRouter = router({
       const values = await hooks.beforeCreate({ ...await resolveFileRefs(input, FILE_FIELDS), author_id: ctx.session!.user.id }, hookContext);
       const [row] = await db.insert(articlesTable).values(values).returning();
       await emit("Article.created", presentArticle(row));
+      await scheduleTimers("Article", row);
       await hooks.afterCreate(row, hookContext);
       return presentArticle(row);
     } catch (err) {
@@ -123,6 +125,7 @@ export const postsRouter = router({
         if (Object.keys(patch).length === 0) return presentArticle(existing);
         const [row] = await db.update(articlesTable).set(patch).where(eq(articlesTable.id, id)).returning();
 
+      await scheduleTimers("Article", row);
         await hooks.afterUpdate(row, hookContext);
         return presentArticle(row);
       } catch (err) {
@@ -161,7 +164,7 @@ export const postsRouter = router({
     if (!current) throw notFound();
     checkRule(ACTION_RULES.publish, ctx.session, current);
     try {
-      const result = await handlers.posts_publish({ input, row: current, session: ctx.session, db });
+      const result = await handlers.posts_publish({ input, row: current, session: ctx.session, db, now: new Date() });
       await emit("posts.publish", presentArticle(result));
       return presentArticle(result);
     } catch (err) {
@@ -173,7 +176,7 @@ export const postsRouter = router({
   unpublish_all: publicProcedure.input(postsUnpublishAllInput).mutation(async ({ ctx, input }) => {
     checkRule(ACTION_RULES.unpublish_all, ctx.session);
     try {
-      const result = await handlers.posts_unpublish_all({ input, row: undefined, session: ctx.session, db });
+      const result = await handlers.posts_unpublish_all({ input, row: undefined, session: ctx.session, db, now: new Date() });
 
       return result;
     } catch (err) {

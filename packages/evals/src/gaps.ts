@@ -33,6 +33,22 @@ export interface GapCluster {
 /** Topics a not_delivered line can belong to, matched on keywords; the first match wins */
 const TOPICS: [topic: string, pattern: RegExp][] = [
   [
+    "sequences and reference numbers",
+    /\b(sequen(ce|tial)|reference (number|code)|numbering|(invoice|ticket|order|job) number|[A-Z]{2,5}-\d{3,}|gap-?free|next number)/i
+  ],
+  [
+    "pages with parameters",
+    /\b(from the (url|link)|url for each|a (separate|dedicated|public) (url|page|form) (for|per) each|per-(organisation|organization|team|project) (url|page)|path parameter|parameteri[sz]ed page|page cannot take .{0,30} from|picks? .{0,30} from the (link|url))/i
+  ],
+  [
+    "sign-in flow settings",
+    /\b(after sign-?in|after (logging|signing) in|where a sign-?in lands|lands? (on|at) .{0,20} after|post-login|redirect after (sign|log)|first sign-?in)/i
+  ],
+  [
+    "conditions through relations",
+    /\b(rule can only check .{0,40} own fields|not whether its \w+ is|(related|parent|owning) (row|record|project|team|post|thread)'?s? (field|status|flag|state|value)|whether (its|the) (project|team|parent|thread|post) is|through (the|a) relation|depends? on the (project|team|parent|thread|post)'?s)/i
+  ],
+  [
     "server-owned fields",
     /\b(read[- ]?only|server[- ]owned|only the (server|system) (may|can|sets?)|set by the (system|server)|not (editable|settable) by (the )?client|clients? (cannot|can't|may not) (set|write|change|edit)|never accepted from)/i
   ],
@@ -57,7 +73,10 @@ const TOPICS: [topic: string, pattern: RegExp][] = [
     "rules on a field's value",
     /\b(depend(s|ing)? on (a |the |its |their )?(field|value|status|state|flag|row|column|published)|(a |the )?(field|column|row)'?s? (value|state|status)|look at .{0,24}value|value of (a|the) (field|row|column)|conditional|only when|status is|draft|own (unpublished|private)|visib|(not|is|marked|flagged) public|public flag|cannot (stop|prevent|forbid)|their own (role|membership)|grant(ing)? .{0,20}(role|owner)|deactivated|disabled account|banned user|by (its|their|the row's) (status|state|value))/i
   ],
-  ["realtime and live updates", /\b(real[- ]?time|websocket|live update|subscri|push notif|presence|stream)/i],
+  [
+    "realtime and live updates",
+    /\b(real[- ]?time|websocket|live update|subscri|push notif|presence|stream|instantly|appears? on (its|their) own|without (a |the )?(page )?refresh|as soon as .{0,20} (happens|changes|is made))/i
+  ],
   [
     "payments and billing",
     /\b(payment|billing|stripe|invoice|subscription plan|checkout|price|paid|credit card|charge)/i

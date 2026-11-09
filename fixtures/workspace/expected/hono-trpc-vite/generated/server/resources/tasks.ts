@@ -6,8 +6,10 @@ import { z } from "zod";
 import { db } from "../../db/client";
 import * as schema from "../../db/schema";
 import { tasks as tasksTable, projects as projectsTable } from "../../db/schema";
+import { scheduleTimers } from "../../scheduling";
 import { presentTask } from "../../present";
-import { tasksCreateInput, tasksId, tasksListQuery, tasksUpdateInput } from "../../validation";
+import { tasksCreateInput, tasksId, tasksListQuery, tasksRemindInput, tasksUpdateInput } from "../../validation";
+import { handlers } from "../../actions";
 import { checkRule, memberTenantIds, satisfied, type Rule } from "../access";
 import type { Session } from "../auth";
 import { notFound, parseId, toTRPCError } from "../errors";
@@ -21,6 +23,10 @@ const RULES = {
   create: {"kind":"member","field":"project_id.team_id"} as Rule,
   update: {"kind":"any","rules":[{"kind":"owner","field":"assignee_id"},{"kind":"member","field":"project_id.team_id","role":"admin"}]} as Rule,
   delete: {"kind":"member","field":"project_id.team_id","role":"admin"} as Rule
+};
+
+const ACTION_RULES = {
+  remind: {"kind":"member","field":"project_id.team_id","role":"admin"} as Rule
 };
 
 /** Ids as clients send them; parseId applies tasksId and answers NOT_FOUND to a malformed one. */
@@ -94,6 +100,7 @@ export const tasksRouter = router({
       const values = await hooks.beforeCreate({ ...input }, hookContext);
       const [row] = await db.insert(tasksTable).values(values).returning();
 
+      await scheduleTimers("Task", row);
       await hooks.afterCreate(row, hookContext);
       return presentTask(row);
     } catch (err) {
@@ -117,6 +124,7 @@ export const tasksRouter = router({
         if (Object.keys(patch).length === 0) return presentTask(existing);
         const [row] = await db.update(tasksTable).set(patch).where(eq(tasksTable.id, id)).returning();
 
+      await scheduleTimers("Task", row);
         await hooks.afterUpdate(row, hookContext);
         return presentTask(row);
       } catch (err) {
@@ -141,6 +149,25 @@ export const tasksRouter = router({
       return null;
     } catch (err) {
       throw toTRPCError(err, "delete");
+    }
+  }),
+
+  /** POST /api/tasks/{id}/remind */
+  remind: publicProcedure.input(tasksRemindInput.extend({ id: ID })).mutation(async ({ ctx, input: raw }) => {
+    const { id: rawId, ...input } = raw;
+    checkRule(ACTION_RULES.remind, ctx.session);
+    const id = parseId(tasksId, rawId);
+    const current = await db.query.tasks.findFirst({ where: eq(tasksTable.id, id) }).catch(err => {
+      throw toTRPCError(err, "read");
+    });
+    if (!current) throw notFound();
+    checkRule(ACTION_RULES.remind, ctx.session, await withRuleValues(current));
+    try {
+      const result = await handlers.tasks_remind({ input, row: current, session: ctx.session, db, now: new Date() });
+
+      return presentTask(result);
+    } catch (err) {
+      throw toTRPCError(err, "write");
     }
   })
 });

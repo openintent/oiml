@@ -247,6 +247,7 @@ export async function runFixture(
           ...cmd.env,
           DATABASE_URL: databaseUrl,
           OSL_SESSION_SECRET: "conformance-secret",
+          OSL_TEST_HOOKS: "1",
           PORT: String(port)
         },
         stdio: ["ignore", "pipe", "pipe"]

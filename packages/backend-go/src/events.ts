@@ -30,6 +30,19 @@ export function payloadType(ir: IR, event: EventIR): { type: string; pkg: "model
 /** generated/events/events.go: one dispatch function per event name, inline handlers now and queued ones through a job. */
 export function eventsFile(ir: IR, modulePath: string): string {
   if (ir.events.length === 0) {
+    // The queue's worker still needs a runner when schedules or timers exist
+    if (ir.jobs)
+      return goFile(
+        modulePath,
+        HEADER("Event dispatch. The model declares no events; the queue runs schedules and timers only."),
+        "events",
+        ["context", "encoding/json", "errors"],
+        `// RunQueued runs the queued handlers of an event; the model has none, so every name is unknown.
+func RunQueued(ctx context.Context, name string, raw json.RawMessage) error {
+	_, _ = ctx, raw
+	return errors.New("unknown queued event " + name)
+}`
+      );
     return goFile(modulePath, HEADER("Event dispatch. The model declares no events."), "events", [], "");
   }
   const names = [...new Set(ir.events.map(e => e.name))].sort();
@@ -59,7 +72,11 @@ func ${eventFunc(events[0])}(ctx context.Context, payload ${payload.type}) error
 ${calls.join("\n")}
 }`);
   }
-  if (queuedNames.length) {
+  // The worker needs RunQueued whenever the queue exists, even when no event is queued yet
+  if (queuedNames.length || ir.jobs) {
+    imports.add("context");
+    imports.add("encoding/json");
+    imports.add("errors");
     const cases = queuedNames.map(name => {
       const events = ir.events.filter(e => e.name === name && e.delivery === "queue");
       const payload = payloadType(ir, events[0]);

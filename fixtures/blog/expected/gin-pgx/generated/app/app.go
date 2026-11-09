@@ -6,6 +6,7 @@ package app
 import (
 	"context"
 	"net/http"
+	"os"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -16,6 +17,8 @@ import (
 	"blog/generated/filesapi"
 	"blog/generated/jobs"
 	"blog/generated/resources"
+	"blog/generated/scheduling"
+	"blog/generated/testhooks"
 )
 
 // New builds the engine. Add your own middleware and routes to the result in cmd/server.
@@ -26,17 +29,22 @@ func New(pool *pgxpool.Pool) *gin.Engine {
 	r.GET("/api/openapi.json", openapi)
 	a := auth.New(pool)
 	a.Routes(r)
+	scheduling.Use(pool)
 	filesapi.New(pool, a).Routes(r)
 	resources.NewUsers(pool, a).Routes(r)
 	resources.NewPosts(pool, a).Routes(r)
 	resources.NewComments(pool, a).Routes(r)
 	resources.NewGlobalActions(pool, a).Routes(r)
+	if os.Getenv("OSL_TEST_HOOKS") == "1" {
+		testhooks.Routes(r)
+	}
 	return r
 }
 
-// Start runs the background work: River's migrations and, unless OSL_ROLE is web, the worker for queued events.
+// Start runs the background work: River's migrations and, unless OSL_ROLE is web, the worker for queued events, schedules and timers.
 func Start(ctx context.Context, pool *pgxpool.Pool) error {
-	return jobs.Start(ctx, pool, events.RunQueued)
+	scheduling.Use(pool)
+	return jobs.Start(ctx, pool, events.RunQueued, scheduling.Periodic(), scheduling.RunTimerJob)
 }
 
 // Stop lets running jobs finish.

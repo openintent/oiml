@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // BaseURL is where the app runs: OSL_BASE_URL, default http://localhost:8080.
@@ -266,19 +267,39 @@ func Matches(expected any, actual any) bool {
 	return expected == actual
 }
 
-var wholePlaceholder = regexp.MustCompile(`^\{([a-zA-Z0-9_.]+)\}$`)
+var wholePlaceholder = regexp.MustCompile(`^\{([a-zA-Z0-9_.+-]+)\}$`)
 
-var placeholder = regexp.MustCompile(`\{([a-zA-Z0-9_.]+)\}`)
+// nowPlaceholder is {now}, {now+2h} or {now-30d}: a timestamp relative to the clock.
+var nowPlaceholder = regexp.MustCompile(`^now(?:([+-])(\d+)([mhd]))?$`)
+
+// lookup answers a placeholder: a relative time, or a captured value.
+func lookup(vars map[string]any, name string) any {
+	if m := nowPlaceholder.FindStringSubmatch(name); m != nil {
+		offset := time.Duration(0)
+		if m[2] != "" {
+			n, _ := strconv.Atoi(m[2])
+			unit := map[string]time.Duration{"m": time.Minute, "h": time.Hour, "d": 24 * time.Hour}[m[3]]
+			offset = time.Duration(n) * unit
+			if m[1] == "-" {
+				offset = -offset
+			}
+		}
+		return time.Now().UTC().Add(offset).Format(time.RFC3339Nano)
+	}
+	return Pick(vars, name)
+}
+
+var placeholder = regexp.MustCompile(`\{([a-zA-Z0-9_.+-]+)\}`)
 
 // Resolve replaces "{name}" and "{name.path}" strings with captured values.
 func Resolve(value any, vars map[string]any) any {
 	switch v := value.(type) {
 	case string:
 		if m := wholePlaceholder.FindStringSubmatch(v); m != nil {
-			return Pick(vars, m[1])
+			return lookup(vars, m[1])
 		}
 		return placeholder.ReplaceAllStringFunc(v, func(match string) string {
-			return Stringify(Pick(vars, strings.Trim(match, "{}")))
+			return Stringify(lookup(vars, strings.Trim(match, "{}")))
 		})
 	case []any:
 		out := make([]any, len(v))

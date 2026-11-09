@@ -10,6 +10,9 @@ import {
   dockerFiles,
   emailFile,
   eventFiles,
+  hasScheduling,
+  schedulingFile,
+  testHooksFile,
   filesFile,
   hasProviders,
   installCommand,
@@ -82,6 +85,8 @@ export function generate(input: GenerateInput): GeneratedFile[] {
   files.push({ path: `${gen}/present.ts`, content: presentFile(ir, VITE) });
   files.push({ path: `${gen}/validation.ts`, content: validationFile(ir, VITE, { listInput: "typed" }) });
   files.push(...eventFiles(ir, VITE));
+  if (hasScheduling(ir)) files.push({ path: `${gen}/scheduling.ts`, content: schedulingFile(ir, VITE) });
+  files.push({ path: `${gen}/test-hooks.ts`, content: testHooksFile(ir, VITE, { email: hasProviders(ir) }) });
   if (ir.jobs) {
     files.push({ path: `${gen}/jobs.ts`, content: jobsFile(ir, VITE_SERVER) });
     files.push(workerScaffold());
@@ -189,7 +194,7 @@ export const honoTrpcViteBackend: Backend = {
       'ctx.db is the Drizzle client; tables and row types are exported from the generated db/schema module (column keys are the model\'s snake_case names). Import eq, and, desc, sql from "drizzle-orm".',
       "Write through ctx.db.update(table).set({ ... }).where(eq(table.id, ctx.row.id)).returning() and return the fresh row; insert with ctx.db.insert(table).values({ ... }).returning().",
       "Call fail(status, code, message) from the generated server/errors module (the import path is in the stub's comment) to answer with that status; it never returns.",
-      "ctx.session is null for anonymous callers; ctx.session.user.id is the caller's id. Dates are Date objects; nullable columns hold null.",
+      "ctx.session is null for anonymous callers (and when a schedule or timer runs the action as the system); ctx.session.user.id is the caller's id. ctx.now is when the action runs; a timer or schedule passes the time it was due, so compare against ctx.now rather than new Date(). Dates are Date objects; nullable columns hold null.",
       "To send mail, await sendEmail({ to, subject, text }) from the generated email module; it logs or captures the message outside production, so sending is safe in tests."
     ].join("\n")
   }),

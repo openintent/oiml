@@ -1,0 +1,19 @@
+id: ws2-delivery-overdue
+tags: [timers, actions, tenancy, generated-origin]
+base: { fixture: workspace }
+intent:
+  title: Deliveries flagged when late
+  ask: >-
+    Dispatchers assign deliveries to drivers in their team. A delivery that is still not completed forty-eight
+    hours after it was assigned is flagged as overdue on its own, and the team's admins can see which ones are.
+    A completed delivery is never flagged.
+  acceptance:
+    - A delivery assigned forty-nine hours ago and not completed shows as overdue
+    - A completed delivery is not flagged
+expect:
+  entities: ["Delivery|Shipment"]
+  fields: { "Delivery|Shipment": ["overdue|is_overdue|overdue_at|flagged"] }
+  timers: ["Delivery|Shipment.assigned_at|dispatched_at"]
+  scenarios: { min: 1 }
+  touches: ["timers.run"]
+notes: Promoted from generated round 4 (gen-r4-08); the clock step lets the scenario create a delivery assigned in the past and run the timer.

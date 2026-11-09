@@ -4,6 +4,8 @@
 package resources
 
 import (
+	"time"
+
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -54,7 +56,7 @@ func (h *GlobalActions) ActionSendDigest(c *gin.Context) {
 		httpx.Fail(c, perr)
 		return
 	}
-	actx := &actions.Context{Gin: c, Session: session, DB: h.db}
+	actx := &actions.Context{Gin: c, Ctx: c.Request.Context(), Session: session, DB: h.db, Now: time.Now().UTC()}
 	result, err := handlers.SendDigest(actx, actions.ParseSendDigestInput(values))
 	if err != nil {
 		httpx.HandleError(c, err, "write")

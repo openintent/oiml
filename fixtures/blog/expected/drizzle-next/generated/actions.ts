@@ -14,8 +14,11 @@ import * as send_digest from "@/src/actions/send_digest";
 export interface ActionContext<Input, Row = undefined> {
   input: Input;
   row: Row;
+  /** null when a schedule or timer runs the action as the system */
   session: Session | null;
   db: Db;
+  /** The time the request or job runs at; a timer or schedule passes the time it was due. Compare against this, not the clock. */
+  now: Date;
 }
 
 export type UsersBanResult = schema.User;

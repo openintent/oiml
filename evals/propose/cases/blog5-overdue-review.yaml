@@ -1,0 +1,17 @@
+id: blog5-overdue-review
+tags: [timers, fields, actions]
+base: { fixture: blog, through: FEAT-5 }
+intent:
+  title: Reviews that wait too long
+  ask: >-
+    When an article has been waiting for review for more than seven days, mark it as stale so editors see it,
+    and clear the mark when it is published. Nobody sets that mark by hand.
+  acceptance:
+    - An unpublished article created more than seven days ago is marked stale on its own
+    - A published article is never marked stale
+expect:
+  fields: { Article: ["stale|is_stale|stale_at|overdue"] }
+  field_props: { "Article.stale|is_stale|stale_at|overdue": { read_only: true } }
+  timers: ["Article.posted_at|created_at|submitted_at"]
+  scenarios: { min: 1 }
+notes: A timer with after and a when condition that sets a read_only flag; the agent must pick an existing or new datetime to time from.

@@ -16,6 +16,8 @@ import {
   Model,
   Page,
   DashboardTile,
+  Schedule,
+  Timer,
   Resource,
   Rules,
   Scenario,
@@ -71,6 +73,8 @@ export const DiffOp = z.discriminatedUnion("op", [
     .strict(),
   z.object({ op: z.literal("remove_action"), resource: Identifier.optional(), name: Identifier }).strict(),
   z.object({ op: z.literal("set_seed"), seed: z.array(SeedStep) }).strict(),
+  z.object({ op: z.literal("set_schedules"), schedules: z.array(Schedule) }).strict(),
+  z.object({ op: z.literal("set_timers"), timers: z.array(Timer) }).strict(),
   z.object({ op: z.literal("set_files"), files: Files }).strict(),
   z.object({ op: z.literal("remove_files") }).strict()
 ]);
@@ -145,6 +149,7 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
           if (resource.entity === op.name) fail(`resource ${resourceName} still uses ${op.name}; remove it first`);
         }
         if (model.auth?.identity === op.name) fail(`${op.name} is the auth identity; remove auth first`);
+        if (model.timers.some(t => t.on === op.name)) fail(`a timer still runs on ${op.name}; change timers first`);
         model.events = model.events.filter(e => e.on.split(".")[0] !== op.name);
         delete model.entities[op.name];
         break;
@@ -156,6 +161,7 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
         const rebuilt: Record<string, Entity> = {};
         for (const [name, value] of Object.entries(model.entities)) rebuilt[name === op.from ? op.to : name] = value;
         model.entities = rebuilt;
+        for (const t of model.timers) if (t.on === op.from) t.on = op.to;
         void entity;
         for (const other of Object.values(model.entities)) {
           for (const field of Object.values(other.fields))
@@ -215,6 +221,9 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
           if (resource.update?.fields) resource.update.fields = resource.update.fields.filter(f => f !== op.name);
           void resourceName;
         }
+        for (const t of model.timers)
+          if (t.on === op.entity && (t.at === op.name || t.when?.split(" ")[0] === op.name))
+            fail(`a timer on ${op.entity} still uses ${op.name}; change timers first`);
         for (const page of pagesOver(model, op.entity)) {
           if (page.columns) page.columns = page.columns.filter(f => f !== op.name);
           if (page.fields) page.fields = page.fields.filter(f => f !== op.name);
@@ -259,6 +268,14 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
           if (tile.filter) tile.filter = swapKeys(tile.filter);
           if (tile.group_by) tile.group_by = swap(tile.group_by);
         }
+        for (const t of model.timers) {
+          if (t.on !== op.entity) continue;
+          t.at = swap(t.at);
+          if (t.when) {
+            const [field, ...rest] = t.when.split(" ");
+            t.when = [swap(field), ...rest].join(" ");
+          }
+        }
         if (model.auth?.identity === op.entity && model.auth.email_field === op.from) model.auth.email_field = op.to;
         const forEntity = (renames.fields[op.entity] ??= {});
         const previous = Object.entries(forEntity).find(([, to]) => to === op.from);
@@ -293,6 +310,11 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
         for (const [pageName, page] of Object.entries(model.app?.pages ?? {})) {
           if (page.resource === op.name) fail(`page ${pageName} still shows ${op.name}; remove the page first`);
         }
+        if (
+          model.schedules.some(sch => sch.run.startsWith(`${op.name}.`)) ||
+          model.timers.some(t => t.run.startsWith(`${op.name}.`))
+        )
+          fail(`a schedule or timer still runs an action of ${op.name}; change them first`);
         delete model.resources[op.name];
         model.events = model.events.filter(e => !e.on.startsWith(`${op.name}.`));
         if (model.examples) {
@@ -393,8 +415,10 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
       case "remove_action": {
         const actions = actionsOf(op.resource);
         if (!actions[op.name]) fail(`action ${op.resource ? op.resource + "." : ""}${op.name} does not exist`);
-        delete actions[op.name];
         const eventName = `${op.resource ?? "actions"}.${op.name}`;
+        if (model.schedules.some(sch => sch.run === eventName) || model.timers.some(t => t.run === eventName))
+          fail(`a schedule or timer still runs ${eventName}; change them first`);
+        delete actions[op.name];
         model.events = model.events.filter(e => e.on !== eventName);
         if (model.examples) {
           model.examples.scenarios = model.examples.scenarios.filter(s => !s.steps.some(step => step.op === eventName));
@@ -406,6 +430,14 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
       case "set_seed":
         model.examples ??= { scenarios: [], seed: [] };
         model.examples.seed = op.seed;
+        break;
+
+      case "set_schedules":
+        model.schedules = op.schedules;
+        break;
+
+      case "set_timers":
+        model.timers = op.timers;
         break;
 
       case "set_files":

@@ -77,6 +77,26 @@ export class Client {
     return { status: response.status, body };
   }
 
+  /** A plain REST call beside tRPC: the test hooks */
+  async rest(method: string, path: string, body?: unknown, query: Record<string, string> = {}): Promise<Reply> {
+    const url = new URL(path, BASE_URL);
+    for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value);
+    const headers: Record<string, string> = {};
+    if (body !== undefined) headers["content-type"] = "application/json";
+    if (this.cookie) headers["cookie"] = this.cookie;
+    const response = await fetch(url, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
+    const text = await response.text();
+    let json: unknown = null;
+    if (text) {
+      try {
+        json = JSON.parse(text);
+      } catch {
+        json = text;
+      }
+    }
+    return { status: response.status, body: json };
+  }
+
   /** The contract's files.upload: begin, PUT the bytes where told, complete. Answers the completed file, or the step that failed. */
   async upload(input: { name: string; type: string; content: string }): Promise<Reply> {
     const bytes = Buffer.from(input.content, "utf8");
@@ -177,15 +197,24 @@ export function matches(expected: unknown, actual: unknown): boolean {
 /** Replace "{name}" and "{name.path}" strings with captured values. */
 export function resolve(value: unknown, vars: Record<string, unknown>): unknown {
   if (typeof value === "string") {
-    const whole = value.match(/^\{([a-zA-Z0-9_.]+)\}$/);
-    if (whole) return pick(vars, whole[1]);
-    return value.replace(/\{([a-zA-Z0-9_.]+)\}/g, (_, name: string) => String(pick(vars, name)));
+    const whole = value.match(/^\{([a-zA-Z0-9_.+-]+)\}$/);
+    if (whole) return lookup(vars, whole[1]);
+    return value.replace(/\{([a-zA-Z0-9_.+-]+)\}/g, (_, name: string) => String(lookup(vars, name)));
   }
   if (Array.isArray(value)) return value.map(item => resolve(item, vars));
   if (value && typeof value === "object") {
     return Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, resolve(inner, vars)]));
   }
   return value;
+}
+
+/** A template's value: {now}, {now+2h} and {now-30d} are timestamps; anything else is a captured value */
+function lookup(vars: Record<string, unknown>, name: string): unknown {
+  const now = name.match(/^now(?:([+-])(\d+)([mhd]))?$/);
+  if (!now) return pick(vars, name);
+  const unit = now[3] === "m" ? 60_000 : now[3] === "h" ? 3_600_000 : 86_400_000;
+  const offset = now[2] ? Number(now[2]) * unit * (now[1] === "-" ? -1 : 1) : 0;
+  return new Date(Date.now() + offset).toISOString();
 }
 
 export function pick(value: unknown, path: string): unknown {

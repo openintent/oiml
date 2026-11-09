@@ -21,7 +21,7 @@ export const actions = {
       if (!verdict.ok) return denied(verdict);
       const body = await parseBody(sendDigestInput, request);
       if (!body.ok) return body.response;
-      const result = await handlers.send_digest({ input: body.data, row: undefined, session, db });
+      const result = await handlers.send_digest({ input: body.data, row: undefined, session, db, now: new Date() });
 
       return ok(result);
     } catch (err) {

@@ -21,7 +21,8 @@ export const STORAGE_DEPENDENCIES: Record<string, string> = {
 /** Added when the model queues events: River on the same database */
 export const JOBS_DEPENDENCIES: Record<string, string> = {
   "github.com/riverqueue/river": "v0.51.0",
-  "github.com/riverqueue/river/riverdriver/riverpgxv5": "v0.51.0"
+  "github.com/riverqueue/river/riverdriver/riverpgxv5": "v0.51.0",
+  "github.com/robfig/cron/v3": "v3.0.1"
 };
 
 const PORT = 8080;

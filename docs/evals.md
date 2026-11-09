@@ -160,6 +160,17 @@ had been filed under built rule topics by keyword, so role changes and invites n
 topics, and a third wording, a field required only when another has a value, got a topic of its own. The top
 open gaps are now scheduled work, conditional validation and computed fields.
 
+The third turn built scheduled and recurring work (`docs/designs/scheduled-work.md`): schedules that run an action
+on a cron, timers that run a row action when a datetime field passes, and a clock plus mailbox for scenarios, all on
+the job queue the backends already had. Blog FEAT-9, workspace WS-6 and todo TODO-7 prove them on every backend
+with the in-process workers; round 4 re-graded on the new compiler kept all ten cases; round 5 (seed 31, ten
+intents, `--no-full`, $2.13) had ten valid diffs, two of them with crons and three driving the clock steps, and
+the scheduling cluster was gone from the table. The round's three regression flags were each a new gap wearing an
+old topic's words: a read rule that cannot look at a related row ("whether its project is public"), a public page
+per organisation taken from the URL, a landing page after sign-in, and gap-free reference numbers; each got a topic
+and entered the backlog as open. Top of the backlog now: conditions through relations, files in list columns,
+computed fields and invites.
+
 ### One command per round
 
 `pnpm evals:round [--round name] [--count n] [--seed n] [--no-full] [--max-cost usd]` is the unit the loop repeats:

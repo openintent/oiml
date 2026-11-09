@@ -1,4 +1,4 @@
-import type { Backend, GeneratedFile, GenerateInput } from "@osl/core";
+import type { Backend, GeneratedFile, GenerateInput, IR } from "@osl/core";
 import { globalActions, migrationFiles, openapiDocument } from "@osl/core";
 import {
   JOBS_DEPENDENCIES,
@@ -12,6 +12,9 @@ import {
   eventFiles,
   filesFile,
   hasProviders,
+  hasScheduling,
+  schedulingFile,
+  testHooksFile,
   installCommand,
   jobsFile,
   packageManagerOf,
@@ -59,6 +62,9 @@ export function generate(input: GenerateInput): GeneratedFile[] {
   files.push({ path: `${gen}/auth.ts`, content: authFile(ir) });
   files.push({ path: `${gen}/validation.ts`, content: validationFile(ir, NEXT) });
   files.push(...eventFiles(ir, NEXT));
+  if (hasScheduling(ir)) files.push({ path: `${gen}/scheduling.ts`, content: schedulingFile(ir, NEXT) });
+  files.push({ path: `${gen}/test-hooks.ts`, content: testHooksFile(ir, NEXT, { email: hasProviders(ir) }) });
+  files.push(...testHookRouteFiles(ir, hasProviders(ir)));
   if (ir.jobs) {
     files.push({ path: `${gen}/jobs.ts`, content: jobsFile(ir, NEXT_SERVER) });
     files.push(...workerScaffolds());
@@ -197,6 +203,60 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   ];
 }
 
+/** The test hooks' routes: a 404 unless OSL_TEST_HOOKS=1, so production never has them */
+function testHookRouteFiles(ir: IR, email: boolean): GeneratedFile[] {
+  const files: GeneratedFile[] = [];
+  const route = (path: string, what: string, body: string) =>
+    files.push({
+      path: `app/api/osl-hooks/${path}/route.ts`,
+      content: `${HEADER(`Test hook: ${what}. Answers 404 unless OSL_TEST_HOOKS=1.`)}
+import { emailsSent, schedulesRun, testHooksEnabled, timersRun } from "@/generated/test-hooks";
+import { error, notFound, ok } from "@/generated/http";
+
+${body}
+`
+    });
+  if (hasScheduling(ir)) {
+    route(
+      "timers/run",
+      "run every timer due at the given moment",
+      `export async function POST(request: Request): Promise<Response> {
+  if (!testHooksEnabled()) return notFound();
+  void emailsSent;
+  void schedulesRun;
+  void error;
+  return ok(await timersRun(await request.json().catch(() => ({}))));
+}`
+    );
+    route(
+      "schedules/run",
+      "run a schedule's action now",
+      `export async function POST(request: Request): Promise<Response> {
+  if (!testHooksEnabled()) return notFound();
+  void emailsSent;
+  void timersRun;
+  const result = await schedulesRun(await request.json().catch(() => ({})));
+  return result ? ok(result) : error(400, "unknown_schedule", "no schedule runs that action");
+}`
+    );
+  }
+  if (email) {
+    route(
+      "emails",
+      "the captured mailbox",
+      `export async function GET(request: Request): Promise<Response> {
+  if (!testHooksEnabled()) return notFound();
+  void schedulesRun;
+  void timersRun;
+  void error;
+  const url = new URL(request.url);
+  return ok(emailsSent({ to: url.searchParams.get("to") ?? undefined, subject: url.searchParams.get("subject") ?? undefined }));
+}`
+    );
+  }
+  return files;
+}
+
 /** instrumentation.ts runs when the Next.js server starts: the place to run queued events; src/worker.ts for a separate process */
 function workerScaffolds(): GeneratedFile[] {
   return [
@@ -265,7 +325,7 @@ export const drizzleNextBackend: Backend = {
       'ctx.db is the Drizzle client; tables and row types are exported from the generated db/schema module (column keys are the model\'s snake_case names). Import eq, and, desc, sql from "drizzle-orm".',
       "Write through ctx.db.update(table).set({ ... }).where(eq(table.id, ctx.row.id)).returning() and return the fresh row; insert with ctx.db.insert(table).values({ ... }).returning().",
       "Throw new HttpError(status, code, message) from the generated http module (the import path is in the stub's comment) to answer with that status.",
-      "ctx.session is null for anonymous callers; ctx.session.user.id is the caller's id. Dates are Date objects; nullable columns hold null.",
+      "ctx.session is null for anonymous callers (and when a schedule or timer runs the action as the system); ctx.session.user.id is the caller's id. ctx.now is when the action runs; a timer or schedule passes the time it was due, so compare against ctx.now rather than new Date(). Dates are Date objects; nullable columns hold null.",
       "To send mail, await sendEmail({ to, subject, text }) from the generated email module; it logs or captures the message outside production, so sending is safe in tests."
     ].join("\n")
   }),

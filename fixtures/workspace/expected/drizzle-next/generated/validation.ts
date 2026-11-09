@@ -95,7 +95,8 @@ export const tasksCreateInput = z
     project_id: z.string().uuid(),
     title: z.string().min(1).max(200),
     done: z.boolean().optional(),
-    assignee_id: z.string().uuid().nullish()
+    assignee_id: z.string().uuid().nullish(),
+    due_at: z.string().datetime({ offset: true }).transform(value => new Date(value)).nullish()
   })
   .strict();
 export const tasksUpdateInput = z
@@ -103,6 +104,10 @@ export const tasksUpdateInput = z
     project_id: z.string().uuid().optional(),
     title: z.string().min(1).max(200).optional(),
     done: z.boolean().optional(),
-    assignee_id: z.string().uuid().nullish()
+    assignee_id: z.string().uuid().nullish(),
+    due_at: z.string().datetime({ offset: true }).transform(value => new Date(value)).nullish()
   })
   .strict();
+
+export const tasksRemindInput = z.object({}).strict();
+export type TasksRemindInput = z.infer<typeof tasksRemindInput>;

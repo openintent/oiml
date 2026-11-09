@@ -5,7 +5,7 @@ gaps:
     kind: not_delivered
     status: built
     first_seen: run6-rules-opus-5-5
-    last_seen: run
+    last_seen: r5
     cases: 6
     construct: row conditions on rules (when <field> = <value>, a7b0817)
     version: unreleased
@@ -15,7 +15,7 @@ gaps:
     kind: not_delivered
     status: built
     first_seen: run6-rules-opus-5-5
-    last_seen: r3
+    last_seen: r5
     cases: 5
     construct: page access, filter with {actor.id}, refresh, tile group_by, a dashboard or custom page at /
     version: unreleased
@@ -23,24 +23,27 @@ gaps:
       no longer reported the cluster.
   - key: scheduled and recurring work
     kind: not_delivered
-    status: open
+    status: built
     first_seen: gen-r1-opus-5-5
-    last_seen: run
+    last_seen: r4
     cases: 3
-    note: Going live at a time, daily checks, locking after inactivity; today a handler called by an
-      external scheduler.
+    construct: schedules (cron, actions.<name> or <resource>.<action>) and timers (on, at, after, run,
+      when), with timers.run, schedules.run and emails.sent steps
+    version: unreleased
+    note: Built 2026-11-09 with blog FEAT-9, workspace WS-6 and todo TODO-7; jobs run on pg-boss and
+      River; scenarios drive the clock through the test hooks.
   - key: invites and onboarding
     kind: not_delivered
     status: open
     first_seen: run6-rules-opus-5-5
-    last_seen: run
+    last_seen: r5
     cases: 3
     note: Where the SaaS set starts; needs an invitation that an account not yet registered can accept.
   - key: rule conjunctions
     kind: not_delivered
     status: open
     first_seen: gen-r1-opus-5-5
-    last_seen: run
+    last_seen: r3
     cases: 1
     note: A create rule cannot require membership and bind the author to the session at once; rules have
       alternatives, not conjunctions.
@@ -48,21 +51,21 @@ gaps:
     kind: not_delivered
     status: declined
     first_seen: run6-rules-opus-5-5
-    last_seen: run
+    last_seen: r5
     cases: 2
     note: Out of scope for the schema; a handler written with osl implement calls the provider.
   - key: realtime and live updates
     kind: not_delivered
     status: declined
     first_seen: run6-rules-opus-5-5
-    last_seen: run7b-implement-opus-5-5
+    last_seen: r5
     cases: 1
     note: No push or subscriptions in the model; the reference says so.
   - key: server-owned fields
     kind: not_delivered
     status: built
     first_seen: run4-admin-opus-5-5
-    last_seen: run6-rules-opus-5-5
+    last_seen: r5
     cases: 1
     construct: read_only
     version: unreleased
@@ -71,7 +74,7 @@ gaps:
     kind: not_delivered
     status: built
     first_seen: run4-admin-opus-5-5
-    last_seen: run
+    last_seen: run4-admin-opus-5-5
     cases: 3
     construct: rules with or, owner and member paths through relations
     version: 1.0.0-alpha.2
@@ -79,29 +82,59 @@ gaps:
     kind: not_delivered
     status: open
     first_seen: r2
-    last_seen: run
+    last_seen: r4
     cases: 2
   - key: uniqueness and constraints
     kind: not_delivered
     status: open
     first_seen: r3
-    last_seen: run
+    last_seen: r4
     cases: 1
   - key: files and media
     kind: not_delivered
     status: open
     first_seen: r4
-    last_seen: run
+    last_seen: r5
     cases: 1
   - key: role changes
     kind: not_delivered
     status: open
     first_seen: run
-    last_seen: run
+    last_seen: r4
     cases: 2
   - key: conditional validation
     kind: not_delivered
     status: open
     first_seen: run
-    last_seen: run
+    last_seen: r4
+    cases: 1
+  - key: ordering and positions
+    kind: not_delivered
+    status: open
+    first_seen: r5
+    last_seen: r5
+    cases: 1
+  - key: conditions through relations
+    kind: not_delivered
+    status: open
+    first_seen: r5
+    last_seen: r5
+    cases: 1
+  - key: pages with parameters
+    kind: not_delivered
+    status: open
+    first_seen: r5
+    last_seen: r5
+    cases: 2
+  - key: sequences and reference numbers
+    kind: not_delivered
+    status: open
+    first_seen: r5
+    last_seen: r5
+    cases: 1
+  - key: sign-in flow settings
+    kind: not_delivered
+    status: open
+    first_seen: r5
+    last_seen: r5
     cases: 1

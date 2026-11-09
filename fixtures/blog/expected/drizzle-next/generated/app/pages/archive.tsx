@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { client, sessionUser, type Inputs, type Outputs, type SessionUser } from "../client";
-import { EmptyPane, ErrorNote, FieldRow, FileInput, FilePreview, FormRow, ListSkeleton, Pagination, Pane, PaneHeader, PaneSkeleton, SortHeader, formatDateTime, formatList, selectClass, splitList, text, useDebounced, yesNo } from "../ui";
+import { EmptyPane, ErrorNote, FieldRow, FileInput, FilePreview, FormRow, ListSkeleton, Pagination, Pane, PaneHeader, PaneSkeleton, SortHeader, formatDateTime, formatList, selectClass, splitList, text, toDateTimeInput, useDebounced, yesNo } from "../ui";
 
 type Row = Outputs["posts"]["list"]["data"][number];
 type Detail = Outputs["posts"]["get"];
@@ -85,7 +85,7 @@ function guarded<P extends object>(Component: (props: P) => ReactNode) {
   };
 }
 
-const ARCHIVE_FIELDS = ["title", "content", "published", "author_id", "tags", "cover"] as const;
+const ARCHIVE_FIELDS = ["title", "content", "published", "author_id", "tags", "cover", "publish_at"] as const;
 type ArchiveField = (typeof ARCHIVE_FIELDS)[number];
 
 type ArchiveValues = {
@@ -95,6 +95,7 @@ type ArchiveValues = {
   author_id: string;
   tags: string;
   cover: string;
+  publish_at: string;
 };
 
 const EMPTY_ARCHIVE: ArchiveValues = {
@@ -103,10 +104,11 @@ const EMPTY_ARCHIVE: ArchiveValues = {
   published: false,
   author_id: "",
   tags: "",
-  cover: ""
+  cover: "",
+  publish_at: ""
 };
 
-const ARCHIVE_CREATE: readonly ArchiveField[] = ["title", "content", "published", "tags", "cover"];
+const ARCHIVE_CREATE: readonly ArchiveField[] = ["title", "content", "published", "tags", "cover", "publish_at"];
 
 function toArchiveCreateInput(v: ArchiveValues): Input<"create"> {
   return {
@@ -114,11 +116,12 @@ function toArchiveCreateInput(v: ArchiveValues): Input<"create"> {
     content: v.content,
     published: v.published,
     tags: (v.tags === "" ? null : splitList(v.tags)),
-    cover: (v.cover || null)
+    cover: (v.cover || null),
+    publish_at: (v.publish_at === "" ? null : new Date(v.publish_at).toISOString())
   };
 }
 
-const ARCHIVE_UPDATE: readonly ArchiveField[] = ["title", "content", "published", "author_id", "tags", "cover"];
+const ARCHIVE_UPDATE: readonly ArchiveField[] = ["title", "content", "published", "author_id", "tags", "cover", "publish_at"];
 
 function toArchiveUpdateInput(v: ArchiveValues): Input<"update">["data"] {
   return {
@@ -127,7 +130,8 @@ function toArchiveUpdateInput(v: ArchiveValues): Input<"update">["data"] {
     published: v.published,
     author_id: v.author_id,
     tags: (v.tags === "" ? null : splitList(v.tags)),
-    cover: (v.cover || null)
+    cover: (v.cover || null),
+    publish_at: (v.publish_at === "" ? null : new Date(v.publish_at).toISOString())
   };
 }
 
@@ -138,7 +142,8 @@ function archiveFromRow(row: Detail): ArchiveValues {
     published: row.published ?? false,
     author_id: text(row.author_id),
     tags: formatList(row.tags),
-    cover: row.cover?.id ?? ""
+    cover: row.cover?.id ?? "",
+    publish_at: toDateTimeInput(row.publish_at)
   };
 }
 
@@ -206,6 +211,12 @@ function renderArchiveField(field: ArchiveField, values: ArchiveValues, set: Arc
       return (
       <FormRow label="Cover" htmlFor="cover">
         <FileInput id="cover" value={values.cover} current={current?.cover} accept="image/*" onChange={fileId => set("cover", fileId)} />
+      </FormRow>
+      );
+    case "publish_at":
+      return (
+      <FormRow label="Publish At" htmlFor="publish_at">
+        <Input id="publish_at" type="datetime-local" value={values.publish_at} onChange={e => set("publish_at", e.target.value)} />
       </FormRow>
       );
   }
@@ -500,6 +511,7 @@ function ArchiveDetailInner() {
         <FieldRow label="Cover">
           <FilePreview file={row.cover} />
         </FieldRow>
+        <FieldRow label="Publish At">{formatDateTime(row.publish_at) || "—"}</FieldRow>
         </dl>
       )}
     </Pane>

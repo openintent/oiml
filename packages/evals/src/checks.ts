@@ -414,6 +414,18 @@ export function checkExpectations(expect: Expect, checked: Checked): string[] {
     const items = (model.app?.sidebar?.items ?? []).map(i => i.page);
     for (const name of expect.sidebar) if (!pick(name, items)) fail(`sidebar lacks page ${name}`);
   }
+  for (const want of expect.schedules ?? [])
+    if (!model.schedules.some(s => alts(want).includes(s.run))) fail(`no schedule runs ${want}`);
+  for (const spec of expect.timers ?? []) {
+    const [field, run] = spec.split("->").map(s => s.trim());
+    const dot = field.indexOf(".");
+    const entityAlts = alts(field.slice(0, dot));
+    const fieldAlts = alts(field.slice(dot + 1));
+    const hit = model.timers.some(
+      t => entityAlts.includes(t.on) && fieldAlts.includes(t.at) && (!run || alts(run).includes(t.run))
+    );
+    if (!hit) fail(`no timer on ${spec}`);
+  }
 
   if (expect.files) {
     const have = ir.files ?? { upload: { kind: model.auth ? "authenticated" : "public" }, read: { kind: "public" } };

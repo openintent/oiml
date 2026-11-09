@@ -6,13 +6,18 @@ package app
 import (
 	"context"
 	"net/http"
+	"os"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"workspace/generated"
 	"workspace/generated/auth"
+	"workspace/generated/events"
+	"workspace/generated/jobs"
 	"workspace/generated/resources"
+	"workspace/generated/scheduling"
+	"workspace/generated/testhooks"
 )
 
 // New builds the engine. Add your own middleware and routes to the result in cmd/server.
@@ -23,22 +28,27 @@ func New(pool *pgxpool.Pool) *gin.Engine {
 	r.GET("/api/openapi.json", openapi)
 	a := auth.New(pool)
 	a.Routes(r)
+	scheduling.Use(pool)
 	resources.NewUsers(pool, a).Routes(r)
 	resources.NewTeams(pool, a).Routes(r)
 	resources.NewMembers(pool, a).Routes(r)
 	resources.NewProjects(pool, a).Routes(r)
 	resources.NewTasks(pool, a).Routes(r)
+	if os.Getenv("OSL_TEST_HOOKS") == "1" {
+		testhooks.Routes(r)
+	}
 	return r
 }
 
-// Start runs the background work; the model queues no events, so there is none.
+// Start runs the background work: River's migrations and, unless OSL_ROLE is web, the worker for queued events, schedules and timers.
 func Start(ctx context.Context, pool *pgxpool.Pool) error {
-	return nil
+	scheduling.Use(pool)
+	return jobs.Start(ctx, pool, events.RunQueued, scheduling.Periodic(), scheduling.RunTimerJob)
 }
 
-// Stop ends the background work.
+// Stop lets running jobs finish.
 func Stop(ctx context.Context) error {
-	return nil
+	return jobs.Stop(ctx)
 }
 
 func healthz(c *gin.Context) {

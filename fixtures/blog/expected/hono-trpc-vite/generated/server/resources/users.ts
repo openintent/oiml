@@ -103,7 +103,7 @@ export const usersRouter = router({
     if (!current) throw notFound();
     checkRule(ACTION_RULES.ban, ctx.session, current);
     try {
-      const result = await handlers.users_ban({ input, row: current, session: ctx.session, db });
+      const result = await handlers.users_ban({ input, row: current, session: ctx.session, db, now: new Date() });
 
       return presentUser(result);
     } catch (err) {

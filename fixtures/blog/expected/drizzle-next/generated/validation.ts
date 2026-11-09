@@ -33,7 +33,8 @@ export const postsCreateInput = z
     content: z.string(),
     published: z.boolean().optional(),
     tags: z.array(z.string().max(255)).nullish(),
-    cover: z.string().uuid().nullish()
+    cover: z.string().uuid().nullish(),
+    publish_at: z.string().datetime({ offset: true }).transform(value => new Date(value)).nullish()
   })
   .strict();
 export const postsUpdateInput = z
@@ -43,7 +44,8 @@ export const postsUpdateInput = z
     published: z.boolean().optional(),
     author_id: z.string().uuid().optional(),
     tags: z.array(z.string().max(255)).nullish(),
-    cover: z.string().uuid().nullish()
+    cover: z.string().uuid().nullish(),
+    publish_at: z.string().datetime({ offset: true }).transform(value => new Date(value)).nullish()
   })
   .strict();
 

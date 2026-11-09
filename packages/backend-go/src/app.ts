@@ -1,5 +1,6 @@
 import type { GeneratedFile, IR } from "@osl/core";
 import { globalActions } from "@osl/core";
+import { hasScheduling } from "./scheduling.js";
 import { HEADER, SCAFFOLD_HEADER, exported, goFile } from "./util.js";
 
 /** generated/openapi.go: the OpenAPI document next to it, embedded so the binary serves it from anywhere. */
@@ -31,15 +32,20 @@ export function appFile(ir: IR, modulePath: string): string {
   if (ir.resources.length || globals.length) imports.push(`${modulePath}/generated/resources`);
   if (ir.files) imports.push(`${modulePath}/generated/filesapi`);
   if (ir.jobs) imports.push(`${modulePath}/generated/events`, `${modulePath}/generated/jobs`);
+  const scheduling = hasScheduling(ir);
+  if (scheduling) imports.push(`${modulePath}/generated/scheduling`);
+  imports.push("os", `${modulePath}/generated/testhooks`);
   const registrations: string[] = [];
+  if (scheduling) registrations.push(`\tscheduling.Use(pool)`);
   if (ir.files) registrations.push(`\tfilesapi.New(pool, a).Routes(r)`);
   for (const resource of ir.resources)
     registrations.push(`\tresources.New${exported(resource.name)}(pool, a).Routes(r)`);
   if (globals.length) registrations.push(`\tresources.NewGlobalActions(pool, a).Routes(r)`);
+  registrations.push(`\tif os.Getenv("OSL_TEST_HOOKS") == "1" {\n\t\ttesthooks.Routes(r)\n\t}`);
   const start = ir.jobs
-    ? `// Start runs the background work: River's migrations and, unless OSL_ROLE is web, the worker for queued events.
+    ? `// Start runs the background work: River's migrations and, unless OSL_ROLE is web, the worker for queued events, schedules and timers.
 func Start(ctx context.Context, pool *pgxpool.Pool) error {
-	return jobs.Start(ctx, pool, events.RunQueued)
+	${scheduling ? "scheduling.Use(pool)\n\treturn jobs.Start(ctx, pool, events.RunQueued, scheduling.Periodic(), scheduling.RunTimerJob)" : "return jobs.Start(ctx, pool, events.RunQueued, nil, nil)"}
 }
 
 // Stop lets running jobs finish.

@@ -4,6 +4,7 @@ import { actionHandlersFile, actionScaffolds, actionsFile } from "./actions.js";
 import { appFile, mainScaffold, openapiFile, workerScaffold } from "./app.js";
 import { authFile, authProvidersFile, hasProviders } from "./auth.js";
 import { emailFile } from "./email.js";
+import { hasScheduling, schedulingFile, testHooksFile } from "./scheduling.js";
 import { eventHandlerScaffolds, eventsFile } from "./events.js";
 import { filesApiFile, filesFile } from "./files.js";
 import { jobsFile } from "./jobs.js";
@@ -60,6 +61,8 @@ export function generate(input: GenerateInput): GeneratedFile[] {
     files.push({ path: `${gen}/jobs/jobs.go`, content: jobsFile(mod) });
     files.push(workerScaffold(mod));
   }
+  if (hasScheduling(ir)) files.push({ path: `${gen}/scheduling/scheduling.go`, content: schedulingFile(ir, mod) });
+  files.push({ path: `${gen}/testhooks/testhooks.go`, content: testHooksFile(ir, mod, { email: hasProviders(ir) }) });
 
   for (const resource of ir.resources) {
     files.push({ path: `${gen}/resources/${resource.name}.go`, content: resourceFile(ir, resource, mod) });
@@ -117,10 +120,10 @@ export const ginPgxBackend: Backend = {
       `${config.generated_dir}/email/email.go`
     ],
     conventions: [
-      "ctx.DB is a *pgxpool.Pool and ctx.Gin.Request.Context() the request context. models.<Entity>Table is the quoted table name, models.<Entity>Columns the column list for SELECT and RETURNING, and models.Scan<Entity>(row) scans one row selected with those columns (ctx.DB.QueryRow).",
+      "ctx.DB is a *pgxpool.Pool and ctx.Context() the request's context (or the job's when a schedule or timer runs the action; ctx.Gin is nil then). ctx.Now is when the action runs; a timer or schedule passes the time it was due, so compare against ctx.Now rather than time.Now(). models.<Entity>Table is the quoted table name, models.<Entity>Columns the column list for SELECT and RETURNING, and models.Scan<Entity>(row) scans one row selected with those columns (ctx.DB.QueryRow).",
       "Return httpx.NewError(status, code, message) to answer with that status (the httpx package lives next to the generated/actions package the stub imports); return the plain error for anything unexpected.",
       "ctx.Session is nil for anonymous callers; ctx.Session.User.ID is the caller's id. Nullable columns are pointers, time columns are time.Time; stamp with time.Now().UTC(). Keep the file gofmt-formatted and every import used.",
-      "To send mail, call email.Send(ctx.Gin.Request.Context(), email.Email{...}) from the generated email package; it logs or captures the message outside production, so sending is safe in tests."
+      "To send mail, call email.Send(ctx.Context(), email.Email{...}) from the generated email package; it logs or captures the message outside production, so sending is safe in tests."
     ].join("\n")
   }),
   runtime: () => ({

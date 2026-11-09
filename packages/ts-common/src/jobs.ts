@@ -5,10 +5,15 @@ export const JOBS_DEPENDENCIES = { "pg-boss": "^12" };
 
 /** generated/jobs.ts: a Postgres-backed queue (pg-boss) for events delivered through it. */
 export function jobsFile(ir: IR, conv: ServerConventions): string {
-  void ir;
-  return `${conv.header("Background jobs on pg-boss: queued events are stored in Postgres and run by the worker with retries.")}
+  const scheduling = ir.schedules.length > 0 || ir.timers.length > 0;
+  return `${conv.header("Background jobs on pg-boss: queued events, schedules and timers are stored in Postgres and run by the worker with retries.")}
 import { PgBoss } from "pg-boss";
 import { QUEUED_EVENTS, runQueued } from "./events";
+${scheduling ? `import { SCHEDULES, TIMERS, runSchedule, runTimerJob } from "./scheduling";\n` : ""}
+/** Every queue the app uses: one per queued event, schedule and timer */
+function queueNames(): string[] {
+  return [${scheduling ? `...QUEUED_EVENTS, ...SCHEDULES.map(s => "schedule." + s.name), ...TIMERS.map(t => "timer." + t.name)` : "...QUEUED_EVENTS"}];
+}
 
 export type Role = "web" | "worker" | "all";
 
@@ -26,7 +31,7 @@ export function getBoss(): Promise<PgBoss> {
     const boss = new PgBoss({ connectionString: process.env.DATABASE_URL, schema: "pgboss" });
     boss.on("error", error => console.error("[jobs]", error));
     await boss.start();
-    for (const name of QUEUED_EVENTS) {
+    for (const name of queueNames()) {
       if (!(await boss.getQueue(name))) await boss.createQueue(name, { retryLimit: 3, retryDelay: 2, retryBackoff: true });
     }
     return boss;
@@ -39,6 +44,12 @@ export async function enqueue(name: string, payload: unknown): Promise<void> {
   await boss.send(name, (payload ?? {}) as object);
 }
 
+/** Store a job to run at a time; the same payload scheduled twice runs once */
+export async function enqueueAt(name: string, payload: object, at: Date): Promise<void> {
+  const boss = await getBoss();
+  await boss.send(name, payload, { startAfter: at, singletonKey: JSON.stringify(payload) });
+}
+
 /** Run queued events in this process; a no-op in the web role. */
 export async function startWorker(): Promise<void> {
   if (role() === "web") return;
@@ -47,6 +58,22 @@ export async function startWorker(): Promise<void> {
     await boss.work(name, async jobs => {
       for (const job of jobs) await runQueued(name, job.data);
     });
+  }${
+    scheduling
+      ? `
+  for (const schedule of SCHEDULES) {
+    const queue = "schedule." + schedule.name;
+    await boss.schedule(queue, schedule.cron, {}, { tz: "UTC" });
+    await boss.work(queue, async () => {
+      await runSchedule(schedule.name, new Date());
+    });
+  }
+  for (const timer of TIMERS) {
+    await boss.work("timer." + timer.name, async jobs => {
+      for (const job of jobs) await runTimerJob(timer.name, job.data as { id: unknown; due: string });
+    });
+  }`
+      : ""
   }
 }
 

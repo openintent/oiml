@@ -6,17 +6,21 @@ package resources
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"workspace/generated/access"
+	"workspace/generated/actions"
+	"workspace/generated/actions/handlers"
 	"workspace/generated/auth"
 	"workspace/generated/db"
 	"workspace/generated/hooks"
 	"workspace/generated/httpx"
 	"workspace/generated/models"
+	"workspace/generated/scheduling"
 	"workspace/generated/validation"
 	taskshooks "workspace/src/extensions/tasks"
 )
@@ -32,13 +36,14 @@ func NewTasks(db *pgxpool.Pool, a *auth.Auth) *Tasks {
 	return &Tasks{db: db, auth: a}
 }
 
-// Routes registers every operation of the resource.
+// Routes registers every operation of the resource and its actions.
 func (h *Tasks) Routes(r gin.IRouter) {
 	r.GET("/api/tasks", h.List)
 	r.GET("/api/tasks/:id", h.Get)
 	r.POST("/api/tasks", h.Create)
 	r.PATCH("/api/tasks/:id", h.Update)
 	r.DELETE("/api/tasks/:id", h.Delete)
+	r.POST("/api/tasks/:id/remind", h.ActionRemind)
 }
 
 var tasksReadRule = access.Rule{Kind: "any", Any: []access.Rule{{Kind: "owner", Field: "assignee_id"}, {Kind: "member", Field: "project_id.team_id", Role: "admin"}}}
@@ -48,6 +53,8 @@ var tasksCreateRule = access.Rule{Kind: "member", Field: "project_id.team_id"}
 var tasksUpdateRule = access.Rule{Kind: "any", Any: []access.Rule{{Kind: "owner", Field: "assignee_id"}, {Kind: "member", Field: "project_id.team_id", Role: "admin"}}}
 
 var tasksDeleteRule = access.Rule{Kind: "member", Field: "project_id.team_id", Role: "admin"}
+
+var tasksRemindActionRule = access.Rule{Kind: "member", Field: "project_id.team_id", Role: "admin"}
 
 // List handles GET /api/tasks.
 func (h *Tasks) List(c *gin.Context) {
@@ -185,6 +192,10 @@ func (h *Tasks) Create(c *gin.Context) {
 		httpx.HandleError(c, err, "write")
 		return
 	}
+	if err := scheduling.ScheduleTask(ctx, row); err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
 	if err := taskshooks.AfterCreate(hookCtx, row); err != nil {
 		httpx.HandleError(c, err, "write")
 		return
@@ -249,6 +260,10 @@ func (h *Tasks) Update(c *gin.Context) {
 		httpx.HandleError(c, err, "write")
 		return
 	}
+	if err := scheduling.ScheduleTask(ctx, row); err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
 	if err := taskshooks.AfterUpdate(hookCtx, row); err != nil {
 		httpx.HandleError(c, err, "write")
 		return
@@ -301,6 +316,56 @@ func (h *Tasks) Delete(c *gin.Context) {
 		return
 	}
 	httpx.NoContent(c)
+}
+
+// ActionRemind handles POST /api/tasks/{id}/remind: the remind action.
+func (h *Tasks) ActionRemind(c *gin.Context) {
+	ctx := c.Request.Context()
+	session, err := h.auth.Session(c)
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if verdict := access.Check(tasksRemindActionRule, session); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	id, ok := validation.TasksID(c.Param("id"))
+	if !ok {
+		httpx.Fail(c, httpx.NotFound())
+		return
+	}
+	row, err := models.ScanTask(h.db.QueryRow(ctx, `SELECT `+models.TaskColumns+` FROM `+models.TaskTable+` WHERE "id" = $1`, id))
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	ruleRow, err := h.ruleRow(ctx, access.Row{"project_id": row.ProjectID})
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if verdict := access.CheckRow(tasksRemindActionRule, session, ruleRow); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	body, perr := httpx.ParseBody(c)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	values, perr := validation.TasksRemindInput.Parse(body)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	actx := &actions.Context{Gin: c, Ctx: c.Request.Context(), Session: session, DB: h.db, Now: time.Now().UTC()}
+	result, err := handlers.TasksRemind(actx, actions.ParseTasksRemindInput(values), row)
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	httpx.OK(c, models.PresentTask(result))
 }
 
 // ruleRow adds to row the values the rules reach through relations, under their dotted keys.

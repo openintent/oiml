@@ -80,17 +80,34 @@ function parseBody(columns: ColumnIR[]): string {
 /** generated/actions/actions.go: the handler context, one typed input per action, and the result structs. */
 export function actionsFile(ir: IR, modulePath: string): string {
   const imports = new Set<string>([
+    "context",
+    "time",
     "github.com/gin-gonic/gin",
     "github.com/jackc/pgx/v5/pgxpool",
     `${modulePath}/generated/auth`,
     `${modulePath}/generated/models`
   ]);
   const sections: string[] = [];
-  sections.push(`// Context is what a handler gets besides its input and row: the request, the caller's session and the database.
+  sections.push(`// Context is what a handler gets besides its input and row: the request (nil when a schedule or timer runs the
+// action), the caller's session (nil then too), the database, and the time the request or job runs at.
 type Context struct {
 	Gin     *gin.Context
+	Ctx     context.Context
 	Session *auth.Session
 	DB      *pgxpool.Pool
+	// Now is when the action runs; a timer or schedule passes the time it was due. Compare against it, not the clock.
+	Now time.Time
+}
+
+// Context is the request's context, or the job's when the queue runs the action.
+func (c *Context) Context() context.Context {
+	if c.Gin != nil {
+		return c.Gin.Request.Context()
+	}
+	if c.Ctx != nil {
+		return c.Ctx
+	}
+	return context.Background()
 }`);
   for (const action of ir.actions) {
     const input = actionInputType(action);

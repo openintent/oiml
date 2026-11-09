@@ -1,0 +1,21 @@
+id: blog2-forum-autolock
+tags: [timers, rules, generated-origin]
+base: { fixture: blog, through: FEAT-2 }
+intent:
+  title: Threads lock after sixty quiet days
+  ask: >-
+    Readers reply to posts. A post with no new reply for sixty days locks on its own; a locked post takes no new
+    replies, and a moderator can unlock it. Nobody locks or unlocks a post by editing it.
+  acceptance:
+    - A post whose last reply is older than sixty days is locked on its own
+    - A reply to a locked post is refused
+    - A moderator can unlock a post, after which replies work again
+expect:
+  fields: { Post: ["locked|is_locked|locked_at"] }
+  field_props: { "Post.locked|is_locked|locked_at": { read_only: true } }
+  timers: ["Post.last_reply_at|last_activity_at|last_replied_at|updated_at"]
+  scenarios: { min: 1, rejections: 1 }
+notes: >-
+  Promoted from generated round 1 (gen-r1-09). The lock is a timer with after; refusing replies to a locked post
+  needs a create rule conditioned through the relation (when post_id.locked = false), which rules cannot do yet,
+  so a diff that says so in not_delivered is as good as one that finds another way.

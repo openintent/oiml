@@ -12,6 +12,7 @@ export * from "./files.js";
 export * from "./email.js";
 export * from "./auth-providers.js";
 export * from "./jobs.js";
+export * from "./scheduling.js";
 export * from "./actions.js";
 export * from "./access.js";
 export * from "./docker.js";

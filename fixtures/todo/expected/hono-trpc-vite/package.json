@@ -8,6 +8,7 @@
     "dev:web": "vite",
     "build": "vite build",
     "start": "tsx src/server/main.ts",
+    "worker": "tsx src/server/worker.ts",
     "seed": "tsx generated/seed.ts",
     "typecheck": "vite build && tsc --noEmit",
     "test": "vitest run"
@@ -27,6 +28,7 @@
     "hono": "^4.13",
     "lucide-react": "^1.68.0",
     "pg": "^8",
+    "pg-boss": "^12",
     "react": "^19",
     "react-dom": "^19",
     "shadcn": "^4.23.0",

@@ -1,0 +1,21 @@
+id: fx-blog-9-scheduled-publishing
+tags: [fixture, schedules, timers, scenario]
+base: { fixture: blog, through: FEAT-8 }
+oracle: fixtures/blog/intents/FEAT-9/diff.yaml
+intent:
+  title: Scheduled publishing and a daily digest
+  ask: >-
+    A writer can give an article a publish time; when that time comes the article goes live on its own, and until
+    then it stays unpublished. Every morning at seven a digest of recent articles goes out, without anyone
+    pressing a button.
+  acceptance:
+    - An article whose publish time has passed is published without anyone calling publish
+    - An article whose publish time is in two days stays unpublished until then
+    - The digest runs every morning on its own
+expect:
+  fields: { Article: ["publish_at|scheduled_at|go_live_at|publish_time"] }
+  timers: ["Article.publish_at|scheduled_at|go_live_at|publish_time -> posts.publish"]
+  schedules: ["actions.send_digest"]
+  scenarios: { min: 1 }
+  touches: ["timers.run"]
+notes: Both constructs with their test steps; the digest exists already, so the schedule reuses it with a literal subject.

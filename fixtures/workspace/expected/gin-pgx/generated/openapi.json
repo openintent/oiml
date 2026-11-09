@@ -1438,6 +1438,31 @@
                           "created_at": {
                             "type": "string",
                             "format": "date-time"
+                          },
+                          "due_at": {
+                            "oneOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time",
+                                "description": "When the task is due"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "reminded_at": {
+                            "oneOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time",
+                                "description": "Set when the reminder went out"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "readOnly": true
                           }
                         },
                         "required": [
@@ -1446,7 +1471,9 @@
                           "title",
                           "done",
                           "assignee_id",
-                          "created_at"
+                          "created_at",
+                          "due_at",
+                          "reminded_at"
                         ]
                       }
                     },
@@ -1527,6 +1554,18 @@
                       {
                         "type": "string",
                         "format": "uuid"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "due_at": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "When the task is due"
                       },
                       {
                         "type": "null"
@@ -1648,6 +1687,31 @@
                         "created_at": {
                           "type": "string",
                           "format": "date-time"
+                        },
+                        "due_at": {
+                          "oneOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time",
+                              "description": "When the task is due"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "reminded_at": {
+                          "oneOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time",
+                              "description": "Set when the reminder went out"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "readOnly": true
                         }
                       },
                       "required": [
@@ -1656,7 +1720,9 @@
                         "title",
                         "done",
                         "assignee_id",
-                        "created_at"
+                        "created_at",
+                        "due_at",
+                        "reminded_at"
                       ]
                     }
                   }
@@ -1733,6 +1799,18 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "due_at": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "When the task is due"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 },
                 "additionalProperties": false
@@ -1802,6 +1880,67 @@
         "responses": {
           "204": {
             "description": "Deleted"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/tasks/{id}/remind": {
+      "post": {
+        "tags": [
+          "tasks"
+        ],
+        "operationId": "tasks_remind",
+        "summary": "Email the assignee about the task",
+        "description": "Only members of the tenant reached through project_id.team_id with at least role admin.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Task"
+                    }
+                  }
+                }
+              }
+            }
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
@@ -2524,6 +2663,31 @@
           "created_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "due_at": {
+            "oneOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the task is due"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reminded_at": {
+            "oneOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "description": "Set when the reminder went out"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "readOnly": true
           }
         },
         "required": [
@@ -2532,7 +2696,9 @@
           "title",
           "done",
           "assignee_id",
-          "created_at"
+          "created_at",
+          "due_at",
+          "reminded_at"
         ]
       },
       "Team": {

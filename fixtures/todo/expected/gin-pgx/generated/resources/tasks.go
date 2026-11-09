@@ -5,6 +5,7 @@ package resources
 
 import (
 	"context"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -339,7 +340,7 @@ func (h *Tasks) ActionComplete(c *gin.Context) {
 		httpx.Fail(c, perr)
 		return
 	}
-	actx := &actions.Context{Gin: c, Session: session, DB: h.db}
+	actx := &actions.Context{Gin: c, Ctx: c.Request.Context(), Session: session, DB: h.db, Now: time.Now().UTC()}
 	result, err := handlers.TasksComplete(actx, actions.ParseTasksCompleteInput(values), row)
 	if err != nil {
 		httpx.HandleError(c, err, "write")
@@ -369,7 +370,7 @@ func (h *Tasks) ActionClearDone(c *gin.Context) {
 		httpx.Fail(c, perr)
 		return
 	}
-	actx := &actions.Context{Gin: c, Session: session, DB: h.db}
+	actx := &actions.Context{Gin: c, Ctx: c.Request.Context(), Session: session, DB: h.db, Now: time.Now().UTC()}
 	result, err := handlers.TasksClearDone(actx, actions.ParseTasksClearDoneInput(values))
 	if err != nil {
 		httpx.HandleError(c, err, "write")

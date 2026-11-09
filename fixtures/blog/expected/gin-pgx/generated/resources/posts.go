@@ -5,6 +5,7 @@ package resources
 
 import (
 	"context"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -19,6 +20,7 @@ import (
 	"blog/generated/hooks"
 	"blog/generated/httpx"
 	"blog/generated/models"
+	"blog/generated/scheduling"
 	"blog/generated/validation"
 	postshooks "blog/src/extensions/posts"
 )
@@ -210,6 +212,10 @@ func (h *Posts) Create(c *gin.Context) {
 		httpx.HandleError(c, err, "write")
 		return
 	}
+	if err := scheduling.ScheduleArticle(ctx, row); err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
 	if err := postshooks.AfterCreate(hookCtx, row); err != nil {
 		httpx.HandleError(c, err, "write")
 		return
@@ -270,6 +276,10 @@ func (h *Posts) Update(c *gin.Context) {
 	sql, args := db.Update(models.ArticleTable, patch, `"id"`, id, models.ArticleColumns)
 	row, err := models.ScanArticle(h.db.QueryRow(ctx, sql, args...))
 	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if err := scheduling.ScheduleArticle(ctx, row); err != nil {
 		httpx.HandleError(c, err, "write")
 		return
 	}
@@ -358,7 +368,7 @@ func (h *Posts) ActionPublish(c *gin.Context) {
 		httpx.Fail(c, perr)
 		return
 	}
-	actx := &actions.Context{Gin: c, Session: session, DB: h.db}
+	actx := &actions.Context{Gin: c, Ctx: c.Request.Context(), Session: session, DB: h.db, Now: time.Now().UTC()}
 	result, err := handlers.PostsPublish(actx, actions.ParsePostsPublishInput(values), row)
 	if err != nil {
 		httpx.HandleError(c, err, "write")
@@ -392,7 +402,7 @@ func (h *Posts) ActionUnpublishAll(c *gin.Context) {
 		httpx.Fail(c, perr)
 		return
 	}
-	actx := &actions.Context{Gin: c, Session: session, DB: h.db}
+	actx := &actions.Context{Gin: c, Ctx: c.Request.Context(), Session: session, DB: h.db, Now: time.Now().UTC()}
 	result, err := handlers.PostsUnpublishAll(actx, actions.ParsePostsUnpublishAllInput(values))
 	if err != nil {
 		httpx.HandleError(c, err, "write")

@@ -228,16 +228,18 @@ func PresentProjects(rows []*Project) []PublicProject {
 const TaskTable = `"tasks"`
 
 // TaskColumns lists the columns of Task in model order, for SELECT and RETURNING.
-const TaskColumns = `"id", "project_id", "title", "done", "assignee_id", "created_at"`
+const TaskColumns = `"id", "project_id", "title", "done", "assignee_id", "created_at", "due_at", "reminded_at"`
 
 // Task is a row of tasks.
 type Task struct {
-	ID         string    `json:"id"`
-	ProjectID  string    `json:"project_id"`
-	Title      string    `json:"title"`
-	Done       bool      `json:"done"`
-	AssigneeID *string   `json:"assignee_id"`
-	CreatedAt  time.Time `json:"created_at"`
+	ID         string     `json:"id"`
+	ProjectID  string     `json:"project_id"`
+	Title      string     `json:"title"`
+	Done       bool       `json:"done"`
+	AssigneeID *string    `json:"assignee_id"`
+	CreatedAt  time.Time  `json:"created_at"`
+	DueAt      *time.Time `json:"due_at"`
+	RemindedAt *time.Time `json:"reminded_at"`
 }
 
 // PublicTask is Task as the API returns it: hidden columns removed, dates rendered.
@@ -248,12 +250,14 @@ type PublicTask struct {
 	Done       bool    `json:"done"`
 	AssigneeID *string `json:"assignee_id"`
 	CreatedAt  string  `json:"created_at"`
+	DueAt      *string `json:"due_at"`
+	RemindedAt *string `json:"reminded_at"`
 }
 
 // ScanTask reads one Task from a row selected with TaskColumns.
 func ScanTask(row Scanner) (*Task, error) {
 	var r Task
-	if err := row.Scan(&r.ID, &r.ProjectID, &r.Title, &r.Done, &r.AssigneeID, &r.CreatedAt); err != nil {
+	if err := row.Scan(&r.ID, &r.ProjectID, &r.Title, &r.Done, &r.AssigneeID, &r.CreatedAt, &r.DueAt, &r.RemindedAt); err != nil {
 		return nil, err
 	}
 	return &r, nil
@@ -261,7 +265,7 @@ func ScanTask(row Scanner) (*Task, error) {
 
 // PresentTask returns the public shape of a Task.
 func PresentTask(row *Task) PublicTask {
-	return PublicTask{ID: row.ID, ProjectID: row.ProjectID, Title: row.Title, Done: row.Done, AssigneeID: row.AssigneeID, CreatedAt: FormatDateTime(row.CreatedAt)}
+	return PublicTask{ID: row.ID, ProjectID: row.ProjectID, Title: row.Title, Done: row.Done, AssigneeID: row.AssigneeID, CreatedAt: FormatDateTime(row.CreatedAt), DueAt: FormatDateTimePtr(row.DueAt), RemindedAt: FormatDateTimePtr(row.RemindedAt)}
 }
 
 // PresentTaskPtr presents an optional Task; nil stays nil.

@@ -1,0 +1,10 @@
+osl: "1.0"
+title: Scheduled publishing and a daily digest
+ask: >-
+  A writer can give an article a publish time; when that time comes the article goes live on its own, and until
+  then it stays unpublished. Every morning at seven a digest of recent articles goes out, without anyone
+  pressing a button.
+acceptance:
+  - An article whose publish time has passed is published without anyone calling publish
+  - An article whose publish time is in two days stays unpublished until then
+  - The digest runs every morning on its own

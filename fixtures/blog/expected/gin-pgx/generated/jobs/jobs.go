@@ -9,12 +9,14 @@ import (
 	"errors"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/riverqueue/river/rivermigrate"
+	"github.com/robfig/cron/v3"
 )
 
 // Runner runs the queued handlers of an event; the events package provides it.
@@ -34,6 +36,65 @@ func (EventArgs) Kind() string {
 // InsertOpts retries a failed event three times (four attempts in all) with River's exponential backoff.
 func (EventArgs) InsertOpts() river.InsertOpts {
 	return river.InsertOpts{MaxAttempts: 4}
+}
+
+// PeriodicSpec is a schedule the worker runs on a cron (UTC): its name and what to do when it is due.
+type PeriodicSpec struct {
+	Name string
+	Cron string
+	Run  func(ctx context.Context, now time.Time) error
+}
+
+// TimerRunner runs a timer job the queue fired: the timer's name, the row's id as stored and the due time it was scheduled for.
+type TimerRunner func(ctx context.Context, name string, id json.RawMessage, due string) error
+
+// ScheduleArgs is the job a periodic schedule inserts when it is due.
+type ScheduleArgs struct {
+	Name string `json:"name"`
+}
+
+// Kind names the job in River's tables.
+func (ScheduleArgs) Kind() string {
+	return "osl_schedule"
+}
+
+// TimerArgs is the job of a timer: the row and the due time it was scheduled for.
+type TimerArgs struct {
+	Name string          `json:"name"`
+	ID   json.RawMessage `json:"id"`
+	Due  string          `json:"due"`
+}
+
+// Kind names the job in River's tables.
+func (TimerArgs) Kind() string {
+	return "osl_timer"
+}
+
+// InsertOpts retries a failed timer three times and keeps one job per row and due time.
+func (TimerArgs) InsertOpts() river.InsertOpts {
+	return river.InsertOpts{MaxAttempts: 4, UniqueOpts: river.UniqueOpts{ByArgs: true}}
+}
+
+type scheduleWorker struct {
+	river.WorkerDefaults[ScheduleArgs]
+	runs map[string]func(context.Context, time.Time) error
+}
+
+func (w *scheduleWorker) Work(ctx context.Context, job *river.Job[ScheduleArgs]) error {
+	run, ok := w.runs[job.Args.Name]
+	if !ok {
+		return errors.New("unknown schedule " + job.Args.Name)
+	}
+	return run(ctx, time.Now().UTC())
+}
+
+type timerWorker struct {
+	river.WorkerDefaults[TimerArgs]
+	run TimerRunner
+}
+
+func (w *timerWorker) Work(ctx context.Context, job *river.Job[TimerArgs]) error {
+	return w.run(ctx, job.Args.Name, job.Args.ID, job.Args.Due)
 }
 
 type eventWorker struct {
@@ -60,7 +121,8 @@ var current struct {
 }
 
 // Start applies River's migrations and builds the client: insert-only in the web role, working jobs otherwise.
-func Start(ctx context.Context, pool *pgxpool.Pool, run Runner) error {
+// periodic are the schedules the worker runs on their crons; timers runs timer jobs when they fire (nil when the model has none).
+func Start(ctx context.Context, pool *pgxpool.Pool, run Runner, periodic []PeriodicSpec, timers TimerRunner) error {
 	driver := riverpgxv5.New(pool)
 	migrator, err := rivermigrate.New(driver, nil)
 	if err != nil {
@@ -73,8 +135,26 @@ func Start(ctx context.Context, pool *pgxpool.Pool, run Runner) error {
 	if Role() != "web" {
 		workers := river.NewWorkers()
 		river.AddWorker(workers, &eventWorker{run: run})
+		runs := map[string]func(context.Context, time.Time) error{}
+		for _, spec := range periodic {
+			runs[spec.Name] = spec.Run
+		}
+		river.AddWorker(workers, &scheduleWorker{runs: runs})
+		if timers != nil {
+			river.AddWorker(workers, &timerWorker{run: timers})
+		}
 		config.Workers = workers
 		config.Queues = map[string]river.QueueConfig{river.QueueDefault: {MaxWorkers: 10}}
+		for _, spec := range periodic {
+			schedule, err := cron.ParseStandard(spec.Cron)
+			if err != nil {
+				return err
+			}
+			name := spec.Name
+			config.PeriodicJobs = append(config.PeriodicJobs, river.NewPeriodicJob(schedule, func() (river.JobArgs, *river.InsertOpts) {
+				return ScheduleArgs{Name: name}, nil
+			}, nil))
+		}
 	}
 	client, err := river.NewClient(driver, config)
 	if err != nil {
@@ -104,6 +184,22 @@ func Enqueue(ctx context.Context, name string, payload any) error {
 		return errors.New("jobs are not started: call app.Start first")
 	}
 	_, err = client.Insert(ctx, EventArgs{Name: name, Payload: data}, nil)
+	return err
+}
+
+// EnqueueTimer stores a timer job to run at its due time; the same row and due time scheduled twice run once.
+func EnqueueTimer(ctx context.Context, name string, id any, due time.Time) error {
+	data, err := json.Marshal(id)
+	if err != nil {
+		return err
+	}
+	current.Lock()
+	client := current.client
+	current.Unlock()
+	if client == nil {
+		return errors.New("jobs are not started: call app.Start first")
+	}
+	_, err = client.Insert(ctx, TimerArgs{Name: name, ID: data, Due: due.UTC().Format(time.RFC3339Nano)}, &river.InsertOpts{ScheduledAt: due})
 	return err
 }
 

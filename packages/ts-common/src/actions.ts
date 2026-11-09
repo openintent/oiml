@@ -87,8 +87,11 @@ ${ir.actions.map(a => `import * as ${a.handler} from "${conv.src(`actions/${a.ha
 export interface ActionContext<Input, Row = undefined> {
   input: Input;
   row: Row;
+  /** null when a schedule or timer runs the action as the system */
   session: Session | null;
   db: Db;
+  /** The time the request or job runs at; a timer or schedule passes the time it was due. Compare against this, not the clock. */
+  now: Date;
 }
 
 ${ir.actions.map(a => `export type ${actionResultType(a)} = ${actionResultTs(ir, a)};`).join("\n")}

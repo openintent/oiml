@@ -54,7 +54,9 @@ export const tasks = pgTable(
     title: varchar({ length: 200 }).notNull(),
     done: boolean().notNull().default(false),
     assignee_id: uuid().references(() => users.id, { onDelete: "set null" }),
-    created_at: timestamp({ withTimezone: true }).notNull().defaultNow()
+    created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    due_at: timestamp({ withTimezone: true }),
+    reminded_at: timestamp({ withTimezone: true })
   },
   t => [index("tasks_project_id_idx").on(t.project_id), index("tasks_assignee_id_idx").on(t.assignee_id)]
 );

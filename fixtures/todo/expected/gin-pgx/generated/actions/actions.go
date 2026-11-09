@@ -4,6 +4,9 @@
 package actions
 
 import (
+	"context"
+	"time"
+
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -11,11 +14,26 @@ import (
 	"todo/generated/models"
 )
 
-// Context is what a handler gets besides its input and row: the request, the caller's session and the database.
+// Context is what a handler gets besides its input and row: the request (nil when a schedule or timer runs the
+// action), the caller's session (nil then too), the database, and the time the request or job runs at.
 type Context struct {
 	Gin     *gin.Context
+	Ctx     context.Context
 	Session *auth.Session
 	DB      *pgxpool.Pool
+	// Now is when the action runs; a timer or schedule passes the time it was due. Compare against it, not the clock.
+	Now time.Time
+}
+
+// Context is the request's context, or the job's when the queue runs the action.
+func (c *Context) Context() context.Context {
+	if c.Gin != nil {
+		return c.Gin.Request.Context()
+	}
+	if c.Ctx != nil {
+		return c.Ctx
+	}
+	return context.Background()
 }
 
 // TasksCompleteInput is the validated body of POST /api/tasks/{id}/complete.

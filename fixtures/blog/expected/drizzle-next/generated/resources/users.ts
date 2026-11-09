@@ -115,7 +115,7 @@ export const users = {
       if (!rowVerdict.ok) return denied(rowVerdict);
       const body = await parseBody(usersBanInput, request);
       if (!body.ok) return body.response;
-      const result = await handlers.users_ban({ input: body.data, row: current, session, db });
+      const result = await handlers.users_ban({ input: body.data, row: current, session, db, now: new Date() });
 
       return ok(presentUser(result));
     } catch (err) {

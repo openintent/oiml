@@ -1,0 +1,45 @@
+osl: "1.0"
+summary: Articles publish themselves at publish_at through a timer; the digest runs every morning on a schedule
+ops:
+  - op: add_field
+    entity: Article
+    name: publish_at
+    field: { type: datetime, description: When the article goes live on its own }
+  - op: set_timers
+    timers:
+      - { on: Article, at: publish_at, run: posts.publish, when: "published = false" }
+  - op: set_schedules
+    schedules:
+      - { cron: "0 7 * * *", run: actions.send_digest, input: { subject: Weekly digest } }
+  - op: add_scenario
+    scenario:
+      name: scheduled publishing
+      steps:
+        - as: alice
+          op: posts.create
+          body: { title: Already due, content: Goes live now, publish_at: "{now-1h}" }
+          expect: { status: 201, body: { data: { published: false } } }
+          capture: { due: data.id }
+        - as: alice
+          op: posts.create
+          body: { title: Later this week, content: Not yet, publish_at: "{now+2d}" }
+          expect: { status: 201, body: { data: { published: false } } }
+          capture: { later: data.id }
+        - op: timers.run
+          body: { now: "{now}" }
+          expect: { status: 200 }
+        - op: posts.get
+          path: { id: "{due}" }
+          expect: { status: 200, body: { data: { title: Already due, published: true } } }
+        - op: posts.get
+          path: { id: "{later}" }
+          expect: { status: 200, body: { data: { published: false } } }
+        - op: timers.run
+          body: { now: "{now+3d}" }
+          expect: { status: 200 }
+        - op: posts.get
+          path: { id: "{later}" }
+          expect: { status: 200, body: { data: { published: true } } }
+        - op: schedules.run
+          body: { run: actions.send_digest, now: "{now}" }
+          expect: { status: 200, body: { data: { ran: 1 } } }

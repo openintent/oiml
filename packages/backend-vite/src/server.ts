@@ -446,6 +446,15 @@ export function appFile(ir: IR): string {
     }
   });`);
   }
+  restRoutes.push(`  // Test hooks: a clock for timers and schedules, and the captured mailbox. Only with OSL_TEST_HOOKS=1.
+  if (testHooksEnabled()) {
+    app.post("/api/osl-hooks/timers/run", async c => c.json({ data: await timersRun(await c.req.json().catch(() => ({}))) }));
+    app.post("/api/osl-hooks/schedules/run", async c => {
+      const result = await schedulesRun(await c.req.json().catch(() => ({})));
+      return result ? c.json({ data: result }) : c.json({ error: { code: "unknown_schedule", message: "no schedule runs that action" } }, 400);
+    });
+    app.get("/api/osl-hooks/emails", c => c.json({ data: emailsSent({ to: c.req.query("to"), subject: c.req.query("subject") }) }));
+  }`);
   if (oauth) {
     restRoutes.push(`  // OAuth: the browser is sent to the provider and comes back signed in.
   app.get("/api/auth/oauth/:name", async c => {
@@ -472,7 +481,8 @@ import { trpcServer } from "@hono/trpc-server";
 import { TRPCError } from "@trpc/server";
 import { getHTTPStatusCodeFromError } from "@trpc/server/http";
 import { Hono, type Context as HonoContext } from "hono";
-${ir.files ? `import { fileContent, receiveContent } from "../files";\n` : ""}${oauth ? `import { APP_URL, oauthCallback, oauthStart } from "../auth-providers";\nimport { sessionCookie } from "./auth";\n` : ""}${ir.jobs ? `import { startWorker } from "../jobs";\n` : ""}import { createContext } from "./context";
+${ir.files ? `import { fileContent, receiveContent } from "../files";\n` : ""}${oauth ? `import { APP_URL, oauthCallback, oauthStart } from "../auth-providers";\nimport { sessionCookie } from "./auth";\n` : ""}${ir.jobs ? `import { startWorker } from "../jobs";\n` : ""}import { emailsSent, schedulesRun, testHooksEnabled, timersRun } from "../test-hooks";
+import { createContext } from "./context";
 import { appRouter } from "./router";
 
 /** Errors from the shared modules are tRPC errors; REST routes answer them in the contract's shape. */
@@ -588,6 +598,9 @@ export function resourceRouterFile(ir: IR, resource: ResourceIR): string {
   const T = typeName(entity);
   const table = `${tableExport(entity)}Table`;
   const query = `db.query.${tableExport(entity)}`;
+  // A row written with a timed field set schedules the entity's timers
+  const hasTimers = ir.timers.some(t => t.entity === entity.name);
+  const timerLine = hasTimers ? `\n      await scheduleTimers(${q(entity.name)}, row);` : "";
   const pkColumn = singlePrimaryKey(entity);
   const pk = pkColumn.name;
   const ops = resource.operations.filter(o => o.rule.kind !== "none");
@@ -781,7 +794,7 @@ ${whereLines}
     try {
       const values = await hooks.beforeCreate({ ...${resolveFiles("input")}${owner} }, hookContext);
 ${insert}
-${emitLines.join("\n")}
+${emitLines.join("\n")}${timerLine}
       await hooks.afterCreate(row, hookContext);
       return present${T}(row);
     } catch (err) {
@@ -809,7 +822,7 @@ ${emitLines.join("\n")}
         const patch = await hooks.beforeUpdate(existing, ${resolveFiles("input.data")}, hookContext);
         if (Object.keys(patch).length === 0) return present${T}(existing);
         const [row] = await db.update(${table}).set(patch).where(eq(${table}.${pk}, id)).returning();
-${emitLines.map(l => "  " + l).join("\n")}
+${emitLines.map(l => "  " + l).join("\n")}${timerLine}
         await hooks.afterUpdate(row, hookContext);
         return present${T}(row);
       } catch (err) {
@@ -873,6 +886,7 @@ ${emitLines.join("\n")}
         .map(name => `${tableExport(entityByName(ir, name))} as ${tableVar(entityByName(ir, name))}`)
     ].join(", ")} } from "../../db/schema";`,
     ...(usesEmit ? [`import { emit } from "../../events";`] : []),
+    ...(hasTimers ? [`import { scheduleTimers } from "../../scheduling";`] : []),
     ...(hasFiles ? [`import { resolveFileRefs } from "../../files";`] : []),
     `import { ${[...presents].sort().join(", ")} } from "../../present";`,
     `import { ${[...validationImports].sort().join(", ")} } from "../../validation";`,
@@ -926,7 +940,7 @@ function actionProcedure(
     if (!current) throw notFound();
     checkRule(${rulesRef}, ctx.session, ${rowArg(action.rule, "current")});
     try {
-      const result = await handlers.${action.handler}({ input, row: current, session: ctx.session, db });
+      const result = await handlers.${action.handler}({ input, row: current, session: ctx.session, db, now: new Date() });
 ${emitLines.join("\n")}
       return ${resultExpr};
     } catch (err) {
@@ -938,7 +952,7 @@ ${emitLines.join("\n")}
   ${action.name}: publicProcedure.input(${input}).mutation(async ({ ctx, input }) => {
     checkRule(${rulesRef}, ctx.session);
     try {
-      const result = await handlers.${action.handler}({ input, row: undefined, session: ctx.session, db });
+      const result = await handlers.${action.handler}({ input, row: undefined, session: ctx.session, db, now: new Date() });
 ${emitLines.join("\n")}
       return ${resultExpr};
     } catch (err) {

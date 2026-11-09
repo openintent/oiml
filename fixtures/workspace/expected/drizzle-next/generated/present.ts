@@ -23,9 +23,9 @@ export function presentProject(row: schema.Project): PublicProject {
   return { id: row.id, team_id: row.team_id, name: row.name, status: row.status, created_at: row.created_at };
 }
 
-export type PublicTask = Pick<schema.Task, "id" | "project_id" | "title" | "done" | "assignee_id" | "created_at">;
+export type PublicTask = Pick<schema.Task, "id" | "project_id" | "title" | "done" | "assignee_id" | "created_at" | "due_at" | "reminded_at">;
 export function presentTask(row: schema.Task): PublicTask {
-  return { id: row.id, project_id: row.project_id, title: row.title, done: row.done, assignee_id: row.assignee_id, created_at: row.created_at };
+  return { id: row.id, project_id: row.project_id, title: row.title, done: row.done, assignee_id: row.assignee_id, created_at: row.created_at, due_at: row.due_at, reminded_at: row.reminded_at };
 }
 
 export type PublicOslAuthToken = Pick<schema.OslAuthToken, "id" | "token_hash" | "email" | "purpose" | "expires_at" | "created_at">;

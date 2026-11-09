@@ -8,7 +8,7 @@ import (
 
 // Handle deletes every task that is done and answers how many it removed.
 func Handle(ctx *actions.Context, input actions.TasksClearDoneInput) (actions.TasksClearDoneResult, error) {
-	tag, err := ctx.DB.Exec(ctx.Gin.Request.Context(), `DELETE FROM `+models.TaskTable+` WHERE "status" = 'done'`)
+	tag, err := ctx.DB.Exec(ctx.Context(), `DELETE FROM `+models.TaskTable+` WHERE "status" = 'done'`)
 	if err != nil {
 		return actions.TasksClearDoneResult{}, err
 	}

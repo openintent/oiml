@@ -141,7 +141,7 @@ export const tasksRouter = router({
     if (!current) throw notFound();
     checkRule(ACTION_RULES.complete, ctx.session, current);
     try {
-      const result = await handlers.tasks_complete({ input, row: current, session: ctx.session, db });
+      const result = await handlers.tasks_complete({ input, row: current, session: ctx.session, db, now: new Date() });
 
       return presentTask(result);
     } catch (err) {
@@ -153,7 +153,7 @@ export const tasksRouter = router({
   clear_done: publicProcedure.input(tasksClearDoneInput).mutation(async ({ ctx, input }) => {
     checkRule(ACTION_RULES.clear_done, ctx.session);
     try {
-      const result = await handlers.tasks_clear_done({ input, row: undefined, session: ctx.session, db });
+      const result = await handlers.tasks_clear_done({ input, row: undefined, session: ctx.session, db, now: new Date() });
 
       return result;
     } catch (err) {

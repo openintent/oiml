@@ -57,6 +57,9 @@ export function resourceFile(ir: IR, resource: ResourceIR): string {
   const table = `${tableExport(entity)}Table`;
   const query = `db.query.${tableExport(entity)}`;
   const pk = singlePrimaryKey(entity).name;
+  // A row written with a timed field set schedules the entity's timers
+  const hasTimers = ir.timers.some(t => t.entity === entity.name);
+  const timerLine = hasTimers ? `\n      await scheduleTimers(${q(entity.name)}, row);` : "";
   const ops = resource.operations.filter(o => o.rule.kind !== "none");
   const list = ops.find(o => o.kind === "list") as Extract<OperationIR, { kind: "list" }> | undefined;
   const get = ops.find(o => o.kind === "get") as Extract<OperationIR, { kind: "get" }> | undefined;
@@ -258,7 +261,7 @@ ${filterLines.join("\n")}
 ${bodyCheck}      const hookContext: HookContext = { request, session };
       const values = await hooks.beforeCreate({ ...${resolveFiles("body.data")}${owner} }, hookContext);
 ${insert}
-${emitLines.join("\n")}
+${emitLines.join("\n")}${timerLine}
       await hooks.afterCreate(row, hookContext);
       return created(present${T}(row));
     } catch (err) {
@@ -289,7 +292,7 @@ ${emitLines.join("\n")}
       const patch = await hooks.beforeUpdate(existing, ${resolveFiles("body.data")}, hookContext);
       if (Object.keys(patch).length === 0) return ok(present${T}(existing));
       const [row] = await db.update(${table}).set(patch).where(eq(${table}.${pk}, id.data)).returning();
-${emitLines.join("\n")}
+${emitLines.join("\n")}${timerLine}
       await hooks.afterUpdate(row, hookContext);
       return ok(present${T}(row));
     } catch (err) {
@@ -361,6 +364,7 @@ ${emitLines.join("\n")}
     ...(actions.length ? [`import { handlers } from "../actions";`] : []),
     `import { getSession, type Session } from "../auth";`,
     ...(usesEmit ? [`import { emit } from "../events";`] : []),
+    ...(hasTimers ? [`import { scheduleTimers } from "../scheduling";`] : []),
     ...(hasFiles ? [`import { resolveFileRefs } from "../files";`] : []),
     `import { ${[...httpImports].sort().join(", ")} } from "../http";`,
     `import { ${[...presents].sort().join(", ")} } from "../present";`,
@@ -420,7 +424,7 @@ function actionHandler(
       if (!rowVerdict.ok) return denied(rowVerdict);
       const body = await parseBody(${input}, request);
       if (!body.ok) return body.response;
-      const result = await handlers.${action.handler}({ input: body.data, row: current, session, db });
+      const result = await handlers.${action.handler}({ input: body.data, row: current, session, db, now: new Date() });
 ${emitLines.join("\n")}
       return ${answer};
     } catch (err) {
@@ -436,7 +440,7 @@ ${emitLines.join("\n")}
       if (!verdict.ok) return denied(verdict);
       const body = await parseBody(${input}, request);
       if (!body.ok) return body.response;
-      const result = await handlers.${action.handler}({ input: body.data, row: undefined, session, db });
+      const result = await handlers.${action.handler}({ input: body.data, row: undefined, session, db, now: new Date() });
 ${emitLines.join("\n")}
       return ${answer};
     } catch (err) {

@@ -27,6 +27,7 @@ Every op has an \`op\` key. Validation runs after all ops, so order within one d
 - \`set_actors\` { actors: { <name>: { email, password, ...identity fields, role } } }  (replaces every actor; repeat the existing ones)
 - \`add_scenario\` { scenario: Scenario } / \`remove_scenario\` { name }
 - \`set_seed\` { seed: Step[] }  (steps without expect, replayed by osl seed)
+- \`set_schedules\` { schedules: Schedule[] } / \`set_timers\` { timers: Timer[] }  (replace the whole list; see Schedules and timers)
 - \`set_app\` { app: App } / \`remove_app\` {}
 - \`add_page\` { name: snake_case, page: Page } / \`update_page\` { name, page } / \`remove_page\` { name }
 - \`set_sidebar\` { sidebar: Sidebar }
@@ -153,7 +154,8 @@ actions:
 \`\`\`
 
 The generated handler stub is \`src/actions/<resource>_<name>\` (or \`src/actions/<name>\`); it receives the validated input,
-the row for row actions, the session and the database, and returns the row, nothing, or the declared shape. A handler is
+the row for row actions, the session (null when a schedule or timer runs it), the database and \`now\`, and returns the
+row, nothing, or the declared shape. A handler is
 where a \`read_only\` field gets its value (\`ban\` sets \`banned\` and \`banned_at\`). Scenario steps call actions as
 \`posts.publish\` or \`actions.send_digest\`. Events may follow an action: \`on: posts.publish\`.
 
@@ -189,6 +191,27 @@ events:
 
 \`on\` is \`<Entity>.created|updated|deleted\`, \`<resource>.<action>\` or \`actions.<action>\`. \`delivery\` is \`inline\`
 (default) or \`queue\` (a Postgres-backed job; the API runs the worker in-process unless started as web only).
+
+## Schedules and timers
+
+Work that runs on its own, on the same job queue as queued events; the API runs the worker in-process unless started
+as web only. Both run an action's handler as the system: no session, no access rule.
+
+\`\`\`yaml
+schedules:
+  - { cron: "0 7 * * *", run: actions.send_reminders }                     # five cron fields, UTC; a global or collection action
+  - { cron: "*/15 * * * *", run: invoices.sweep_overdue, input: { grace_hours: 48 } }   # literal input when the action takes some
+timers:
+  - { on: Article, at: publish_at, run: posts.publish, when: "published = false" }      # when publish_at passes, publish, if still unpublished
+  - { on: Delivery, at: assigned_at, after: 48h, run: deliveries.flag_overdue, when: "status = assigned" }
+\`\`\`
+
+A timer schedules a job when a row is created or updated with \`at\` set, due at \`at\` plus \`after\` (15m, 48h, 30d).
+When it fires, the row is loaded again and the row action runs only if the field still gives that due time and the
+\`when\` condition (the rules' spelling, on a field of the entity) still holds: a changed date needs no cancellation,
+and a job never acts on stale data. Handlers get \`ctx.now\`, the time the job was due; compare against it, not the
+clock. There is no derived field: "overdue" is a read_only flag a timer sets. Nothing compares a field against now
+in rules or filters yet ("due before today", "upcoming events"): say so in not_delivered.
 
 ## App
 
@@ -286,6 +309,30 @@ token is a 400), and upload a file:
   body: { name: cover.png, type: image/png, content: not-really-a-png }
   expect: { status: 200, body: { data: { name: cover.png, type: image/png } } }
   capture: { cover: data.id }      # then write "{cover}" into a file field
+\`\`\`
+
+Time is an input to scenarios. \`{now}\`, \`{now+2h}\` and \`{now-30d}\` (m, h, d) resolve to timestamps in bodies and
+expectations, and three test-only steps drive schedules, timers and mail; they exist only when the app runs with
+\`OSL_TEST_HOOKS=1\`, which the harness sets, never in production:
+
+\`\`\`yaml
+- as: alice
+  op: posts.create
+  body: { title: Later, content: Soon, publish_at: "{now-1h}" }   # due in the past, so the timer is already due
+  expect: { status: 201 }
+  capture: { later: data.id }
+- op: timers.run                      # run every timer due at that moment, as the worker would
+  body: { now: "{now}" }
+  expect: { status: 200, body: { data: { ran: 1 } } }
+- op: posts.get
+  path: { id: "{later}" }
+  expect: { status: 200, body: { data: { published: true } } }
+- op: schedules.run                   # run one schedule's action now, as the system
+  body: { run: actions.send_digest, now: "{now}" }
+  expect: { status: 200, body: { data: { ran: 1 } } }
+- op: emails.sent                     # the mail captured since the app started, newest last; filter by to or subject
+  query: { to: alice@example.com }
+  expect: { status: 200, body: { data: [{ subject: Weekly digest }] } }
 \`\`\`
 
 \`seed\` is a list of the same steps without \`expect\`; \`osl seed\` replays them against a running app to fill a

@@ -1395,6 +1395,18 @@
                               }
                             ]
                           },
+                          "publish_at": {
+                            "oneOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time",
+                                "description": "When the article goes live on its own"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "author": {
                             "oneOf": [
                               {
@@ -1415,6 +1427,7 @@
                           "posted_at",
                           "tags",
                           "cover",
+                          "publish_at",
                           "author"
                         ]
                       }
@@ -1507,6 +1520,18 @@
                     "type": "string",
                     "format": "uuid",
                     "description": "A file id from POST /api/files"
+                  },
+                  "publish_at": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "When the article goes live on its own"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 },
                 "additionalProperties": false,
@@ -1640,6 +1665,18 @@
                             }
                           ]
                         },
+                        "publish_at": {
+                          "oneOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time",
+                              "description": "When the article goes live on its own"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
                         "author": {
                           "oneOf": [
                             {
@@ -1660,6 +1697,7 @@
                         "posted_at",
                         "tags",
                         "cover",
+                        "publish_at",
                         "author"
                       ]
                     }
@@ -1747,6 +1785,18 @@
                     "type": "string",
                     "format": "uuid",
                     "description": "A file id from POST /api/files"
+                  },
+                  "publish_at": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "When the article goes live on its own"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 },
                 "additionalProperties": false
@@ -2461,6 +2511,18 @@
                 "type": "null"
               }
             ]
+          },
+          "publish_at": {
+            "oneOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the article goes live on its own"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -2471,7 +2533,8 @@
           "author_id",
           "posted_at",
           "tags",
-          "cover"
+          "cover",
+          "publish_at"
         ]
       },
       "Comment": {

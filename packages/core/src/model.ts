@@ -349,6 +349,80 @@ export type Auth = z.infer<typeof Auth>;
 export const Files = z.object({ upload: Rule.optional(), read: Rule.optional() }).strict();
 export type Files = z.infer<typeof Files>;
 
+/** A duration a timer waits after its field's time: 15m, 48h, 30d */
+export const DURATION_PATTERN = /^(\d+)(m|h|d)$/;
+export const Duration = z.string().regex(DURATION_PATTERN, "a duration like 15m, 48h or 30d");
+
+export function durationSeconds(text: string): number {
+  const m = text.match(DURATION_PATTERN)!;
+  const n = Number(m[1]);
+  return n * (m[2] === "m" ? 60 : m[2] === "h" ? 3600 : 86400);
+}
+
+/** Five cron fields (minute hour day-of-month month day-of-week), read in UTC */
+export const Cron = z
+  .string()
+  .regex(/^\S+\s+\S+\s+\S+\s+\S+\s+\S+$/, "five cron fields: minute hour day month weekday");
+
+/** Why a cron expression is not one the queues accept, or undefined when it is */
+export function cronProblem(text: string): string | undefined {
+  const fields = text.trim().split(/\s+/);
+  if (fields.length !== 5) return "needs five fields: minute hour day month weekday";
+  const limits: [string, number, number][] = [
+    ["minute", 0, 59],
+    ["hour", 0, 23],
+    ["day", 1, 31],
+    ["month", 1, 12],
+    ["weekday", 0, 7]
+  ];
+  for (const [i, field] of fields.entries()) {
+    const [name, min, max] = limits[i];
+    for (const part of field.split(",")) {
+      const m = part.match(/^(\*|(\d+)(?:-(\d+))?)(?:\/(\d+))?$/);
+      if (!m) return `${name} field "${part}" is not a number, range, list or step`;
+      for (const n of [m[2], m[3]].filter((v): v is string => v !== undefined).map(Number))
+        if (n < min || n > max) return `${name} field "${part}" is outside ${min}-${max}`;
+      if (m[4] !== undefined && Number(m[4]) === 0) return `${name} field "${part}" steps by zero`;
+    }
+  }
+  return undefined;
+}
+
+/** What a schedule or timer runs: a global action or a resource action, in the step spelling */
+const RunRef = z
+  .string()
+  .regex(/^(actions\.[a-z][a-z0-9_]*|[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*)$/, "actions.<name> or <resource>.<action>");
+
+export const Schedule = z
+  .object({
+    /** Five cron fields, UTC */
+    cron: Cron,
+    /** A global action or a collection action; runs as the system, with no session */
+    run: RunRef,
+    /** Literal input for the action, when it takes some */
+    input: z.record(Identifier, z.union([z.string(), z.number(), z.boolean()])).optional()
+  })
+  .strict();
+export type Schedule = z.infer<typeof Schedule>;
+
+export const Timer = z
+  .object({
+    /** The entity whose rows are timed */
+    on: EntityName,
+    /** A datetime field of it: the job is due at its value plus `after` */
+    at: Identifier,
+    after: Duration.optional(),
+    /** A row action of a resource over the entity, run as the system for the row when the time passes */
+    run: RunRef,
+    /** A row condition in the rules' spelling, checked again when the job fires: `status = scheduled` */
+    when: z
+      .string()
+      .regex(/^[a-z][a-z0-9_]* (=|!=) [A-Za-z0-9_.+-]+$/, "<field> = <value> or <field> != <value>")
+      .optional()
+  })
+  .strict();
+export type Timer = z.infer<typeof Timer>;
+
 export const EVENT_ON_PATTERN =
   /^([A-Z][A-Za-z0-9]*)\.(created|updated|deleted)$|^([a-z][a-z0-9_]*)\.([a-z][a-z0-9_]*)$/;
 
@@ -370,6 +444,10 @@ export type Actor = z.infer<typeof Actor>;
 export const STEP_OP_PATTERN = /^([a-z][a-z0-9_]*)\.([a-z][a-z0-9_]*)$/;
 export const AUTH_STEP_OPS = ["register", "login", "logout", "me", "magic_link", "magic_link_verify"] as const;
 export const FILE_STEP_OPS = ["upload", "get"] as const;
+/** Test-only steps: run due timers at a moment, run a schedule now, read the captured mailbox */
+export const TIMER_STEP_OPS = ["run"] as const;
+export const SCHEDULE_STEP_OPS = ["run"] as const;
+export const EMAIL_STEP_OPS = ["sent"] as const;
 
 const StepBase = z.object({
   name: z.string().optional(),
@@ -558,6 +636,10 @@ export const Model = z
     /** Actions not tied to a resource: POST /api/actions/<name> */
     actions: z.record(Identifier, Action).default({}),
     events: z.array(Event).default([]),
+    /** Work that runs on a cron, as the system */
+    schedules: z.array(Schedule).default([]),
+    /** Work that runs for a row when one of its datetime fields passes */
+    timers: z.array(Timer).default([]),
     examples: Examples.optional(),
     app: App.optional()
   })
@@ -1051,6 +1133,72 @@ export function validateModel(model: Model): Diagnostic[] {
     }
   }
 
+  // Schedules run a global or collection action on a cron; timers run a row action when a datetime field passes
+  const runTarget = (run: string): { resource?: string; action: Action } | undefined => {
+    const [ns, name] = run.split(".");
+    if (ns === "actions") return model.actions[name] ? { action: model.actions[name] } : undefined;
+    const action = model.resources[ns]?.actions?.[name];
+    return action ? { resource: ns, action } : undefined;
+  };
+  for (const [i, schedule] of model.schedules.entries()) {
+    const spath = `schedules[${i}]`;
+    const cron = cronProblem(schedule.cron);
+    if (cron) error("M130", `cron "${schedule.cron}": ${cron}`, `${spath}.cron`);
+    const target = runTarget(schedule.run);
+    if (!target) {
+      error("M131", `run ${schedule.run} is not an action`, `${spath}.run`);
+      continue;
+    }
+    if (target.resource && (target.action.scope ?? "row") === "row")
+      error(
+        "M131",
+        `run ${schedule.run} is a row action; a schedule has no row, so run a collection or global action`,
+        `${spath}.run`
+      );
+    const inputs = target.action.input ?? {};
+    for (const [key, value] of Object.entries(schedule.input ?? {})) {
+      const field = inputs[key];
+      if (!field) {
+        error("M131", `input ${key} is not an input of ${schedule.run}`, `${spath}.input.${key}`);
+        continue;
+      }
+      const problem = valueProblem(field as Field, value);
+      if (problem) error("M131", `input ${key}: ${problem}`, `${spath}.input.${key}`);
+    }
+    for (const [key, field] of Object.entries(inputs))
+      if (field.required && field.default === undefined && !(key in (schedule.input ?? {})))
+        error("M131", `${schedule.run} needs input ${key}; give it a literal in input`, `${spath}.input`);
+  }
+  for (const [i, timer] of model.timers.entries()) {
+    const tpath = `timers[${i}]`;
+    const entity = model.entities[timer.on];
+    if (!entity) {
+      error("M132", `entity ${timer.on} does not exist`, `${tpath}.on`);
+      continue;
+    }
+    const at = entity.fields[timer.at];
+    if (!at) error("M132", `field ${timer.at} does not exist on ${timer.on}`, `${tpath}.at`);
+    else if (at.type !== "datetime")
+      error("M132", `field ${timer.at} must be a datetime, not ${at.type}`, `${tpath}.at`);
+    const target = runTarget(timer.run);
+    const resourceEntity = target?.resource ? model.resources[target.resource]?.entity : undefined;
+    if (!target || !target.resource || (target.action.scope ?? "row") !== "row" || resourceEntity !== timer.on)
+      error("M133", `run ${timer.run} is not a row action of a resource over ${timer.on}`, `${tpath}.run`);
+    else
+      for (const [key, field] of Object.entries(target.action.input ?? {}))
+        if (field.required && field.default === undefined)
+          error("M133", `run ${timer.run} needs input ${key}, which a timer cannot give`, `${tpath}.run`);
+    if (timer.when) {
+      const [field, op, value] = timer.when.split(" ");
+      const f = entity.fields[field];
+      if (!f) error("M032", `when field ${field} does not exist on ${timer.on}`, `${tpath}.when`);
+      else {
+        const problem = conditionProblem(f, value);
+        if (problem) error("M033", `when ${field} ${op} ${value}: ${problem}`, `${tpath}.when`);
+      }
+    }
+  }
+
   if (model.app) {
     const seenPaths = new Map<string, string>();
     for (const [pageName, page] of Object.entries(model.app.pages)) {
@@ -1192,7 +1340,10 @@ export function validateModel(model: Model): Diagnostic[] {
   }
 
   const actors = new Set(Object.keys(model.examples?.actors ?? {}));
-  const checkStep = (step: { as?: string; op: string; path?: Record<string, string> }, spath: string) => {
+  const checkStep = (
+    step: { as?: string; op: string; path?: Record<string, string>; body?: unknown },
+    spath: string
+  ) => {
     if (step.as && !actors.has(step.as)) error("M070", `actor ${step.as} is not declared in examples.actors`, spath);
     const resolved = resolveStepOp(model, step.op);
     const needsId =
@@ -1203,7 +1354,18 @@ export function validateModel(model: Model): Diagnostic[] {
       (resolved.kind === "file" && resolved.operation === "get");
     if (needsId && !step.path?.id) error("M072", `${step.op} is about one row and needs path: { id: ... }`, spath);
     if (resolved.kind === "unknown") error("M071", resolved.reason, spath);
-    else if (resolved.kind === "auth" && !model.auth) error("M073", `auth steps need auth to be configured`, spath);
+    if (resolved.kind === "timer" && model.timers.length === 0)
+      error("M135", `timers.run needs timers in the model`, spath);
+    if (resolved.kind === "schedule") {
+      const run = (step.body as { run?: unknown } | undefined)?.run;
+      if (typeof run !== "string") error("M136", `schedules.run needs body: { run: <the scheduled action> }`, spath);
+      else if (!model.schedules.some(sch => sch.run === run))
+        error(
+          "M136",
+          `schedules.run: ${run} is not scheduled (schedules: ${model.schedules.map(sch => sch.run).join(", ") || "none"})`,
+          spath
+        );
+    } else if (resolved.kind === "auth" && !model.auth) error("M073", `auth steps need auth to be configured`, spath);
     else if (
       resolved.kind === "auth" &&
       (resolved.operation === "register" || resolved.operation === "login") &&
@@ -1241,6 +1403,7 @@ export function validateModel(model: Model): Diagnostic[] {
       const expectBody =
         step.expect && typeof step.expect === "object" ? (step.expect as { body?: unknown }).body : undefined;
       for (const name of new Set(templatesIn([step.path, step.query, step.body, expectBody]))) {
+        if (/^now([+-]\d+[mhd])?$/.test(name)) continue;
         if (name === "actor.id") {
           if (!step.as) error("M077", `{actor.id} needs the step to act as someone (as: <actor>)`, spath);
         } else if (name.startsWith("actor.") || !captured.has(name.split(".")[0]))
@@ -1288,6 +1451,9 @@ export type ResolvedStepOp =
   | { kind: "action"; resource?: string; action: string }
   | { kind: "auth"; operation: (typeof AUTH_STEP_OPS)[number] }
   | { kind: "file"; operation: (typeof FILE_STEP_OPS)[number] }
+  | { kind: "timer"; operation: (typeof TIMER_STEP_OPS)[number] }
+  | { kind: "schedule"; operation: (typeof SCHEDULE_STEP_OPS)[number] }
+  | { kind: "email"; operation: (typeof EMAIL_STEP_OPS)[number] }
   | { kind: "unknown"; reason: string };
 
 /** What a step's `op` names in this model */
@@ -1300,6 +1466,18 @@ export function resolveStepOp(model: Model, op: string): ResolvedStepOp {
   if (ns === "files") {
     if ((FILE_STEP_OPS as readonly string[]).includes(name)) return { kind: "file", operation: name as never };
     return { kind: "unknown", reason: `files has no operation ${name}` };
+  }
+  if (ns === "timers") {
+    if ((TIMER_STEP_OPS as readonly string[]).includes(name)) return { kind: "timer", operation: name as never };
+    return { kind: "unknown", reason: `timers has no operation ${name}; use timers.run` };
+  }
+  if (ns === "schedules") {
+    if ((SCHEDULE_STEP_OPS as readonly string[]).includes(name)) return { kind: "schedule", operation: name as never };
+    return { kind: "unknown", reason: `schedules has no operation ${name}; use schedules.run` };
+  }
+  if (ns === "emails") {
+    if ((EMAIL_STEP_OPS as readonly string[]).includes(name)) return { kind: "email", operation: name as never };
+    return { kind: "unknown", reason: `emails has no operation ${name}; use emails.sent` };
   }
   if (ns === "actions") {
     if (model.actions[name]) return { kind: "action", action: name };

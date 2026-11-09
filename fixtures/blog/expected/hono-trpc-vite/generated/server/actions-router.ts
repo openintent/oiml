@@ -17,7 +17,7 @@ export const actionsRouter = router({
   send_digest: publicProcedure.input(sendDigestInput).mutation(async ({ ctx, input }) => {
     checkRule(RULES.send_digest, ctx.session);
     try {
-      const result = await handlers.send_digest({ input, row: undefined, session: ctx.session, db });
+      const result = await handlers.send_digest({ input, row: undefined, session: ctx.session, db, now: new Date() });
 
       return result;
     } catch (err) {

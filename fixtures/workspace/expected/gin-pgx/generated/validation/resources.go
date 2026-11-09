@@ -97,6 +97,7 @@ var TasksCreateInput = Object{Fields: []Field{
 	{Name: "title", Required: true, Type: String{MinLength: 1, MaxLength: 200}},
 	{Name: "done", Type: Boolean{}},
 	{Name: "assignee_id", Nullable: true, Type: UUID{}},
+	{Name: "due_at", Nullable: true, Type: DateTime{}},
 }}
 
 // TasksUpdateInput validates PATCH /api/tasks/{id} bodies.
@@ -105,4 +106,8 @@ var TasksUpdateInput = Object{Fields: []Field{
 	{Name: "title", Type: String{MinLength: 1, MaxLength: 200}},
 	{Name: "done", Type: Boolean{}},
 	{Name: "assignee_id", Nullable: true, Type: UUID{}},
+	{Name: "due_at", Nullable: true, Type: DateTime{}},
 }}
+
+// TasksRemindInput validates POST /api/tasks/{id}/remind bodies.
+var TasksRemindInput = Object{}

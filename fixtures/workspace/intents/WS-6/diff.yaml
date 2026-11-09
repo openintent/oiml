@@ -1,0 +1,72 @@
+osl: "1.0"
+summary: Tasks carry a due time; a timer emails the assignee once when it passes, unless the task is done
+ops:
+  - op: add_field
+    entity: Task
+    name: due_at
+    field: { type: datetime, description: When the task is due }
+  - op: add_field
+    entity: Task
+    name: reminded_at
+    field: { type: datetime, read_only: true, description: Set when the reminder went out }
+  - op: update_resource
+    name: tasks
+    resource:
+      entity: Task
+      operations: [list, get, create, update, delete]
+      list: { filters: [project_id, done, assignee_id], order: [[created_at, asc]] }
+      actions:
+        remind:
+          description: Email the assignee about the task
+          rule: "member:project_id.team_id:admin"
+  - op: set_timers
+    timers:
+      - { on: Task, at: due_at, run: tasks.remind, when: "done = false" }
+  - op: add_scenario
+    scenario:
+      name: due reminders
+      steps:
+        - as: alice
+          op: teams.create
+          body: { name: Reminders Ltd }
+          expect: { status: 201 }
+          capture: { team: data.id }
+        - as: bob
+          op: auth.me
+          expect: { status: 200 }
+          capture: { bob_id: data.id }
+        - as: alice
+          op: members.create
+          body: { team_id: "{team}", user_id: "{bob_id}" }
+          expect: { status: 201 }
+        - as: alice
+          op: projects.create
+          body: { name: Deadlines, team_id: "{team}" }
+          expect: { status: 201 }
+          capture: { project: data.id }
+        - as: alice
+          op: tasks.create
+          body: { title: Pay the invoices, project_id: "{project}", assignee_id: "{bob_id}", due_at: "{now-1h}" }
+          expect: { status: 201, body: { data: { done: false } } }
+          capture: { task: data.id }
+        - as: alice
+          op: tasks.create
+          body:
+            { title: Already handled, project_id: "{project}", assignee_id: "{bob_id}", due_at: "{now-1h}", done: true }
+          expect: { status: 201 }
+        - op: timers.run
+          body: { now: "{now}" }
+          expect: { status: 200 }
+        - op: emails.sent
+          query: { to: bob@example.com }
+          expect: { status: 200, body: { data: [{ to: bob@example.com, subject: "Reminder: Pay the invoices" }] } }
+        - op: emails.sent
+          query: { subject: Already handled }
+          expect: { status: 200, body: { data: [] } }
+        - op: tasks.remind
+          path: { id: "{task}" }
+          expect: { status: 401 }
+        - as: bob
+          op: tasks.remind
+          path: { id: "{task}" }
+          expect: { status: 403 }

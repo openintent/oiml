@@ -118,6 +118,7 @@ export async function runRound(options: RoundOptions): Promise<RoundSummary> {
   const run = await runAll(cases, {
     repoRoot: options.repoRoot,
     outDir: runDir,
+    runId: options.round,
     proposer: "live",
     model: options.model,
     jobs: options.jobs,

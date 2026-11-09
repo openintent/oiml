@@ -34,6 +34,7 @@ var PostsCreateInput = Object{Fields: []Field{
 	{Name: "published", Type: Boolean{}},
 	{Name: "tags", Nullable: true, Type: Array{Of: String{MaxLength: 255}}},
 	{Name: "cover", Nullable: true, Type: UUID{}},
+	{Name: "publish_at", Nullable: true, Type: DateTime{}},
 }}
 
 // PostsUpdateInput validates PATCH /api/posts/{id} bodies.
@@ -44,6 +45,7 @@ var PostsUpdateInput = Object{Fields: []Field{
 	{Name: "author_id", Type: UUID{}},
 	{Name: "tags", Nullable: true, Type: Array{Of: String{MaxLength: 255}}},
 	{Name: "cover", Nullable: true, Type: UUID{}},
+	{Name: "publish_at", Nullable: true, Type: DateTime{}},
 }}
 
 // CommentsID parses a comments id from the path.

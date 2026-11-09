@@ -1,0 +1,17 @@
+id: fx-todo-7-nightly-clear
+tags: [fixture, schedules, no-auth, scenario]
+base: { fixture: todo, through: TODO-6 }
+oracle: fixtures/todo/intents/TODO-7/diff.yaml
+intent:
+  title: Nightly clean-up of done tasks
+  ask: >-
+    Every night the tasks that are done should disappear on their own, the same way the Clear done button
+    removes them today.
+  acceptance:
+    - The nightly clean-up removes the done tasks
+expect:
+  schedules: ["tasks.clear_done"]
+  scenarios: { min: 1 }
+  touches: ["schedules.run"]
+  ops: { max: 3 }
+notes: "The smallest schedule: an existing collection action on a cron, proven with schedules.run."

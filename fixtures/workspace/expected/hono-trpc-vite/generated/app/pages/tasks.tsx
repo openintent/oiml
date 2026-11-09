@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { client, sessionUser, type Inputs, type Outputs, type SessionUser } from "../client";
-import { EmptyPane, ErrorNote, FieldRow, FormRow, ListSkeleton, Pagination, Pane, PaneHeader, PaneSkeleton, formatDateTime, selectClass, splitList, text, yesNo } from "../ui";
+import { EmptyPane, ErrorNote, FieldRow, FormRow, ListSkeleton, Pagination, Pane, PaneHeader, PaneSkeleton, formatDateTime, selectClass, splitList, text, toDateTimeInput, yesNo } from "../ui";
 
 type Row = Outputs["tasks"]["list"]["data"][number];
 type Detail = Outputs["tasks"]["get"];
@@ -36,6 +36,10 @@ function canUpdate(user: SessionUser | null, row: Detail): boolean {
 }
 
 function canDelete(user: SessionUser | null, row: Detail): boolean {
+  return user !== null;
+}
+
+function canRemind(user: SessionUser | null, row: Detail): boolean {
   return user !== null;
 }
 
@@ -75,7 +79,7 @@ function guarded<P extends object>(Component: (props: P) => ReactNode) {
   };
 }
 
-const TASKS_FIELDS = ["project_id", "title", "done", "assignee_id"] as const;
+const TASKS_FIELDS = ["project_id", "title", "done", "assignee_id", "due_at"] as const;
 type TasksField = (typeof TASKS_FIELDS)[number];
 
 type TasksValues = {
@@ -83,34 +87,38 @@ type TasksValues = {
   title: string;
   done: boolean;
   assignee_id: string;
+  due_at: string;
 };
 
 const EMPTY_TASKS: TasksValues = {
   project_id: "",
   title: "",
   done: false,
-  assignee_id: ""
+  assignee_id: "",
+  due_at: ""
 };
 
-const TASKS_CREATE: readonly TasksField[] = ["project_id", "title", "done", "assignee_id"];
+const TASKS_CREATE: readonly TasksField[] = ["project_id", "title", "done", "assignee_id", "due_at"];
 
 function toTasksCreateInput(v: TasksValues): Input<"create"> {
   return {
     project_id: v.project_id,
     title: v.title,
     done: v.done,
-    assignee_id: (v.assignee_id || null)
+    assignee_id: (v.assignee_id || null),
+    due_at: (v.due_at === "" ? null : new Date(v.due_at).toISOString())
   };
 }
 
-const TASKS_UPDATE: readonly TasksField[] = ["project_id", "title", "done", "assignee_id"];
+const TASKS_UPDATE: readonly TasksField[] = ["project_id", "title", "done", "assignee_id", "due_at"];
 
 function toTasksUpdateInput(v: TasksValues): Input<"update">["data"] {
   return {
     project_id: v.project_id,
     title: v.title,
     done: v.done,
-    assignee_id: (v.assignee_id || null)
+    assignee_id: (v.assignee_id || null),
+    due_at: (v.due_at === "" ? null : new Date(v.due_at).toISOString())
   };
 }
 
@@ -119,7 +127,8 @@ function tasksFromRow(row: Detail): TasksValues {
     project_id: text(row.project_id),
     title: text(row.title),
     done: row.done ?? false,
-    assignee_id: text(row.assignee_id)
+    assignee_id: text(row.assignee_id),
+    due_at: toDateTimeInput(row.due_at)
   };
 }
 
@@ -200,6 +209,12 @@ function renderTasksField(field: TasksField, values: TasksValues, set: TasksSett
       return (
       <FormRow label="Assignee" htmlFor="assignee_id">
         <AssigneeIdPicker id="assignee_id" value={values.assignee_id} onChange={value => set("assignee_id", value)} allowEmpty={true} />
+      </FormRow>
+      );
+    case "due_at":
+      return (
+      <FormRow label="Due At" htmlFor="due_at">
+        <Input id="due_at" type="datetime-local" value={values.due_at} onChange={e => set("due_at", e.target.value)} />
       </FormRow>
       );
   }
@@ -371,8 +386,10 @@ function TasksDetailInner() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
+  const [openAction, setOpenAction] = useState<string | null>(null);
   useEffect(() => {
     setEditing(false);
+    setOpenAction(null);
   }, [id]);
   const query = useQuery({ queryKey: [...KEY, "get", id], queryFn: () => client.tasks.get({ id }) });
   const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
@@ -392,7 +409,13 @@ function TasksDetailInner() {
       await navigate({ to: "/tasks" });
     }
   });
-
+  const remindAction = useMutation({
+    mutationFn: (input: Inputs["tasks"]["remind"]) => client.tasks.remind(input),
+    onSuccess: async () => {
+      setOpenAction(null);
+      await queryClient.invalidateQueries({ queryKey: KEY });
+    }
+  });
   if (query.isPending) return <PaneSkeleton />;
   if (query.error) return <ErrorNote error={query.error} className="m-6" />;
   const row: Detail = query.data;
@@ -404,6 +427,11 @@ function TasksDetailInner() {
           <Link to="/tasks" className={buttonVariants({ variant: "ghost", size: "icon-sm" })} aria-label="Back">
             <ArrowLeft />
           </Link>
+          {canRemind(user, row) ? (
+            <Button variant="outline" size="sm" disabled={remindAction.isPending} onClick={() => remindAction.mutate({ id })}>
+              Remind
+            </Button>
+          ) : null}
           {canUpdate(user, row) ? (
             <Button variant="outline" size="sm" onClick={() => setEditing(current => !current)}>
               {editing ? "Cancel" : "Edit"}
@@ -425,7 +453,7 @@ function TasksDetailInner() {
       }
     >
 
-
+      <ErrorNote error={remindAction.error} className="mb-4" />
       {editing ? (
         <TasksForm
           fields={TASKS_UPDATE}
@@ -444,6 +472,8 @@ function TasksDetailInner() {
         <FieldRow label="Done">{row.done == null ? "—" : <Badge variant={row.done ? "default" : "outline"}>{yesNo(row.done)}</Badge>}</FieldRow>
         <FieldRow label="Assignee">{text(row.assignee_id) || "—"}</FieldRow>
         <FieldRow label="Created At">{formatDateTime(row.created_at) || "—"}</FieldRow>
+        <FieldRow label="Due At">{formatDateTime(row.due_at) || "—"}</FieldRow>
+        <FieldRow label="Reminded At">{formatDateTime(row.reminded_at) || "—"}</FieldRow>
         </dl>
       )}
     </Pane>

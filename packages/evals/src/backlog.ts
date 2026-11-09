@@ -86,7 +86,7 @@ export function updateBacklog(backlog: Backlog, clusters: GapCluster[], seenIn: 
     if (existing) {
       existing.last_seen = seenIn;
       existing.cases = Math.max(existing.cases, cluster.cases.length);
-      if (existing.status === "built") regressions.push(existing);
+      if (existing.status === "built") regressions.push({ ...existing, cases: cluster.cases.length });
       continue;
     }
     const entry: BacklogEntry = {

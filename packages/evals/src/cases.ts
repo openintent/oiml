@@ -128,6 +128,10 @@ export const Expect = z
       .optional(),
     /** Resources, "resource.op" or "actions.name" that the new scenarios must call */
     touches: Names.optional(),
+    /** Actions that must be scheduled, in the step spelling with alternatives ("actions.send_digest|actions.digest") */
+    schedules: Names.optional(),
+    /** Timers that must exist: "Entity.field" or "Entity.field -> resource.action", with alternatives in each part */
+    timers: Names.optional(),
     /** Some actor must set every one of these fields to the value (with alternatives), e.g. { role: admin } for an admin actor */
     actor_fields: z.record(z.string(), z.string()).optional(),
     ops: z

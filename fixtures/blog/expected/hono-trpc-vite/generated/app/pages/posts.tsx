@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { client, sessionUser, type Inputs, type Outputs, type SessionUser } from "../client";
-import { EmptyPane, ErrorNote, FieldRow, FileInput, FilePreview, FormRow, ListSkeleton, Pagination, Pane, PaneHeader, PaneSkeleton, formatDateTime, formatList, selectClass, splitList, text, yesNo } from "../ui";
+import { EmptyPane, ErrorNote, FieldRow, FileInput, FilePreview, FormRow, ListSkeleton, Pagination, Pane, PaneHeader, PaneSkeleton, formatDateTime, formatList, selectClass, splitList, text, toDateTimeInput, yesNo } from "../ui";
 
 type Row = Outputs["posts"]["list"]["data"][number];
 type Detail = Outputs["posts"]["get"];
@@ -84,7 +84,7 @@ function guarded<P extends object>(Component: (props: P) => ReactNode) {
   };
 }
 
-const POSTS_FIELDS = ["title", "content", "published", "author_id", "tags", "cover"] as const;
+const POSTS_FIELDS = ["title", "content", "published", "author_id", "tags", "cover", "publish_at"] as const;
 type PostsField = (typeof POSTS_FIELDS)[number];
 
 type PostsValues = {
@@ -94,6 +94,7 @@ type PostsValues = {
   author_id: string;
   tags: string;
   cover: string;
+  publish_at: string;
 };
 
 const EMPTY_POSTS: PostsValues = {
@@ -102,10 +103,11 @@ const EMPTY_POSTS: PostsValues = {
   published: false,
   author_id: "",
   tags: "",
-  cover: ""
+  cover: "",
+  publish_at: ""
 };
 
-const POSTS_CREATE: readonly PostsField[] = ["title", "content", "published", "tags", "cover"];
+const POSTS_CREATE: readonly PostsField[] = ["title", "content", "published", "tags", "cover", "publish_at"];
 
 function toPostsCreateInput(v: PostsValues): Input<"create"> {
   return {
@@ -113,11 +115,12 @@ function toPostsCreateInput(v: PostsValues): Input<"create"> {
     content: v.content,
     published: v.published,
     tags: (v.tags === "" ? null : splitList(v.tags)),
-    cover: (v.cover || null)
+    cover: (v.cover || null),
+    publish_at: (v.publish_at === "" ? null : new Date(v.publish_at).toISOString())
   };
 }
 
-const POSTS_UPDATE: readonly PostsField[] = ["title", "content", "published", "author_id", "tags", "cover"];
+const POSTS_UPDATE: readonly PostsField[] = ["title", "content", "published", "author_id", "tags", "cover", "publish_at"];
 
 function toPostsUpdateInput(v: PostsValues): Input<"update">["data"] {
   return {
@@ -126,7 +129,8 @@ function toPostsUpdateInput(v: PostsValues): Input<"update">["data"] {
     published: v.published,
     author_id: v.author_id,
     tags: (v.tags === "" ? null : splitList(v.tags)),
-    cover: (v.cover || null)
+    cover: (v.cover || null),
+    publish_at: (v.publish_at === "" ? null : new Date(v.publish_at).toISOString())
   };
 }
 
@@ -137,7 +141,8 @@ function postsFromRow(row: Detail): PostsValues {
     published: row.published ?? false,
     author_id: text(row.author_id),
     tags: formatList(row.tags),
-    cover: row.cover?.id ?? ""
+    cover: row.cover?.id ?? "",
+    publish_at: toDateTimeInput(row.publish_at)
   };
 }
 
@@ -205,6 +210,12 @@ function renderPostsField(field: PostsField, values: PostsValues, set: PostsSett
       return (
       <FormRow label="Cover" htmlFor="cover">
         <FileInput id="cover" value={values.cover} current={current?.cover} accept="image/*" onChange={fileId => set("cover", fileId)} />
+      </FormRow>
+      );
+    case "publish_at":
+      return (
+      <FormRow label="Publish At" htmlFor="publish_at">
+        <Input id="publish_at" type="datetime-local" value={values.publish_at} onChange={e => set("publish_at", e.target.value)} />
       </FormRow>
       );
   }

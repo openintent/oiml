@@ -8,7 +8,7 @@ import (
 
 // Handle unpublishes every published article and answers how many it touched.
 func Handle(ctx *actions.Context, input actions.PostsUnpublishAllInput) (actions.PostsUnpublishAllResult, error) {
-	tag, err := ctx.DB.Exec(ctx.Gin.Request.Context(), `UPDATE `+models.ArticleTable+` SET "published" = false WHERE "published" = true`)
+	tag, err := ctx.DB.Exec(ctx.Context(), `UPDATE `+models.ArticleTable+` SET "published" = false WHERE "published" = true`)
 	if err != nil {
 		return actions.PostsUnpublishAllResult{}, err
 	}

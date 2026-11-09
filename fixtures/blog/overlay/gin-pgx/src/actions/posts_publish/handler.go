@@ -8,5 +8,5 @@ import (
 
 // Handle marks the article published and answers the updated row.
 func Handle(ctx *actions.Context, input actions.PostsPublishInput, row *models.Article) (*models.Article, error) {
-	return models.ScanArticle(ctx.DB.QueryRow(ctx.Gin.Request.Context(), `UPDATE `+models.ArticleTable+` SET "published" = true WHERE "id" = $1 RETURNING `+models.ArticleColumns, row.ID))
+	return models.ScanArticle(ctx.DB.QueryRow(ctx.Context(), `UPDATE `+models.ArticleTable+` SET "published" = true WHERE "id" = $1 RETURNING `+models.ArticleColumns, row.ID))
 }

@@ -6,10 +6,12 @@ import { db } from "../db/client";
 import * as schema from "../db/schema";
 import { tasks as tasksTable, projects as projectsTable } from "../db/schema";
 import { checkRule, denied, memberTenantIds, satisfied, type Rule } from "../access";
+import { handlers } from "../actions";
 import { getSession, type Session } from "../auth";
+import { scheduleTimers } from "../scheduling";
 import { created, handleError, noContent, notFound, ok, parseBody, parseId, parseQuery } from "../http";
 import { presentTask } from "../present";
-import { tasksCreateInput, tasksId, tasksListQuery, tasksUpdateInput } from "../validation";
+import { tasksCreateInput, tasksId, tasksListQuery, tasksRemindInput, tasksUpdateInput } from "../validation";
 import { hooks } from "@/src/extensions/tasks";
 
 export type RouteContext = { params: Promise<{ id: string }> };
@@ -20,6 +22,10 @@ const RULES = {
   create: {"kind":"member","field":"project_id.team_id"} as Rule,
   update: {"kind":"any","rules":[{"kind":"owner","field":"assignee_id"},{"kind":"member","field":"project_id.team_id","role":"admin"}]} as Rule,
   delete: {"kind":"member","field":"project_id.team_id","role":"admin"} as Rule
+};
+
+const ACTION_RULES = {
+  remind: {"kind":"member","field":"project_id.team_id","role":"admin"} as Rule
 };
 
 /** The row (or create body) with the values its rules reach through relations, under their dotted keys */
@@ -105,6 +111,7 @@ export const tasks = {
       const values = await hooks.beforeCreate({ ...body.data }, hookContext);
       const [row] = await db.insert(tasksTable).values(values).returning();
 
+      await scheduleTimers("Task", row);
       await hooks.afterCreate(row, hookContext);
       return created(presentTask(row));
     } catch (err) {
@@ -130,6 +137,7 @@ export const tasks = {
       if (Object.keys(patch).length === 0) return ok(presentTask(existing));
       const [row] = await db.update(tasksTable).set(patch).where(eq(tasksTable.id, id.data)).returning();
 
+      await scheduleTimers("Task", row);
       await hooks.afterUpdate(row, hookContext);
       return ok(presentTask(row));
     } catch (err) {
@@ -156,6 +164,28 @@ export const tasks = {
       return noContent();
     } catch (err) {
       return handleError(err, "delete");
+    }
+  },
+
+  /** POST /api/tasks/{id}/remind */
+  async remind(request: Request, ctx: RouteContext): Promise<Response> {
+    try {
+      const session = await getSession(request);
+      const verdict = checkRule(ACTION_RULES.remind, session);
+      if (!verdict.ok) return denied(verdict);
+      const id = parseId(tasksId, (await ctx.params).id);
+      if (!id.ok) return id.response;
+      const current = await db.query.tasks.findFirst({ where: eq(tasksTable.id, id.data) });
+      if (!current) return notFound();
+      const rowVerdict = checkRule(ACTION_RULES.remind, session, await withRuleValues(current));
+      if (!rowVerdict.ok) return denied(rowVerdict);
+      const body = await parseBody(tasksRemindInput, request);
+      if (!body.ok) return body.response;
+      const result = await handlers.tasks_remind({ input: body.data, row: current, session, db, now: new Date() });
+
+      return ok(presentTask(result));
+    } catch (err) {
+      return handleError(err, "write");
     }
   }
 };

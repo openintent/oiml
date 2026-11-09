@@ -56,6 +56,8 @@ export interface RunOptions {
   resumeFrom?: string;
   /** Stop proposing and writing handlers once the run's proposals and handlers have cost this much */
   maxCostUsd?: number;
+  /** The run's id in results.json and the gap backlog; default: the output folder's name */
+  runId?: string;
   log: (line: string) => void;
 }
 
@@ -464,7 +466,7 @@ export async function runAll(cases: Case[], options: RunOptions): Promise<RunRes
   const results = new Map<string, CaseResult>();
   const saveAll = async () => {
     const run: RunResult = {
-      id: path.basename(options.outDir),
+      id: options.runId ?? path.basename(options.outDir),
       started: started.toISOString(),
       finished: new Date().toISOString(),
       model: options.model,

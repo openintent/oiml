@@ -9,6 +9,7 @@ import { checkRule, denied, type Rule } from "../access";
 import { handlers } from "../actions";
 import { getSession, type Session } from "../auth";
 import { emit } from "../events";
+import { scheduleTimers } from "../scheduling";
 import { resolveFileRefs } from "../files";
 import { created, handleError, noContent, notFound, ok, parseBody, parseId, parseQuery } from "../http";
 import { presentArticle, presentUser } from "../present";
@@ -109,6 +110,7 @@ export const posts = {
       const values = await hooks.beforeCreate({ ...await resolveFileRefs(body.data, FILE_FIELDS), author_id: session!.user.id }, hookContext);
       const [row] = await db.insert(articlesTable).values(values).returning();
       await emit("Article.created", presentArticle(row));
+      await scheduleTimers("Article", row);
       await hooks.afterCreate(row, hookContext);
       return created(presentArticle(row));
     } catch (err) {
@@ -134,6 +136,7 @@ export const posts = {
       if (Object.keys(patch).length === 0) return ok(presentArticle(existing));
       const [row] = await db.update(articlesTable).set(patch).where(eq(articlesTable.id, id.data)).returning();
 
+      await scheduleTimers("Article", row);
       await hooks.afterUpdate(row, hookContext);
       return ok(presentArticle(row));
     } catch (err) {
@@ -177,7 +180,7 @@ export const posts = {
       if (!rowVerdict.ok) return denied(rowVerdict);
       const body = await parseBody(postsPublishInput, request);
       if (!body.ok) return body.response;
-      const result = await handlers.posts_publish({ input: body.data, row: current, session, db });
+      const result = await handlers.posts_publish({ input: body.data, row: current, session, db, now: new Date() });
       await emit("posts.publish", presentArticle(result));
       return ok(presentArticle(result));
     } catch (err) {
@@ -193,7 +196,7 @@ export const posts = {
       if (!verdict.ok) return denied(verdict);
       const body = await parseBody(postsUnpublishAllInput, request);
       if (!body.ok) return body.response;
-      const result = await handlers.posts_unpublish_all({ input: body.data, row: undefined, session, db });
+      const result = await handlers.posts_unpublish_all({ input: body.data, row: undefined, session, db, now: new Date() });
 
       return ok(result);
     } catch (err) {

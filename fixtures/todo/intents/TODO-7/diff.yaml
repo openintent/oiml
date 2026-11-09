@@ -1,0 +1,23 @@
+osl: "1.0"
+summary: Done tasks are cleared every night on a schedule, through the existing clear_done action
+ops:
+  - op: set_schedules
+    schedules:
+      - { cron: "30 3 * * *", run: tasks.clear_done }
+  - op: add_scenario
+    scenario:
+      name: nightly clean-up
+      steps:
+        - op: tasks.create
+          body: { title: Finished today }
+          expect: { status: 201 }
+          capture: { finished: data.id }
+        - op: tasks.complete
+          path: { id: "{finished}" }
+          expect: { status: 200, body: { data: { status: done } } }
+        - op: schedules.run
+          body: { run: tasks.clear_done, now: "{now}" }
+          expect: { status: 200, body: { data: { ran: 1 } } }
+        - op: tasks.get
+          path: { id: "{finished}" }
+          expect: { status: 404 }

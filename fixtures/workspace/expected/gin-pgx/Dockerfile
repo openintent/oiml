@@ -4,6 +4,7 @@ WORKDIR /app
 COPY . .
 RUN go mod tidy
 RUN CGO_ENABLED=0 go build -o /out/server ./cmd/server
+RUN CGO_ENABLED=0 go build -o /out/worker ./cmd/worker
 RUN CGO_ENABLED=0 go build -o /out/seed ./cmd/seed
 
 FROM gcr.io/distroless/static-debian12

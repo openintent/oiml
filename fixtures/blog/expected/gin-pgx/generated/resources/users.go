@@ -5,6 +5,7 @@ package resources
 
 import (
 	"context"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -224,7 +225,7 @@ func (h *Users) ActionBan(c *gin.Context) {
 		httpx.Fail(c, perr)
 		return
 	}
-	actx := &actions.Context{Gin: c, Session: session, DB: h.db}
+	actx := &actions.Context{Gin: c, Ctx: c.Request.Context(), Session: session, DB: h.db, Now: time.Now().UTC()}
 	result, err := handlers.UsersBan(actx, actions.ParseUsersBanInput(values), row)
 	if err != nil {
 		httpx.HandleError(c, err, "write")

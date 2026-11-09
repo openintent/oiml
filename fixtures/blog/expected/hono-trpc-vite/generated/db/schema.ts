@@ -33,7 +33,8 @@ export const articles = pgTable(
     author_id: uuid().notNull().references(() => users.id, { onDelete: "cascade" }),
     posted_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
     tags: varchar({ length: 255 }).array(),
-    cover: jsonb().$type<FileRef>()
+    cover: jsonb().$type<FileRef>(),
+    publish_at: timestamp({ withTimezone: true })
   },
   t => [unique("articles_author_id_title_key").on(t.author_id, t.title), index("articles_author_id_idx").on(t.author_id)]
 );

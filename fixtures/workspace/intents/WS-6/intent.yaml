@@ -1,0 +1,8 @@
+osl: "1.0"
+title: Due dates with reminders
+ask: >-
+  A task can have a due time. When it comes, the assignee gets one reminder email about the task, unless it is
+  already done. Team admins can also send the reminder by hand.
+acceptance:
+  - When a task's due time passes, its assignee receives one reminder email naming the task
+  - A task already done sends no reminder

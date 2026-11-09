@@ -1,0 +1,19 @@
+id: fx-ws-6-due-reminders
+tags: [fixture, timers, actions, scenario, tenancy]
+base: { fixture: workspace, through: WS-4 }
+oracle: fixtures/workspace/intents/WS-6/diff.yaml
+intent:
+  title: Due dates with reminders
+  ask: >-
+    A task can have a due time. When it comes, the assignee gets one reminder email about the task, unless it is
+    already done. Team admins can also send the reminder by hand.
+  acceptance:
+    - When a task's due time passes, its assignee receives one reminder email naming the task
+    - A task already done sends no reminder
+expect:
+  fields: { Task: ["due_at|due_on|due|deadline"] }
+  timers: ["Task.due_at|due_on|due|deadline -> tasks.remind|tasks.send_reminder|tasks.notify"]
+  actions_on: { tasks: { scope: row } }
+  scenarios: { min: 1 }
+  touches: ["timers.run", "emails.sent"]
+notes: A timer with a when condition, the read_only stamp the handler sets, and the mailbox step proving the email.
