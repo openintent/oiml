@@ -9,13 +9,13 @@ import { getHTTPStatusCodeFromError } from "@trpc/server/http";
 import { Hono, type Context as HonoContext } from "hono";
 import { emailsSent, schedulesRun, testHooksEnabled, timersRun } from "../test-hooks";
 import { createContext } from "./context";
-import { isBusy, statusOf } from "./errors";
+import { codeOf, isBusy, statusOf } from "./errors";
 import { appRouter } from "./router";
 
 /** Errors from the shared modules are tRPC errors; REST routes answer them in the contract's shape. */
 function restError(c: HonoContext, err: unknown): Response {
   if (err instanceof TRPCError) {
-    const code = (err.cause as { code?: string } | undefined)?.code ?? err.code.toLowerCase();
+    const code = codeOf(err);
     if (isBusy(err)) c.header("Retry-After", "1");
     return c.json({ error: { code, message: err.message } }, (statusOf(err) ?? getHTTPStatusCodeFromError(err)) as 400);
   }

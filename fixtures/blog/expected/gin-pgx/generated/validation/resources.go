@@ -209,6 +209,23 @@ var IntegrationsUpdateInput = Object{Fields: []Field{
 	{Name: "token", Nullable: true, Type: String{MaxLength: 200}},
 }}
 
+// AttachmentsID parses a attachments id from the path.
+func AttachmentsID(raw string) (string, bool) {
+	return ParseUUIDID(raw)
+}
+
+// AttachmentsListQuery validates the GET /api/attachments query string.
+var AttachmentsListQuery = Query{PageSize: 20, Filters: []Filter{
+	{Name: "article_id", Type: UUID{}},
+}, Sortable: []string{"created_at"}}
+
+// AttachmentsCreateInput validates POST /api/attachments bodies.
+var AttachmentsCreateInput = Object{Fields: []Field{
+	{Name: "article_id", Required: true, Type: UUID{}},
+	{Name: "title", Required: true, Type: String{MinLength: 1, MaxLength: 120}},
+	{Name: "file", Required: true, Type: UUID{}},
+}}
+
 // ArticleInvitesID parses a article_invites id from the path.
 func ArticleInvitesID(raw string) (string, bool) {
 	return ParseUUIDID(raw)

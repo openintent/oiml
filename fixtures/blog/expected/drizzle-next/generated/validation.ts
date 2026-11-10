@@ -238,6 +238,23 @@ export const integrationsUpdateInput = z
   })
   .strict();
 
+export const attachmentsId = z.string().uuid();
+export const attachmentsListQuery = z
+  .object({
+    page: z.coerce.number().int().min(1).default(1),
+    page_size: z.coerce.number().int().min(1).max(200).default(20),
+    article_id: z.string().uuid().optional(),
+    sort: z.enum(["created_at:asc", "created_at:desc"]).optional()
+  })
+  .strict();
+export const attachmentsCreateInput = z
+  .object({
+    article_id: z.string().uuid(),
+    title: z.string().min(1).max(120),
+    file: z.string().uuid()
+  })
+  .strict();
+
 export const article_invitesId = z.string().uuid();
 export const article_invitesListQuery = z
   .object({

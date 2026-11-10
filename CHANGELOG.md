@@ -5,6 +5,24 @@ fixture intent on all three backends before it is listed here.
 
 ## Unreleased
 
+- Three failures of the live eval run (2026-11-10; no new construct). **A contract error code reaches a tRPC client.**
+  `hono-trpc-vite` carried the code a scenario expects (`{ error: { code: invalid_transition } }`) only as the cause
+  of a tRPC error, so its tests saw tRPC's code instead (`conflict`, `bad_request`, `unauthorized`). The error
+  formatter now puts the contract's code in the error's data as `contractCode`, beside tRPC's own code: a refusal's
+  own (`invalid_transition`, `invalid_reference`, `invalid_token`, the invite codes), `busy`, and for the rest the
+  code drizzle-next and gin-pgx answer (`validation` for an input tRPC refused, `unauthenticated`, `forbidden`,
+  `not_found`, `conflict`, `invalid_json`, `internal`); a wrong password is `invalid_credentials` as on the REST
+  backends, and the REST routes of the tRPC app answer the same codes. The generated test client and the harness read
+  it, so a scenario that asserts a code means the same on all three backends (todo TODO-9 and workspace WS-19 assert
+  thirteen codes between them). **Generated pages type-check with a required file in a create form**, which sent
+  `(file || undefined)` where the input needs a string, **and with a file field in a form that has no stored row** (a
+  section's create form), whose file input read `current` of type `never`. A sweep over resource pages, detail pages and sections
+  with files, money, sequences, sealed fields, shapes, field rules, archive and transitions found these two and no
+  other: the first in any create form, the second in any section that creates a row with a file field. Blog
+  FEAT-19 adds attachments with a required file and a section on the article page that creates them. The third
+  failure, a join answered 403 for the next message, was the proposal's own rule: a plain `owner:user_id` anywhere
+  in a create rule binds `user_id` to the session, so its joins that sent `user_id` were refused 400 and nobody
+  joined; nothing changed for it.
 - Rounds A3 and A4 merged with milestone B (2026-11-10; no new construct). Invites work under `isolation: database`:
   an invite is a row of the tenant it leads into, and two definer functions per invite table see past its policy,
   `osl_invite_<table>` (the tenant a token leads into, which the token routes and a login carrying the token bind

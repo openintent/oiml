@@ -120,6 +120,12 @@ export const client = {
     delete: (input: Inputs["integrations"]["delete"]) => trpc.integrations.delete.mutate(input),
     sign: (input: Inputs["integrations"]["sign"]) => trpc.integrations.sign.mutate(input)
   },
+  attachments: {
+    list: (input: Inputs["attachments"]["list"]) => trpc.attachments.list.query(input),
+    get: (input: Inputs["attachments"]["get"]) => trpc.attachments.get.query(input),
+    create: (input: Inputs["attachments"]["create"]) => trpc.attachments.create.mutate(input),
+    delete: (input: Inputs["attachments"]["delete"]) => trpc.attachments.delete.mutate(input)
+  },
   article_invites: {
     list: (input: Inputs["article_invites"]["list"]) => trpc.article_invites.list.query(input),
     get: (input: Inputs["article_invites"]["get"]) => trpc.article_invites.get.query(input),

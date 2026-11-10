@@ -520,6 +520,64 @@ func PresentIntegrations(rows []*Integration, viewer Viewer) []PublicIntegration
 	return out
 }
 
+// AttachmentTable is the quoted table of Attachment.
+const AttachmentTable = `"attachments"`
+
+// AttachmentColumns lists the columns of Attachment in model order, for SELECT and RETURNING.
+const AttachmentColumns = `"id", "article_id", "uploader_id", "title", "file", "created_at"`
+
+// Attachment is a row of attachments.
+type Attachment struct {
+	ID         string    `json:"id"`
+	ArticleID  string    `json:"article_id"`
+	UploaderID string    `json:"uploader_id"`
+	Title      string    `json:"title"`
+	File       FileRef   `json:"file"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// PublicAttachment is Attachment as the API returns it: hidden columns removed, dates rendered.
+type PublicAttachment struct {
+	ID         string     `json:"id"`
+	ArticleID  string     `json:"article_id"`
+	UploaderID string     `json:"uploader_id"`
+	Title      string     `json:"title"`
+	File       PublicFile `json:"file"`
+	CreatedAt  string     `json:"created_at"`
+}
+
+// ScanAttachment reads one Attachment from a row selected with AttachmentColumns.
+func ScanAttachment(row Scanner) (*Attachment, error) {
+	var r Attachment
+	if err := row.Scan(&r.ID, &r.ArticleID, &r.UploaderID, &r.Title, &r.File, &r.CreatedAt); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// PresentAttachment returns the public shape of a Attachment.
+func PresentAttachment(row *Attachment) PublicAttachment {
+	return PublicAttachment{ID: row.ID, ArticleID: row.ArticleID, UploaderID: row.UploaderID, Title: row.Title, File: PresentFileRef(row.File), CreatedAt: FormatDateTime(row.CreatedAt)}
+}
+
+// PresentAttachmentPtr presents an optional Attachment; nil stays nil.
+func PresentAttachmentPtr(row *Attachment) *PublicAttachment {
+	if row == nil {
+		return nil
+	}
+	out := PresentAttachment(row)
+	return &out
+}
+
+// PresentAttachments presents a list of Attachment, never nil.
+func PresentAttachments(rows []*Attachment) []PublicAttachment {
+	out := make([]PublicAttachment, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, PresentAttachment(row))
+	}
+	return out
+}
+
 // ArticleInviteTable is the quoted table of ArticleInvite.
 const ArticleInviteTable = `"article_invites"`
 

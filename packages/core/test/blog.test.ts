@@ -35,7 +35,8 @@ describe("blog fixture", () => {
       "FEAT-15",
       "FEAT-16",
       "FEAT-17",
-      "FEAT-18"
+      "FEAT-18",
+      "FEAT-19"
     ]);
 
     for (const id of ids) {
@@ -46,7 +47,7 @@ describe("blog fixture", () => {
     expect(again.status).toBe("noop");
 
     const project = await loadProject(root);
-    expect(project.lock.revisions).toHaveLength(18);
+    expect(project.lock.revisions).toHaveLength(19);
     const ir = project.ir;
 
     const article = ir.entities.find(e => e.name === "Article")!;
@@ -70,7 +71,7 @@ describe("blog fixture", () => {
       "editor_note"
     ]);
     expect(article.foreignKeys[0]).toMatchObject({ column: "author_id", targetTable: "users", onDelete: "cascade" });
-    expect(article.relations.map(r => r.name)).toEqual(["author", "comments", "editors"]);
+    expect(article.relations.map(r => r.name)).toEqual(["author", "comments", "editors", "attachments"]);
     const user = ir.entities.find(e => e.name === "User")!;
     expect(user.relations).toEqual([
       { name: "posts", kind: "many", direction: "reverse", target: "Article", column: "author_id", targetColumn: "id" },
@@ -148,7 +149,8 @@ describe("blog fixture", () => {
       "comment counts and archived articles",
       "editorial review",
       "contact details and editor notes",
-      "integrations and sealed secrets"
+      "integrations and sealed secrets",
+      "attachments on an article"
     ]);
     expect(ir.examples.seed.map(s => s.op)).toEqual(["posts.create", "posts.create"]);
     expect(ir.actions.map(a => `${a.resource ?? "actions"}.${a.name}:${a.scope}`)).toEqual([

@@ -1,0 +1,56 @@
+osl: "1.0"
+summary: A scenario that asserts the codes of sign-in and invite refusals (unauthenticated, invalid_credentials, invalid_token, invite_exists, already_member, forbidden, not_found, sign_in_required, invite_email_mismatch, validation), the same on every backend
+ops:
+  - op: add_scenario
+    scenario:
+      name: refusals carry their codes
+      steps:
+        - op: teams.list
+          expect: { status: 401, body: { error: { code: unauthenticated } } }
+        - op: auth.login
+          body: { email: alice@example.com, password: not-her-password }
+          expect: { status: 401, body: { error: { code: invalid_credentials } } }
+        - op: auth.magic_link_verify
+          body: { token: never-sent }
+          expect: { status: 400, body: { error: { code: invalid_token } } }
+        - as: alice
+          op: teams.create
+          body: { name: Lantern }
+          expect: { status: 201 }
+          capture: { team: data.id }
+        - as: alice
+          op: team_invites.create
+          body: { team_id: "{team}", email: erin@example.com }
+          expect: { status: 201 }
+          capture: { erin_token: debug.token }
+        - as: alice
+          op: team_invites.create
+          body: { team_id: "{team}", email: erin@example.com }
+          expect: { status: 409, body: { error: { code: invite_exists } } }
+        - as: alice
+          op: team_invites.create
+          body: { team_id: "{team}", email: alice@example.com }
+          expect: { status: 409, body: { error: { code: already_member } } }
+        - as: dana
+          op: team_invites.create
+          body: { team_id: "{team}", email: stranger@example.com }
+          expect: { status: 403, body: { error: { code: forbidden } } }
+        - as: alice
+          op: team_invites.create
+          body: { team_id: "{team}", email: carol@example.com }
+          expect: { status: 201 }
+          capture: { carol_token: debug.token }
+        - op: auth.invite
+          path: { token: no-such-token }
+          expect: { status: 404, body: { error: { code: not_found } } }
+        - op: auth.invite_accept
+          path: { token: "{carol_token}" }
+          expect: { status: 401, body: { error: { code: sign_in_required } } }
+        - as: bob
+          op: auth.invite_accept
+          path: { token: "{carol_token}" }
+          expect: { status: 403, body: { error: { code: invite_email_mismatch } } }
+        - op: auth.invite_accept
+          path: { token: "{erin_token}" }
+          body: { name: Erin, password: short }
+          expect: { status: 400, body: { error: { code: validation } } }

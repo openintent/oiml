@@ -1,0 +1,87 @@
+osl: "1.0"
+summary: Attachment under Article with a required file, an attachments resource, and a section on the article page whose create form takes the file
+ops:
+  - op: add_entity
+    name: Attachment
+    entity:
+      table: attachments
+      fields:
+        id: { type: uuid, primary: true }
+        article_id:
+          { type: uuid, required: true, relation: { entity: Article, reverse: attachments, on_delete: cascade } }
+        uploader_id: { type: uuid, required: true, relation: { entity: User, name: uploader, on_delete: cascade } }
+        title: { type: string, required: true, max_length: 120, validate: { min_length: 1 } }
+        file: { type: file, required: true }
+        created_at: { type: datetime, required: true, default: now }
+      rules: { read: authenticated, create: "owner:uploader_id", update: none, delete: "owner:uploader_id" }
+  - op: add_resource
+    name: attachments
+    resource:
+      entity: Attachment
+      operations: [list, get, create, delete]
+      list: { filters: [article_id], order: [[created_at, desc]], sortable: [created_at] }
+      create: { fields: [article_id, title, file] }
+  - op: update_page
+    name: post
+    page:
+      kind: detail
+      resource: posts
+      path: /posts/:id
+      title: Article
+      fields: [title, content, published, locked, cover, tags, posted_at, author_id, status, editor_note]
+      sections:
+        - resource: comments
+          filter: { article_id: "{row.id}" }
+          columns: [body, author_id, created_at]
+          create: true
+        - resource: attachments
+          filter: { article_id: "{row.id}" }
+          columns: [title, file, uploader_id, created_at]
+          order: [[created_at, desc]]
+          create: true
+  - op: add_scenario
+    scenario:
+      name: attachments on an article
+      steps:
+        - as: alice
+          op: posts.create
+          body: { title: Specs, content: The plans }
+          expect: { status: 201 }
+          capture: { specs: data.id }
+        - as: alice
+          op: files.upload
+          body: { name: plan.pdf, type: application/pdf, content: not-really-a-pdf }
+          expect: { status: 200 }
+          capture: { plan: data.id }
+        - as: alice
+          op: attachments.create
+          body: { article_id: "{specs}", title: Floor plan, file: "{plan}" }
+          expect:
+            {
+              status: 201,
+              body: { data: { title: Floor plan, uploader_id: "{actor.id}", file: { id: "{plan}", name: plan.pdf } } }
+            }
+          capture: { floor: data.id }
+        - as: alice
+          op: attachments.create
+          body: { article_id: "{specs}", title: No file }
+          expect: { status: 400 }
+        - as: bob
+          op: attachments.list
+          query: { article_id: "{specs}" }
+          expect: { status: 200, body: { data: [{ title: Floor plan, file: { name: plan.pdf } }], page: { total: 1 } } }
+        - op: attachments.list
+          query: { article_id: "{specs}" }
+          expect: { status: 401 }
+        - as: bob
+          op: attachments.delete
+          path: { id: "{floor}" }
+          expect: { status: 403 }
+        - as: alice
+          op: attachments.delete
+          path: { id: "{floor}" }
+          expect: { status: 204 }
+        - as: bob
+          op: attachments.list
+          query: { article_id: "{specs}" }
+          expect: { status: 200, body: { page: { total: 0 } } }

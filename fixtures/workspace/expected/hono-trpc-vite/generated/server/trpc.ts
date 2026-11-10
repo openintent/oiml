@@ -4,13 +4,19 @@
 import { initTRPC } from "@trpc/server";
 import { withTenants } from "../db/client";
 import type { Context } from "./context";
-import { statusOf } from "./errors";
+import { codeOf, statusOf } from "./errors";
 
 const t = initTRPC.context<Context>().create({
-  /** A refusal keeps the contract's status in the error's data, also where tRPC has no code for it (410, say) */
+  /**
+   * The error's data carries the contract's code (`invalid_transition`, `busy`: what the REST backends answer as
+   * `error.code`) beside tRPC's own, and a refusal's status, also where tRPC has no code for it (410, say)
+   */
   errorFormatter({ shape, error }) {
     const status = statusOf(error);
-    return status === undefined ? shape : { ...shape, data: { ...shape.data, httpStatus: status } };
+    return {
+      ...shape,
+      data: { ...shape.data, ...(status === undefined ? {} : { httpStatus: status }), contractCode: codeOf(error) }
+    };
   }
 });
 

@@ -806,7 +806,8 @@ function convert(field: FormField, mode: "create" | "update", formFields: Readon
       if (required && !nullable) return v;
       return `(${v} || ${absent})`;
     case "file":
-      return `(${v} || ${absent})`;
+      // A new row's required file is the upload's id; an edit that uploads nothing leaves the stored file alone
+      return mode === "create" && required ? v : `(${v} || ${absent})`;
     default:
       return required ? v : `(${v} || ${absent})`;
   }
@@ -853,7 +854,8 @@ function inputControl(
   field: FormField,
   required: boolean,
   valuesType: string,
-  formFields: ReadonlySet<string> = new Set()
+  formFields: ReadonlySet<string> = new Set(),
+  withCurrent = true
 ): string {
   const col = field.col;
   const name = col.name;
@@ -924,7 +926,7 @@ ${groups.join("\n")}
     const t = col.type as { kind: "file"; accept?: string[] };
     const accept = t.accept ? ` accept=${q(t.accept.join(","))}` : "";
     return `      <FormRow label=${label} htmlFor=${id}>
-        <FileInput id=${id} value={values.${name}} current={current?.${name}}${accept} onChange={fileId => set(${q(name)}, fileId)} />
+        <FileInput id=${id} value={values.${name}}${withCurrent ? ` current={current?.${name}}` : ""}${accept} onChange={fileId => set(${q(name)}, fileId)} />
       </FormRow>`;
   }
   if (kind === "enum") {
@@ -1011,7 +1013,11 @@ function formCode(
     createFields?: FormField[];
     updateFields?: FormField[];
     fromRow?: boolean;
-    currentType?: string;
+    /**
+     * Whether the form can be given a row as `current` (a `Detail`), whose stored file a file input shows. A form
+     * that only makes something new (a section's new row, an action's input) has none: false.
+     */
+    current?: boolean;
     /** Create fields the caller sends itself, from the context its list is filtered by; they are not in the form */
     presets?: string[];
   }
@@ -1031,7 +1037,7 @@ function formCode(
     .map(
       f => `    case ${q(f.col.name)}:
       return (
-${inputControl(ctx, f, options.createType ? requiredOnCreate(f) : !f.col.nullable, ValuesT, new Set(fields.map(o => o.col.name)))}
+${inputControl(ctx, f, options.createType ? requiredOnCreate(f) : !f.col.nullable, ValuesT, new Set(fields.map(o => o.col.name)), options.current !== false)}
       );`
     )
     .join("\n");
@@ -1093,10 +1099,11 @@ ${fields.map(f => `    ${f.col.name}: ${fromRowExpr(ctx, f, formNames)}`).join("
   };
 }`);
   parts.push(...fields.filter(f => f.picker).map(f => pickerComponent(ctx, f)));
-  const hasFiles = fields.some(f => scalar(f.col) === "file");
+  // Only a form over a row it was given passes that row on to its file inputs
+  const hasFiles = options.current !== false && fields.some(f => scalar(f.col) === "file");
   parts.push(`type ${prefix}Setter = <K extends keyof ${ValuesT}>(key: K, value: ${ValuesT}[K]) => void;
 
-function render${prefix}Field(field: ${prefix}Field, values: ${ValuesT}, set: ${prefix}Setter${hasFiles ? `, current?: ${options.currentType ?? "Detail"} | null` : ""}) {
+function render${prefix}Field(field: ${prefix}Field, values: ${ValuesT}, set: ${prefix}Setter${hasFiles ? ", current?: Detail | null" : ""}) {
   switch (field) {
 ${cases}
   }
@@ -1112,7 +1119,7 @@ function ${prefix}Form({
   onCancel
 }: {
   fields: readonly ${prefix}Field[];
-  initial: ${ValuesT};${hasFiles ? `\n  current?: ${options.currentType ?? "Detail"} | null;` : ""}
+  initial: ${ValuesT};${hasFiles ? "\n  current?: Detail | null;" : ""}
   submitLabel: string;
   pending: boolean;
   error: { message: string } | null;
@@ -1368,7 +1375,7 @@ function idOf(raw: string) {
       formCode(ctx, prefix, fields, {
         createType: `Omit<Inputs[${q(R)}][${q(a.name)}], "id">`,
         createFields: fields,
-        currentType: "never"
+        current: false
       })
     );
   }
@@ -2461,7 +2468,7 @@ function sectionCode(ctx: Ctx, section: SectionIR, prefix: string): { decls: str
         createType: `Inputs[${q(S)}]["create"]`,
         createFields: fields,
         presets: [...preset],
-        currentType: "never"
+        current: false
       })
     );
   }
@@ -2672,7 +2679,7 @@ function idOf(raw: string) {
       formCode(ctx, prefix, fields, {
         createType: `Omit<Inputs[${q(R)}][${q(a.name)}], "id">`,
         createFields: fields,
-        currentType: "never"
+        current: false
       })
     );
   }

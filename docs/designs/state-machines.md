@@ -183,7 +183,9 @@ than the round was recommended to do; "Addition" what neither named.
 17. **The code `invalid_transition` is on the wire on the REST backends only.** `hono-trpc-vite` answers a tRPC
     `CONFLICT` with the code as the error's cause, as it does for every code (`invalid_reference` too); the
     harness reads the status, and no scenario asserts a code. Putting codes into tRPC's error data is a change to
-    every project's `trpc.ts` and was left out of this round.
+    every project's `trpc.ts` and was left out of this round. **Fixed on 2026-11-10, after milestone B:** the error
+    formatter puts the contract's code in the error's data as `contractCode` for every refusal, so a scenario step
+    that expects `invalid_transition` passes on all three backends (todo TODO-9 asserts it).
 18. **Diagnostics M160 to M163**, the round's block, plus the existing M151, M087, M131 and M133 with new cases.
     The note counted five; the rule of a transition is checked by the rules' own codes.
 19. **Intents FEAT-16, TODO-8 and WS-16**: the note named FEAT-15, which round B3 took.
@@ -272,7 +274,8 @@ them replacing round B3's own statement). The board and the buttons (about 215).
 ## What it leaves open
 
 - No page walk in the harness: the board's drag is proven by a script that is not in the repository.
-- The 409's code is not on the wire under tRPC (decision 17).
+- The 409's code is not on the wire under tRPC (decision 17). Fixed on 2026-11-10: it is `contractCode` in the error's
+  data.
 - A timer that runs an action with a handler still does not schedule the entity's timers afterwards, and no timer
   emits the action's event; only the compiler's statements schedule (decision 2).
 - Replacing a handler-backed action with a transition of the same name works but no fixture does it (decision

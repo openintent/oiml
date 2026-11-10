@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db/client";
 import { users as usersTable } from "../db/schema";
-import { toTRPCError } from "./errors";
+import { fail, toTRPCError } from "./errors";
 import { presentUser, type PublicUser } from "../present";
 import { publicProcedure, router } from "./trpc";
 
@@ -116,7 +116,7 @@ export const authRouter = router({
         throw toTRPCError(err, "read");
       });
     if (!user || !verifyPassword(input.password, user.password_hash)) {
-      throw new TRPCError({ code: "UNAUTHORIZED", message: "Email or password is wrong" });
+      fail(401, "invalid_credentials", "Email or password is wrong");
     }
     ctx.resHeaders.append("set-cookie", sessionCookie(user.id));
     return presentUser(user);

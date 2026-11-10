@@ -55,6 +55,11 @@ const COERCE: Record<string, Record<string, "int" | "number" | "boolean" | "stri
     "page_size": "int",
     "kind": "string"
   },
+  "attachments.list": {
+    "page": "int",
+    "page_size": "int",
+    "article_id": "string"
+  },
   "article_invites.list": {
     "page": "int",
     "page_size": "int",
@@ -102,10 +107,16 @@ export class Client {
       }
     }
     if (!response.ok) {
-      const error = (json as { error?: { message?: string; data?: { code?: string } } } | null)?.error;
+      // The contract's code is in the error's data beside tRPC's own (`contractCode`, set by the error formatter)
+      const error = (json as { error?: { message?: string; data?: { code?: string; contractCode?: string } } } | null)?.error;
       return {
         status: response.status,
-        body: { error: { code: String(error?.data?.code ?? "error").toLowerCase(), message: error?.message ?? text } }
+        body: {
+          error: {
+            code: error?.data?.contractCode ?? String(error?.data?.code ?? "error").toLowerCase(),
+            message: error?.message ?? text
+          }
+        }
       };
     }
     const data = (json as { result?: { data?: unknown } } | null)?.result?.data;

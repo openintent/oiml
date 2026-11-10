@@ -1,0 +1,56 @@
+osl: "1.0"
+summary: A scenario that asserts the code of every refusal the todo app answers (invalid_transition, conflict, validation, invalid_reference, not_found, forbidden), the same on every backend
+ops:
+  - op: add_scenario
+    scenario:
+      name: refusals carry their codes
+      steps:
+        - op: projects.create
+          body: { name: Shed, color: "#884422" }
+          expect: { status: 201 }
+          capture: { shed: data.id }
+        - op: projects.create
+          body: { name: Shed }
+          expect: { status: 409, body: { error: { code: conflict } } }
+        - op: projects.create
+          body: { name: Loft, color: red }
+          expect: { status: 400, body: { error: { code: validation } } }
+        - op: tasks.create
+          body: { title: Nowhere, project_id: 999999 }
+          expect: { status: 400, body: { error: { code: invalid_reference } } }
+        - op: tasks.create
+          body: { title: Started by hand, status: doing }
+          expect: { status: 400, body: { error: { code: validation } } }
+        - op: tasks.create
+          body: { title: Sweep the shed, project_id: "{shed}" }
+          expect: { status: 201, body: { data: { status: todo } } }
+          capture: { sweep: data.id }
+        - op: tasks.pause
+          path: { id: "{sweep}" }
+          expect: { status: 409, body: { error: { code: invalid_transition } } }
+        - op: tasks.finish
+          path: { id: "{sweep}" }
+          expect: { status: 409, body: { error: { code: invalid_transition } } }
+        - op: tasks.start
+          path: { id: "{sweep}" }
+          expect: { status: 200, body: { data: { status: doing } } }
+        - op: tasks.start
+          path: { id: "{sweep}" }
+          expect: { status: 409, body: { error: { code: invalid_transition } } }
+        - op: tasks.get
+          path: { id: abc }
+          expect: { status: 404, body: { error: { code: not_found } } }
+        - op: tasks.start
+          path: { id: 999999 }
+          expect: { status: 404, body: { error: { code: not_found } } }
+        - op: tasks.finish
+          path: { id: "{sweep}" }
+          expect: { status: 200, body: { data: { status: done } } }
+        - op: tasks.start
+          path: { id: "{sweep}" }
+          expect: { status: 403, body: { error: { code: forbidden } } }
+        - op: tasks.clear_done
+          expect: { status: 200 }
+        - op: projects.delete
+          path: { id: "{shed}" }
+          expect: { status: 204 }

@@ -456,6 +456,167 @@ function PostCommentsSection({ id, user }: { id: ReturnType<typeof idOf>; user: 
   );
 }
 
+function canCreatePostAttachments(user: SessionUser | null): boolean {
+  return user !== null;
+}
+
+const POSTATTACHMENTS_FIELDS = ["title", "file"] as const;
+type PostAttachmentsField = (typeof POSTATTACHMENTS_FIELDS)[number];
+
+type PostAttachmentsValues = {
+  title: string;
+  file: string;
+};
+
+const EMPTY_POSTATTACHMENTS: PostAttachmentsValues = {
+  title: "",
+  file: ""
+};
+
+const POSTATTACHMENTS_CREATE: readonly PostAttachmentsField[] = ["title", "file"];
+
+function toPostAttachmentsCreateInput(v: PostAttachmentsValues): Omit<Inputs["attachments"]["create"], "article_id"> {
+  return {
+    title: v.title,
+    file: v.file
+  };
+}
+
+type PostAttachmentsSetter = <K extends keyof PostAttachmentsValues>(key: K, value: PostAttachmentsValues[K]) => void;
+
+function renderPostAttachmentsField(field: PostAttachmentsField, values: PostAttachmentsValues, set: PostAttachmentsSetter) {
+  switch (field) {
+    case "title":
+      return (
+      <FormRow label="Title" htmlFor="postattachments-title">
+        <Input id="postattachments-title" type="text" maxLength={120} value={values.title} onChange={e => set("title", e.target.value)} required />
+      </FormRow>
+      );
+    case "file":
+      return (
+      <FormRow label="File" htmlFor="postattachments-file">
+        <FileInput id="postattachments-file" value={values.file} onChange={fileId => set("file", fileId)} />
+      </FormRow>
+      );
+  }
+}
+
+function PostAttachmentsForm({
+  fields,
+  initial,
+  submitLabel,
+  pending,
+  error,
+  onSubmit,
+  onCancel
+}: {
+  fields: readonly PostAttachmentsField[];
+  initial: PostAttachmentsValues;
+  submitLabel: string;
+  pending: boolean;
+  error: { message: string } | null;
+  onSubmit: (values: PostAttachmentsValues) => void;
+  onCancel?: () => void;
+}) {
+  const [values, setValues] = useState<PostAttachmentsValues>(initial);
+  const [problem, setProblem] = useState<string | null>(null);
+  const set: PostAttachmentsSetter = (key, value) => setValues(current => ({ ...current, [key]: value }));
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    setProblem(null);
+    try {
+      onSubmit(values);
+    } catch (err) {
+      setProblem(err instanceof Error ? err.message : String(err));
+    }
+  };
+  return (
+    <form onSubmit={submit} className="grid max-w-xl gap-4">
+      {fields.map(field => (
+        <Fragment key={field}>{renderPostAttachmentsField(field, values, set)}</Fragment>
+      ))}
+      <ErrorNote error={error ?? (problem ? { message: problem } : null)} />
+      <div className="flex gap-2">
+        <Button type="submit" disabled={pending}>
+          {submitLabel}
+        </Button>
+        {onCancel ? (
+          <Button type="button" variant="ghost" onClick={onCancel}>
+            Cancel
+          </Button>
+        ) : null}
+      </div>
+    </form>
+  );
+}
+
+/** Attachments: the attachments of the row on the page */
+function PostAttachmentsSection({ id, user }: { id: ReturnType<typeof idOf>; user: SessionUser | null }) {
+  const [page, setPage] = useState(1);
+  const [formKey, setFormKey] = useState(0);
+  const queryClient = useQueryClient();
+  const allowed = user !== null;
+  const input = { page, page_size: 10, sort: "created_at:desc", article_id: id } as Inputs["attachments"]["list"];
+  const list = useQuery({ queryKey: ["attachments", "list", input], queryFn: () => client.attachments.list(input), enabled: allowed });
+  const createRow = useMutation({
+    mutationFn: (input: Inputs["attachments"]["create"]) => client.attachments.create(input),
+    onSuccess: async () => {
+      setFormKey(current => current + 1);
+      await queryClient.invalidateQueries({ queryKey: ["attachments"] });
+    }
+  });
+  const status = errorStatus(list.error);
+  if (!allowed || status === 401 || status === 403) return null;
+  return (
+    <section className="mt-8 space-y-3">
+      <h2 className="text-sm font-semibold">
+        {"Attachments"}
+        {list.data ? <span className="ml-2 font-normal text-muted-foreground">{list.data.page.total}</span> : null}
+      </h2>
+      {list.isPending ? (
+        <ListSkeleton />
+      ) : list.error ? (
+        <ErrorNote error={list.error} />
+      ) : list.data.data.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No attachments yet.</p>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Title</TableHead>
+              <TableHead>File</TableHead>
+              <TableHead>Uploader</TableHead>
+              <TableHead>Created At</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {list.data.data.map((row) => (
+              <TableRow key={text(row.id)}>
+                <TableCell>{text(row.title)}</TableCell>
+                <TableCell>{text(row.file?.name)}</TableCell>
+                <TableCell>{<Link to="/authors/$id" params={{ id: text(row.uploader_id) }} className="hover:underline">{text(row.uploader_id)}</Link>}</TableCell>
+                <TableCell>{formatDateTime(row.created_at)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+      {list.data ? <Pagination page={page} pageSize={10} total={list.data.page.total} onChange={setPage} /> : null}
+      {canCreatePostAttachments(user) ? (
+        <PostAttachmentsForm
+          key={formKey}
+          fields={POSTATTACHMENTS_CREATE}
+          initial={EMPTY_POSTATTACHMENTS}
+          submitLabel="Add"
+          pending={createRow.isPending}
+          error={createRow.error}
+          onSubmit={values => createRow.mutate({ ...toPostAttachmentsCreateInput(values), article_id: id } as Inputs["attachments"]["create"])}
+        />
+      ) : null}
+    </section>
+  );
+}
+
 function PostPageInner() {
   const { id: rawId } = useParams({ from: "/posts/$id" });
   const id = idOf(rawId);
@@ -673,6 +834,7 @@ function PostPageInner() {
         </dl>
       )}
       <PostCommentsSection key={text(row.id)} id={id} user={user} />
+      <PostAttachmentsSection key={text(row.id)} id={id} user={user} />
     </Pane>
   );
 }

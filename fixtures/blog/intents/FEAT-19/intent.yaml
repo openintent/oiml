@@ -1,0 +1,11 @@
+osl: "1.0"
+title: Attachments
+ask: >-
+  An article can have files attached: a spec, a mockup, a contract. Each attachment has a title and its file, and it
+  cannot be saved without the file. The article's page lists its attachments and has the form to add one there. Only
+  signed-in people see attachments, and only whoever attached a file can remove it.
+acceptance:
+  - An attachment is created with its title and an uploaded file, and comes back with the file's name and type
+  - An attachment without a file is refused
+  - The article's attachments are listed by article, and not to someone who is not signed in
+  - Only whoever attached a file can remove it

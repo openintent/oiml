@@ -66,13 +66,19 @@ export function trpcFile(ir?: IR): string {
 import { initTRPC } from "@trpc/server";
 import { withTenants } from "../db/client";
 import type { Context } from "./context";
-import { statusOf } from "./errors";
+import { codeOf, statusOf } from "./errors";
 
 const t = initTRPC.context<Context>().create({
-  /** A refusal keeps the contract's status in the error's data, also where tRPC has no code for it (410, say) */
+  /**
+   * The error's data carries the contract's code (\`invalid_transition\`, \`busy\`: what the REST backends answer as
+   * \`error.code\`) beside tRPC's own, and a refusal's status, also where tRPC has no code for it (410, say)
+   */
   errorFormatter({ shape, error }) {
     const status = statusOf(error);
-    return status === undefined ? shape : { ...shape, data: { ...shape.data, httpStatus: status } };
+    return {
+      ...shape,
+      data: { ...shape.data, ...(status === undefined ? {} : { httpStatus: status }), contractCode: codeOf(error) }
+    };
   }
 });
 
@@ -92,13 +98,19 @@ export type { Context };
   return `${HEADER("tRPC initialisation.")}
 import { initTRPC } from "@trpc/server";
 import type { Context } from "./context";
-import { statusOf } from "./errors";
+import { codeOf, statusOf } from "./errors";
 
 const t = initTRPC.context<Context>().create({
-  /** A refusal keeps the contract's status in the error's data, also where tRPC has no code for it (410, say) */
+  /**
+   * The error's data carries the contract's code (\`invalid_transition\`, \`busy\`: what the REST backends answer as
+   * \`error.code\`) beside tRPC's own, and a refusal's status, also where tRPC has no code for it (410, say)
+   */
   errorFormatter({ shape, error }) {
     const status = statusOf(error);
-    return status === undefined ? shape : { ...shape, data: { ...shape.data, httpStatus: status } };
+    return {
+      ...shape,
+      data: { ...shape.data, ...(status === undefined ? {} : { httpStatus: status }), contractCode: codeOf(error) }
+    };
   }
 });
 
@@ -159,17 +171,43 @@ class Refusal extends Error {
 }
 
 /**
- * Refuse the request with the contract's status and code. tRPC has no code for every status (410, say), so the
- * status travels on the error and the transport answers with it.
+ * A refusal with the contract's status and code. tRPC has no code for every status (410, say), so the status
+ * travels on the error and the transport answers with it.
  */
-export function fail(status: number, code: string, message: string): never {
+export function refusal(status: number, code: string, message: string): TRPCError {
   const fallback = status >= 400 && status < 500 ? "BAD_REQUEST" : "INTERNAL_SERVER_ERROR";
-  throw new TRPCError({ code: CODES[status] ?? fallback, message, cause: new Refusal(status, code, message) });
+  return new TRPCError({ code: CODES[status] ?? fallback, message, cause: new Refusal(status, code, message) });
+}
+
+/** Refuse the request with the contract's status and code */
+export function fail(status: number, code: string, message: string): never {
+  throw refusal(status, code, message);
 }
 
 /** The status a refusal made with fail() carries; undefined for every other error */
 export function statusOf(err: unknown): number | undefined {
   return err instanceof TRPCError && err.cause instanceof Refusal ? err.cause.status : undefined;
+}
+
+/** The contract's code of an error made without fail(): the one drizzle-next and gin-pgx answer in its place */
+const CONTRACT_CODES: Partial<Record<TRPC_ERROR_CODE_KEY, string>> = {
+  PARSE_ERROR: "invalid_json",
+  BAD_REQUEST: "validation",
+  UNAUTHORIZED: "unauthenticated",
+  FORBIDDEN: "forbidden",
+  NOT_FOUND: "not_found",
+  CONFLICT: "conflict",
+  INTERNAL_SERVER_ERROR: "internal"
+};
+
+/**
+ * The contract's code of an error, as the REST backends answer it in \`{ error: { code } }\`: a refusal's own, \`busy\`,
+ * or the one for tRPC's code (an input tRPC refused is \`validation\`, as a body the REST backends refuse is)
+ */
+export function codeOf(err: TRPCError): string {
+  if (err.cause instanceof Refusal) return err.cause.code;
+  if (isBusy(err)) return "busy";
+  return CONTRACT_CODES[err.code] ?? err.code.toLowerCase();
 }
 
 export function notFound(): TRPCError {
@@ -217,7 +255,7 @@ export function toTRPCError(err: unknown, operation: "read" | "write" | "delete"
   if (code === "23503" || code === "23001") {
     return operation === "delete" || code === "23001"
       ? new TRPCError({ code: "CONFLICT", message: "Other rows still reference this row" })
-      : new TRPCError({ code: "BAD_REQUEST", message: "A referenced row does not exist" });
+      : refusal(400, "invalid_reference", "A referenced row does not exist");
   }
   if (code === "23502") return new TRPCError({ code: "BAD_REQUEST", message: "A required value is missing" });${refused}
   if (code === "22P02") {
@@ -351,7 +389,7 @@ import { eq${isolated ? ", sql" : ""} } from "drizzle-orm";
 import { z } from "zod";
 ${registerValidators(registerFields).length ? `import { ${registerValidators(registerFields).join(", ")} } from "../validation";\n` : ""}import { db } from "../db/client";
 import { ${schemaImports.join(", ")} } from "../db/schema";
-import { ${invites ? "fail, " : ""}toTRPCError } from "./errors";
+import { ${invites || credentials ? "fail, " : ""}toTRPCError } from "./errors";
 import { ${presentImports.join(", ")} } from "../present";
 ${fileSpecs ? `import { resolveFileRefs } from "../files";\n` : ""}${providerImports.length ? `import { ${providerImports.join(", ")} } from "../auth-providers";\n` : ""}import { publicProcedure, router } from "./trpc";
 
@@ -513,7 +551,7 @@ export const authRouter = router({${
         throw toTRPCError(err, "read");
       });
     if (!user || !verifyPassword(input.password, user.${auth.passwordColumn})) {
-      throw new TRPCError({ code: "UNAUTHORIZED", message: "Email or password is wrong" });
+      fail(401, "invalid_credentials", "Email or password is wrong");
     }
 ${
   invites
@@ -758,13 +796,13 @@ import { getHTTPStatusCodeFromError } from "@trpc/server/http";
 import { Hono, type Context as HonoContext } from "hono";
 ${ir.files ? `import { fileContent, receiveContent } from "../files";\n` : ""}${authProviderImports.length ? `import { ${authProviderImports.join(", ")} } from "../auth-providers";\n` : ""}${authImports.length ? `import { ${authImports.join(", ")} } from "./auth";\n` : ""}${ir.jobs ? `import { startWorker } from "../jobs";\n` : ""}${isolated ? `import { withTenants } from "../db/client";\n` : ""}import { emailsSent, ${isolated ? "rulesSwitch, " : ""}schedulesRun, ${isolated ? "tenancyUnbound, " : ""}testHooksEnabled, timersRun } from "../test-hooks";
 import { createContext } from "./context";
-import { isBusy, statusOf } from "./errors";
+import { codeOf, isBusy, statusOf } from "./errors";
 import { appRouter } from "./router";
 ${hasSealed(ir) ? `import { sealKey } from "../seal";\n\n// Sealed fields: the server does not start without OSL_SEAL_KEY, or with one that is not a key\nsealKey();\n` : ""}
 /** Errors from the shared modules are tRPC errors; REST routes answer them in the contract's shape. */
 function restError(c: HonoContext, err: unknown): Response {
   if (err instanceof TRPCError) {
-    const code = (err.cause as { code?: string } | undefined)?.code ?? err.code.toLowerCase();
+    const code = codeOf(err);
     if (isBusy(err)) c.header("Retry-After", "1");
     return c.json({ error: { code, message: err.message } }, (statusOf(err) ?? getHTTPStatusCodeFromError(err)) as 400);
   }

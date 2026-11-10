@@ -5,8 +5,8 @@ import { QueryClient } from "@tanstack/react-query";
 import type { z } from "zod";
 import type { Accepted, InviteLookup } from "../auth-providers";
 import type { FileRecord } from "../files";
-import type { PublicAnnouncement, PublicArticle, PublicArticleEditor, PublicArticleInvite, PublicBulletin, PublicComment, PublicFollow, PublicIntegration, PublicUser, VisibleFields } from "../present";
-import type { announcementsCreateInput, announcementsListQuery, announcementsPublishInput, announcementsUpdateInput, article_editorsCreateInput, article_editorsListQuery, article_invitesCreateInput, article_invitesListQuery, bulletinsCreateInput, bulletinsListQuery, bulletinsUpdateInput, commentsCreateInput, commentsListQuery, commentsUpdateInput, followsCreateInput, followsListQuery, integrationsCreateInput, integrationsListQuery, integrationsSignInput, integrationsUpdateInput, postsApproveInput, postsArchiveInput, postsCreateInput, postsListQuery, postsLockInput, postsPublishInput, postsRejectInput, postsRestoreInput, postsRetireInput, postsSubmitInput, postsUnlockInput, postsUnpublishAllInput, postsUpdateInput, sendDigestInput, usersBanInput, usersListQuery, usersUpdateInput } from "../validation";
+import type { PublicAnnouncement, PublicArticle, PublicArticleEditor, PublicArticleInvite, PublicAttachment, PublicBulletin, PublicComment, PublicFollow, PublicIntegration, PublicUser, VisibleFields } from "../present";
+import type { announcementsCreateInput, announcementsListQuery, announcementsPublishInput, announcementsUpdateInput, article_editorsCreateInput, article_editorsListQuery, article_invitesCreateInput, article_invitesListQuery, attachmentsCreateInput, attachmentsListQuery, bulletinsCreateInput, bulletinsListQuery, bulletinsUpdateInput, commentsCreateInput, commentsListQuery, commentsUpdateInput, followsCreateInput, followsListQuery, integrationsCreateInput, integrationsListQuery, integrationsSignInput, integrationsUpdateInput, postsApproveInput, postsArchiveInput, postsCreateInput, postsListQuery, postsLockInput, postsPublishInput, postsRejectInput, postsRestoreInput, postsRetireInput, postsSubmitInput, postsUnlockInput, postsUnpublishAllInput, postsUpdateInput, sendDigestInput, usersBanInput, usersListQuery, usersUpdateInput } from "../validation";
 
 export class ApiError extends Error {
   constructor(
@@ -139,6 +139,12 @@ export type Inputs = {
     delete: { id: string };
     sign: z.input<typeof integrationsSignInput> & { id: string };
   };
+  attachments: {
+    list: z.input<typeof attachmentsListQuery>;
+    get: { id: string };
+    create: z.input<typeof attachmentsCreateInput>;
+    delete: { id: string };
+  };
   article_invites: {
     list: z.input<typeof article_invitesListQuery>;
     get: { id: string };
@@ -232,6 +238,12 @@ export type Outputs = {
     update: PublicIntegration;
     delete: null;
     sign: { signature: string };
+  };
+  attachments: {
+    list: { data: (PublicAttachment)[]; page: Page };
+    get: PublicAttachment;
+    create: PublicAttachment;
+    delete: null;
   };
   article_invites: {
     list: { data: (PublicArticleInvite & { inviter: PublicUser | null })[]; page: Page };
@@ -336,6 +348,12 @@ export const client = {
     update: ({ id, data }: Inputs["integrations"]["update"]) => call<PublicIntegration>("PATCH", "/api/integrations" + "/" + id, { body: data }),
     delete: ({ id }: Inputs["integrations"]["delete"]) => call<null>("DELETE", "/api/integrations" + "/" + id),
     sign: ({ id, ...input }: Inputs["integrations"]["sign"]) => call<{ signature: string }>("POST", "/api/integrations" + "/" + id + "/sign", { body: input })
+  },
+  attachments: {
+    list: (input: Inputs["attachments"]["list"]) => call<Outputs["attachments"]["list"]>("GET", "/api/attachments", { query: input as Record<string, unknown>, whole: true }),
+    get: ({ id }: Inputs["attachments"]["get"]) => call<Outputs["attachments"]["get"]>("GET", "/api/attachments" + "/" + id),
+    create: (input: Inputs["attachments"]["create"]) => call<PublicAttachment>("POST", "/api/attachments", { body: input }),
+    delete: ({ id }: Inputs["attachments"]["delete"]) => call<null>("DELETE", "/api/attachments" + "/" + id)
   },
   article_invites: {
     list: (input: Inputs["article_invites"]["list"]) => call<Outputs["article_invites"]["list"]>("GET", "/api/article_invites", { query: input as Record<string, unknown>, whole: true }),

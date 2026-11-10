@@ -1,0 +1,14 @@
+osl: "1.0"
+title: Refusal codes
+ask: >-
+  When the app says no to someone signing in, joining or inviting, it says why in a word a program can act on, and
+  the word is the same whatever the app is built with: not signed in, a wrong password, a link that does not work, an
+  invite already waiting, someone who is in the team already, a team they are not in, an invite meant for someone
+  else, an invite that needs its person signed in, a password that is too short.
+acceptance:
+  - Listing teams without signing in answers 401 unauthenticated; a wrong password answers 401 invalid_credentials
+  - A magic link that was never sent answers 400 invalid_token
+  - A second invite to a waiting address answers 409 invite_exists, an invite to a member 409 already_member, and an invite by someone outside the team 403 forbidden
+  - An invite token that does not exist answers 404 not_found
+  - Accepting an account's invite without signing in answers 401 sign_in_required, and as someone else 403 invite_email_mismatch
+  - Accepting with a password that is too short answers 400 validation

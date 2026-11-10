@@ -134,6 +134,19 @@ export const integrations = pgTable(
   t => [index("integrations_owner_id_idx").on(t.owner_id)]
 );
 
+export const attachments = pgTable(
+  "attachments",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    article_id: uuid().notNull().references(() => articles.id, { onDelete: "cascade" }),
+    uploader_id: uuid().notNull().references(() => users.id, { onDelete: "cascade" }),
+    title: varchar({ length: 120 }).notNull(),
+    file: jsonb().$type<FileRef>().notNull(),
+    created_at: timestamp({ withTimezone: true }).notNull().defaultNow()
+  },
+  t => [index("attachments_article_id_idx").on(t.article_id), index("attachments_uploader_id_idx").on(t.uploader_id)]
+);
+
 export const articleInvites = pgTable(
   "article_invites",
   {
@@ -207,7 +220,8 @@ export const usersRelations = relations(users, ({ many }) => ({
 export const articlesRelations = relations(articles, ({ one, many }) => ({
   author: one(users, { fields: [articles.author_id], references: [users.id], relationName: "author" }),
   comments: many(comments, { relationName: "article" }),
-  editors: many(articleEditors, { relationName: "article" })
+  editors: many(articleEditors, { relationName: "article" }),
+  attachments: many(attachments, { relationName: "article" })
 }));
 
 export const commentsRelations = relations(comments, ({ one }) => ({
@@ -235,6 +249,11 @@ export const articleEditorsRelations = relations(articleEditors, ({ one }) => ({
 
 export const integrationsRelations = relations(integrations, ({ one }) => ({
   owner: one(users, { fields: [integrations.owner_id], references: [users.id], relationName: "owner" })
+}));
+
+export const attachmentsRelations = relations(attachments, ({ one }) => ({
+  article: one(articles, { fields: [attachments.article_id], references: [articles.id], relationName: "article" }),
+  uploader: one(users, { fields: [attachments.uploader_id], references: [users.id], relationName: "uploader" })
 }));
 
 export const articleInvitesRelations = relations(articleInvites, ({ one }) => ({
@@ -266,6 +285,8 @@ export type ArticleEditor = typeof articleEditors.$inferSelect;
 export type NewArticleEditor = typeof articleEditors.$inferInsert;
 export type Integration = typeof integrations.$inferSelect;
 export type NewIntegration = typeof integrations.$inferInsert;
+export type Attachment = typeof attachments.$inferSelect;
+export type NewAttachment = typeof attachments.$inferInsert;
 export type ArticleInvite = typeof articleInvites.$inferSelect;
 export type NewArticleInvite = typeof articleInvites.$inferInsert;
 export type OslFile = typeof oslFiles.$inferSelect;

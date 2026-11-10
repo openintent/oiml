@@ -1,0 +1,12 @@
+osl: "1.0"
+title: Refusal codes
+ask: >-
+  When the app says no, it says why in a word a program can act on, and the word is the same whatever the app is
+  built with: a step a task cannot take from where it is, a name that is taken, a value in the wrong form, a project
+  that does not exist, a task that is not there, a task that is done.
+acceptance:
+  - Pausing or finishing a task that was never started, or starting one twice, answers 409 invalid_transition
+  - A second project with the same name answers 409 conflict
+  - A colour that is not a colour, or a status sent by hand, answers 400 validation
+  - A task under a project that does not exist answers 400 invalid_reference
+  - A task that is not there answers 404 not_found, and a done task that is started answers 403 forbidden

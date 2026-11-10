@@ -156,7 +156,7 @@ export const authRouter = router({
         throw toTRPCError(err, "read");
       });
     if (!user || !verifyPassword(input.password, user.password_hash)) {
-      throw new TRPCError({ code: "UNAUTHORIZED", message: "Email or password is wrong" });
+      fail(401, "invalid_credentials", "Email or password is wrong");
     }
     // A password proves the address only together with an invite's token for it; anything else joins nothing
     const accepted = input.invite ? await acceptWithToken(user, input.invite) : [];

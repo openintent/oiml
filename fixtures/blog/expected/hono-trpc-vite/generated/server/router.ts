@@ -12,6 +12,7 @@ import { followsRouter } from "./resources/follows";
 import { bulletinsRouter } from "./resources/bulletins";
 import { article_editorsRouter } from "./resources/article_editors";
 import { integrationsRouter } from "./resources/integrations";
+import { attachmentsRouter } from "./resources/attachments";
 import { article_invitesRouter } from "./resources/article_invites";
 import { router } from "./trpc";
 
@@ -27,6 +28,7 @@ export const appRouter = router({
   bulletins: bulletinsRouter,
   article_editors: article_editorsRouter,
   integrations: integrationsRouter,
+  attachments: attachmentsRouter,
   article_invites: article_invitesRouter
 });
 

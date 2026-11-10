@@ -115,6 +115,11 @@ export function presentIntegration(row: schema.Integration, viewer: Viewer): Pub
   return out;
 }
 
+export type PublicAttachment = Pick<schema.Attachment, "id" | "article_id" | "uploader_id" | "title" | "created_at"> & { file: PublicFile };
+export function presentAttachment(row: schema.Attachment): PublicAttachment {
+  return { id: row.id, article_id: row.article_id, uploader_id: row.uploader_id, title: row.title, created_at: row.created_at, file: presentFileRef(row.file)! };
+}
+
 export type PublicArticleInvite = Pick<schema.ArticleInvite, "id" | "article_id" | "email" | "invited_by" | "expires_at" | "created_at">;
 export function presentArticleInvite(row: schema.ArticleInvite): PublicArticleInvite {
   return { id: row.id, article_id: row.article_id, email: row.email, invited_by: row.invited_by, expires_at: row.expires_at, created_at: row.created_at };

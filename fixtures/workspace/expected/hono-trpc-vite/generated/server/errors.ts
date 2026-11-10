@@ -25,17 +25,43 @@ class Refusal extends Error {
 }
 
 /**
- * Refuse the request with the contract's status and code. tRPC has no code for every status (410, say), so the
- * status travels on the error and the transport answers with it.
+ * A refusal with the contract's status and code. tRPC has no code for every status (410, say), so the status
+ * travels on the error and the transport answers with it.
  */
-export function fail(status: number, code: string, message: string): never {
+export function refusal(status: number, code: string, message: string): TRPCError {
   const fallback = status >= 400 && status < 500 ? "BAD_REQUEST" : "INTERNAL_SERVER_ERROR";
-  throw new TRPCError({ code: CODES[status] ?? fallback, message, cause: new Refusal(status, code, message) });
+  return new TRPCError({ code: CODES[status] ?? fallback, message, cause: new Refusal(status, code, message) });
+}
+
+/** Refuse the request with the contract's status and code */
+export function fail(status: number, code: string, message: string): never {
+  throw refusal(status, code, message);
 }
 
 /** The status a refusal made with fail() carries; undefined for every other error */
 export function statusOf(err: unknown): number | undefined {
   return err instanceof TRPCError && err.cause instanceof Refusal ? err.cause.status : undefined;
+}
+
+/** The contract's code of an error made without fail(): the one drizzle-next and gin-pgx answer in its place */
+const CONTRACT_CODES: Partial<Record<TRPC_ERROR_CODE_KEY, string>> = {
+  PARSE_ERROR: "invalid_json",
+  BAD_REQUEST: "validation",
+  UNAUTHORIZED: "unauthenticated",
+  FORBIDDEN: "forbidden",
+  NOT_FOUND: "not_found",
+  CONFLICT: "conflict",
+  INTERNAL_SERVER_ERROR: "internal"
+};
+
+/**
+ * The contract's code of an error, as the REST backends answer it in `{ error: { code } }`: a refusal's own, `busy`,
+ * or the one for tRPC's code (an input tRPC refused is `validation`, as a body the REST backends refuse is)
+ */
+export function codeOf(err: TRPCError): string {
+  if (err.cause instanceof Refusal) return err.cause.code;
+  if (isBusy(err)) return "busy";
+  return CONTRACT_CODES[err.code] ?? err.code.toLowerCase();
 }
 
 export function notFound(): TRPCError {
@@ -83,7 +109,7 @@ export function toTRPCError(err: unknown, operation: "read" | "write" | "delete"
   if (code === "23503" || code === "23001") {
     return operation === "delete" || code === "23001"
       ? new TRPCError({ code: "CONFLICT", message: "Other rows still reference this row" })
-      : new TRPCError({ code: "BAD_REQUEST", message: "A referenced row does not exist" });
+      : refusal(400, "invalid_reference", "A referenced row does not exist");
   }
   if (code === "23502") return new TRPCError({ code: "BAD_REQUEST", message: "A required value is missing" });
   if (code === "42501") return new TRPCError({ code: "FORBIDDEN", message: "You cannot do that" });
