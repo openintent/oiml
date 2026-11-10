@@ -1,5 +1,5 @@
 id: fx-ws-18-invoices
-tags: [fixture, entity, fields, sequence, money, tenancy, isolation, counts, app, scenario]
+tags: [fixture, entity, fields, sequence, money, tenancy, isolation, counts, scenario]
 base: { fixture: workspace, through: WS-17 }
 oracle: fixtures/workspace/intents/WS-18/diff.yaml
 intent:
@@ -32,7 +32,6 @@ expect:
   counts: ["Team.* -> Invoice"]
   rules: { Invoice: { read: "member:team_id", create: "member:team_id" } }
   list: { invoices: { filters: ["number|invoice_number|reference", "total|amount|total_amount"] } }
-  pages: { invoices: { kind: resource } }
   scenarios: { min: 1, rejections: 3, statuses: [400] }
   touches: [invoices.create, invoices.update]
   ops: { require: [add_entity], forbid: [add_action] }
@@ -43,4 +42,5 @@ notes: >-
   assign the number is forbidden. The amounts are `type: money`: the total reads its currency from the row's enum
   field, the fee names USD. A decimal, a float or an integer of cents is the answer the construct replaces. The
   scenario has to write amounts as strings and expect them back with four fraction digits, and the refusals (a
-  JSON number, a fifth digit, a negative total, the currency without the total) are its 400s. Since the merge with rounds A3 and A4 the sidebar has the home dashboard and the invites page, which a set_sidebar restates.
+  JSON number, a fifth digit, a negative total, the currency without the total) are its 400s. The ask asks for no
+  page, so none is expected (the fixture's diff adds one). Since the merge with rounds A3 and A4 the sidebar has the home dashboard and the invites page, which a set_sidebar restates.

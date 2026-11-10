@@ -23,10 +23,15 @@ expect:
   ordered: { "PlaylistTrack|PlaylistEntry|PlaylistItem": "playlist_id" }
   through: ["Playlist.* -> Track"]
   rules:
-    Playlist: { read: "public when public = true or owner:owner_id|public when public = true or owner:user_id" }
+    Playlist:
+      read: >-
+        public when public = true or owner:owner_id|public when public = true or owner:user_id|public when is_public =
+        true or owner:owner_id|public when is_public = true or owner:user_id
   scenarios: { min: 1, rejections: 2, statuses: [403] }
   touches: ["playlist_tracks.move|playlist_entries.move|playlist_items.move", playlists.get]
 notes: >-
   Both constructs on one junction: the entry is ordered within its playlist, and the playlist's tracks are a
   relation through it, so they come back as tracks in the listener's order. The pair is not unique (the same track
-  twice), and the cascade from Track is what the last acceptance line is about.
+  twice), and the cascade from Track is what the last acceptance line is about. The ask calls it a public flag
+  without naming the field, so `is_public` is as good as `public`; a playlist with no flag, readable by its owner
+  alone or by everyone, fails.

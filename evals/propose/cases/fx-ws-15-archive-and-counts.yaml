@@ -25,7 +25,7 @@ expect:
   actions_on:
     milestones: { scope: row, rule: "member:project_id.team_id:admin" }
     labels: { scope: row, rule: "member:team_id:admin" }
-  scenarios: { min: 1, rejections: 3, statuses: [403, 409, 404] }
+  scenarios: { min: 1, rejections: 3, statuses: [403, 409] }
   touches: [milestones.archive, milestones.restore, labels.archive]
   ops: { require: [set_archive, add_field], forbid: [add_action] }
 notes: >-
@@ -33,4 +33,5 @@ notes: >-
   any member archive), Label's falls back to its update rule. One count has a condition that reads the archive
   field, so an archived milestone leaves the open count and stays in the plain one. The count on User adds up
   memberships of every team (M156 says so at apply). A diff that adds an `archived` flag, an action with a handler
-  and a list filter has not used the construct.
+  and a list filter has not used the construct. No acceptance line names a 404 (an archived milestone still opens
+  by its id), so none is expected.

@@ -12,8 +12,14 @@ intent:
 expect:
   fields: { User: [bio, "avatar|avatar_image|photo|picture"] }
   types: { "User.avatar|avatar_image|photo|picture": file, User.bio: "string|text" }
-  field_props: { User.bio: { max_length: 500 } }
   file_accept: { "User.avatar|avatar_image|photo|picture": "image/" }
   rules: { User: { update: "owner:id" } }
   files: { read: public }
   scenarios: { min: 1 }
+  any_of:
+    - { types: { User.bio: string }, field_props: { User.bio: { max_length: 500 } } }
+    - field_props: { User.bio: { validate: { max_length: 500 } } }
+notes: >-
+  The bio's limit is a string's own max_length, or validate.max_length on a string or a text field: the reference
+  gives max_length to strings only, and on a text field nothing enforces it, so text with max_length fails, as does
+  a bio with no limit.

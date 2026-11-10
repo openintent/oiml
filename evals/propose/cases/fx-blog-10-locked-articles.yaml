@@ -13,17 +13,26 @@ intent:
     - A comment on a locked article is refused, and allowed again once the admin unlocks it
     - Setting the lock through an article edit is refused
 expect:
-  fields: { Article: ["locked|is_locked"] }
-  field_props:
-    "Article.locked|is_locked": { read_only: true }
   actions_on: { posts: { scope: row, rule: "role:admin" } }
-  rules:
-    Comment:
-      create: "owner:author_id when article_id.locked = false|owner:author_id when article_id.is_locked = false"
   scenarios: { min: 1, rejections: 2, statuses: [400, 403, 200] }
   touches: [posts, comments]
+  any_of:
+    - fields: { Article: ["locked|is_locked"] }
+      field_props:
+        "Article.locked|is_locked": { read_only: true }
+      rules:
+        Comment:
+          create: "owner:author_id when article_id.locked = false|owner:author_id when article_id.is_locked = false"
+    - types: { "Article.lock_state|status": enum }
+      field_props:
+        "Article.lock_state|status": { read_only: true }
+      rules:
+        Comment:
+          create: "owner:author_id when article_id.lock_state = unlocked|owner:author_id when article_id.status = open"
 notes: >-
   A condition through a relation on create: the comment's rule reads the article's lock through article_id, so a
   comment on a locked article answers 403 without any handler code. The lock itself is the read_only flag and
   admin actions from FEAT-7's pattern. A diff that denormalises the flag onto comments, or that leaves the refusal
-  to not_delivered, fails the rules check on purpose.
+  to not_delivered, fails the rules check on purpose. The lock may also be a read_only enum (unlocked and locked,
+  moved by admin transitions) with the comment rule conditioned on its unlocked value: the ask names no flag, and a
+  state no client writes refuses comments the same way. A lock a client can write fails either way.

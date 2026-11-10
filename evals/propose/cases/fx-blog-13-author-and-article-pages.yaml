@@ -18,7 +18,7 @@ expect:
       { kind: detail, resource: users, access: public, sections: [posts] }
     "post|article|post_page|article_page|post_detail|article_detail":
       { kind: detail, resource: posts, sections: [comments] }
-    "announcement|news|announcement_page|announcement_share|share|news_item":
+    "announcement|news|announcement_page|announcement_share|share|news_item|shared_announcement":
       { kind: detail, resource: announcements, access: public }
   scenarios: { min: 1, rejections: 1, statuses: [404] }
   touches: [posts, comments, announcements]

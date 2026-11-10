@@ -2,7 +2,11 @@ import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { copyOverlay } from "../src/runner.js";
+import { applyDiff, parseDiff, type Model } from "@osl/core";
+import { loadCases } from "../src/cases.js";
+import { baseModel, copyOverlay, keptActions } from "../src/runner.js";
+
+const REPO = path.resolve(__dirname, "../../..");
 
 /** Every file under a folder, relative to it, sorted */
 async function files(root: string): Promise<string[]> {
@@ -63,5 +67,62 @@ describe("copyOverlay", () => {
     await copyOverlay(from, to, null);
     expect(await files(to)).toHaveLength(8);
     expect(await files(to)).toContain("gin-pgx/src/events/integration_created/handler.go");
+  });
+});
+
+describe("keptActions", () => {
+  /** The blog through FEAT-5, which declares posts.publish, posts.unpublish_all and the global send_digest */
+  async function blog(): Promise<Model> {
+    const c = (await loadCases(path.join(REPO, "evals/propose/cases"))).find(x => x.id === "blog5-overdue-review")!;
+    return baseModel(REPO, c);
+  }
+  /** That base and the diff applied to it */
+  async function models(ops: unknown[]): Promise<{ base: Model; proposed: Model }> {
+    const base = await blog();
+    return { base, proposed: applyDiff(base, parseDiff({ osl: "1.0", ops })).model };
+  }
+  const ALL = ["posts_publish", "posts_unpublish_all", "send_digest"];
+  /** The posts resource with its actions changed by `change` */
+  const posts = (base: Model, change: (actions: Record<string, Record<string, unknown>>) => void) => {
+    const resource = structuredClone(base.resources.posts) as unknown as {
+      actions: Record<string, Record<string, unknown>>;
+    };
+    change(resource.actions);
+    return { op: "update_resource", name: "posts", resource };
+  };
+
+  it("keeps the handler of an action the diff leaves alone or restates word for word (the control)", async () => {
+    const { base, proposed } = await models([
+      { op: "add_field", entity: "Article", name: "stale", field: { type: "boolean" } }
+    ]);
+    expect([...keptActions(base, proposed)].sort()).toEqual(ALL);
+    const restated = await models([posts(base, () => {})]);
+    expect([...keptActions(restated.base, restated.proposed)].sort()).toEqual(ALL);
+  });
+
+  it("drops the handler of an action the diff declares differently, so --implement writes it", async () => {
+    const base = await blog();
+    const described = await models([
+      posts(base, actions => {
+        actions.publish.description = "Mark the article published and clear its stale mark";
+      })
+    ]);
+    expect([...keptActions(described.base, described.proposed)].sort()).toEqual(["posts_unpublish_all", "send_digest"]);
+    const ruled = await models([
+      posts(base, actions => {
+        actions.publish.rule = "role:admin";
+      })
+    ]);
+    expect([...keptActions(ruled.base, ruled.proposed)].sort()).toEqual(["posts_unpublish_all", "send_digest"]);
+  });
+
+  it("never keeps a handler for an action the base does not declare", async () => {
+    const base = await blog();
+    const added = await models([
+      posts(base, actions => {
+        actions.mark_stale = { description: "Mark it stale", rule: "none" };
+      })
+    ]);
+    expect([...keptActions(added.base, added.proposed)].sort()).toEqual(ALL);
   });
 });

@@ -1170,8 +1170,16 @@ export function tenantChain(
 
 /** Compile a validated model into IR. Throws ModelError on an invalid model. */
 export function compile(input: Model): IR {
+  return compileValid(loadModel(input));
+}
+
+/**
+ * Compile a model that validateModel has already passed, without validating it again: validateModel itself compiles
+ * through this to hold the scenarios to what the model compiles to (`scenarioContradictions`).
+ */
+export function compileValid(validated: Model): IR {
   // The stored model never holds what auth.invites stands for; from here on the invite entities are entities
-  const model = expandInvites(loadModel(input));
+  const model = expandInvites(validated);
   const enums: EnumIR[] = [];
   const entities: EntityIR[] = [];
   const system = systemEntities(model);

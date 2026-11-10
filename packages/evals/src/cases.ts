@@ -66,8 +66,12 @@ export const PageExpect = z
 
 export const Expect = z
   .object({
-    /** ok: a valid diff is required. invalid: no valid diff exists. declined: the agent should say nothing is expressible. any: whatever happens. */
-    outcome: z.enum(["ok", "invalid", "declined", "any"]).default("ok"),
+    /**
+     * ok: a valid diff is required. invalid: no valid diff exists. declined: the agent should say nothing is
+     * expressible. ok_or_declined: either of those two (a diff is held to the checks; no valid diff fails). any:
+     * whatever happens, an answer with no valid diff included.
+     */
+    outcome: z.enum(["ok", "invalid", "declined", "ok_or_declined", "any"]).default("ok"),
     /** The ask has a part the model cannot express: a valid diff must list it in not_delivered (or the agent declines) */
     flags_limit: z.boolean().optional(),
     entities: Names.optional(),

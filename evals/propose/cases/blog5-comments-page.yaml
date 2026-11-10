@@ -1,6 +1,6 @@
 id: blog5-comments-page
 tags: [entity, relation, app, rules]
-base: { fixture: blog, through: FEAT-12 }
+base: { fixture: blog, through: FEAT-5 }
 intent:
   title: Comments with a page
   ask: >-
@@ -16,3 +16,7 @@ expect:
   pages: { comments: { kind: resource, resource: comments, layout: table } }
   sidebar: [comments]
   scenarios: { min: 1, rejections: 1, statuses: [401] }
+notes: >-
+  Written when the blog ended at FEAT-5, before it had comments; pinned later at FEAT-12, where FEAT-6's comments
+  already let the article's author and admins delete one and its scenario proves it, so the ask could only be
+  answered against that scenario. Back on FEAT-5, comments are new and "only the author" is the rule to write.

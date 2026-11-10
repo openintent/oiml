@@ -1,5 +1,5 @@
 id: fx-blog-18-integrations
-tags: [fixture, entity, fields, sealed, json, shape, visibility, actions, events, app, scenario]
+tags: [fixture, entity, fields, sealed, json, shape, visibility, actions, events, scenario]
 base: { fixture: blog, through: FEAT-17 }
 oracle: fixtures/blog/intents/FEAT-18/diff.yaml
 intent:
@@ -36,7 +36,6 @@ expect:
     "Integration|Connection.token|access_token|api_token": "owner:owner_id|owner:user_id"
     "User.recovery_code|recovery_phrase": "owner:id"
   actions: ["integrations.sign|integrations.sign_payload|connections.sign|connections.sign_payload"]
-  pages: { "integrations|connections": { kind: resource } }
   scenarios: { min: 1, rejections: 4, statuses: [400] }
   touches: ["integrations.create|connections.create", "integrations.update|connections.update", users.update]
   ops: { require: [add_entity, add_field] }
@@ -47,4 +46,5 @@ notes: >-
   cannot sign. The settings are one json field with `shape_by` over the kind enum, not three nullable groups of
   columns, one json field per kind, or a plain json field a handler validates. The preferences are a json field
   with a `shape` and one nested level. The 400s are a wrong key for the kind, a missing required key, an unknown
-  key and a kind changed without its settings.
+  key and a kind changed without its settings. The ask asks for no page, so none is expected (the fixture's diff
+  adds one).

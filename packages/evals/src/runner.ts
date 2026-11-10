@@ -11,6 +11,7 @@ import {
   compareIds,
   compile,
   fromYaml,
+  hashValue,
   Model,
   parseDiff,
   toYaml,
@@ -32,7 +33,7 @@ import {
 } from "@osl/cli/propose";
 import { implementActions } from "@osl/cli/implement";
 import { BACKENDS, runFixture, type Fixture, type StepResult } from "@osl/conformance";
-import type { Case } from "./cases.js";
+import type { Case, Expect } from "./cases.js";
 import { actionLabels, checkExpectations, scenarioMetrics, type ScenarioMetrics } from "./checks.js";
 import { costUsd } from "./pricing.js";
 
@@ -80,7 +81,7 @@ export interface CaseResult {
   /** ok: a valid diff. invalid: no valid diff within the attempts. error: the proposer failed for another reason. */
   status: "ok" | "invalid" | "declined" | "error";
   error?: string;
-  expected_outcome: "ok" | "invalid" | "declined" | "any";
+  expected_outcome: Expect["outcome"];
   /** Parts of the ask the agent said it could not express (live proposer only) */
   not_delivered: string[];
   /** The outcome matched the expectation and every check passed */
@@ -183,6 +184,36 @@ export async function copyOverlay(from: string, to: string, keep: OverlayKeep | 
       await cp(source, target);
     }
   }
+}
+
+/**
+ * The handlers of the base's actions whose declaration the proposed model keeps word for word: the only ones the
+ * overlay may bring. An action the diff changes or restates differently (a new rule, input or description) had its
+ * handler written for the fixture's declaration, so it stays a stub and --implement writes it from the proposed one;
+ * an action the diff adds is not the base's at all.
+ */
+export function keptActions(base: ModelType, proposed: ModelType): Set<string> {
+  const declarations = (model: ModelType) =>
+    new Map(
+      userActions(compile(model)).map(a => [
+        a.handler,
+        hashValue(a.resource ? model.resources[a.resource].actions?.[a.name] : model.actions[a.name])
+      ])
+    );
+  const after = declarations(proposed);
+  const kept = new Set<string>();
+  for (const [handler, declared] of declarations(base)) if (after.get(handler) === declared) kept.add(handler);
+  return kept;
+}
+
+/**
+ * Whether a proposal that ended `status` is the outcome the case expects. A valid diff still has its checks to pass;
+ * an invalid or declined answer is graded by this alone.
+ */
+export function outcomeAccepts(expected: Expect["outcome"], status: "ok" | "invalid" | "declined"): boolean {
+  if (expected === "any") return true;
+  if (expected === "ok_or_declined") return status !== "invalid";
+  return expected === status;
 }
 
 /** The fixture's model after the given intents, in order */
@@ -323,15 +354,16 @@ async function writeCaseFixture(
   await mkdir(intentsDir, { recursive: true });
   for (const id of ids) await cp(path.join(dir!, "intents", id), path.join(intentsDir, id), { recursive: true });
   // The fixture's overlay holds the user-owned handlers of its final model. The base keeps the ones for the actions
-  // and events it declares itself (their fields are the fixture's); a handler the proposed diff declares stays a
-  // stub, which --implement then writes. An oracle diff that completes the fixture gets them all.
+  // and events it declares itself (their fields are the fixture's), as long as the diff leaves the action's
+  // declaration as it was; a handler for an action the proposed diff adds or changes stays a stub, which --implement
+  // then writes. An oracle diff that completes the fixture gets them all.
   if (dir && existsSync(path.join(dir, "overlay"))) {
     let keep: OverlayKeep | null = null;
     if (!oracleCompletes) {
-      const ir = compile(await modelThrough(dir, fixtureName, ids));
+      const base = await modelThrough(dir, fixtureName, ids);
       keep = {
-        actions: new Set(userActions(ir).map(a => a.handler)),
-        events: new Set(ir.events.map(e => e.handler))
+        actions: keptActions(base, applyDiff(base, diff).model),
+        events: new Set(compile(base).events.map(e => e.handler))
       };
     }
     await copyOverlay(path.join(dir, "overlay"), path.join(fixtureDir, "overlay"), keep);
@@ -383,12 +415,12 @@ export async function runCase(c: Case, options: RunOptions): Promise<CaseResult>
   }
   if (proposed.status === "invalid") {
     result.failures = proposed.problems.map(p => `invalid: ${p}`);
-    result.pass = c.expect.outcome === "invalid" || c.expect.outcome === "any";
+    result.pass = outcomeAccepts(c.expect.outcome, "invalid");
     return result;
   }
   if (proposed.status === "declined") {
     result.failures = proposed.reasons.map(r => `declined: ${r}`);
-    result.pass = c.expect.outcome === "declined" || c.expect.outcome === "any";
+    result.pass = outcomeAccepts(c.expect.outcome, "declined");
     return result;
   }
   if (c.expect.outcome === "invalid") result.failures.push("a valid diff was not expected to exist");

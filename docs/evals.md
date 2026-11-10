@@ -71,8 +71,8 @@ scenario counts and rejection statuses, what the scenarios call, an actor carryi
 (`actor_fields: { role: admin }`), and the ops a diff must use, may not use, or how many it may have.
 
 `outcome` says what should happen: `ok` (the default) needs a valid diff, `invalid` expects none to exist,
-`declined` expects the agent to answer that nothing in the ask is expressible, and `any` accepts whatever
-happens. `flags_limit: true` says the ask has a part the model cannot express, so a valid diff must list it
+`declined` expects the agent to answer that nothing in the ask is expressible, `ok_or_declined` takes a diff that
+passes the checks or a decline (an answer with no valid diff fails), and `any` accepts whatever happens. `flags_limit: true` says the ask has a part the model cannot express, so a valid diff must list it
 in `not_delivered` (the agent's own channel for that) or the agent must decline. Cases tagged `gap` ask for
 something the model cannot express, and cases tagged `trap` for something the reference forbids or caps;
 both exist to show what the agent does there, and their diffs are for reading, not only counting.
@@ -482,3 +482,29 @@ author's submit with `when status = draft`, which the case had not anticipated; 
 without a condition accept a rule the agent qualified with one, since a tighter rule that still matches the ask is
 not a mistake. What a client may write into a field still cannot depend on who they are (no "only owners may grant
 owner"); the reference says to report that in `not_delivered`.
+
+## Tightening after milestone B
+
+The live run after milestone B (Opus 5.5, 121 cases, full runs with handlers, 2026-11-10) passed 103. Its eighteen
+failures were read one by one, and the grading changed where it, not the agent, was wrong:
+
+- Ten cases demanded one design where the ask allows another, and now accept the valid alternative the agent gave,
+  in `any_of` or `|` alternatives: a lock that is a read-only state enum moved by transitions as well as a boolean
+  (`blog2-forum-autolock`, `fx-blog-10-locked-articles`), `is_public` for a public flag, a create rule that also lets
+  team members post in a public channel, the assignee joined to team membership as isolation compiles it, the next
+  occurrence made by the complete action's own handler, and no page or 409 or 404 step where the ask names none
+  (four `fx-` cases whose expectations had been copied from the fixture's diff). Two more had a second expectation
+  of the same kind: the bio's limit as `validate: { max_length }` (a text field's own `max_length` is checked by no
+  backend, so that alternative now needs a string), and a share page named `shared_announcement`. Each was proven
+  on the run's own answer, on the fixture's diff or the earlier design, and on a wrong variant that still fails.
+- `blog1-create-user-trap` takes either answer (`ok_or_declined`): with password sign-in only, an account an admin
+  creates has no password and its owner could never sign in, which is the decline the agent gave. `any` would also
+  have passed an answer that never got past `users.create`, which the trap exists to catch.
+- `blog5-comments-page` was written when the blog had no comments and later pinned at FEAT-12, whose comments
+  already let the article's author and admins delete one and prove it in a scenario; it is back on FEAT-5.
+- Three full runs failed on scenarios their own model could never pass, which validation now refuses (M078, M079),
+  so the agent sees them in its retry. Two more failed on a scenario that expected an actor's
+  starting name after an earlier scenario had renamed the actor, which the reference now warns about, and one on the
+  runner itself: it kept the fixture's `publish` handler for a `publish` the proposal had redescribed, so
+  `--implement` never wrote it. The runner keeps a base handler only for a declaration the proposal leaves as it was.
+

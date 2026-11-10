@@ -716,8 +716,11 @@ nothing else declares it. It needs `auth.tenancy`, a resource that lists the ten
 lives in the browser, not in the address: filtered queries wait for it, and a user in no tenant sees an empty state.
 It goes on a field that is a relation to the tenancy entity (or that entity's own key) and is in the resource's
 `list.filters`, so only a resource that carries the tenant relation itself can be scoped: projects by `team_id`
-can, tasks that reach the team through `project_id` cannot (say so in not_delivered). It is a filter, never a
-permission: the rules still decide what the API returns, and a page without it shows every tenant the user is in.
+can, tasks that reach the team through `project_id` cannot (say so in not_delivered). It is a filter for signed-in
+users, never a permission: the rules still decide what the API returns, a page without it shows every tenant the
+user is in, and a tenant's page that anyone opens without an account (an organisation's public roadmap at an address
+of its own) is no `{tenant.id}` page but a public detail page over the tenancy entity, its lists sections filtered by
+`{row.id}`.
 The sidebar is scaffolded once, so a project whose sidebar was written before the switcher existed adds one line
 inside its `<SidebarHeader>`: `<TenantSwitcher />`, imported from `generated/app/tenant`.
 
@@ -777,9 +780,11 @@ A path is dotted like a capture's; through a list (`data.budget` on a list, `dat
 it holds for every row, and a key that is there with null is present. Give every `read:` both steps: a caller the
 rule refuses (`absent`) and one it allows (the value in `body`).
 Every scenario step has `expect` with at least a `status`; a step without one is invalid.
-All scenarios run in order against one database, each with every actor registered first, and the rows earlier
-scenarios and steps made are still there: expect a list exactly only through a filter, a search or a unique title
-that isolates what the scenario itself created, or check `page.total` on such a filter.
+All scenarios run in order against one database, each with every actor registered first, and what earlier scenarios
+and steps did is still there, their rows and their changes to the actors alike (an earlier scenario may have renamed
+or banned alice): expect an actor's fields only as this scenario set or captured them, and a list exactly only
+through a filter, a search or a unique title that isolates what the scenario itself created, or check `page.total`
+on such a filter.
 `{actor.id}` is the acting user's id. Only names an earlier step of the same scenario captured and `{actor.id}` resolve;
 actors are not addressable by name (`{alice.id}` is nothing), so capture an id from `auth.me` or a create response first.
 Passwords must be at least 8 characters. An actor carries what register

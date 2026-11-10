@@ -21,11 +21,12 @@ expect:
   pages:
     "channel|channel_page|channel_detail|conversation":
       { kind: detail, resource: channels, sections: [messages, channel_members, channel_invites] }
-  scenarios: { min: 1, rejections: 3, statuses: [201, 403, 404, 409] }
+  scenarios: { min: 1, rejections: 3, statuses: [201, 403, 404] }
   touches: [channel_invites.create, auth.invite_accept, team_invites.create]
 notes: >-
   A second membership beside the tenancy's: a ranked junction takes invites with one more key, and the entry for
   TeamMember has to survive the `set_auth` that adds it. The invite's rule is ChannelMember's create rule read on the
   invite, so the channel's hidden rows hide its invites too (the 404). The section is a section like any other over
   the compiler's resource. The last acceptance line is the proof rule at work: one accept answers every invite waiting
-  for the address, so the scenario invites one person to the team and to the channel and accepts once.
+  for the address, so the scenario invites one person to the team and to the channel and accepts once. No
+  acceptance line names a conflict, so no 409 is expected (the fixture's scenario has one).

@@ -12,6 +12,12 @@ expect:
   fields: { Task: ["repeat|recurrence|repeats|frequency"] }
   types: { "Task.repeat|recurrence|repeats|frequency": enum }
   actions: ["tasks.complete|tasks.finish|tasks.done"]
-  events: ["tasks.complete|tasks.finish|tasks.done"]
   scenarios: { min: 1 }
   touches: [tasks]
+  any_of:
+    - events: ["tasks.complete|tasks.finish|tasks.done"]
+    - actions_on: { tasks: { scope: row, returns: entity } }
+notes: >-
+  The ask says a handler creates the next occurrence, not which one: an event on the complete action, or the
+  complete action's own handler, which a row action has anyway. Completing by a plain update, with no operation of
+  its own, fails.

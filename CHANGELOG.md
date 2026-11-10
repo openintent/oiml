@@ -5,6 +5,23 @@ fixture intent on all three backends before it is listed here.
 
 ## Unreleased
 
+- Eighteen failures of the next live eval run (2026-11-10; no new construct). **A scenario that contradicts its own
+  model is refused before it runs.** Three valid proposals failed their full runs on steps their own model could
+  never pass: joins that sent a `user_id` the create rule binds to the session, creates that sent a `posted_at` the
+  resource does not list, and a "too long" bio of 474 characters on a field limited to 500. Validation now holds the
+  scenarios to what the model compiles to, so `osl propose` shows the proposer the problem and `osl apply` refuses
+  it: **M078** for a step that expects success but sends a body key the operation does not accept (bound to the
+  session, read-only, hidden, not listed, unknown), or expects a key its answer never carries (a relation the get or
+  list does not include, any relation on a create, update or action answer, a field nobody may read), and **M079**
+  for a step that expects 400 while every value it sends is within the limits declared on its fields and nothing
+  else in the operation can refuse it. Each message names the key or value, why, and what to change. Both are
+  conservative: a step that expects a 4xx is never held to M078, and M079 holds only resource creates and updates
+  whose every value it can judge exactly (no relation, file, JSON, money, date, pattern or template, no inline event)
+  and that name a field with a declared length or range. No fixture scenario or oracle diff trips either; on the
+  run's 117 valid proposals they found seven steps, each a step that failed. **The eval runner no longer keeps a
+  fixture's handler for an action the proposal changes.** A proposal that restated `posts.publish` with a new
+  description kept the fixture's own handler, so `--implement` skipped it as written and the change never ran; the
+  runner keeps a base action's handler only when the proposed declaration is the base's word for word.
 - Three failures of the live eval run (2026-11-10; no new construct). **A contract error code reaches a tRPC client.**
   `hono-trpc-vite` carried the code a scenario expects (`{ error: { code: invalid_transition } }`) only as the cause
   of a tRPC error, so its tests saw tRPC's code instead (`conflict`, `bad_request`, `unauthorized`). The error

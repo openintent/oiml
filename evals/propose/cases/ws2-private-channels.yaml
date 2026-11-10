@@ -23,10 +23,18 @@ expect:
   rules:
     Message:
       read: "member:channel_id.members or member:channel_id.team_id when channel_id.private = false|member:channel_id.members or member:channel_id.team_id when channel_id.public = true|member:channel_id.members or member:channel_id.team_id when channel_id.visibility = public"
-      create: "member:channel_id.members and owner:author_id"
+      create: >-
+        member:channel_id.members and owner:author_id|member:channel_id.members and owner:author_id or
+        member:channel_id.team_id when channel_id.private = false and owner:author_id|member:channel_id.members and
+        owner:author_id or member:channel_id.team_id when channel_id.public = true and
+        owner:author_id|member:channel_id.members and owner:author_id or member:channel_id.team_id when
+        channel_id.visibility = public and owner:author_id
   scenarios: { min: 1, rejections: 1, statuses: [403] }
   touches: [messages]
 notes: >-
   The Slack exercise's ask (docs/exercises/slack.md, SL-3 and SL-4): the channel's own membership beside the team's.
   The expectation names the reverse relation `members`; the junction's name is the agent's. A diff that answers
-  with a handler, or with a tenant rule alone, fails the rules check on purpose.
+  with a handler, or with a tenant rule alone, fails the rules check on purpose. The ask limits posting only in a
+  private channel, so a create rule that also lets any team member post in a public one (the read rule's own
+  condition, joined to the author binding) is accepted; one that lets a team member post in a private channel is
+  not.

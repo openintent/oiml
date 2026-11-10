@@ -5,6 +5,7 @@
 import { z } from "zod";
 import { defaultTableName, toSnakeCase } from "./naming.js";
 import { shapeByOf, shapeProblems, shapeValueProblem, compileShape } from "./shapes.js";
+import { scenarioContradictions } from "./scenario-checks.js";
 
 const Identifier = z.string().regex(/^[a-z][a-z0-9_]*$/, "lower_snake_case identifier");
 const EntityName = z.string().regex(/^[A-Z][A-Za-z0-9]*$/, "PascalCase entity name");
@@ -3607,6 +3608,9 @@ export function validateModel(input: Model): Diagnostic[] {
   }
   for (const [ti, step] of (model.examples?.seed ?? []).entries()) checkStep(step, `examples.seed[${ti}]`);
   checkTemplates(model.examples?.seed ?? [], "examples.seed");
+
+  // What a scenario expects, against what the model compiles to (M078, M079): read only once the rest is valid
+  if (!out.some(d => d.level === "error")) out.push(...scenarioContradictions(input));
 
   return out;
 }

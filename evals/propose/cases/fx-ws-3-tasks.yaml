@@ -18,7 +18,12 @@ expect:
   relations: ["Task.* -> Project", "Task.* -> User"]
   rules:
     Task:
-      read: "owner:assignee_id or member:project_id.team_id:admin|owner:assigned_to or member:project_id.team_id:admin|owner:assigned_to_id or member:project_id.team_id:admin"
+      read: >-
+        owner:assignee_id or member:project_id.team_id:admin|owner:assigned_to or
+        member:project_id.team_id:admin|owner:assigned_to_id or member:project_id.team_id:admin|member:project_id.team_id
+        and owner:assignee_id or member:project_id.team_id:admin|member:project_id.team_id and owner:assigned_to or
+        member:project_id.team_id:admin|member:project_id.team_id and owner:assigned_to_id or
+        member:project_id.team_id:admin
       create: "member:project_id.team_id|member:project_id.team_id:member"
       delete: "member:project_id.team_id:admin"
   resources: [tasks]
@@ -27,4 +32,6 @@ expect:
   touches: [tasks]
 notes: >-
   Rules through a relation: the task has no team column, so membership is tested on project_id.team_id,
-  and reading combines the assignee (owner) with the team's admins. Lists must filter the same way.
+  and reading combines the assignee (owner) with the team's admins. Lists must filter the same way. The assignee
+  alternative may be written joined to team membership (`member:project_id.team_id and owner:assignee_id`), which
+  is what isolation compiles it to; letting every team member read every task fails.

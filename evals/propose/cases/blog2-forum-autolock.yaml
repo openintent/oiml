@@ -11,17 +11,28 @@ intent:
     - A reply to a locked post is refused
     - A moderator can unlock a post, after which replies work again
 expect:
-  fields: { Post: ["locked|is_locked|locked_at"] }
-  field_props: { "Post.locked|is_locked|locked_at": { read_only: true } }
   timers: ["Post.last_reply_at|last_activity_at|last_replied_at|updated_at"]
-  rules:
-    "Reply|Comment|PostReply":
-      create: >-
-        owner:author_id when post_id.locked = false|owner:user_id when post_id.locked = false|owner:author_id when
-        post_id.is_locked = false|owner:user_id when post_id.is_locked = false|authenticated when post_id.locked =
-        false|authenticated when post_id.is_locked = false
   scenarios: { min: 1, rejections: 1, statuses: [403] }
+  any_of:
+    - fields: { Post: ["locked|is_locked|locked_at"] }
+      field_props: { "Post.locked|is_locked|locked_at": { read_only: true } }
+      rules:
+        "Reply|Comment|PostReply":
+          create: >-
+            owner:author_id when post_id.locked = false|owner:user_id when post_id.locked = false|owner:author_id when
+            post_id.is_locked = false|owner:user_id when post_id.is_locked = false|authenticated when post_id.locked =
+            false|authenticated when post_id.is_locked = false
+    - types: { "Post.status|lock_state": enum }
+      field_props: { "Post.status|lock_state": { read_only: true } }
+      rules:
+        "Reply|Comment|PostReply":
+          create: >-
+            owner:author_id when post_id.status = open|owner:user_id when post_id.status = open|authenticated when
+            post_id.status = open|owner:author_id when post_id.lock_state = unlocked|owner:user_id when
+            post_id.lock_state = unlocked|authenticated when post_id.lock_state = unlocked
 notes: >-
   Promoted from generated round 1 (gen-r1-09). The lock is a timer with after; refusing replies to a locked post
   is a create rule conditioned through the relation (when post_id.locked = false), so the refusal must be in the
-  rules and proven by a 403 in a scenario, not left to not_delivered.
+  rules and proven by a 403 in a scenario, not left to not_delivered. The lock may also be a read_only enum (open
+  and locked, moved by transitions) with the reply rule conditioned on its open value: the ask names no flag, and a
+  state no client writes refuses replies the same way. A lock a client can write fails either way.
