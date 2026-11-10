@@ -66,6 +66,9 @@ function zeroValue(f: ActionIR["input"][number]): string {
       return "null";
     case "datetime":
       return "new Date()";
+    case "money":
+      // An amount is a decimal string; the empty string is not one
+      return '"0"';
     default:
       return '""';
   }

@@ -379,7 +379,12 @@ export function entitiesFile(ir: IR, modulePath: string): string {
 const ${tableConst(entity)} = ${goRaw(quoteIdent(entity.table))}
 
 // ${columnsConst(entity)} lists the columns of ${entity.name} in model order, for SELECT and RETURNING.
-const ${columnsConst(entity)} = ${goRaw(entity.columns.map(c => quoteIdent(c.name)).join(", "))}
+const ${columnsConst(entity)} = ${goRaw(
+      entity.columns
+        // An amount is read as the text the database prints (four fraction digits), whatever the driver would make of a numeric
+        .map(c => (c.money ? `${quoteIdent(c.name)}::text` : quoteIdent(c.name)))
+        .join(", ")
+    )}
 
 ${goStruct(T, rowFields, `${T} is a row of ${entity.table}.`)}
 

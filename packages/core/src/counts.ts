@@ -30,6 +30,7 @@ import { sqlName } from "./ir.js";
 import { isolationObjects, type IsolationObject } from "./isolation.js";
 import { quoteIdent, quoteLiteral } from "./migrations.js";
 import { orderObjects } from "./order.js";
+import { sequenceObjects } from "./sequences.js";
 
 const DEFINER = "SECURITY DEFINER SET search_path = public, pg_temp";
 
@@ -190,8 +191,9 @@ export function countObjects(ir: IR): IsolationObject[] {
 
 /**
  * Every database object a model implies beyond its tables, in the order it is created: the isolation layer, the
- * ordered collections, the counts. One list, so that migrations plan them together and drift compares them all.
+ * ordered collections, the counts, the sequences. One list, so that migrations plan them together and drift
+ * compares them all.
  */
 export function databaseObjects(ir: IR): IsolationObject[] {
-  return [...isolationObjects(ir), ...orderObjects(ir), ...countObjects(ir)];
+  return [...isolationObjects(ir), ...orderObjects(ir), ...countObjects(ir), ...sequenceObjects(ir)];
 }

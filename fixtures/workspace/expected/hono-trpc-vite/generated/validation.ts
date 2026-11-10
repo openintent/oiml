@@ -3,6 +3,34 @@
 
 import { z } from "zod";
 
+const MONEY = /^-?\d{1,15}(\.\d{1,4})?$/;
+
+/** An amount in ten-thousandths, exactly: a decimal string is never read as a float */
+function moneyUnits(value: string): bigint {
+  const negative = value.startsWith("-");
+  const [whole, fraction = ""] = (negative ? value.slice(1) : value).split(".");
+  const units = BigInt(whole + fraction.padEnd(4, "0"));
+  return negative ? -units : units;
+}
+
+/**
+ * An amount: a decimal string and nothing else. A JSON number is refused, not converted (a float has already lost
+ * what was written), and so is a fifth fraction digit, which the column could only round away. Bounds are compared
+ * digit by digit, and only on a value that has the shape.
+ */
+export function money(min?: string, max?: string) {
+  return z.string().superRefine((value, ctx) => {
+    if (!MONEY.test(value)) {
+      ctx.addIssue({ code: "custom", message: "Expected a decimal string with at most four fraction digits" });
+      return;
+    }
+    if (min !== undefined && moneyUnits(value) < moneyUnits(min))
+      ctx.addIssue({ code: "custom", message: `Amount must be at least ${min}` });
+    if (max !== undefined && moneyUnits(value) > moneyUnits(max))
+      ctx.addIssue({ code: "custom", message: `Amount must be at most ${max}` });
+  });
+}
+
 export const usersId = z.string().uuid();
 export const usersListQuery = z
   .object({
@@ -285,6 +313,37 @@ export const requestsUpdateInput = z
   .object({
     title: z.string().min(1).max(160).optional(),
     amount: z.number().int().min(1).optional()
+  })
+  .strict();
+
+export const invoicesId = z.string().uuid();
+export const invoicesListQuery = z
+  .object({
+    page: z.number().int().min(1).default(1),
+    page_size: z.number().int().min(1).max(200).default(20),
+    team_id: z.string().uuid().optional(),
+    number: z.string().max(255).optional(),
+    currency: z.enum(["USD", "EUR", "JPY"]).optional(),
+    total: money().optional(),
+    sort: z.enum(["number:asc", "number:desc", "total:asc", "total:desc", "created_at:asc", "created_at:desc"]).optional(),
+    q: z.string().max(200).optional()
+  })
+  .strict();
+export const invoicesCreateInput = z
+  .object({
+    team_id: z.string().uuid(),
+    customer: z.string().min(1).max(160),
+    currency: z.enum(["USD", "EUR", "JPY"]).optional(),
+    total: money("0"),
+    fee: money().nullish()
+  })
+  .strict();
+export const invoicesUpdateInput = z
+  .object({
+    customer: z.string().min(1).max(160).optional(),
+    currency: z.enum(["USD", "EUR", "JPY"]).optional(),
+    total: money("0").optional(),
+    fee: money().nullish()
   })
   .strict();
 

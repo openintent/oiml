@@ -2,12 +2,13 @@
 // Do not edit: this file is rewritten on every osl generate.
 
 import { relations } from "drizzle-orm";
-import { boolean, date, index, integer, pgEnum, pgTable, text, timestamp, unique, uuid, varchar } from "drizzle-orm/pg-core";
+import { boolean, date, index, integer, numeric, pgEnum, pgTable, text, timestamp, unique, uuid, varchar } from "drizzle-orm/pg-core";
 
 export const teamMemberRoleEnum = pgEnum("team_member_role", ["owner", "admin", "member"]);
 export const projectStatusEnum = pgEnum("project_status", ["active", "archived"]);
 export const channelMemberRoleEnum = pgEnum("channel_member_role", ["admin", "member"]);
 export const requestStatusEnum = pgEnum("request_status", ["pending", "approved", "declined", "expired"]);
+export const invoiceCurrencyEnum = pgEnum("invoice_currency", ["USD", "EUR", "JPY"]);
 export const oslAuthTokenPurposeEnum = pgEnum("osl_auth_token_purpose", ["magic_link"]);
 
 export const users = pgTable("users", {
@@ -23,7 +24,8 @@ export const teams = pgTable("teams", {
   id: uuid().primaryKey().defaultRandom(),
   name: varchar({ length: 100 }).notNull(),
   created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
-  pending_requests: integer().notNull().default(0)
+  pending_requests: integer().notNull().default(0),
+  invoice_count: integer().notNull().default(0)
 });
 
 export const teamMembers = pgTable(
@@ -170,6 +172,21 @@ export const requests = pgTable(
   t => [index("requests_team_id_idx").on(t.team_id), index("requests_requester_id_idx").on(t.requester_id)]
 );
 
+export const invoices = pgTable(
+  "invoices",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    team_id: uuid().notNull().references(() => teams.id, { onDelete: "cascade" }),
+    number: varchar({ length: 255 }).notNull().default(""),
+    customer: varchar({ length: 160 }).notNull(),
+    currency: invoiceCurrencyEnum().notNull().default("USD"),
+    total: numeric({ precision: 19, scale: 4 }).notNull(),
+    fee: numeric({ precision: 19, scale: 4 }),
+    created_at: timestamp({ withTimezone: true }).notNull().defaultNow()
+  },
+  t => [unique("invoices_team_id_number_key").on(t.team_id, t.number), index("invoices_team_id_idx").on(t.team_id)]
+);
+
 export const oslAuthTokens = pgTable("osl_auth_tokens", {
   id: uuid().primaryKey().defaultRandom(),
   token_hash: varchar({ length: 255 }).notNull().unique(),
@@ -189,7 +206,8 @@ export const teamsRelations = relations(teams, ({ many }) => ({
   projects: many(projects, { relationName: "team" }),
   channels: many(channels, { relationName: "team" }),
   labels: many(labels, { relationName: "team" }),
-  requests: many(requests, { relationName: "team" })
+  requests: many(requests, { relationName: "team" }),
+  invoices: many(invoices, { relationName: "team" })
 }));
 
 export const teamMembersRelations = relations(teamMembers, ({ one }) => ({
@@ -250,6 +268,10 @@ export const requestsRelations = relations(requests, ({ one }) => ({
   requester: one(users, { fields: [requests.requester_id], references: [users.id], relationName: "requester" })
 }));
 
+export const invoicesRelations = relations(invoices, ({ one }) => ({
+  team: one(teams, { fields: [invoices.team_id], references: [teams.id], relationName: "team" })
+}));
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Team = typeof teams.$inferSelect;
@@ -276,5 +298,7 @@ export type MilestoneLabel = typeof milestoneLabels.$inferSelect;
 export type NewMilestoneLabel = typeof milestoneLabels.$inferInsert;
 export type Request = typeof requests.$inferSelect;
 export type NewRequest = typeof requests.$inferInsert;
+export type Invoice = typeof invoices.$inferSelect;
+export type NewInvoice = typeof invoices.$inferInsert;
 export type OslAuthToken = typeof oslAuthTokens.$inferSelect;
 export type NewOslAuthToken = typeof oslAuthTokens.$inferInsert;

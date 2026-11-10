@@ -1,0 +1,30 @@
+id: empty-order-numbers
+tags: [entity, fields, sequence, auth, scenario]
+base: { empty: orders }
+intent:
+  title: Orders with a reference number
+  ask: >-
+    People sign up and place orders with us: what they want, as a line of text. Every order gets a reference our
+    support staff can ask for on the phone, like ORD-00042: short, counting up one by one across all orders, never
+    used twice. The customer does not choose it and cannot change it. A customer sees their own orders and can find
+    one by its reference.
+  acceptance:
+    - The first order placed is ORD-00001 and the second ORD-00002, whoever places them
+    - An order sent with a reference of the customer's own is refused
+    - A customer lists their orders by reference and reads no one else's
+expect:
+  entities: [User, "Order|PurchaseOrder"]
+  types: { "Order|PurchaseOrder.reference|number|order_number|ref|reference_number": sequence }
+  field_props:
+    { "Order|PurchaseOrder.reference|number|order_number|ref|reference_number": { prefix: "ORD-", width: 5 } }
+  list: { "orders|purchase_orders": { filters: ["reference|number|order_number|ref|reference_number"] } }
+  scenarios: { min: 1, rejections: 1, statuses: [400] }
+  touches: ["orders.create|purchase_orders.create"]
+  ops: { forbid: [add_action] }
+notes: >-
+  The reference-number ask of round r5, which had no construct: the proposer wrote a `read_only` string and said in
+  not_delivered that nothing fills it. Now it is `type: sequence` with a prefix and a width and no scope ("across
+  all orders": there is no tenant here, so one counter for the table is right). A uuid, a unique string the client
+  sends, an integer identity shown with a prefix by the page, or an action that assigns the number has not used the
+  construct. The scenario shows two orders by different customers getting consecutive references and a create that
+  sends a reference answering 400.

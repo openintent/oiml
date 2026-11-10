@@ -11,6 +11,7 @@ export function validationRuntimeFile(modulePath: string): string {
       "bytes",
       "encoding/json",
       "math",
+      "math/big",
       "net/url",
       "regexp",
       "sort",
@@ -370,6 +371,53 @@ func (t Decimal) Slice(items []any) any {
 	return collect[string](items)
 }
 
+// Money validates an amount: a string of digits with at most four after the point. A JSON number is refused, not
+// converted, because a float64 has already lost what was written; a fifth fraction digit is refused, not rounded.
+type Money struct {
+	Min string
+	Max string
+}
+
+func (t Money) check(path string, value string) (any, []Issue) {
+	if !moneyPattern.MatchString(value) {
+		return nil, []Issue{{Path: path, Message: "Expected a decimal string with at most four fraction digits"}}
+	}
+	if t.Min != "" && moneyUnits(value).Cmp(moneyUnits(t.Min)) < 0 {
+		return nil, []Issue{{Path: path, Message: "Amount must be at least " + t.Min}}
+	}
+	if t.Max != "" && moneyUnits(value).Cmp(moneyUnits(t.Max)) > 0 {
+		return nil, []Issue{{Path: path, Message: "Amount must be at most " + t.Max}}
+	}
+	return value, nil
+}
+
+func (t Money) Parse(path string, raw json.RawMessage) (any, []Issue) {
+	var s string
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return nil, []Issue{{Path: path, Message: "Expected a decimal string with at most four fraction digits"}}
+	}
+	return t.check(path, s)
+}
+
+func (t Money) ParseString(path string, value string) (any, []Issue) {
+	return t.check(path, value)
+}
+
+func (t Money) Slice(items []any) any {
+	return collect[string](items)
+}
+
+// moneyUnits is an amount in ten-thousandths, exactly: bounds are compared digit by digit, never as floats.
+func moneyUnits(value string) *big.Int {
+	digits := strings.TrimPrefix(value, "-")
+	whole, fraction, _ := strings.Cut(digits, ".")
+	units, _ := new(big.Int).SetString(whole+fraction+strings.Repeat("0", 4-len(fraction)), 10)
+	if strings.HasPrefix(value, "-") {
+		units.Neg(units)
+	}
+	return units
+}
+
 // Boolean validates a JSON boolean; in a query string, "true" or "false".
 type Boolean struct{}
 
@@ -585,6 +633,8 @@ var timePattern = regexp.MustCompile(\`^\\d{2}:\\d{2}(:\\d{2})?$\`)
 
 var decimalPattern = regexp.MustCompile(\`^-?\\d+(\\.\\d+)?$\`)
 
+var moneyPattern = regexp.MustCompile(\`^-?\\d{1,15}(\\.\\d{1,4})?$\`)
+
 func collect[T any](items []any) []T {
 	out := make([]T, len(items))
 	for i, item := range items {
@@ -780,6 +830,15 @@ function scalarTypeExpr(scalar: string, col: ColumnIR, mode: "body" | "filter", 
       return `${p}Float{${bounds()}}`;
     case "decimal":
       return `${p}Decimal{${bounds()}}`;
+    case "money": {
+      // A filter compares an amount, it does not write one: the shape is checked, the field's bounds are not
+      const money = mode === "body" ? (col.money ?? {}) : {};
+      const parts = [
+        ...(money.min !== undefined ? [`Min: ${q(money.min)}`] : []),
+        ...(money.max !== undefined ? [`Max: ${q(money.max)}`] : [])
+      ];
+      return `${p}Money{${parts.join(", ")}}`;
+    }
     case "boolean":
       return `${p}Boolean{}`;
     case "datetime":

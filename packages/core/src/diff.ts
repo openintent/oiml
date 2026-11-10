@@ -327,8 +327,12 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
         for (const [name, value] of Object.entries(entity.fields)) rebuilt[name === op.from ? op.to : name] = value;
         entity.fields = rebuilt;
         const swap = (name: string) => (name === op.from ? op.to : name);
-        for (const field of Object.values(entity.fields))
+        for (const field of Object.values(entity.fields)) {
           if (field.position?.within === op.from) field.position.within = op.to;
+          // A sequence counted within the field, and an amount in the currency it holds, follow it
+          if (field.scope?.includes(op.from)) field.scope = field.scope.map(swap);
+          if (field.currency_field === op.from) field.currency_field = op.to;
+        }
         if (archiveOf(entity)?.field === op.from)
           entity.archive = { ...(entity.archive === true ? {} : entity.archive), field: op.to };
         // The field a state machine moves, and the stamps of its transitions (their rules went with the others above)

@@ -36,7 +36,9 @@ import {
   presentCall,
   presentMapper,
   selfSessionSource,
-  takesViewer
+  takesViewer,
+  currencyGuardLines,
+  currencyGuardMessage
 } from "@osl/ts-common";
 import {
   HEADER,
@@ -258,7 +260,7 @@ import { createHmac, randomBytes${credentials ? ", scryptSync" : ""}, timingSafe
 import { TRPCError } from "@trpc/server";
 import { eq${isolated ? ", sql" : ""} } from "drizzle-orm";
 import { z } from "zod";
-import { db } from "../db/client";
+${registerFields.some(c => c.money) ? `import { money } from "../validation";\n` : ""}import { db } from "../db/client";
 import { ${schemaImports.join(", ")} } from "../db/schema";
 import { toTRPCError } from "./errors";
 import { ${presentImports.join(", ")} } from "../present";
@@ -971,6 +973,16 @@ ${emitLines.join("\n")}${timerLine}
     errorImports.add("notFound");
     const emitLines = events("updated").map(e => `      await emit(${q(e.name)}, ${serverPresent("row")});`);
     const updateChecks = rowChecks(update.rule, "existing", "      ");
+    const currencyGuard = currencyGuardLines(
+      entity,
+      update.fields,
+      "input.data",
+      "existing",
+      currency => `fail(400, "validation", \`${currencyGuardMessage(currency, '${missing.join(", ")}')}\`);`,
+      "      "
+    );
+    if (currencyGuard.length) errorImports.add("fail");
+    const currencyLines = currencyGuard.length ? `\n${currencyGuard.join("\n")}` : "";
     procedures.push(`  update: publicProcedure
     .input(z.object({ id: ID, data: ${resource.name}UpdateInput }))
     .mutation(async ({ ctx, input }) => {
@@ -980,7 +992,7 @@ ${emitLines.join("\n")}${timerLine}
         throw toTRPCError(err, "read");
       });
       if (!existing) throw ${miss("RULES.update")};${updateChecks.lines}
-      checkRule(RULES.update, ctx.session, ${updateChecks.arg});
+      checkRule(RULES.update, ctx.session, ${updateChecks.arg});${currencyLines}
       const hookContext: HookContext = { session: ctx.session, req: ctx.req };
       try {
         const patch = await hooks.beforeUpdate(existing, ${resolveFiles("input.data")}, hookContext);

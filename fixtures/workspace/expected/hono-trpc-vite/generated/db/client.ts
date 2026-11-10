@@ -40,7 +40,8 @@ export const TENANT_TABLES: { table: string; key: string; publicRead: boolean }[
   { table: "messages", key: "id", publicRead: false },
   { table: "labels", key: "id", publicRead: false },
   { table: "milestone_labels", key: "id", publicRead: false },
-  { table: "requests", key: "id", publicRead: false }
+  { table: "requests", key: "id", publicRead: false },
+  { table: "invoices", key: "id", publicRead: false }
 ];
 
 /** The app role's pool (DATABASE_APP_URL), made on first use so that building the app needs no database */

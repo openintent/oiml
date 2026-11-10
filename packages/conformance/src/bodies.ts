@@ -92,6 +92,9 @@ export function validValue(column: ColumnIR, ctx: BodyContext): unknown {
       const min = v.min ?? 0;
       return Math.max(min, 1.5);
     }
+    case "money":
+      // A decimal string within the field's bounds; never a number
+      return column.money?.min ?? column.money?.max ?? `${(n % 900) + 1}.5`;
     case "boolean":
       return false;
     case "datetime":
@@ -155,6 +158,7 @@ export function wrongValue(column: ColumnIR, ctx: BodyContext): unknown {
     case "bigint":
     case "float":
     case "decimal":
+    case "money":
       return "twelve";
     case "boolean":
       return "maybe";
@@ -172,6 +176,42 @@ export function wrongValue(column: ColumnIR, ctx: BodyContext): unknown {
   void ctx;
 }
 
+/** An amount in ten-thousandths and back, exactly: the harness compares and steps amounts as integers, never as floats */
+export function moneyUnits(value: string): bigint {
+  const negative = value.startsWith("-");
+  const [whole, fraction = ""] = (negative ? value.slice(1) : value).split(".");
+  const units = BigInt(whole + fraction.padEnd(4, "0"));
+  return negative ? -units : units;
+}
+
+export function moneyString(units: bigint): string {
+  const digits = (units < 0n ? -units : units).toString().padStart(5, "0");
+  return `${units < 0n ? "-" : ""}${digits.slice(0, -4)}.${digits.slice(-4)}`;
+}
+
+/**
+ * The shapes an amount must never be accepted in: a JSON number (a float has already lost what was written), more
+ * fraction digits than the column holds (it could only round), more digits than numeric(19, 4) has, and strings
+ * that are not plain decimals. Beside them, one step outside each bound the field declares.
+ */
+export function moneyProbes(column: ColumnIR): { what: string; value: unknown }[] {
+  const probes: { what: string; value: unknown }[] = [
+    { what: "as a JSON number", value: 12.3 },
+    { what: "as a JSON integer", value: 12 },
+    { what: "with five fraction digits", value: "1.23456" },
+    { what: "with sixteen digits before the point", value: "1234567890123456" },
+    { what: "with an exponent", value: "1e3" },
+    { what: "with a thousands separator", value: "1,234.50" },
+    { what: "with a currency sign", value: "$12.30" },
+    { what: "without digits before the point", value: ".5" },
+    { what: "as an empty string", value: "" }
+  ];
+  const { min, max } = column.money ?? {};
+  if (min !== undefined) probes.push({ what: `below ${min}`, value: moneyString(moneyUnits(min) - 1n) });
+  if (max !== undefined) probes.push({ what: `above ${max}`, value: moneyString(moneyUnits(max) + 1n) });
+  return probes;
+}
+
 /** Invalid variants of a valid body for the fields: one probe per way the body can be wrong; `partial` for an update */
 export function invalidProbes(
   columns: ColumnIR[],
@@ -186,6 +226,9 @@ export function invalidProbes(
     const column = columns.find(c => c.name === name);
     if (!column) continue;
     probes.push({ name: `wrong type for ${name}`, body: { ...valid, [name]: wrongValue(column, ctx) } });
+    if (column.money)
+      for (const probe of moneyProbes(column))
+        probes.push({ name: `${name} ${probe.what}`, body: { ...valid, [name]: probe.value } });
     if (column.type.kind === "scalar" && column.type.scalar === "string") {
       const max = Math.min(column.maxLength ?? 255, column.validate?.max_length ?? 255);
       probes.push({ name: `${name} longer than ${max}`, body: { ...valid, [name]: "x".repeat(max + 1) } });

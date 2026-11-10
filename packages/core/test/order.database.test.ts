@@ -12,6 +12,10 @@
  * triggers fire inside every append, remove, plain delete and cascade, and write the row the order locks. Nothing
  * may fail there either, and each list's count must equal its rows when the writers are done.
  *
+ * And a third time with a sequence on the entries as well, counted within the list: its trigger takes the list's
+ * counter inside every append, after the order's and the count's triggers took the list. Nothing may fail (a
+ * repeated number would be a unique violation), and the order and the counts must come out as before.
+ *
  * What the load leaves out is the one thing the database cannot order: a transaction of the caller's own that writes
  * two lists, against another that writes them the other way round, takes the two parents' locks in opposite orders.
  */
@@ -71,11 +75,32 @@ function rng(seed: number): () => number {
   };
 }
 
+/**
+ * The counted lists again with a number on every entry, counted within its list (`type: sequence`, sequences.ts): a
+ * third trigger on the ordered table, which takes the list's counter after the order and the count's hold took the
+ * list itself.
+ */
+const numbered = Model.parse({
+  ...counted,
+  entities: {
+    ...counted.entities,
+    Entry: {
+      fields: { ...counted.entities.Entry.fields, number: { type: "sequence", prefix: "E-", scope: ["list_id"] } }
+    }
+  }
+});
+
 describe.skipIf(!url).each([
-  { title: "", model, counts: false },
-  { title: ", with a count of the parent's rows", model: counted, counts: true }
-])("an order under concurrent writers$title", ({ model, counts }) => {
-  const database = `osl_order_${counts ? "count_" : ""}${Date.now().toString(36)}`;
+  { title: "", model, counts: false, tag: "" },
+  { title: ", with a count of the parent's rows", model: counted, counts: true, tag: "count_" },
+  {
+    title: ", with a count of the parent's rows and a sequence within the parent",
+    model: numbered,
+    counts: true,
+    tag: "sequence_"
+  }
+])("an order under concurrent writers$title", ({ model, counts, tag }) => {
+  const database = `osl_order_${tag}${Date.now().toString(36)}`;
   const LISTS = 3;
   const ITEMS = 40;
   const WORKERS = 24;

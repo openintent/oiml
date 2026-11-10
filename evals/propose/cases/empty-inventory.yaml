@@ -13,7 +13,7 @@ intent:
 expect:
   entities: [Product, Category]
   fields: { Product: [sku, name, price, quantity], Category: [name] }
-  types: { Product.price: "decimal|integer", Product.quantity: integer }
+  types: { Product.price: "money|decimal|integer", Product.quantity: integer }
   field_props: { Product.sku: { unique: true }, Category.name: { unique: true } }
   relations: ["Product.* -> Category:restrict"]
   resources: [products, categories]

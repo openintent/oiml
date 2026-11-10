@@ -128,6 +128,8 @@ export function scalarGo(scalar: Scalar): string {
     case "text":
     case "uuid":
     case "decimal":
+    // An amount is the string the database prints and the API sends: no float64 ever holds it
+    case "money":
       return "string";
     case "integer":
       return "int";

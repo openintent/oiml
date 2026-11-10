@@ -329,6 +329,7 @@ function TeamsDetailInner() {
         {"pending_requests" in row ? (
           <FieldRow label="Pending Requests">{text(row.pending_requests) || "—"}</FieldRow>
         ) : null}
+        <FieldRow label="Invoice Count">{text(row.invoice_count) || "—"}</FieldRow>
         <FieldRow label="Members">
           {row.members.length === 0 ? (
             "—"

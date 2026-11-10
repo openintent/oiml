@@ -206,8 +206,13 @@ export async function checkDrift(databaseUrl: string, ir: IR, options: DriftOpti
         items.push({ kind: "extra_column", table: entity.table, column: liveColumn.column_name });
     }
   }
+  // Tables the model implies beyond its entities (the sequences' counters): expected, and nothing of theirs is compared
+  const ownTables = databaseObjects(ir)
+    .filter(o => o.kind === "table")
+    .map(o => o.name);
+  for (const table of ownTables) if (!liveTables.has(table)) items.push({ kind: "missing_table", table });
   for (const table of liveTables.keys()) {
-    if (ir.entities.some(e => e.table === table)) continue;
+    if (ir.entities.some(e => e.table === table) || ownTables.includes(table)) continue;
     if ((options.ignoreTables ?? []).some(p => matchesPattern(table, p))) continue;
     items.push({ kind: "extra_table", table });
   }
@@ -231,6 +236,7 @@ function expectedDataType(column: ColumnIR): string {
     case "float":
       return "double precision";
     case "decimal":
+    case "money":
       return "numeric";
     case "boolean":
       return "boolean";

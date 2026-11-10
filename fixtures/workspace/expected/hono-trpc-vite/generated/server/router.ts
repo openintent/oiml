@@ -15,6 +15,7 @@ import { messagesRouter } from "./resources/messages";
 import { labelsRouter } from "./resources/labels";
 import { milestone_labelsRouter } from "./resources/milestone_labels";
 import { requestsRouter } from "./resources/requests";
+import { invoicesRouter } from "./resources/invoices";
 import { router } from "./trpc";
 
 export const appRouter = router({
@@ -31,7 +32,8 @@ export const appRouter = router({
   messages: messagesRouter,
   labels: labelsRouter,
   milestone_labels: milestone_labelsRouter,
-  requests: requestsRouter
+  requests: requestsRouter,
+  invoices: invoicesRouter
 });
 
 export type AppRouter = typeof appRouter;

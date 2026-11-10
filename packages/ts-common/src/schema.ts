@@ -172,6 +172,9 @@ function scalarBuilder(scalar: string, maxLength: number | undefined, builders: 
       return use("doublePrecision", "doublePrecision()");
     case "decimal":
       return use("numeric", "numeric()");
+    case "money":
+      // The driver hands a numeric over as the string the database printed: four fraction digits, no float on the way
+      return use("numeric", "numeric({ precision: 19, scale: 4 })");
     case "boolean":
       return use("boolean", "boolean()");
     case "datetime":

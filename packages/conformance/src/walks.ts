@@ -785,7 +785,8 @@ async function orderWalk(
 ): Promise<string> {
   const { ir } = ctx;
   const ordered = state.walkable.filter(w => w.entity.order);
-  if (ordered.length === 0) return "no ordered collection: nothing to walk";
+  const numbered = state.walkable.filter(w => w.entity.sequences?.length);
+  if (ordered.length === 0 && numbered.length === 0) return "no ordered collection: nothing to walk";
   const notes: string[] = [];
   let calls = 0;
   for (const { entity, resource } of ordered) {
@@ -901,10 +902,76 @@ async function orderWalk(
       findings.push(`${resource.name} after deletes at once: a deleted row is still there`);
     notes.push(`${entity.name}: ${mixed.length} rows in one ${order.within} in order`);
   }
+  // Numbered entities (a sequence field): creates at once in one scope each get a number of their own, one after
+  // another, and none fails. The scope is the one a row the walk made is in.
+  for (const { entity, resource } of numbered) {
+    const pk = entity.primaryKey[0];
+    const create = resource.operations.find((o): o is Extract<OperationIR, { kind: "create" }> => o.kind === "create");
+    const seed = (state.rows.get(entity.name) ?? []).find(r => r.creator?.session);
+    if (!create || create.rule.kind === "none" || !seed) {
+      notes.push(`${entity.name} not numbered at once (${create ? "no row a caller made" : "no create operation"})`);
+      continue;
+    }
+    const caller = seed.creator!;
+    const scope = [...new Set(entity.sequences!.flatMap(s => s.scope))].filter(c => create.fields.includes(c));
+    const within = scope.length
+      ? ((
+          await db.query(
+            `select ${scope.map(c => `"${c}"::text as "${c}"`).join(", ")} from "${entity.table}" where "${pk}" = $1`,
+            [seed.id]
+          )
+        ).rows[0] as Record<string, unknown> | undefined)
+      : {};
+    if (!within) {
+      notes.push(`${entity.name} not numbered at once (its row is gone)`);
+      continue;
+    }
+    const replies = await Promise.all(
+      Array.from({ length: ORDER_BURST }, async () => {
+        const body = { ...buildCreateBody(ir, entity, create, caller, state, bodies).body, ...within };
+        const reply = await caller.client.resource({ resource, op: create, body });
+        calls++;
+        if (!success(reply.status))
+          findings.push(
+            `${resource.name}.create as ${caller.name}, ${ORDER_BURST} at once: answered ${reply.status}${message(reply)}`
+          );
+        return reply;
+      })
+    );
+    const ids = replies.filter(reply => success(reply.status)).map(reply => String(idOf(reply.body, pk)));
+    for (const sequence of entity.sequences!) {
+      // Read from the database: a number may carry a read rule its creator does not pass
+      const given = (
+        await db.query(
+          `select "${sequence.column}" as n from "${entity.table}" where "${pk}"::text = any($1::text[]) order by 1`,
+          [ids]
+        )
+      ).rows.map(row => String((row as { n: unknown }).n));
+      const counted = given.map(n => Number(/(\d+)$/.exec(n)?.[1] ?? NaN)).sort((a, b) => a - b);
+      if (
+        counted.length !== ids.length ||
+        counted.some((n, i) => !(i === 0 ? Number.isInteger(n) : n === counted[i - 1] + 1))
+      )
+        findings.push(
+          `${resource.name}.create, ${ORDER_BURST} at once: ${sequence.column} came out as ${given.join(", ")}, not ${ids.length} numbers in a row`
+        );
+      const columns = [...sequence.scope, sequence.column].map(c => `"${c}"`).join(", ");
+      const twice = await db.query(
+        `select "${sequence.column}" as n from "${entity.table}" group by ${columns} having count(*) > 1 limit 1`
+      );
+      if (twice.rows.length)
+        findings.push(`${entity.table}.${sequence.column}: two rows of one scope share ${String(twice.rows[0].n)}`);
+    }
+    notes.push(`${entity.name}: ${ids.length} creates at once numbered in a row`);
+  }
   // The counts over the ordered tables were written inside every one of those calls
   const counts = await countFindings(ir, db, "after the bursts", findings);
   if (counts) notes.push(`${counts} ${counts === 1 ? "count equals" : "counts equal"} the rows they count`);
-  return `${calls} calls in bursts of ${ORDER_BURST} over ${ordered.length} ordered ${ordered.length === 1 ? "entity" : "entities"} (${notes.join("; ")})`;
+  const over = [
+    ...(ordered.length ? [`${ordered.length} ordered ${ordered.length === 1 ? "entity" : "entities"}`] : []),
+    ...(numbered.length ? [`${numbered.length} numbered ${numbered.length === 1 ? "entity" : "entities"}`] : [])
+  ].join(" and ");
+  return `${calls} calls in bursts of ${ORDER_BURST} over ${over} (${notes.join("; ")})`;
 }
 
 /** With tenancy: the chain of required relations from an entity to the tenant, or null when it never reaches it */

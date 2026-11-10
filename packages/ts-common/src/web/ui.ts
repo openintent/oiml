@@ -1,5 +1,32 @@
-import type { IR } from "@osl/core";
+import { CURRENCY_EXPONENTS, type IR } from "@osl/core";
 import type { TsConventions } from "../conventions.js";
+
+/** The helper the pages show an amount with; in the file only when the model has a money field */
+function moneySource(ir: IR): string {
+  if (!ir.entities.some(e => e.columns.some(c => c.money))) return "";
+  const places = Object.entries(CURRENCY_EXPONENTS)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([code, n]) => `${code}: ${n}`)
+    .join(", ");
+  return `
+/** Currencies whose minor unit is not a hundredth: the fraction digits an amount is shown with (2 otherwise) */
+const MINOR_UNITS: Record<string, number> = { ${places} };
+
+/**
+ * An amount with its currency, from the decimal string as the API sent it: digits are grouped and trailing zeros
+ * past the currency's minor unit dropped. The string is never read as a number, and nothing is rounded.
+ */
+export function formatMoney(value: unknown, currency: unknown): string {
+  if (value == null || value === "") return "";
+  const raw = text(value);
+  const code = text(currency);
+  const [whole, fraction = ""] = raw.replace("-", "").split(".");
+  const kept = fraction.replace(/0+$/, "").padEnd(MINOR_UNITS[code] ?? 2, "0");
+  const grouped = whole.replace(/\\B(?=(\\d{3})+(?!\\d))/g, ",");
+  return \`\${raw.startsWith("-") ? "-" : ""}\${grouped}\${kept ? "." + kept : ""}\${code ? " " + code : ""}\`;
+}
+`;
+}
 
 /** generated/app/ui.tsx: formatting helpers and the small layout pieces every page uses */
 export function uiFile(ir: IR, conv: TsConventions): string {
@@ -21,7 +48,7 @@ export function text(value: unknown): string {
 export function yesNo(value: unknown): string {
   return value == null ? "" : value ? "Yes" : "No";
 }
-
+${moneySource(ir)}
 export function formatDateTime(value: unknown): string {
   if (value == null || value === "") return "";
   const date = new Date(value as string);

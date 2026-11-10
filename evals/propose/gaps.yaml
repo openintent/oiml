@@ -171,11 +171,16 @@ gaps:
       exercises hit it."
   - key: sequences and reference numbers
     kind: not_delivered
-    status: open
+    status: built
     first_seen: r5
     last_seen: r7
     cases: 1
-    note: "Design: docs/designs/field-kinds.md (a sequence field: prefix, scope, width)."
+    construct: "type: sequence on a field, with prefix, scope: [<required fields>] and width (a read-only string the
+      database assigns on insert from a counter per scope, unique within the scope, never accepted from a client)"
+    version: unreleased
+    note: "Built 2026-11-10 (round B6, first half) with workspace WS-16 (invoices numbered per team, under isolation:
+      database). A create that fails takes no number; a deleted row leaves a hole. Declined: a number that restarts
+      each year, a prefix from another field, a number assigned after create. Design: docs/designs/field-kinds.md."
   - key: sign-in flow settings
     kind: not_delivered
     status: open
@@ -289,11 +294,17 @@ gaps:
       history of transitions. Design: docs/designs/state-machines.md."
   - key: money and currency
     kind: not_delivered
-    status: open
+    status: built
     first_seen: designs-2026-11-09
     last_seen: designs-2026-11-09
     cases: 0
-    note: "A money type, numeric at rest and a decimal string on the wire. Design: docs/designs/field-kinds.md."
+    construct: "type: money on a field, with currency: <ISO 4217 code> or currency_field: <a required enum field of
+      codes> (numeric(19, 4) at rest, a decimal string on the wire in both directions, a JSON number refused)"
+    version: unreleased
+    note: "Built 2026-11-10 (round B6, first half) with workspace WS-16 (a total in the row's currency, a fee in
+      dollars). An update that changes the currency sends the amounts with it. Declined: sums over amounts,
+      conversion, a currency through a relation, minor-unit integers on the wire. Design:
+      docs/designs/field-kinds.md."
   - key: sealed and encrypted fields
     kind: not_delivered
     status: open

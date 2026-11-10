@@ -46,6 +46,9 @@
       "name": "requests"
     },
     {
+      "name": "invoices"
+    },
+    {
       "name": "auth",
       "description": "Sign-in"
     }
@@ -1334,6 +1337,600 @@
                 }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/invoices": {
+      "get": {
+        "tags": [
+          "invoices"
+        ],
+        "operationId": "invoices_list",
+        "description": "Only members of the row's tenant (team_id).",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "summary": "List invoices",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 20
+            }
+          },
+          {
+            "name": "team_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "number",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 255,
+              "pattern": "^INV-\\d{6,}$",
+              "description": "Assigned by the server when the row is created; never accepted from a client"
+            }
+          },
+          {
+            "name": "currency",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "USD",
+                "EUR",
+                "JPY"
+              ]
+            }
+          },
+          {
+            "name": "total",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "decimal",
+              "pattern": "^-?\\d{1,15}(\\.\\d{1,4})?$",
+              "description": "An amount of the currency the row's currency names as a decimal string with at most four fraction digits, never a number; at least 0"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "number:asc",
+                "number:desc",
+                "total:asc",
+                "total:desc",
+                "created_at:asc",
+                "created_at:desc"
+              ]
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Matches number, customer as a substring",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "page"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "team_id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "number": {
+                            "type": "string",
+                            "maxLength": 255,
+                            "pattern": "^INV-\\d{6,}$",
+                            "description": "Assigned by the server when the row is created; never accepted from a client",
+                            "readOnly": true
+                          },
+                          "customer": {
+                            "type": "string",
+                            "maxLength": 160,
+                            "minLength": 1
+                          },
+                          "currency": {
+                            "type": "string",
+                            "enum": [
+                              "USD",
+                              "EUR",
+                              "JPY"
+                            ]
+                          },
+                          "total": {
+                            "type": "string",
+                            "format": "decimal",
+                            "pattern": "^-?\\d{1,15}(\\.\\d{1,4})?$",
+                            "description": "An amount of the currency the row's currency names as a decimal string with at most four fraction digits, never a number; at least 0"
+                          },
+                          "fee": {
+                            "oneOf": [
+                              {
+                                "type": "string",
+                                "format": "decimal",
+                                "pattern": "^-?\\d{1,15}(\\.\\d{1,4})?$",
+                                "description": "Handling fee. An amount of USD as a decimal string with at most four fraction digits, never a number"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "created_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "team_id",
+                          "number",
+                          "customer",
+                          "currency",
+                          "total",
+                          "fee",
+                          "created_at"
+                        ]
+                      }
+                    },
+                    "page": {
+                      "type": "object",
+                      "required": [
+                        "page",
+                        "page_size",
+                        "total"
+                      ],
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "page_size": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "invoices"
+        ],
+        "operationId": "invoices_create",
+        "description": "Only members of the row's tenant (team_id).",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "summary": "Create one of invoices",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "team_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "customer": {
+                    "type": "string",
+                    "maxLength": 160,
+                    "minLength": 1
+                  },
+                  "currency": {
+                    "type": "string",
+                    "enum": [
+                      "USD",
+                      "EUR",
+                      "JPY"
+                    ]
+                  },
+                  "total": {
+                    "type": "string",
+                    "format": "decimal",
+                    "pattern": "^-?\\d{1,15}(\\.\\d{1,4})?$",
+                    "description": "An amount of the currency the row's currency names as a decimal string with at most four fraction digits, never a number; at least 0"
+                  },
+                  "fee": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "format": "decimal",
+                        "pattern": "^-?\\d{1,15}(\\.\\d{1,4})?$",
+                        "description": "Handling fee. An amount of USD as a decimal string with at most four fraction digits, never a number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "team_id",
+                  "customer",
+                  "total"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Invoice"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/invoices/{id}": {
+      "get": {
+        "tags": [
+          "invoices"
+        ],
+        "operationId": "invoices_get",
+        "description": "Only members of the row's tenant (team_id).",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "summary": "Get one of invoices",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "team_id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "number": {
+                          "type": "string",
+                          "maxLength": 255,
+                          "pattern": "^INV-\\d{6,}$",
+                          "description": "Assigned by the server when the row is created; never accepted from a client",
+                          "readOnly": true
+                        },
+                        "customer": {
+                          "type": "string",
+                          "maxLength": 160,
+                          "minLength": 1
+                        },
+                        "currency": {
+                          "type": "string",
+                          "enum": [
+                            "USD",
+                            "EUR",
+                            "JPY"
+                          ]
+                        },
+                        "total": {
+                          "type": "string",
+                          "format": "decimal",
+                          "pattern": "^-?\\d{1,15}(\\.\\d{1,4})?$",
+                          "description": "An amount of the currency the row's currency names as a decimal string with at most four fraction digits, never a number; at least 0"
+                        },
+                        "fee": {
+                          "oneOf": [
+                            {
+                              "type": "string",
+                              "format": "decimal",
+                              "pattern": "^-?\\d{1,15}(\\.\\d{1,4})?$",
+                              "description": "Handling fee. An amount of USD as a decimal string with at most four fraction digits, never a number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "created_at": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "team_id",
+                        "number",
+                        "customer",
+                        "currency",
+                        "total",
+                        "fee",
+                        "created_at"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "invoices"
+        ],
+        "operationId": "invoices_update",
+        "description": "Only members of the row's tenant (team_id) with at least role admin.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "summary": "Update one of invoices",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "customer": {
+                    "type": "string",
+                    "maxLength": 160,
+                    "minLength": 1
+                  },
+                  "currency": {
+                    "type": "string",
+                    "enum": [
+                      "USD",
+                      "EUR",
+                      "JPY"
+                    ]
+                  },
+                  "total": {
+                    "type": "string",
+                    "format": "decimal",
+                    "pattern": "^-?\\d{1,15}(\\.\\d{1,4})?$",
+                    "description": "An amount of the currency the row's currency names as a decimal string with at most four fraction digits, never a number; at least 0"
+                  },
+                  "fee": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "format": "decimal",
+                        "pattern": "^-?\\d{1,15}(\\.\\d{1,4})?$",
+                        "description": "Handling fee. An amount of USD as a decimal string with at most four fraction digits, never a number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Invoice"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "invoices"
+        ],
+        "operationId": "invoices_delete",
+        "description": "Only members of the row's tenant (team_id) with at least role admin.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "summary": "Delete one of invoices",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
@@ -6242,12 +6839,17 @@
                             "type": "integer",
                             "readOnly": true,
                             "description": "Present only for a caller this rule allows on the row: member:id:admin."
+                          },
+                          "invoice_count": {
+                            "type": "integer",
+                            "readOnly": true
                           }
                         },
                         "required": [
                           "id",
                           "name",
-                          "created_at"
+                          "created_at",
+                          "invoice_count"
                         ]
                       }
                     },
@@ -6418,6 +7020,10 @@
                           "readOnly": true,
                           "description": "Present only for a caller this rule allows on the row: member:id:admin."
                         },
+                        "invoice_count": {
+                          "type": "integer",
+                          "readOnly": true
+                        },
                         "members": {
                           "type": "array",
                           "items": {
@@ -6429,6 +7035,7 @@
                         "id",
                         "name",
                         "created_at",
+                        "invoice_count",
                         "members"
                       ]
                     }
@@ -6900,6 +7507,72 @@
           }
         }
       },
+      "Invoice": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "team_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "number": {
+            "type": "string",
+            "maxLength": 255,
+            "pattern": "^INV-\\d{6,}$",
+            "description": "Assigned by the server when the row is created; never accepted from a client",
+            "readOnly": true
+          },
+          "customer": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1
+          },
+          "currency": {
+            "type": "string",
+            "enum": [
+              "USD",
+              "EUR",
+              "JPY"
+            ]
+          },
+          "total": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{1,15}(\\.\\d{1,4})?$",
+            "description": "An amount of the currency the row's currency names as a decimal string with at most four fraction digits, never a number; at least 0"
+          },
+          "fee": {
+            "oneOf": [
+              {
+                "type": "string",
+                "format": "decimal",
+                "pattern": "^-?\\d{1,15}(\\.\\d{1,4})?$",
+                "description": "Handling fee. An amount of USD as a decimal string with at most four fraction digits, never a number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "team_id",
+          "number",
+          "customer",
+          "currency",
+          "total",
+          "fee",
+          "created_at"
+        ]
+      },
       "Label": {
         "type": "object",
         "properties": {
@@ -7304,12 +7977,17 @@
             "type": "integer",
             "readOnly": true,
             "description": "Present only for a caller this rule allows on the row: member:id:admin."
+          },
+          "invoice_count": {
+            "type": "integer",
+            "readOnly": true
           }
         },
         "required": [
           "id",
           "name",
-          "created_at"
+          "created_at",
+          "invoice_count"
         ]
       },
       "TeamMember": {

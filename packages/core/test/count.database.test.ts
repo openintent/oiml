@@ -6,7 +6,8 @@
  * field a count's `where` reads, move comments from one post to another, and write several posts in one statement.
  * No statement may fail, and when the writers are done every post says exactly as many comments as it has, for the
  * plain count and for the one with a condition. The control writes the same increments from a value read before
- * the row was held, and expects counts that are wrong.
+ * the row was held, and expects counts that are wrong. The whole suite runs again with a sequence on the counted
+ * table, whose trigger takes a counter inside every insert.
  *
  * A second load adds the two writers a count cannot order, because they hold the counting row first and ask for a
  * counted row second, while every writer of a counted row holds that row first and asks for the counting row second:
@@ -69,8 +70,24 @@ const withDatabase = (name: string) => {
   return next.toString();
 };
 
-describe.skipIf(!url)("a count under concurrent writers", () => {
-  const database = `osl_count_${Date.now().toString(36)}`;
+/**
+ * The same posts with a number on every comment, one counter for the table (`type: sequence`, sequences.ts): each
+ * insert takes the counter before the count's triggers write the post. The counter is not scoped by the post
+ * because the load moves comments between posts, and a row keeps the number it was given.
+ */
+const numbered = Model.parse({
+  ...model,
+  entities: {
+    ...model.entities,
+    Comment: { fields: { ...model.entities.Comment.fields, number: { type: "sequence", prefix: "C-" } } }
+  }
+});
+
+describe.skipIf(!url).each([
+  { title: "", model, tag: "" },
+  { title: ", with a sequence on the counted table", model: numbered, tag: "sequence_" }
+])("a count under concurrent writers$title", ({ model, tag }) => {
+  const database = `osl_count_${tag}${Date.now().toString(36)}`;
   const POSTS = 4;
   const WORKERS = 24;
   // A heavier or a replayed load: OSL_COUNT_ROUNDS writes per connection, from OSL_COUNT_SEED
@@ -200,28 +217,34 @@ describe.skipIf(!url)("a count under concurrent writers", () => {
     expect(rows[0].n).toBe(0);
   });
 
-  it("control: an increment from a value read before the row was held loses writes", async () => {
-    await pool.query("TRUNCATE comments");
-    const fn = countObjects(compile(model)).find(o => o.name === "osl_count_posts_comment_count")!;
-    // The same function, except that it adds to what a query saw before the write waited for the row
-    const stale = fn.body!.source.replaceAll(
-      '"comment_count" = "comment_count" + osl_delta.n',
-      '"comment_count" = (SELECT s."comment_count" FROM "posts" AS s WHERE s."id" = osl_delta.parent) + osl_delta.n'
-    );
-    expect(stale).not.toBe(fn.body!.source);
-    await pool.query(
-      `CREATE OR REPLACE FUNCTION osl_count_posts_comment_count() RETURNS trigger LANGUAGE plpgsql AS $$\n${stale}\n$$`
-    );
-    await Promise.all(
-      Array.from({ length: WORKERS * 10 }, () => pool.query("INSERT INTO comments (post_id) VALUES (1)"))
-    );
-    const { rows } = await pool.query<{ said: number; has: number }>(
-      "SELECT comment_count AS said, (SELECT count(*)::int FROM comments WHERE post_id = 1) AS has FROM posts WHERE id = 1"
-    );
-    expect(rows[0].has).toBe(WORKERS * 10);
-    // Two inserts read the same number and both wrote it plus one: the count is short
-    expect(rows[0].said).toBeLessThan(rows[0].has);
-  }, 60_000);
+  // With the sequence the control has nothing to show: one counter for the table makes every insert wait for the
+  // one before it to commit, so two inserts never read the count at once, however carelessly it is written
+  it.skipIf(tag !== "")(
+    "control: an increment from a value read before the row was held loses writes",
+    async () => {
+      await pool.query("TRUNCATE comments");
+      const fn = countObjects(compile(model)).find(o => o.name === "osl_count_posts_comment_count")!;
+      // The same function, except that it adds to what a query saw before the write waited for the row
+      const stale = fn.body!.source.replaceAll(
+        '"comment_count" = "comment_count" + osl_delta.n',
+        '"comment_count" = (SELECT s."comment_count" FROM "posts" AS s WHERE s."id" = osl_delta.parent) + osl_delta.n'
+      );
+      expect(stale).not.toBe(fn.body!.source);
+      await pool.query(
+        `CREATE OR REPLACE FUNCTION osl_count_posts_comment_count() RETURNS trigger LANGUAGE plpgsql AS $$\n${stale}\n$$`
+      );
+      await Promise.all(
+        Array.from({ length: WORKERS * 10 }, () => pool.query("INSERT INTO comments (post_id) VALUES (1)"))
+      );
+      const { rows } = await pool.query<{ said: number; has: number }>(
+        "SELECT comment_count AS said, (SELECT count(*)::int FROM comments WHERE post_id = 1) AS has FROM posts WHERE id = 1"
+      );
+      expect(rows[0].has).toBe(WORKERS * 10);
+      // Two inserts read the same number and both wrote it plus one: the count is short
+      expect(rows[0].said).toBeLessThan(rows[0].has);
+    },
+    60_000
+  );
 });
 
 describe.skipIf(!url)("a count that arrives on a table with rows", () => {

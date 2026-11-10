@@ -3,8 +3,8 @@
 
 import { QueryClient } from "@tanstack/react-query";
 import type { z } from "zod";
-import type { PublicChannel, PublicChannelMember, PublicLabel, PublicMessage, PublicMilestone, PublicMilestoneLabel, PublicNote, PublicProject, PublicRequest, PublicTask, PublicTeam, PublicTeamMember, PublicUser, VisibleFields } from "../present";
-import type { channel_membersCreateInput, channel_membersListQuery, channelsCreateInput, channelsJoinInput, channelsListQuery, channelsUpdateInput, labelsArchiveInput, labelsCreateInput, labelsListQuery, labelsRestoreInput, labelsUpdateInput, membersCreateInput, membersListQuery, membersUpdateInput, messagesCreateInput, messagesListQuery, messagesUpdateInput, milestone_labelsCreateInput, milestone_labelsListQuery, milestonesArchiveInput, milestonesCreateInput, milestonesListQuery, milestonesMoveInput, milestonesRestoreInput, milestonesUpdateInput, notesCreateInput, notesListQuery, notesUpdateInput, projectsCreateInput, projectsListQuery, projectsUpdateInput, requestsApproveInput, requestsCreateInput, requestsDeclineInput, requestsListQuery, requestsReopenInput, requestsUpdateInput, tasksCreateInput, tasksListQuery, tasksRemindInput, tasksUpdateInput, teamsCreateInput, teamsListQuery, teamsUpdateInput, usersListQuery } from "../validation";
+import type { PublicChannel, PublicChannelMember, PublicInvoice, PublicLabel, PublicMessage, PublicMilestone, PublicMilestoneLabel, PublicNote, PublicProject, PublicRequest, PublicTask, PublicTeam, PublicTeamMember, PublicUser, VisibleFields } from "../present";
+import type { channel_membersCreateInput, channel_membersListQuery, channelsCreateInput, channelsJoinInput, channelsListQuery, channelsUpdateInput, invoicesCreateInput, invoicesListQuery, invoicesUpdateInput, labelsArchiveInput, labelsCreateInput, labelsListQuery, labelsRestoreInput, labelsUpdateInput, membersCreateInput, membersListQuery, membersUpdateInput, messagesCreateInput, messagesListQuery, messagesUpdateInput, milestone_labelsCreateInput, milestone_labelsListQuery, milestonesArchiveInput, milestonesCreateInput, milestonesListQuery, milestonesMoveInput, milestonesRestoreInput, milestonesUpdateInput, notesCreateInput, notesListQuery, notesUpdateInput, projectsCreateInput, projectsListQuery, projectsUpdateInput, requestsApproveInput, requestsCreateInput, requestsDeclineInput, requestsListQuery, requestsReopenInput, requestsUpdateInput, tasksCreateInput, tasksListQuery, tasksRemindInput, tasksUpdateInput, teamsCreateInput, teamsListQuery, teamsUpdateInput, usersListQuery } from "../validation";
 
 export class ApiError extends Error {
   constructor(
@@ -152,6 +152,13 @@ export type Inputs = {
     decline: z.input<typeof requestsDeclineInput> & { id: string };
     reopen: z.input<typeof requestsReopenInput> & { id: string };
   };
+  invoices: {
+    list: z.input<typeof invoicesListQuery>;
+    get: { id: string };
+    create: z.input<typeof invoicesCreateInput>;
+    update: { id: string; data: z.input<typeof invoicesUpdateInput> };
+    delete: { id: string };
+  };
 };
 
 export type Outputs = {
@@ -260,6 +267,13 @@ export type Outputs = {
     approve: PublicRequest;
     decline: PublicRequest;
     reopen: PublicRequest;
+  };
+  invoices: {
+    list: { data: (PublicInvoice)[]; page: Page };
+    get: PublicInvoice;
+    create: PublicInvoice;
+    update: PublicInvoice;
+    delete: null;
   };
 };
 
@@ -378,6 +392,13 @@ export const client = {
     approve: ({ id, ...input }: Inputs["requests"]["approve"]) => call<PublicRequest>("POST", "/api/requests" + "/" + id + "/approve", { body: input }),
     decline: ({ id, ...input }: Inputs["requests"]["decline"]) => call<PublicRequest>("POST", "/api/requests" + "/" + id + "/decline", { body: input }),
     reopen: ({ id, ...input }: Inputs["requests"]["reopen"]) => call<PublicRequest>("POST", "/api/requests" + "/" + id + "/reopen", { body: input })
+  },
+  invoices: {
+    list: (input: Inputs["invoices"]["list"]) => call<Outputs["invoices"]["list"]>("GET", "/api/invoices", { query: input as Record<string, unknown>, whole: true }),
+    get: ({ id }: Inputs["invoices"]["get"]) => call<Outputs["invoices"]["get"]>("GET", "/api/invoices" + "/" + id),
+    create: (input: Inputs["invoices"]["create"]) => call<PublicInvoice>("POST", "/api/invoices", { body: input }),
+    update: ({ id, data }: Inputs["invoices"]["update"]) => call<PublicInvoice>("PATCH", "/api/invoices" + "/" + id, { body: data }),
+    delete: ({ id }: Inputs["invoices"]["delete"]) => call<null>("DELETE", "/api/invoices" + "/" + id)
   }
 };
 

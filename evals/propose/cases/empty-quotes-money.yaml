@@ -1,0 +1,34 @@
+id: empty-quotes-money
+tags: [entity, fields, money, validation, auth, scenario]
+base: { empty: quotes }
+intent:
+  title: Quotes in several currencies
+  ask: >-
+    Sales staff sign up and write quotes for customers: the customer's name, an amount, and the currency it is in
+    (we quote in US dollars, euros and pounds). Amounts must be exact to the cent, never rounded, and never
+    negative. Every quote also carries our fixed processing charge, which is always in US dollars and defaults to
+    zero. Staff filter the list of quotes by currency.
+  acceptance:
+    - A quote of 1250.10 euros is read back as exactly that amount
+    - An amount sent as a number instead of a string is refused, and so is a negative amount
+    - A quote created without a processing charge has a charge of zero
+    - Changing a quote's currency without sending its amount again is refused
+expect:
+  entities: [User, "Quote|Quotation"]
+  types:
+    "Quote|Quotation.amount|total|price|value": money
+    "Quote|Quotation.processing_charge|charge|processing_fee|fee": money
+    "Quote|Quotation.currency|currency_code": enum
+  field_props:
+    "Quote|Quotation.amount|total|price|value": { validate: { min: "0" } }
+    "Quote|Quotation.processing_charge|charge|processing_fee|fee": { currency: USD, default: "0" }
+  list: { "quotes|quotations": { filters: ["currency|currency_code"] } }
+  scenarios: { min: 1, rejections: 2, statuses: [400] }
+  touches: ["quotes.create|quotations.create", "quotes.update|quotations.update"]
+  ops: { forbid: [add_action] }
+notes: >-
+  An amount in the row's own currency and one in a fixed currency. `type: money` with `currency_field` beside an
+  enum of the three ISO 4217 codes, and `type: money, currency: USD, default: "0"` for the charge; bounds and
+  defaults are decimal strings. A decimal, a float or integer cents with a separate currency string is what the
+  construct replaces. The scenario writes amounts as strings, expects four fraction digits back ("1250.1000"), and
+  its 400s are a JSON number, a negative amount and an update that sends the currency alone.

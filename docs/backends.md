@@ -92,6 +92,8 @@ The `hono-trpc-vite` contract tests speak tRPC's HTTP transport but assert the s
 | Transitions (`transitions: { field: status, approve: { from, to, rule, stamp } }`) | `generated/row-actions.ts` holds `<entity>Transitions`, one function per step over one `UPDATE ... WHERE id = $1 AND status IN (from) RETURNING *`; `POST <resource>/{id}/<step>` loads the row, checks the read rule and the step's rule, calls it and answers 409 `invalid_transition` when no row came back; a timer calls the same function as the system and schedules the entity's timers again; a board grouped by the field drags along the steps (below) | the same, each step a tRPC mutation; the code travels as the cause of a `CONFLICT` | package `generated/rowactions`: `Transition<Entity><Step>(ctx, db, id, now)` with the same statement, `nil` when it matched no row; the handler answers 409 `invalid_transition`; `run<Timer>` in the scheduling package calls it through the system's pool |
 | Counts (`count_of: comments`) | none beyond the column: `integer NOT NULL DEFAULT 0`, read-only, kept by the database (see below); filters, sorts and tiles read it like any integer | the same | the same |
 | Field rules (`read: "member:team_id:admin"` on a field) | `generated/present.ts` holds the field rules and `present<Entity>(row, viewer)`: the field is optional in the public type and set only when `reads(rule, viewer, row)` allows; the viewer is the request's session for an answer and `SERVER` for an event's payload; `auth.me` answers `fields` beside `data`; the pages read it through `fieldsOf(session)` (see below) | the same; the viewer is `ctx.session`, and `fields` is on `auth.session` | `models.Present<Entity>(row, viewer)`: the field is a `models.Maybe[T]` with `json:",omitzero"`; `access.Viewer(session)` checks the rule, `models.Server` reads everything; `auth` gets `auth.Visibility` from the app |
+| Money (`type: money`, `currency` or `currency_field`) | `numeric({ precision: 19, scale: 4 })`, which the driver hands over as the string the database printed; `generated/validation.ts` carries `money(min?, max?)`: a string of the amount's shape and nothing else, bounds compared as BigInt ten-thousandths; a filter is the same string and `eq`; an update that changes a currency field answers 400 unless the amounts in it come along; the pages take it in a text input beside its currency and show it with `formatMoney` (see below) | the same; the 400 is a `BAD_REQUEST` with code `validation` | `string` and `*string` in the row and public structs, selected as `"total"::text`; `validation.Money{Min, Max}` unmarshals a JSON string only and compares bounds as `big.Int`; the same refusal in `Update` |
+| Sequences (`type: sequence`) | none beyond the column: `varchar(255) NOT NULL DEFAULT ''`, read-only, written by a `BEFORE INSERT` trigger (see below) and read back by the insert's `RETURNING`; the fields of its scope are left out of update; filters, sorts and search read it like any string | the same | the same |
 | Schedules, timers                                                               | pg-boss cron schedules and jobs with `startAfter`; a timer job reloads the row and runs the action only if the row still says so; test hooks at `/api/osl-hooks/*` when `OSL_TEST_HOOKS=1`                                                       | the same, with the hooks as REST routes beside tRPC                                            | River periodic jobs (robfig/cron) and `ScheduledAt` jobs; the same hooks                                                                |
 | Magic links, OAuth                                                              | `POST /api/auth/magic-link`, `/verify`, `GET /api/auth/oauth/<name>[/callback]`, `GET /api/auth/providers`; email through log, Resend or capture                                                                                                 | procedures `auth.magic_link`, `auth.magic_link_verify`, `auth.providers`; OAuth as REST routes | the same routes                                                                                                                         |
 | Queued events                                                                   | pg-boss in the `pgboss` schema; the worker runs in the Next.js process from `instrumentation.ts` or alone with `tsx src/worker.ts`; `OSL_ROLE=web                                                                                                | worker                                                                                         | all`                                                                                                                                    | pg-boss; `src/server/main.ts` starts it; `src/server/worker.ts` alone | River; `river_%` tables are left alone by drift |
@@ -189,6 +191,49 @@ PostgreSQL ends such a pair by failing one side (`deadlock_detected`), and the c
 `packages/core/test/count.database.test.ts` runs both loads, and a control that writes the increments from a value
 read before the row was held ends with counts that are short.
 
+## Sequences in the database
+
+A `type: sequence` field is numbered by the database, so that every writer gets a number: a generated handler, an
+action handler of yours, a seed, an `INSERT` someone types. `sequenceObjects` in `packages/core/src/sequences.ts`
+renders the objects, and they join `databaseObjects` with the isolation layer's, the ordered collections' and the
+counts'.
+
+| Piece                       | What is generated                                                                                                                                                                                                                                                                                                                                    |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- | ---------------------------------------------------------------- |
+| Column                      | `<number> varchar(255) NOT NULL DEFAULT ''` and `UNIQUE (<scope...>, <number>)`; no backend writes it                                                                                                                                                                                                                                                |
+| Counter table               | `osl_sequences ("sequence", "scope", "last")`, one row per sequence (`<table>.<column>`) and scope (the scope's values as a JSON array in text; `[]` for one counter per table); made with the first sequence, dropped with the last, never made again in between; `osl drift` expects it                                                            |
+| Function                    | `osl_sequence_<table>_<column>()`: `INSERT INTO osl_sequences ... VALUES (..., 1) ON CONFLICT ("sequence", "scope") DO UPDATE SET "last" = s."last" + 1 RETURNING s."last"`, then `NEW.<number> := <prefix>                                                                                                                                          |     | lpad(...)`; whatever the writer put in the column is overwritten |
+| Trigger                     | `osl_sequence_<column>`, `BEFORE INSERT FOR EACH ROW`. By name it fires after `osl_count_hold` and `osl_order_assign`: on a table that is also ordered or counted every insert takes the parent first and the counter last                                                                                                                           |
+| Migrations                  | a sequence that arrives on a table with rows numbers them scope by scope in `created_at`, key order (`backfill_sequence`, listed as a table rewrite) before the unique constraint, and seeds the counters after; a renamed table or field keeps its counters; a changed scope starts each new scope after the largest number its rows carry (warned) |
+| Under `isolation: database` | the web role has no grant on `osl_sequences`; the functions are `SECURITY DEFINER` with `EXECUTE` revoked from everyone and touch the one counter the new row names. A row the policy then refuses takes its statement, and the counter's step, back                                                                                                 |
+
+The counter's row is written in the create's own transaction and held until it ends. Two creates in one scope
+therefore never share a number, and the second waits for the first; a create that rolls back gives its number
+back, so a scope's numbers are consecutive and a hole appears only where a row was deleted later.
+`packages/core/test/sequence.database.test.ts` runs 24 connections of creates in three scopes and one table-wide
+counter (alone, two in a statement, two in a transaction, rolled back on purpose) against a real database and
+expects no failed statement and each scope numbered 1..n; its control reads the counter without holding it and
+expects unique violations. The order's and the count's database tests run their loads again with a sequence on the
+ordered and the counted table. What the database cannot order is yours, as with an order: a transaction of your own
+that creates in two scopes takes their counters in the order it writes them.
+
+## Money, a decimal string end to end
+
+| Where                 | drizzle-next and hono-trpc-vite                                                                                                                           | gin-pgx                                                                                                         |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| A request body        | `money()`: `z.string()` held to `^-?\d{1,15}(\.\d{1,4})?$`; a JSON number fails `z.string()`, so nothing is converted or rounded                          | `validation.Money`: `json.Unmarshal` into a `string`, then the same pattern                                     |
+| `validate.min`, `max` | decimal strings in the model; compared as BigInt ten-thousandths, only on a value that has the shape                                                      | compared as `big.Int` ten-thousandths                                                                           |
+| The database          | the string is the statement's parameter; `numeric(19, 4)` comes back as text (`"19.9900"`), which node-postgres does not parse                            | the string is the parameter; the column is selected as `::text`, so the row struct holds what PostgreSQL prints |
+| An answer, an event   | the presenter passes the row's string on; an included row goes through the same presenter                                                                 | the same                                                                                                        |
+| A filter, a sort      | the query value is checked with `money()` and compared with `eq`; `ORDER BY` is the column's own                                                          | `Money.ParseString`, then `"total" = $n`                                                                        |
+| OpenAPI               | `{ type: string, format: decimal, pattern }` with the currency and the bounds in the description                                                          | the same document                                                                                               |
+| Pages                 | `<Input type="text" inputMode="decimal" pattern>` with the currency beside it; `formatMoney(value, currency)` groups digits and trims zeros on the string | no pages                                                                                                        |
+| Generated tests       | scenario bodies and expectations carry the strings the model wrote                                                                                        | the same                                                                                                        |
+
+An update that changes a `currency_field`'s field while the row holds an amount in it must send that amount too:
+the handlers compare the body with the row they loaded for the rule and answer 400 `validation` naming the amount.
+`packages/cli/test/money.test.ts` evaluates the generated validator and formatter on amounts a float cannot hold.
+
 ## Transitions and the compiler's row actions
 
 A transition adds nothing to the database: no trigger, no function, no policy. The guard is the statement itself,
@@ -283,7 +328,9 @@ skips them).
   fail (a create may meet a unique pair, 409), and after each burst the harness reads the parent's rows from the
   database: every place once, 1..n, and the list in that order where the resource lists in the entity's own. It
   ends by comparing every count of the model with its rows: the counts over an ordered table were written inside
-  each of those calls.
+  each of those calls. On every entity with a sequence field it then sends eight creates at once into the scope of
+  a row the walk made: none may fail, and the numbers the database gave them must be eight in a row, with no number
+  twice in any scope.
 - **leak**: every response body of the walks is scanned for hidden columns, the password, key and token hash
   columns, and the shape of a raw key. Where the model has a field with a read rule, every successful answer of
   every walk is also held to it as it arrives, before the walk goes on: for each row in the answer, and each row
@@ -296,7 +343,9 @@ skips them).
   and absent.
 - **fuzz**: from the IR, wrong types, boundary lengths, extra keys, missing and null required fields, server-owned
   fields, malformed and missing ids and bad list parameters, as every caller; only 400, 401, 403, 404, 409 and 410
-  may answer, never a 5xx, a timeout or a 2xx on an invalid input. The seed is `walks: { seed }` in `fixture.yaml`
+  may answer, never a 5xx, a timeout or a 2xx on an invalid input. A money field is also sent as a JSON number,
+  with five fraction digits, with sixteen digits before the point, with an exponent, a separator and a currency
+  sign, and one step outside each bound it declares. The seed is `walks: { seed }` in `fixture.yaml`
   (or `--seed`), so a failure replays.
 - **contract**: between every two consecutive revisions of the fixture's lock, the breaking changes of the OpenAPI
   document (`diffOpenApi` in core: removed paths, operations, parameters, schemas and properties, narrowed types,

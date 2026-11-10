@@ -110,7 +110,7 @@ within one junction, and two junctions rank through alternatives.
 ## Field
 
 ```yaml
-type: string | text | integer | bigint | float | decimal | boolean | datetime | date | time | uuid | json | enum | array | bytes | file
+type: string | text | integer | bigint | float | decimal | money | boolean | datetime | date | time | uuid | json | enum | array | bytes | file | sequence
 primary: true # one or more fields; a single uuid primary gets a generated uuid, a single integer gets an identity
 required: true # NOT NULL; defaults to false
 unique: true
@@ -133,6 +133,11 @@ position: { within: album_id } # integer only: the row's place among the rows wi
 count_of: comments # integer only: how many rows the reverse relation `comments` holds, kept by the database (see Counts)
 where: "approved = true" # with count_of: only the related rows this holds for count
 file: { accept: [image/*, application/pdf], max_size: 5242880 } # file only: what uploads it takes (sizes in bytes)
+currency: USD # money only: the ISO 4217 code every amount of the field is in (see Money)
+currency_field: currency # money only, instead of currency: the required enum field of the entity holding each row's code
+prefix: "INV-" # sequence only: what every number starts with (see Sequences)
+scope: [team_id] # sequence only: the required fields a number counts within; without it one counter for the table
+width: 6 # sequence only: digits, padded with zeros (INV-000042); a longer number keeps its digits
 ```
 
 A `read_only` field is one the server owns: a `banned` flag, a `reviewed_at` stamp, a `view_count`. Only your action
@@ -147,7 +152,7 @@ so a field rule only narrows:
 
 ```yaml
 fields:
-  cost: { type: decimal, read: "role:manager or member:team_id:admin" } # managers and the team's admins
+  cost: { type: money, currency: USD, read: "role:manager or member:team_id:admin" } # managers and the team's admins
   phone: { type: string, read: "owner:id or role:admin" } # on the identity: the person and admins
   editor_note: { type: text, read: "role:admin" }
 ```
@@ -312,6 +317,43 @@ may not know. Under `isolation: database` a count on a shared row over a tenant 
 expressible, say so in not_delivered: a sum, an average, a maximum or a latest value (a `read_only` field a handler
 keeps), a count over a path of two relations or through a junction's far side (count the junction's rows), a count
 per viewer (unread for me), a count grouped by a value (reactions per emoji).
+
+Money: an amount is `type: money`, never `decimal`, `float` or an integer of cents. It names its currency one
+way: `price: { type: money, currency: USD }` for a field that is always in one currency, or `total: { type: money,
+currency_field: currency }` beside `currency: { type: enum, enum_values: [USD, EUR, JPY], required: true }` when
+each row has its own (the enum lists the ISO 4217 codes the application deals in; a free string is not accepted,
+M182). The column is `numeric(19, 4)`. On the wire an amount is a decimal string, in requests and in answers:
+`"19.99"` is accepted and comes back as `"19.9900"`, always with four fraction digits. A JSON number is refused
+with 400, never converted, and so are a fifth fraction digit (nothing is rounded), more than fifteen digits before
+the point, an exponent and a separator; write amounts as strings in scenario bodies, expectations and filters too.
+`validate: { min: "0", max: "9999.99" }` and `default: "0"` are decimal strings as well, compared exactly. An
+amount is a list filter (`?total=19.99` finds 19.9900) and sortable; both compare numbers, so in a list of mixed
+currencies filter by the currency field as well, and a tile may group by the currency field (a count of rows per
+currency), never by the amount. An update that changes a row's currency must send the amounts in that currency with
+it (`{ currency: EUR, total: "18.50" }`); the currency alone answers 400, since the digits would silently mean
+another amount (M184 warns when an update can write the currency and not the amount). A money field may be an
+action's input or result with `currency:`. No rule's `when` and no count's `where` tests an amount. Pages show
+an amount with its currency and take it in a text input. Not expressible, say so in not_delivered: a sum, an
+average or a total over rows (a `read_only` money field a handler keeps), currency conversion or exchange rates, a
+rounding mode, amounts as integers of minor units on the wire, a currency read through a relation (give the row its
+own currency field).
+
+Sequences: a number people quote (an invoice number, an order reference, a ticket number) is `type: sequence`,
+never a uuid shown to people and never a `read_only` string a handler fills: `number: { type: sequence, prefix:
+"INV-", scope: [team_id], width: 6 }` gives each team INV-000001, INV-000002 and so on. Write only `type`, and
+`prefix`, `scope` and `width` as needed: the field is a string that is never null, unique within its scope,
+read-only (create and update answer 400 when a client sends it) and assigned by the database when the row is
+inserted, whoever inserts it (a handler of yours, a seed). Two creates at once never share a number. A create that
+fails or is refused takes none, so a scope's numbers have no hole except where a row was deleted later, and a
+deleted row's number is not given again. `scope` names required fields of the entity that a row keeps (a relation,
+an enum, a string, an integer, a uuid, a boolean, a date): the update operation leaves them out (M183), because the
+number was counted where the row was created. Creates in one scope wait for one another, so scope by the tenant or
+by something narrower. Under `isolation: database` scope a tenant table's sequence by the tenant relation or by a
+relation to a tenant's row: one counter for the whole table would tell every tenant how many rows the others made
+(M181 warns). A sequence is a list filter, sortable and searchable like a string, and names the row on pages when
+it is the entity's first string. Not expressible, say so in not_delivered: a number that restarts each year or
+month (scope by a `year` field your handler sets), a prefix taken from another field, numbers without any hole
+after deletes, a number assigned later than create (when an order is confirmed), a number the client chooses.
 
 ## Resource
 

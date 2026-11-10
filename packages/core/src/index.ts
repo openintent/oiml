@@ -7,6 +7,7 @@ export * from "./migrations.js";
 export * from "./isolation.js";
 export * from "./order.js";
 export * from "./counts.js";
+export * from "./sequences.js";
 export * from "./migrator.js";
 export * from "./drift.js";
 export * from "./backend.js";

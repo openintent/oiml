@@ -83,6 +83,14 @@ const COERCE: Record<string, Record<string, "int" | "number" | "boolean" | "stri
     "team_id": "string",
     "status": "string",
     "requester_id": "string"
+  },
+  "invoices.list": {
+    "page": "int",
+    "page_size": "int",
+    "team_id": "string",
+    "number": "string",
+    "currency": "string",
+    "total": "string"
   }
 };
 

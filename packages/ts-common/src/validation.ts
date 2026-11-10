@@ -1,9 +1,11 @@
 import type { ActionIR, ColumnIR, EntityIR, IR, OperationIR, ResourceIR } from "@osl/core";
-import { toPascalCase } from "@osl/core";
+import { MONEY_PATTERN, toPascalCase } from "@osl/core";
 import { cap, column, entityByName, q, singlePrimaryKey, type TsConventions } from "./conventions.js";
 
 /** Zod expression for a column. `create` makes required columns required; `update` makes everything optional. */
 export function zodForColumn(col: ColumnIR, mode: "create" | "update" | "filter"): string {
+  // A filter compares an amount, it does not write one: the shape is checked, the field's bounds are not
+  if (mode === "filter" && col.money) return `${moneyZod()}.optional()`;
   let expr = baseZod(col);
   if (mode === "filter") return expr + ".optional()";
   const canBeNull = col.nullable;
@@ -29,6 +31,43 @@ function enumValuesPlaceholder(col: ColumnIR): string {
   if (col.enumValues) return col.enumValues.map(q).join(", ");
   return `__ENUM_${col.name}__`;
 }
+
+/** `money()`, `money("0")`, `money(undefined, "9999.99")`: the helper below, with the field's bounds */
+function moneyZod(min?: string, max?: string): string {
+  const args =
+    max !== undefined ? [min === undefined ? "undefined" : q(min), q(max)] : min !== undefined ? [q(min)] : [];
+  return `money(${args.join(", ")})`;
+}
+
+/** What generated/validation.ts carries when an input has a money field */
+const MONEY_SOURCE = `const MONEY = /${MONEY_PATTERN.replace(/\//g, "\\/")}/;
+
+/** An amount in ten-thousandths, exactly: a decimal string is never read as a float */
+function moneyUnits(value: string): bigint {
+  const negative = value.startsWith("-");
+  const [whole, fraction = ""] = (negative ? value.slice(1) : value).split(".");
+  const units = BigInt(whole + fraction.padEnd(4, "0"));
+  return negative ? -units : units;
+}
+
+/**
+ * An amount: a decimal string and nothing else. A JSON number is refused, not converted (a float has already lost
+ * what was written), and so is a fifth fraction digit, which the column could only round away. Bounds are compared
+ * digit by digit, and only on a value that has the shape.
+ */
+export function money(min?: string, max?: string) {
+  return z.string().superRefine((value, ctx) => {
+    if (!MONEY.test(value)) {
+      ctx.addIssue({ code: "custom", message: "Expected a decimal string with at most four fraction digits" });
+      return;
+    }
+    if (min !== undefined && moneyUnits(value) < moneyUnits(min))
+      ctx.addIssue({ code: "custom", message: \`Amount must be at least \${min}\` });
+    if (max !== undefined && moneyUnits(value) > moneyUnits(max))
+      ctx.addIssue({ code: "custom", message: \`Amount must be at most \${max}\` });
+  });
+}
+`;
 
 function scalarZod(scalar: string, col: ColumnIR): string {
   const v = col.validate ?? {};
@@ -71,6 +110,8 @@ function scalarZod(scalar: string, col: ColumnIR): string {
         e += `.refine(value => Number(value) <= ${v.max}, { message: "Number must be less than or equal to ${v.max}" })`;
       return e;
     }
+    case "money":
+      return moneyZod(col.money?.min, col.money?.max);
     case "boolean":
       return "z.boolean()";
     case "datetime":
@@ -104,6 +145,8 @@ export function filterZod(col: ColumnIR): string {
     case "float":
     case "decimal":
       return "z.coerce.number().optional()";
+    case "money":
+      return `${moneyZod()}.optional()`;
     case "uuid":
       return "z.string().uuid().optional()";
     default:
@@ -197,7 +240,59 @@ export function validationFile(
     }
     out.push(`export type ${cap(name)} = z.infer<typeof ${name}>;`, "");
   }
+  // The amount helper, wherever the model has a money field: auth's register schema imports it too
+  const amounts = [...ir.entities.flatMap(e => e.columns), ...ir.actions.flatMap(a => a.input)];
+  if (amounts.some(c => c.money)) out.splice(3, 0, MONEY_SOURCE);
   return out.join("\n");
+}
+
+/**
+ * The amounts an update must carry when it changes their currency: for each currency field the update writes, the
+ * money columns that read it. A row's amount is not carried into another currency by leaving it out of the body.
+ */
+export function currencyGuards(entity: EntityIR, fields: string[]): { currency: string; amounts: string[] }[] {
+  return fields
+    .map(currency => ({
+      currency,
+      amounts: entity.columns.filter(c => c.money?.currencyField === currency).map(c => c.name)
+    }))
+    .filter(guard => guard.amounts.length > 0);
+}
+
+/** What the refusal says of the amounts the body left out, as a template over `name` */
+export function currencyGuardMessage(currency: string, name: string): string {
+  return `${currency} changes, so ${name} must be sent with it: an amount is not carried into another currency`;
+}
+
+/**
+ * The lines an update handler runs once it holds the row and the parsed body: when the body changes a currency
+ * field, the amounts in that currency the row has and the body does not send are `missing`, and `refuse` answers
+ * 400 for them. Empty when the update writes no currency field.
+ */
+export function currencyGuardLines(
+  entity: EntityIR,
+  fields: string[],
+  body: string,
+  existing: string,
+  refuse: (currency: string) => string,
+  indent: string
+): string[] {
+  const lines: string[] = [];
+  for (const guard of currencyGuards(entity, fields)) {
+    const checks = guard.amounts.map(amount => {
+      const has = column(entity, amount).nullable ? `${existing}.${amount} !== null` : "";
+      const unsent = fields.includes(amount) ? `${body}.${amount} === undefined` : "";
+      return `...(${[has, unsent].filter(Boolean).join(" && ") || "true"} ? [${q(amount)}] : [])`;
+    });
+    lines.push(
+      `${indent}// An amount keeps its currency: a body that changes ${guard.currency} sends each amount that is in it`,
+      `${indent}if (${body}.${guard.currency} !== undefined && ${body}.${guard.currency} !== ${existing}.${guard.currency}) {`,
+      `${indent}  const missing: string[] = [${checks.join(", ")}];`,
+      `${indent}  if (missing.length) ${refuse(guard.currency)}`,
+      `${indent}}`
+    );
+  }
+  return lines;
 }
 
 /** `postsPublishInput` for a resource action, `sendDigestInput` for a global one */

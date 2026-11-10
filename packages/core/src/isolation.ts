@@ -24,8 +24,12 @@ import {
 import { quoteIdent, quoteLiteral, sqlType } from "./migrations.js";
 
 export interface IsolationObject {
-  /** `constraint` is an ordered collection's (order.ts), which shares the planner and the drift check with this layer */
-  kind: "role" | "grant" | "function" | "trigger" | "rls" | "policy" | "constraint";
+  /**
+   * `constraint` is an ordered collection's (order.ts) and `table` the sequences' counter table (sequences.ts),
+   * which share the planner and the drift check with this layer. A table is made once and never made again: what
+   * it holds is not in the model.
+   */
+  kind: "role" | "grant" | "function" | "trigger" | "rls" | "policy" | "constraint" | "table";
   /** What the planner matches between two revisions and the drift check with the database */
   key: string;
   name: string;

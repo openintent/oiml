@@ -4,9 +4,10 @@
  */
 import type { Renames } from "./diff.js";
 import { slugify } from "./naming.js";
-import type { ColumnIR, EntityIR, IR, TenantKeyIR, TypeIR } from "./ir.js";
+import { SEQUENCE_TABLE, type ColumnIR, type EntityIR, type IR, type TenantKeyIR, type TypeIR } from "./ir.js";
 import { backfillCount, databaseObjects } from "./counts.js";
 import { backfillPositions } from "./order.js";
+import { backfillSequence, seedSequence } from "./sequences.js";
 
 export type MigrationStep =
   | { kind: "create_enum"; name: string; values: string[] }
@@ -42,6 +43,8 @@ export type MigrationStep =
   | { kind: "backfill_position"; table: string; column: string; within: string; statement: string }
   /** Set a count from the rows that exist, when a count_of field arrives on a table that has rows or changes what it counts */
   | { kind: "backfill_count"; table: string; column: string; statement: string }
+  /** Number the rows a table already has, scope by scope, when it gains a sequence field */
+  | { kind: "backfill_sequence"; table: string; column: string; statement: string }
   /** Statements of the isolation layer (roles and grants, functions, triggers, row security, policies), of the ordered collections (the constraint, functions and triggers) and of the counts (functions and triggers), made or dropped whole */
   | { kind: "sql"; about: string; statements: string[] };
 
@@ -58,7 +61,8 @@ export function isRewrite(step: MigrationStep, next: IR): boolean {
     step.kind === "alter_column_type" ||
     step.kind === "backfill_tenant" ||
     step.kind === "backfill_position" ||
-    step.kind === "backfill_count"
+    step.kind === "backfill_count" ||
+    step.kind === "backfill_sequence"
   )
     return true;
   if (step.kind === "set_not_null" && step.notNull) {
@@ -101,6 +105,8 @@ export function planMigration(prev: IR | null, next: IR, renames: Renames = EMPT
   const addsKeys: MigrationStep[] = []; // composite tenant keys, after the uniques they point at
   const positionFills: MigrationStep[] = []; // positions of tables that have rows
   const countFills: MigrationStep[] = []; // counts of tables that have rows
+  const sequenceFills: MigrationStep[] = []; // numbers of tables that have rows, before the unique constraint
+  const sequenceSeeds: MigrationStep[] = []; // counters, once the counter table is there
 
   const prevEntities = prev?.entities ?? [];
   const prevEnums = prev?.enums ?? [];
@@ -219,6 +225,52 @@ export function planMigration(prev: IR | null, next: IR, renames: Renames = EMPT
       });
     }
 
+    // A table that has rows and gains a sequence: its rows are numbered before the unique constraint arrives, and
+    // the counters start after them. A sequence that counts within other fields now starts each new scope after
+    // the largest number its rows carry; one whose table or field was renamed keeps its counters under the new name.
+    for (const sequence of entity.sequences ?? []) {
+      const prevSequence = prevEntity.sequences?.find(s => s.column === oldFieldOf(entity.name, sequence.column));
+      const about = `counters of ${sequence.key}`;
+      if (!prevSequence) {
+        sequenceFills.push({
+          kind: "backfill_sequence",
+          table,
+          column: sequence.column,
+          statement: backfillSequence(entity, sequence)
+        });
+        sequenceSeeds.push({ kind: "sql", about, statements: seedSequence(entity, sequence) });
+        continue;
+      }
+      const scopeBefore = prevSequence.scope.join(",");
+      const scopeNow = sequence.scope.map(c => oldFieldOf(entity.name, c)).join(",");
+      if (scopeBefore !== scopeNow) {
+        sequenceSeeds.push({ kind: "sql", about, statements: seedSequence(entity, sequence) });
+        warnings.push(
+          `${sequence.key} counts within (${sequence.scope.join(", ") || "the whole table"}) now; the numbers its rows carry stay, and the migration fails if two rows of one new scope share a number`
+        );
+      } else if (prevSequence.key !== sequence.key)
+        sequenceSeeds.push({
+          kind: "sql",
+          about,
+          statements: [
+            `UPDATE ${quoteIdent(SEQUENCE_TABLE)} SET "sequence" = ${quoteLiteral(sequence.key)} WHERE "sequence" = ${quoteLiteral(prevSequence.key)};`
+          ]
+        });
+    }
+    // A sequence field that left a table that stays: its counters go with it
+    for (const prevSequence of prevEntity.sequences ?? [])
+      if (
+        !(entity.sequences ?? []).some(s => oldFieldOf(entity.name, s.column) === prevSequence.column) &&
+        next.entities.some(e => e.sequences?.length)
+      )
+        early.push({
+          kind: "sql",
+          about: `counters of ${prevSequence.key}`,
+          statements: [
+            `DELETE FROM ${quoteIdent(SEQUENCE_TABLE)} WHERE "sequence" = ${quoteLiteral(prevSequence.key)};`
+          ]
+        });
+
     // Foreign keys by column: drop changed or removed, add new or changed
     for (const fk of entity.foreignKeys) {
       const prevFk = prevEntity.foreignKeys.find(p => p.column === oldFieldOf(entity.name, fk.column));
@@ -284,6 +336,15 @@ export function planMigration(prev: IR | null, next: IR, renames: Renames = EMPT
       for (const key of prevEntity.tenant?.keys ?? [])
         dropsKeys.push({ kind: "drop_constraint", table: prevEntity.table, name: key.name });
       late.push({ kind: "drop_table", table: prevEntity.table });
+      // The counters of a table that is gone, where the counter table stays for another sequence
+      if (prevEntity.sequences?.length && next.entities.some(e => e.sequences?.length))
+        late.push({
+          kind: "sql",
+          about: `counters of ${prevEntity.table}`,
+          statements: prevEntity.sequences.map(
+            s => `DELETE FROM ${quoteIdent(SEQUENCE_TABLE)} WHERE "sequence" = ${quoteLiteral(s.key)};`
+          )
+        });
     }
   }
   for (const old of prevEnums) {
@@ -310,7 +371,9 @@ export function planMigration(prev: IR | null, next: IR, renames: Renames = EMPT
   const remade = new Set<string>();
   for (const object of after) {
     const old = beforeByKey.get(object.key);
-    if (old && JSON.stringify(old.create) !== JSON.stringify(object.create)) remade.add(object.key);
+    // A table is never made again: the counters it holds are not in the model
+    if (old && object.kind !== "table" && JSON.stringify(old.create) !== JSON.stringify(object.create))
+      remade.add(object.key);
   }
   // PostgreSQL refuses to change the type of a column a policy reads: the table's policies are made again around it
   for (const step of alters)
@@ -342,13 +405,15 @@ export function planMigration(prev: IR | null, next: IR, renames: Renames = EMPT
     ...ordered,
     ...positionFills,
     ...countFills,
+    ...sequenceFills,
     ...dropsKeys,
     ...dropsConstraints,
     ...dropsColumns,
     ...adds,
     ...addsKeys,
     ...late,
-    ...isolationAdds
+    ...isolationAdds,
+    ...sequenceSeeds
   ];
   return { steps, warnings, rewrites: steps.filter(step => isRewrite(step, next)) };
 }
@@ -384,6 +449,8 @@ function scalarSql(scalar: string, maxLength?: number): string {
       return "double precision";
     case "decimal":
       return "numeric";
+    case "money":
+      return "numeric(19, 4)";
     case "boolean":
       return "boolean";
     case "datetime":
@@ -524,6 +591,7 @@ export function renderPostgres(plan: MigrationPlan): string {
         break;
       case "backfill_position":
       case "backfill_count":
+      case "backfill_sequence":
         out.push(step.statement);
         break;
       case "add_tenant_key": {

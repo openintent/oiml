@@ -296,6 +296,36 @@ var RequestsUpdateInput = Object{Fields: []Field{
 	{Name: "amount", Type: Integer{Min: F(1)}},
 }}
 
+// InvoicesID parses a invoices id from the path.
+func InvoicesID(raw string) (string, bool) {
+	return ParseUUIDID(raw)
+}
+
+// InvoicesListQuery validates the GET /api/invoices query string.
+var InvoicesListQuery = Query{PageSize: 20, Filters: []Filter{
+	{Name: "team_id", Type: UUID{}},
+	{Name: "number", Type: String{}},
+	{Name: "currency", Type: Enum{Values: []string{"USD", "EUR", "JPY"}}},
+	{Name: "total", Type: Money{}},
+}, Sortable: []string{"number", "total", "created_at"}, Search: true}
+
+// InvoicesCreateInput validates POST /api/invoices bodies.
+var InvoicesCreateInput = Object{Fields: []Field{
+	{Name: "team_id", Required: true, Type: UUID{}},
+	{Name: "customer", Required: true, Type: String{MinLength: 1, MaxLength: 160}},
+	{Name: "currency", Type: Enum{Values: []string{"USD", "EUR", "JPY"}}},
+	{Name: "total", Required: true, Type: Money{Min: "0"}},
+	{Name: "fee", Nullable: true, Type: Money{}},
+}}
+
+// InvoicesUpdateInput validates PATCH /api/invoices/{id} bodies.
+var InvoicesUpdateInput = Object{Fields: []Field{
+	{Name: "customer", Type: String{MinLength: 1, MaxLength: 160}},
+	{Name: "currency", Type: Enum{Values: []string{"USD", "EUR", "JPY"}}},
+	{Name: "total", Type: Money{Min: "0"}},
+	{Name: "fee", Nullable: true, Type: Money{}},
+}}
+
 // TasksRemindInput validates POST /api/tasks/{id}/remind bodies.
 var TasksRemindInput = Object{}
 

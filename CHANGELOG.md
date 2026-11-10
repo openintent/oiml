@@ -5,6 +5,33 @@ fixture intent on all three backends before it is listed here.
 
 ## Unreleased
 
+- Field kinds, first half: sequences and money (round B6 of the road to 1.0.0; sealed fields and typed JSON
+  follow). `type: sequence` is a number people quote: `number: { type: sequence, prefix: "INV-", scope: [team_id],
+width: 6 }` gives each team INV-000001, INV-000002 and so on. The field is a read-only string, unique within
+  its scope, and the database assigns it: a `BEFORE INSERT` trigger takes the scope's counter in `osl_sequences`
+  with `INSERT ... ON CONFLICT DO UPDATE ... RETURNING`, so every writer gets a number (a handler of yours, a seed)
+  and two creates at once never share one. The counter is written in the create's transaction: a create that
+  fails or is refused takes no number, and a scope's numbers have a hole only where a row was deleted later. The
+  fields of a scope are required and left out of update (M180, M183). A sequence that arrives on a table with rows
+  numbers them in a table rewrite and seeds its counters; a rename keeps them. Under `isolation: database` the web
+  role has no grant on the counter table and the trigger functions run with their owner's rights; M181 warns of a
+  tenant table's sequence whose scope names no relation to the tenant, since one counter would tell every tenant
+  how many rows the others made. `type: money` is an amount: `price: { type: money, currency: USD }`, or `total: {
+type: money, currency_field: currency }` beside a required enum of ISO 4217 codes (M182). The column is
+  `numeric(19, 4)`; on the wire an amount is a decimal string in both directions (`"19.99"` comes back as
+  `"19.9900"`), and a JSON number, a fifth fraction digit, an exponent or a separator answers 400: nothing is
+  converted or rounded, and no backend holds an amount in a float. `validate.min`, `max` and `default` on a money
+  field are decimal strings, compared exactly. Amounts filter and sort as numbers; an update that changes a row's
+  currency must send the amounts in it or answers 400 (M184 warns where an update can write the currency and not
+  the amount); no rule's `when` and no count's `where` tests an amount. The pages take an amount in a text input
+  beside its currency and show it from its string; the OpenAPI document says `string`, `format: decimal`. The fuzz
+  walk sends every money field the shapes it must refuse, and the order walk sends eight creates at once into one
+  scope of every numbered entity and wants eight numbers in a row. New keys: field types `money` and `sequence`;
+  `Field.currency`, `currency_field`, `prefix`, `scope`, `width`; decimal strings in `validate.min` and `max`;
+  diagnostics M180 to M184. Not built: sums over amounts, currency conversion, a currency through a relation, a
+  number that restarts each year, a number assigned after create. Fixture: workspace WS-16 (invoices numbered per
+  team with a total in the row's currency and a fee in dollars, under `isolation: database`). Design:
+  `docs/designs/field-kinds.md`.
 - Field-level visibility (round B5 of the road to 1.0.0). `read:` on a field is a rule in the spelling of the
   entity's rules; the field is in a response only for a caller the rule allows on that row, and absent, not null,
   for everyone else. The entity's read rule still decides whether the row is seen, so a field rule only narrows.

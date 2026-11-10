@@ -17,7 +17,7 @@ import type {
   TileGroupIR,
   TileIR
 } from "@osl/core";
-import { actionsOf, ruledColumns, toPascalCase, toTitleCase, transitionOf } from "@osl/core";
+import { MONEY_PATTERN, actionsOf, ruledColumns, toPascalCase, toTitleCase, transitionOf } from "@osl/core";
 import { entityByName, q, singlePrimaryKey, type TsConventions } from "../conventions.js";
 import { pageComponent } from "./routes.js";
 import type { WebTarget } from "./target.js";
@@ -163,6 +163,10 @@ function showExpr(ctx: Ctx, col: ColumnIR, obj: string, includes: RelationIR[], 
     case "file":
       use(ctx, "ui", "text");
       return `text(${expr}?.name)`;
+    case "money":
+      // The amount with its currency: the field's own code, or the one the row holds
+      use(ctx, "ui", "formatMoney");
+      return `formatMoney(${expr}, ${col.money?.currencyField ? `${obj}.${col.money.currencyField}` : q(col.money?.currency ?? "")})`;
     default:
       use(ctx, "ui", "text");
       return `text(${expr})`;
@@ -581,12 +585,31 @@ function fromRowExpr(ctx: Ctx, field: FormField): string {
   }
 }
 
-function inputControl(ctx: Ctx, field: FormField, required: boolean, valuesType: string): string {
+function inputControl(
+  ctx: Ctx,
+  field: FormField,
+  required: boolean,
+  valuesType: string,
+  formFields: ReadonlySet<string> = new Set()
+): string {
   const col = field.col;
   const name = col.name;
   const label = q(humanize(name));
   const req = required ? " required" : "";
   const kind = scalar(col);
+  if (kind === "money") {
+    // A decimal string from the keyboard to the API: a text input, never a number input, whose value is a float
+    use(ctx, "ui", "FormRow");
+    shadcn(ctx, "input", "Input");
+    const holder = col.money?.currencyField;
+    const code = holder ? (formFields.has(holder) ? `{values.${holder}}` : null) : (col.money?.currency ?? null);
+    const unit = code === null ? "" : `\n          <span className="text-sm text-muted-foreground">${code}</span>`;
+    return `      <FormRow label=${label} htmlFor=${q(name)}>
+        <div className="flex items-center gap-2">
+          <Input id=${q(name)} type="text" inputMode="decimal" pattern={${q(MONEY_PATTERN.slice(1, -1))}} placeholder="0.00" title="A decimal amount with at most four fraction digits" value={values.${name}} onChange={e => set(${q(name)}, e.target.value.trim())}${req} />${unit}
+        </div>
+      </FormRow>`;
+  }
   if (field.picker) {
     use(ctx, "ui", "FormRow");
     return `      <FormRow label=${label} htmlFor=${q(name)}>
@@ -711,7 +734,7 @@ function formCode(
     .map(
       f => `    case ${q(f.col.name)}:
       return (
-${inputControl(ctx, f, options.createType ? requiredOnCreate(f) : !f.col.nullable, ValuesT)}
+${inputControl(ctx, f, options.createType ? requiredOnCreate(f) : !f.col.nullable, ValuesT, new Set(fields.map(o => o.col.name)))}
       );`
     )
     .join("\n");

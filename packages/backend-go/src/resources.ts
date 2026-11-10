@@ -492,6 +492,39 @@ function rowChecks(
 const PARSE_ID = (idFn: string) =>
   `\tid, ok := validation.${idFn}(c.Param("id"))\n\tif !ok {\n\t\thttpx.Fail(c, httpx.NotFound())\n\t\treturn\n\t}`;
 
+/**
+ * What an update runs once it holds the row and the parsed body: when the body changes a currency field, the
+ * amounts in that currency the row has and the body does not send are refused with 400. An amount is not carried
+ * into another currency by leaving it out. Empty when the update writes no currency field.
+ */
+function currencyGuard(entity: EntityIR, fields: string[]): string {
+  const out: string[] = [];
+  for (const currency of fields) {
+    const amounts = entity.columns.filter(c => c.money?.currencyField === currency);
+    if (!amounts.length) continue;
+    const checks = amounts.map(amount => {
+      const has = amount.nullable ? `existing.${exported(amount.name)} != nil` : "";
+      const unsent = fields.includes(amount.name) ? "!sent" : "";
+      const message = `${currency} changes, so ${amount.name} must be sent with it: an amount is not carried into another currency`;
+      const add = `missing = append(missing, validation.Issue{Path: ${q(amount.name)}, Message: ${q(message)}})`;
+      const condition = [unsent, has].filter(Boolean).join(" && ");
+      const sent = fields.includes(amount.name) ? `_, sent := patch[${q(amount.name)}]; ` : "";
+      return condition ? `\t\tif ${sent}${condition} {\n\t\t\t${add}\n\t\t}` : `\t\t${add}`;
+    });
+    out.push(`\t// An amount keeps its currency: a body that changes ${currency} sends each amount that is in it
+	if next, ok := patch[${q(currency)}].(string); ok && next != existing.${exported(currency)} {
+		var missing []validation.Issue
+${checks.join("\n")}
+		if len(missing) > 0 {
+			httpx.Fail(c, httpx.Validation("Request body is invalid", missing))
+			return
+		}
+	}
+`);
+  }
+  return out.join("");
+}
+
 const PARSE_BODY = (inputExpr: string, target: string) => `\tbody, perr := httpx.ParseBody(c)
 	if perr != nil {
 		httpx.Fail(c, perr)
@@ -1138,7 +1171,7 @@ ${PARSE_ID(idFunc(resource))}
 ${failLoad(entity, "write", ruleVar("update"))}
 ${rowChecks(entity, ruleVar("read"), ruleVar("update"), entity.rules.update, "existing", "write", allRules, ruleRowSessionArg(allRules))}
 ${PARSE_BODY(`validation.${inputVar(resource, "update")}`, "patch")}
-${resolveFiles("patch")}	hookCtx := &hooks.Context{Gin: c, Session: session}
+${currencyGuard(entity, update.fields)}${resolveFiles("patch")}	hookCtx := &hooks.Context{Gin: c, Session: session}
 	patch, err = ${hooksPkg}.BeforeUpdate(hookCtx, existing, patch)
 ${fail("write")}
 	if len(patch) == 0 {

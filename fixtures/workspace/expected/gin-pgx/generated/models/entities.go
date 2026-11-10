@@ -66,7 +66,7 @@ func PresentUsers(rows []*User) []PublicUser {
 const TeamTable = `"teams"`
 
 // TeamColumns lists the columns of Team in model order, for SELECT and RETURNING.
-const TeamColumns = `"id", "name", "created_at", "pending_requests"`
+const TeamColumns = `"id", "name", "created_at", "pending_requests", "invoice_count"`
 
 // Team is a row of teams.
 type Team struct {
@@ -74,6 +74,7 @@ type Team struct {
 	Name            string    `json:"name"`
 	CreatedAt       time.Time `json:"created_at"`
 	PendingRequests int       `json:"pending_requests"`
+	InvoiceCount    int       `json:"invoice_count"`
 }
 
 // PublicTeam is Team as the API returns it: hidden columns removed, dates rendered.
@@ -82,12 +83,13 @@ type PublicTeam struct {
 	Name            string     `json:"name"`
 	CreatedAt       string     `json:"created_at"`
 	PendingRequests Maybe[int] `json:"pending_requests,omitzero"`
+	InvoiceCount    int        `json:"invoice_count"`
 }
 
 // ScanTeam reads one Team from a row selected with TeamColumns.
 func ScanTeam(row Scanner) (*Team, error) {
 	var r Team
-	if err := row.Scan(&r.ID, &r.Name, &r.CreatedAt, &r.PendingRequests); err != nil {
+	if err := row.Scan(&r.ID, &r.Name, &r.CreatedAt, &r.PendingRequests, &r.InvoiceCount); err != nil {
 		return nil, err
 	}
 	return &r, nil
@@ -95,7 +97,7 @@ func ScanTeam(row Scanner) (*Team, error) {
 
 // PresentTeam returns the public shape of a Team for a viewer: a field with a read rule is set only when the rule allows.
 func PresentTeam(row *Team, viewer Viewer) PublicTeam {
-	out := PublicTeam{ID: row.ID, Name: row.Name, CreatedAt: FormatDateTime(row.CreatedAt)}
+	out := PublicTeam{ID: row.ID, Name: row.Name, CreatedAt: FormatDateTime(row.CreatedAt), InvoiceCount: row.InvoiceCount}
 	if viewer.Reads("Team.pending_requests", map[string]any{"id": row.ID}) {
 		out.PendingRequests = Shown(row.PendingRequests)
 	}
@@ -764,6 +766,68 @@ func PresentRequests(rows []*Request) []PublicRequest {
 	out := make([]PublicRequest, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, PresentRequest(row))
+	}
+	return out
+}
+
+// InvoiceTable is the quoted table of Invoice.
+const InvoiceTable = `"invoices"`
+
+// InvoiceColumns lists the columns of Invoice in model order, for SELECT and RETURNING.
+const InvoiceColumns = `"id", "team_id", "number", "customer", "currency", "total"::text, "fee"::text, "created_at"`
+
+// Invoice is a row of invoices.
+type Invoice struct {
+	ID        string    `json:"id"`
+	TeamID    string    `json:"team_id"`
+	Number    string    `json:"number"`
+	Customer  string    `json:"customer"`
+	Currency  string    `json:"currency"`
+	Total     string    `json:"total"`
+	Fee       *string   `json:"fee"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// PublicInvoice is Invoice as the API returns it: hidden columns removed, dates rendered.
+type PublicInvoice struct {
+	ID        string  `json:"id"`
+	TeamID    string  `json:"team_id"`
+	Number    string  `json:"number"`
+	Customer  string  `json:"customer"`
+	Currency  string  `json:"currency"`
+	Total     string  `json:"total"`
+	Fee       *string `json:"fee"`
+	CreatedAt string  `json:"created_at"`
+}
+
+// ScanInvoice reads one Invoice from a row selected with InvoiceColumns.
+func ScanInvoice(row Scanner) (*Invoice, error) {
+	var r Invoice
+	if err := row.Scan(&r.ID, &r.TeamID, &r.Number, &r.Customer, &r.Currency, &r.Total, &r.Fee, &r.CreatedAt); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// PresentInvoice returns the public shape of a Invoice.
+func PresentInvoice(row *Invoice) PublicInvoice {
+	return PublicInvoice{ID: row.ID, TeamID: row.TeamID, Number: row.Number, Customer: row.Customer, Currency: row.Currency, Total: row.Total, Fee: row.Fee, CreatedAt: FormatDateTime(row.CreatedAt)}
+}
+
+// PresentInvoicePtr presents an optional Invoice; nil stays nil.
+func PresentInvoicePtr(row *Invoice) *PublicInvoice {
+	if row == nil {
+		return nil
+	}
+	out := PresentInvoice(row)
+	return &out
+}
+
+// PresentInvoices presents a list of Invoice, never nil.
+func PresentInvoices(rows []*Invoice) []PublicInvoice {
+	out := make([]PublicInvoice, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, PresentInvoice(row))
 	}
 	return out
 }

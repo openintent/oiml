@@ -8,6 +8,11 @@ intent:
     and a price cannot be negative.
 expect:
   fields: { Post: [price, currency] }
-  types: { Post.price: decimal, Post.currency: string }
-  field_props: { Post.price: { validate: { min: 0 } } }
+  types: { Post.price: money, Post.currency: "enum|string" }
+  field_props: { Post.price: { validate: { min: "0" } } }
   ops: { max: 3 }
+notes: >-
+  Until round B6 the answer was a decimal with `validate: { min: 0 }`. An amount is `type: money` now, with its
+  bound as a decimal string. The ask's "three-letter currency code" is the row's currency: an enum of the codes
+  the blog sells in with `currency_field` on the price, or `currency: USD` on the price beside a code kept as a
+  string; both pass.

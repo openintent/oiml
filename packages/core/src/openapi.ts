@@ -11,10 +11,12 @@ import {
   type ColumnIR,
   type EntityIR,
   type IR,
+  type MoneyIR,
   type OperationIR,
   type ResourceIR,
   conditionText
 } from "./ir.js";
+import { MONEY_PATTERN } from "./model.js";
 import { toTitleCase } from "./naming.js";
 import type { DiffOp } from "./diff.js";
 
@@ -57,6 +59,12 @@ function columnSchema(column: ColumnIR, ir: IR): Schema {
   } else {
     schema = scalarSchema(t.scalar);
     if (t.scalar === "string" && column.maxLength) schema.maxLength = column.maxLength;
+    if (column.money) schema.description = moneyDescription(column.money);
+    if (column.sequence) {
+      const escaped = column.sequence.prefix.replace(/[.*+?^${}()|[\]\\\/]/g, "\\$&");
+      schema.pattern = `^${escaped}\\d{${column.sequence.width},}$`;
+      schema.description = "Assigned by the server when the row is created; never accepted from a client";
+    }
   }
   const v = column.validate;
   if (v) {
@@ -69,9 +77,21 @@ function columnSchema(column: ColumnIR, ir: IR): Schema {
     if (v.min !== undefined) schema.minimum = v.min;
     if (v.max !== undefined) schema.maximum = v.max;
   }
-  if (column.description) schema.description = column.description;
+  if (column.description)
+    schema.description =
+      column.money || column.sequence ? `${column.description}. ${schema.description}` : column.description;
   if (column.nullable) return { oneOf: [schema, { type: "null" }] };
   return schema;
+}
+
+/** What an amount is, in words: the schema can say it is a string of digits, not what it counts or its bounds */
+function moneyDescription(money: MoneyIR): string {
+  const unit = money.currency ?? `the currency the row's ${money.currencyField} names`;
+  const bounds = [
+    ...(money.min !== undefined ? [`at least ${money.min}`] : []),
+    ...(money.max !== undefined ? [`at most ${money.max}`] : [])
+  ].join(" and ");
+  return `An amount of ${unit} as a decimal string with at most four fraction digits, never a number${bounds ? `; ${bounds}` : ""}`;
 }
 
 function scalarSchema(scalar: string): Schema {
@@ -86,6 +106,8 @@ function scalarSchema(scalar: string): Schema {
       return { type: "number" };
     case "decimal":
       return { type: "string", description: "A decimal number as a string" };
+    case "money":
+      return { type: "string", format: "decimal", pattern: MONEY_PATTERN };
     case "boolean":
       return { type: "boolean" };
     case "datetime":

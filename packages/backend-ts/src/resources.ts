@@ -25,7 +25,9 @@ import {
   creatorViewer,
   presentCall,
   presentMapper,
-  takesViewer
+  takesViewer,
+  currencyGuardLines,
+  currencyGuardMessage
 } from "@osl/ts-common";
 import {
   HEADER,
@@ -353,6 +355,17 @@ ${emitLines.join("\n")}${timerLine}
     httpImports.add("parseId");
     const emitLines = events("updated").map(e => `      await emit(${q(e.name)}, ${serverPresent("row")});`);
     const updateChecks = rowChecks(update.rule, "existing");
+    const currencyGuard = currencyGuardLines(
+      entity,
+      update.fields,
+      "body.data",
+      "existing",
+      currency =>
+        `return error(400, "validation", "Request body is invalid", missing.map(name => ({ path: name, message: \`${currencyGuardMessage(currency, "${name}")}\` })));`,
+      "      "
+    );
+    if (currencyGuard.length) httpImports.add("error");
+    const currencyLines = currencyGuard.length ? `\n${currencyGuard.join("\n")}` : "";
     methods.push(`  async update(request: Request, ctx: RouteContext): Promise<Response> {
     try {
       const session = await getSession(request);
@@ -365,7 +378,7 @@ ${emitLines.join("\n")}${timerLine}
       const rowVerdict = checkRule(RULES.update, session, ${updateChecks.arg});
       if (!rowVerdict.ok) return denied(rowVerdict);
       const body = await parseBody(${resource.name}UpdateInput, request);
-      if (!body.ok) return body.response;
+      if (!body.ok) return body.response;${currencyLines}
       const hookContext: HookContext = { request, session };
       const patch = await hooks.beforeUpdate(existing, ${resolveFiles("body.data")}, hookContext);
       if (Object.keys(patch).length === 0) return ok(${presentCall(entity, "existing", "session")});

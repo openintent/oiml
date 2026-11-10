@@ -16,6 +16,7 @@ export const FIELD_TYPES = [
   "bigint",
   "float",
   "decimal",
+  "money",
   "boolean",
   "datetime",
   "date",
@@ -25,7 +26,8 @@ export const FIELD_TYPES = [
   "enum",
   "array",
   "bytes",
-  "file"
+  "file",
+  "sequence"
 ] as const;
 export type FieldType = (typeof FIELD_TYPES)[number];
 
@@ -40,14 +42,45 @@ export const ARRAY_ELEMENT_TYPES = [
   "uuid"
 ] as const;
 
+/**
+ * An amount of money as it is written everywhere: a decimal string with up to fifteen digits before the point and
+ * up to four after it, the range of numeric(19, 4). Never a number: a float cannot hold 0.1.
+ */
+export const MONEY_PATTERN = "^-?\\d{1,15}(\\.\\d{1,4})?$";
+const MONEY_REGEXP = new RegExp(MONEY_PATTERN);
+
+/** Whether a value is an amount as the model, the API and the database write it */
+export function isMoneyString(value: unknown): value is string {
+  return typeof value === "string" && MONEY_REGEXP.test(value);
+}
+
+/** The ISO 4217 codes a money field may name */
+export const CURRENCY_CODES: ReadonlySet<string> = new Set(
+  (
+    "AED AFN ALL AMD ANG AOA ARS AUD AWG AZN BAM BBD BDT BGN BHD BIF BMD BND BOB BRL BSD BTN BWP BYN BZD CAD CDF CHF " +
+    "CLP CNY COP CRC CUP CVE CZK DJF DKK DOP DZD EGP ERN ETB EUR FJD FKP GBP GEL GHS GIP GMD GNF GTQ GYD HKD HNL HTG " +
+    "HUF IDR ILS INR IQD IRR ISK JMD JOD JPY KES KGS KHR KMF KPW KRW KWD KYD KZT LAK LBP LKR LRD LSL LYD MAD MDL MGA " +
+    "MKD MMK MNT MOP MRU MUR MVR MWK MXN MYR MZN NAD NGN NIO NOK NPR NZD OMR PAB PEN PGK PHP PKR PLN PYG QAR RON RSD " +
+    "RUB RWF SAR SBD SCR SDG SEK SGD SHP SLE SOS SRD SSP STN SVC SYP SZL THB TJS TMT TND TOP TRY TTD TWD TZS UAH UGX " +
+    "USD UYU UZS VES VND VUV WST XAF XCD XCG XOF XPF YER ZAR ZMW ZWG"
+  ).split(" ")
+);
+
+/** Currencies whose minor unit is not a hundredth: how many fraction digits a page shows of an amount (2 otherwise) */
+export const CURRENCY_EXPONENTS: Readonly<Record<string, number>> = {
+  ...Object.fromEntries("BIF CLP DJF GNF ISK JPY KMF KRW PYG RWF UGX VND VUV XAF XOF XPF".split(" ").map(c => [c, 0])),
+  ...Object.fromEntries("BHD IQD JOD KWD LYD OMR TND".split(" ").map(c => [c, 3]))
+};
+
 export const Validate = z
   .object({
     format: z.enum(["email", "url", "uuid"]).optional(),
     min_length: z.number().int().nonnegative().optional(),
     max_length: z.number().int().positive().optional(),
     pattern: z.string().min(1).optional(),
-    min: z.number().optional(),
-    max: z.number().optional()
+    /** A number; on a money field a decimal string ("0", "9999.99"), compared exactly */
+    min: z.union([z.number(), z.string().regex(MONEY_REGEXP, 'a decimal string like "0" or "9999.99"')]).optional(),
+    max: z.union([z.number(), z.string().regex(MONEY_REGEXP, 'a decimal string like "0" or "9999.99"')]).optional()
   })
   .strict();
 export type Validate = z.infer<typeof Validate>;
@@ -128,10 +161,71 @@ export const Field = z
         "<field> = <value> or <field> != <value> on fields of the counted entity, joined with ' and '"
       )
       .optional(),
+    /** Money fields only: the ISO 4217 code every amount of the field is in */
+    currency: z
+      .string()
+      .regex(/^[A-Z]{3}$/, "an ISO 4217 code: three capital letters")
+      .optional(),
+    /** Money fields only: the required enum field of the same entity that holds each row's currency code */
+    currency_field: Identifier.optional(),
+    /** Sequence fields only: what every number starts with ("INV-") */
+    prefix: z
+      .string()
+      .regex(/^[A-Za-z0-9_\/.#-]{1,20}$/, "up to twenty letters, digits or _ / . # -")
+      .optional(),
+    /** Sequence fields only: the required fields of the entity a number counts within; without it one counter for the table */
+    scope: z.array(Identifier).max(4).optional(),
+    /** Sequence fields only: the digits a number is padded to with zeros; a longer number keeps all its digits */
+    width: z.number().int().min(1).max(18).optional(),
     description: z.string().optional()
   })
   .strict()
   .superRefine((field, ctx) => {
+    if (field.type !== "sequence" && (field.prefix !== undefined || field.scope || field.width !== undefined))
+      ctx.addIssue({ code: "custom", message: "prefix, scope and width only apply to sequence fields" });
+    if (
+      field.type === "sequence" &&
+      (field.primary ||
+        field.unique ||
+        field.hidden ||
+        field.default !== undefined ||
+        field.validate ||
+        field.max_length !== undefined)
+    )
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "a sequence field is a string the database numbers: no primary, unique, hidden, default, validate or max_length"
+      });
+    if (field.type !== "money" && (field.currency !== undefined || field.currency_field !== undefined))
+      ctx.addIssue({ code: "custom", message: "currency and currency_field only apply to money fields" });
+    if (field.type === "money") {
+      if ((field.currency === undefined) === (field.currency_field === undefined))
+        ctx.addIssue({
+          code: "custom",
+          message:
+            "a money field names its currency one way: currency: <an ISO 4217 code>, or currency_field: <the enum field of the entity that holds each row's code>"
+        });
+      if (field.primary || field.max_length !== undefined)
+        ctx.addIssue({ code: "custom", message: "a money field cannot be primary or carry max_length" });
+      if (field.default !== undefined && !isMoneyString(field.default))
+        ctx.addIssue({
+          code: "custom",
+          message: 'a money default is a decimal string with at most four fraction digits ("0", "9.99"), never a number'
+        });
+      const v = field.validate ?? {};
+      if (v.format !== undefined || v.min_length !== undefined || v.max_length !== undefined || v.pattern !== undefined)
+        ctx.addIssue({ code: "custom", message: "a money field validates min and max only" });
+      if (typeof v.min === "number" || typeof v.max === "number")
+        ctx.addIssue({
+          code: "custom",
+          message: 'validate.min and max on a money field are decimal strings ("0", "9999.99"), never numbers'
+        });
+    } else if (typeof field.validate?.min === "string" || typeof field.validate?.max === "string")
+      ctx.addIssue({
+        code: "custom",
+        message: "validate.min and max are numbers; a decimal string is for a money field"
+      });
     if (field.count_of && field.type !== "integer")
       ctx.addIssue({ code: "custom", message: "count_of only applies to integer fields" });
     if (
@@ -490,6 +584,31 @@ export function positionOf(entity: Entity | undefined): { field: string; within:
   for (const [name, field] of Object.entries(entity?.fields ?? {}))
     if (field.position) return { field: name, within: field.position.within };
   return undefined;
+}
+
+/** A sequence field with its defaults made explicit: no prefix, one counter for the table, no padding */
+export interface SequenceField {
+  field: string;
+  prefix: string;
+  scope: string[];
+  width: number;
+}
+
+/** The sequence fields of an entity, in declared order; empty without one */
+export function sequencesOf(entity: Entity | undefined): SequenceField[] {
+  return Object.entries(entity?.fields ?? {})
+    .filter(([, field]) => field.type === "sequence")
+    .map(([name, field]) => ({
+      field: name,
+      prefix: field.prefix ?? "",
+      scope: field.scope ?? [],
+      width: field.width ?? 1
+    }));
+}
+
+/** The fields the entity's sequences count within: a row keeps them, since its number was counted there */
+export function sequenceScopeFields(entity: Entity | undefined): Set<string> {
+  return new Set(sequencesOf(entity).flatMap(s => s.scope));
 }
 
 /** A relation through a junction, resolved: the junction, its two relation fields and the entity on the far side */
@@ -1188,7 +1307,12 @@ const RESERVED_ACTION_NAMES = new Set<string>([...OPERATIONS, "actions"]);
 /** The field can hold a written value: it is not a key, not hidden, not raw bytes, and not filled by the database */
 function isWritable(field: Field): boolean {
   return (
-    !field.primary && !field.hidden && field.type !== "bytes" && field.default !== "now" && field.default !== "uuid"
+    !field.primary &&
+    !field.hidden &&
+    field.type !== "bytes" &&
+    field.type !== "sequence" &&
+    field.default !== "now" &&
+    field.default !== "uuid"
   );
 }
 
@@ -1236,6 +1360,10 @@ function valueProblem(field: Field, value: unknown): string | undefined {
     case "float":
     case "decimal":
       return typeof value === "number" ? undefined : "must be a number";
+    case "money":
+      return isMoneyString(value)
+        ? undefined
+        : 'must be a decimal string with at most four fraction digits ("19.99"), never a number';
     case "string":
     case "text":
       return typeof value === "string" ? undefined : "must be a string";
@@ -1580,7 +1708,8 @@ export function validateModel(model: Model): Diagnostic[] {
     // What follows is advice about a rule that stands; one that was refused gets none
     if (out.filter(d => d.level === "error").length > errorsBefore) return;
     const uniqueWith = (entity.unique ?? []).find(cols => cols.includes(fieldName));
-    if (field.unique || uniqueWith)
+    // A sequence is unique too, but no write carries one, so no write can ask whether a number exists
+    if ((field.unique || uniqueWith) && field.type !== "sequence")
       warn(
         "M175",
         `${spelled} is unique${uniqueWith && !field.unique ? ` with ${uniqueWith.filter(c => c !== fieldName).join(", ")}` : ""}: a write that repeats a value answers 409, which tells the writer the value exists whatever read says`,
@@ -1673,6 +1802,7 @@ export function validateModel(model: Model): Diagnostic[] {
       if (
         field.read_only &&
         !field.position &&
+        field.type !== "sequence" &&
         field.required &&
         field.default === undefined &&
         !field.primary &&
@@ -1712,6 +1842,71 @@ export function validateModel(model: Model): Diagnostic[] {
           "M142",
           `${entityName} has a position field, so it needs a single-column primary key (an id) to move a row by`,
           fpath
+        );
+    }
+    for (const sequence of sequencesOf(entity)) {
+      const fpath = `${base}.fields.${sequence.field}`;
+      const seen = new Set<string>();
+      for (const name of sequence.scope) {
+        const scoped = entity.fields[name];
+        const kinds = ["enum", "string", "integer", "bigint", "uuid", "boolean", "date"];
+        const problem = !scoped
+          ? "is not a field of the entity"
+          : seen.has(name)
+            ? "is named twice"
+            : !kinds.includes(scoped.type) || scoped.position || scoped.count_of
+              ? `is a ${scoped.position ? "position" : scoped.count_of ? "count" : scoped.type} field`
+              : !scoped.required && !scoped.primary
+                ? "is not required, and rows without it would share no counter the unique constraint holds"
+                : undefined;
+        seen.add(name);
+        if (problem)
+          error(
+            "M180",
+            `sequence scope ${name} ${problem}; a scope names required fields of ${entityName} that a row keeps: a relation, an enum, a string, an integer, a uuid, a boolean or a date`,
+            `${fpath}.scope`
+          );
+      }
+      // On a tenant table a counter that no relation ties to one tenant counts every tenant's rows together
+      const link = tenantTables[entityName];
+      const tenant = model.auth?.tenancy?.entity;
+      if (link && tenant && entityName !== tenant) {
+        const within = sequence.scope.some(name => {
+          const target = entity.fields[name]?.relation?.entity;
+          return target !== undefined && tenantTables[target] !== undefined;
+        });
+        if (!within)
+          warn(
+            "M181",
+            `${entityName}.${sequence.field} counts across tenants: ${entityName} is a tenant table and the scope names no relation to ${tenant} or to a row of one, so every number tells its ${tenant} how many rows the others made; count within the tenant with scope: [${link.path[0]}]`,
+            `${fpath}.scope`
+          );
+      }
+    }
+    for (const [fieldName, field] of Object.entries(entity.fields)) {
+      if (field.type !== "money") continue;
+      const fpath = `${base}.fields.${fieldName}`;
+      if (field.currency !== undefined && !CURRENCY_CODES.has(field.currency))
+        error("M182", `currency ${field.currency} is not an ISO 4217 code (USD, EUR, JPY)`, `${fpath}.currency`);
+      if (field.currency_field === undefined) continue;
+      const holder = entity.fields[field.currency_field];
+      const unknown = (holder?.enum_values ?? []).filter(v => !CURRENCY_CODES.has(v));
+      const problem = !holder
+        ? "is not a field of the entity"
+        : holder.type !== "enum"
+          ? `is a ${holder.type} field`
+          : !holder.required
+            ? "is not required, and an amount without a currency is no amount"
+            : holder.hidden
+              ? "is hidden, so an answer would carry the amount without its currency"
+              : unknown.length
+                ? `has ${unknown.length === 1 ? "a value that is" : "values that are"} no ISO 4217 code (${unknown.join(", ")})`
+                : undefined;
+      if (problem)
+        error(
+          "M182",
+          `currency_field ${field.currency_field} ${problem}; it names a required enum field of ${entityName} whose values are the ISO 4217 codes the rows may be in (enum_values: [USD, EUR])`,
+          `${fpath}.currency_field`
         );
     }
     const ownRelationNames = new Set(fieldRelationNamesOf(model, entityName));
@@ -2107,8 +2302,8 @@ export function validateModel(model: Model): Diagnostic[] {
     for (const f of resource.list?.search ?? []) {
       everyoneReads(f, "search", "which rows a search answers", `${base}.list.search`);
       if (!fieldNames.has(f)) error("M059", `search field ${f} does not exist`, `${base}.list.search`);
-      else if (!["string", "text"].includes(entity.fields[f].type))
-        error("M059", `search field ${f} must be a string or text field`, `${base}.list.search`);
+      else if (!["string", "text", "sequence"].includes(entity.fields[f].type))
+        error("M059", `search field ${f} must be a string, text or sequence field`, `${base}.list.search`);
     }
     for (const r of resource.list?.include ?? [])
       if (!relationNames.has(r))
@@ -2131,6 +2326,18 @@ export function validateModel(model: Model): Diagnostic[] {
             "M064",
             `${key} field ${f} is a count: the database keeps it; drop it from ${key}.fields`,
             `${base}.${key}.fields`
+          );
+        else if (entity.fields[f].type === "sequence")
+          error(
+            "M064",
+            `${key} field ${f} is a sequence: the database numbers it on create; drop it from ${key}.fields`,
+            `${base}.${key}.fields`
+          );
+        else if (key === "update" && sequenceScopeFields(entity).has(f))
+          error(
+            "M183",
+            `update field ${f} is in the scope of a sequence of ${resource.entity}: a row keeps the scope its number was counted in; drop it from update.fields`,
+            `${base}.update.fields`
           );
         else if (entity.fields[f].read_only)
           error(
@@ -2164,6 +2371,23 @@ export function validateModel(model: Model): Diagnostic[] {
           "M063",
           `create fields omit ${name}, which is required and has no default; list it, give it a default, or set it from the session with rules.create: owner:${name}`,
           `${base}.create.fields`
+        );
+      }
+    }
+    // An update that may change a currency field but not an amount that is in it: the amount would keep its digits in another currency
+    if (ops.has("update")) {
+      const owner = directOwnerField(entity.rules?.update);
+      const written = (f: string) =>
+        isClientWritable(entity.fields[f]) &&
+        f !== owner &&
+        (resource.update?.fields ? resource.update.fields.includes(f) : true);
+      for (const [name, field] of Object.entries(entity.fields)) {
+        const holder = field.type === "money" ? field.currency_field : undefined;
+        if (!holder || !entity.fields[holder] || !written(holder) || written(name)) continue;
+        warn(
+          "M184",
+          `${resourceName}.update writes ${holder}, the currency of ${resource.entity}.${name}, but not ${name}: a row that has an amount then refuses every change of ${holder} (400), because the amount cannot be sent with it; leave ${holder} out of update.fields, or let update write ${name}`,
+          `${base}.update`
         );
       }
     }
@@ -2573,6 +2797,17 @@ function checkActionFields(
   for (const [name, field] of Object.entries(fields)) {
     if (field.primary || field.hidden || field.relation || field.type === "file" || field.type === "bytes")
       error("M090", `action field ${name} cannot be primary, hidden, a relation, a file or bytes`, `${apath}.${name}`);
+    if (field.type === "sequence")
+      error("M090", `action field ${name} cannot be a sequence: only a stored row is numbered`, `${apath}.${name}`);
+    if (field.type === "money" && field.currency_field !== undefined)
+      error(
+        "M090",
+        `action field ${name} names its currency with currency: <code>; currency_field reads a stored row`,
+        `${apath}.${name}`
+      );
+    if (field.type === "money" && field.currency !== undefined && !CURRENCY_CODES.has(field.currency))
+      error("M182", `currency ${field.currency} is not an ISO 4217 code (USD, EUR, JPY)`, `${apath}.${name}.currency`);
+
     if (name === "id") error("M090", `action field id is reserved for the row's id`, `${apath}.${name}`);
   }
 }

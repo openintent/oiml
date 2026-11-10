@@ -22,7 +22,7 @@ describe("eval corpus", () => {
     const cases = await loadCases(CASES);
     expect(cases.length).toBeGreaterThan(40);
     const oracles = cases.filter(c => c.oracle);
-    expect(oracles.length).toBe(39);
+    expect(oracles.length).toBe(40);
     for (const c of oracles) {
       const yaml = await readFile(path.join(REPO, c.oracle!), "utf8");
       const checked = await checkedWith(c, yaml);

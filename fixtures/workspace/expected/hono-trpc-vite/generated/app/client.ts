@@ -134,6 +134,13 @@ export const client = {
     approve: (input: Inputs["requests"]["approve"]) => trpc.requests.approve.mutate(input),
     decline: (input: Inputs["requests"]["decline"]) => trpc.requests.decline.mutate(input),
     reopen: (input: Inputs["requests"]["reopen"]) => trpc.requests.reopen.mutate(input)
+  },
+  invoices: {
+    list: (input: Inputs["invoices"]["list"]) => trpc.invoices.list.query(input),
+    get: (input: Inputs["invoices"]["get"]) => trpc.invoices.get.query(input),
+    create: (input: Inputs["invoices"]["create"]) => trpc.invoices.create.mutate(input),
+    update: (input: Inputs["invoices"]["update"]) => trpc.invoices.update.mutate(input),
+    delete: (input: Inputs["invoices"]["delete"]) => trpc.invoices.delete.mutate(input)
   }
 };
 

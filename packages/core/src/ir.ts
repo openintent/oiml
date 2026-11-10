@@ -22,6 +22,7 @@ import {
   archiveOf,
   countLink,
   positionOf,
+  sequencesOf,
   tenantLinks,
   throughRelation,
   transitionsOf,
@@ -46,6 +47,8 @@ export type Scalar =
   | "bigint"
   | "float"
   | "decimal"
+  /** An amount: numeric(19, 4) in the database, a decimal string everywhere else, never a float */
+  | "money"
   | "boolean"
   | "datetime"
   | "date"
@@ -63,6 +66,19 @@ export type TypeIR =
 
 export type DefaultIR = { kind: "now" } | { kind: "uuid" } | { kind: "literal"; value: string | number | boolean };
 
+/** A column's validation as the backends read it: numeric bounds only; a money column's bounds are in `money` */
+export type ColumnValidate = Omit<Validate, "min" | "max"> & { min?: number; max?: number };
+
+/** What a money column's amounts are in, and the bounds they are held to: decimal strings, compared exactly */
+export interface MoneyIR {
+  /** The ISO 4217 code of every amount, when the field names one */
+  currency?: string;
+  /** The enum column of the same entity holding each row's code, when the field names that instead */
+  currencyField?: string;
+  min?: string;
+  max?: string;
+}
+
 export interface ColumnIR {
   name: string;
   type: TypeIR;
@@ -76,8 +92,12 @@ export interface ColumnIR {
   /** Database-generated integer identity */
   generated?: "identity";
   maxLength?: number;
-  validate?: Validate;
+  validate?: ColumnValidate;
   description?: string;
+  /** Present on a money column (`type.scalar` is `money`) */
+  money?: MoneyIR;
+  /** A number the database assigns on insert (`EntityIR.sequences`): a string, never null, read-only to clients */
+  sequence?: { prefix: string; width: number };
   /** Relation name when this column is a foreign key */
   relation?: string;
   /** Enum values for columns that are not stored (action inputs and results), where no database enum exists */
@@ -189,6 +209,27 @@ export interface CountIR {
    */
   hold?: string;
 }
+
+/** A sequence field: the counter each new row takes its number from, and how the number is written */
+export interface SequenceIR {
+  /** The string column on this entity */
+  column: string;
+  /** The counter's name in the counter table: `<table>.<column>` */
+  key: string;
+  prefix: string;
+  /** The digits a number is padded to; a longer one keeps all its digits */
+  width: number;
+  /** The columns a number counts within; empty for one counter for the whole table */
+  scope: string[];
+  /** UNIQUE (scope..., column) */
+  unique: { name: string; columns: string[] };
+  /** The trigger function that numbers a new row, and its trigger */
+  function: string;
+  trigger: string;
+}
+
+/** The table every sequence's counters live in: one row per sequence and scope, holding the last number given */
+export const SEQUENCE_TABLE = "osl_sequences";
 
 /** An ordered collection: rows that hold a place among the rows sharing a parent */
 export interface OrderIR {
@@ -483,6 +524,8 @@ export interface EntityIR {
   transitions?: TransitionsIR;
   /** The count_of fields of the entity; absent without any */
   counts?: CountIR[];
+  /** The sequence fields of the entity; absent without any */
+  sequences?: SequenceIR[];
 }
 
 export interface EnumIR {
@@ -782,6 +825,7 @@ const SCALARS = new Set<string>([
   "bigint",
   "float",
   "decimal",
+  "money",
   "boolean",
   "datetime",
   "date",
@@ -904,6 +948,8 @@ function columnType(entityName: string, fieldName: string, field: Field): TypeIR
     if (field.file?.max_size) type.maxSize = field.file.max_size;
     return type;
   }
+  // A sequence is a string to everything that reads it; the database writes it
+  if (field.type === "sequence") return { kind: "scalar", scalar: "string" };
   if (!SCALARS.has(field.type)) throw new Error(`unknown field type ${field.type}`);
   return { kind: "scalar", scalar: field.type as Scalar };
 }
@@ -1151,9 +1197,23 @@ export function compile(input: Model): IR {
       if (field.type === "uuid") column.default = { kind: "uuid" };
       else if (field.type === "integer" || field.type === "bigint") column.generated = "identity";
     }
+    if (field.type === "sequence" && stored) {
+      // The database numbers it: a trigger overwrites the default on every insert, and no client writes it
+      column.nullable = false;
+      column.readOnly = true;
+      column.default = { kind: "literal", value: "" };
+      column.sequence = { prefix: field.prefix ?? "", width: field.width ?? 1 };
+    }
     if (field.max_length) column.maxLength = field.max_length;
-    else if (field.type === "string") column.maxLength = 255;
-    if (field.validate) column.validate = field.validate;
+    else if (field.type === "string" || field.type === "sequence") column.maxLength = 255;
+    if (field.type === "money") {
+      const money: MoneyIR = field.currency !== undefined ? { currency: field.currency } : {};
+      if (field.currency_field !== undefined) money.currencyField = field.currency_field;
+      // Bounds on an amount are decimal strings, held apart from the numeric bounds the other types carry
+      if (typeof field.validate?.min === "string") money.min = field.validate.min;
+      if (typeof field.validate?.max === "string") money.max = field.validate.max;
+      column.money = money;
+    } else if (field.validate) column.validate = field.validate as ColumnValidate;
     if (field.description) column.description = field.description;
     return column;
   };
@@ -1271,6 +1331,25 @@ export function compile(input: Model): IR {
       display: displayColumn(columns, primaryKey, foreignKeys)
     };
     if (isSystem) compiled.system = true;
+    const sequences = sequencesOf(entity);
+    if (sequences.length) {
+      compiled.sequences = sequences.map(sequence => {
+        const columns = [...sequence.scope, sequence.field];
+        const unique = { name: sqlName(`${table}_${columns.join("_")}_key`), columns };
+        // Unique within its scope, like any unique the model lists; one the model lists itself is not repeated
+        if (!compiled.uniques.some(u => u.columns.join(",") === columns.join(","))) compiled.uniques.push(unique);
+        return {
+          column: sequence.field,
+          key: `${table}.${sequence.field}`,
+          prefix: sequence.prefix,
+          width: sequence.width,
+          scope: sequence.scope,
+          unique: compiled.uniques.find(u => u.columns.join(",") === columns.join(","))!,
+          function: sqlName(`osl_sequence_${table}_${sequence.field}`),
+          trigger: sqlName(`osl_sequence_${sequence.field}`)
+        };
+      });
+    }
     const position = positionOf(entity);
     if (position) {
       const parentEntity = entity.fields[position.within].relation!.entity;
@@ -1673,10 +1752,13 @@ export function compile(input: Model): IR {
           // with alternatives (an admin may reassign) the column stays writable
           const rule = entity.rules.update;
           const ownerField = ruleAlternatives(rule).length === 1 ? directOwnerOf(rule) : undefined;
-          // An ordered row keeps its parent: its place is among that parent's rows
+          // An ordered row keeps its parent: its place is among that parent's rows. A numbered row keeps the
+          // scope its number was counted in.
+          const scoped = new Set((entity.sequences ?? []).flatMap(s => s.scope));
           const fields = (resource.update?.fields ?? writable).filter(
-            f => f !== ownerField && f !== entity.order?.within
+            f => f !== ownerField && f !== entity.order?.within && !scoped.has(f)
           );
+
           operations.push({ kind, method: "PATCH", path: `${path}/{id}`, fields, rule });
           break;
         }

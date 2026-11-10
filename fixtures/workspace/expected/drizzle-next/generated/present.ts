@@ -66,9 +66,9 @@ export function presentUser(row: schema.User): PublicUser {
   return { id: row.id, email: row.email, name: row.name, created_at: row.created_at, team_count: row.team_count };
 }
 
-export type PublicTeam = Pick<schema.Team, "id" | "name" | "created_at"> & Partial<Pick<schema.Team, "pending_requests">>;
+export type PublicTeam = Pick<schema.Team, "id" | "name" | "created_at" | "invoice_count"> & Partial<Pick<schema.Team, "pending_requests">>;
 export function presentTeam(row: schema.Team, viewer: Viewer): PublicTeam {
-  const out: PublicTeam = { id: row.id, name: row.name, created_at: row.created_at };
+  const out: PublicTeam = { id: row.id, name: row.name, created_at: row.created_at, invoice_count: row.invoice_count };
   if (reads(FIELD_RULES.Team.pending_requests, viewer, row)) out.pending_requests = row.pending_requests;
   return out;
 }
@@ -130,6 +130,11 @@ export function presentMilestoneLabel(row: schema.MilestoneLabel): PublicMilesto
 export type PublicRequest = Pick<schema.Request, "id" | "team_id" | "requester_id" | "title" | "amount" | "status" | "decided_at" | "created_at">;
 export function presentRequest(row: schema.Request): PublicRequest {
   return { id: row.id, team_id: row.team_id, requester_id: row.requester_id, title: row.title, amount: row.amount, status: row.status, decided_at: row.decided_at, created_at: row.created_at };
+}
+
+export type PublicInvoice = Pick<schema.Invoice, "id" | "team_id" | "number" | "customer" | "currency" | "total" | "fee" | "created_at">;
+export function presentInvoice(row: schema.Invoice): PublicInvoice {
+  return { id: row.id, team_id: row.team_id, number: row.number, customer: row.customer, currency: row.currency, total: row.total, fee: row.fee, created_at: row.created_at };
 }
 
 export type PublicOslAuthToken = Pick<schema.OslAuthToken, "id" | "token_hash" | "email" | "purpose" | "expires_at" | "created_at">;
