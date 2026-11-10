@@ -508,3 +508,10 @@ failures were read one by one, and the grading changed where it, not the agent, 
   runner itself: it kept the fixture's `publish` handler for a `publish` the proposal had redescribed, so
   `--implement` never wrote it. The runner keeps a base handler only for a declaration the proposal leaves as it was.
 
+Measured again the same day, at `41c1a00`: the run's proposals resumed with handlers written again passed 115, and
+the six cases that needed a new answer were proposed live again, so together **118 of 121**. M078 refused
+`fx-ws-9-channels`' first answer (its joins sent `user_id`, which the create rule binds to the session) and the
+retry passed. Three still fail, as the agent's: `fx-blog-12-followers` and `fx-blog-13-author-and-article-pages`
+again expected alice's starting name after blog FEAT-7's scenario had renamed her, the reference sentence
+notwithstanding; and `empty-org-public-roadmap` tried a public detail page, met M085 on its path, and retried with
+an authenticated resource page instead. The live run cost $12.01 for proposals; the two re-measures $3.54.
