@@ -8,9 +8,9 @@ export function presentUser(row: schema.User): PublicUser {
   return { id: row.id, email: row.email, name: row.name, created_at: row.created_at, team_count: row.team_count };
 }
 
-export type PublicTeam = Pick<schema.Team, "id" | "name" | "created_at">;
+export type PublicTeam = Pick<schema.Team, "id" | "name" | "created_at" | "pending_requests">;
 export function presentTeam(row: schema.Team): PublicTeam {
-  return { id: row.id, name: row.name, created_at: row.created_at };
+  return { id: row.id, name: row.name, created_at: row.created_at, pending_requests: row.pending_requests };
 }
 
 export type PublicTeamMember = Pick<schema.TeamMember, "id" | "team_id" | "user_id" | "role" | "created_at">;
@@ -61,6 +61,11 @@ export function presentLabel(row: schema.Label): PublicLabel {
 export type PublicMilestoneLabel = Pick<schema.MilestoneLabel, "id" | "team_id" | "milestone_id" | "label_id">;
 export function presentMilestoneLabel(row: schema.MilestoneLabel): PublicMilestoneLabel {
   return { id: row.id, team_id: row.team_id, milestone_id: row.milestone_id, label_id: row.label_id };
+}
+
+export type PublicRequest = Pick<schema.Request, "id" | "team_id" | "requester_id" | "title" | "amount" | "status" | "decided_at" | "created_at">;
+export function presentRequest(row: schema.Request): PublicRequest {
+  return { id: row.id, team_id: row.team_id, requester_id: row.requester_id, title: row.title, amount: row.amount, status: row.status, decided_at: row.decided_at, created_at: row.created_at };
 }
 
 export type PublicOslAuthToken = Pick<schema.OslAuthToken, "id" | "token_hash" | "email" | "purpose" | "expires_at" | "created_at">;

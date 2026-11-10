@@ -34,6 +34,9 @@ import {
   splitWhen,
   ThroughRelation,
   Timer,
+  Transitions,
+  TRANSITIONS_FIELD_KEY,
+  transitionsOf,
   type Model as ModelType
 } from "./model.js";
 
@@ -56,6 +59,14 @@ export const DiffOp = z.discriminatedUnion("op", [
   /** true or options: the entity archives (the field is added when it lacks it). false: it no longer does; the field stays */
   z
     .object({ op: z.literal("set_archive"), entity: EntityName, archive: z.union([z.boolean(), ArchiveOptions]) })
+    .strict(),
+  /** The block replaces the entity's transitions; false: the entity has none any more (the field and the stamps stay) */
+  z
+    .object({
+      op: z.literal("set_transitions"),
+      entity: EntityName,
+      transitions: z.union([z.literal(false), Transitions])
+    })
     .strict(),
   z
     .object({
@@ -250,6 +261,12 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
             fail(`${op.entity}.${fieldName} is a position within ${op.name}; remove or change that field first`);
         if (archiveOf(entity)?.field === op.name)
           fail(`${op.name} is the archive field of ${op.entity}; end the archive first (set_archive: false)`);
+        const machine = transitionsOf(entity);
+        if (machine?.field === op.name)
+          fail(`${op.name} is the field of ${op.entity}'s transitions; end them first (set_transitions: false)`);
+        const stamping = machine?.steps.find(step => step.stamp === op.name);
+        if (stamping)
+          fail(`the transition ${stamping.name} of ${op.entity} stamps ${op.name}; change the transitions first`);
         forEachCount(model, (owner, countName, count, counted) => {
           if (counted.entity !== op.entity) return;
           if (counted.field === op.name)
@@ -312,6 +329,13 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
           if (field.position?.within === op.from) field.position.within = op.to;
         if (archiveOf(entity)?.field === op.from)
           entity.archive = { ...(entity.archive === true ? {} : entity.archive), field: op.to };
+        // The field a state machine moves, and the stamps of its transitions (their rules went with the others above)
+        if (entity.transitions) {
+          if (entity.transitions.field === op.from) entity.transitions.field = op.to;
+          for (const [name, step] of Object.entries(entity.transitions))
+            if (name !== TRANSITIONS_FIELD_KEY && typeof step !== "string" && step.stamp === op.from)
+              step.stamp = op.to;
+        }
         // A count on another entity may name the field in its where
         forEachCount(model, (_owner, _countName, count, counted) => {
           if (counted.entity !== op.entity || !counted.where.some(c => c.field === op.from)) return;
@@ -377,6 +401,13 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
         // The field is the compiler's to add; one the entity already has is used as it is (validation says if it fits)
         const name = (op.archive === true ? undefined : op.archive.field) ?? ARCHIVE_FIELD;
         if (!entity.fields[name]) entity.fields[name] = { type: "datetime", read_only: true };
+        break;
+      }
+
+      case "set_transitions": {
+        const entity = entityOf(op.entity);
+        if (op.transitions === false) delete entity.transitions;
+        else entity.transitions = op.transitions;
         break;
       }
 
@@ -560,6 +591,11 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
  */
 function forEachRule(model: ModelType, fn: (rule: string, entity: string, where: string) => string): void {
   for (const [entityName, entity] of Object.entries(model.entities)) {
+    // The rules of an entity's transitions name its fields like any rule of its own
+    for (const [name, step] of Object.entries(entity.transitions ?? {})) {
+      if (name === TRANSITIONS_FIELD_KEY || typeof step === "string" || !step.rule) continue;
+      step.rule = fn(step.rule, entityName, `rule of the transition ${name} of ${entityName}`);
+    }
     if (!entity.rules) continue;
     for (const action of ["read", "create", "update", "delete"] as const) {
       const rule = entity.rules[action];

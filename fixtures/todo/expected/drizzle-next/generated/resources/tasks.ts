@@ -7,10 +7,11 @@ import * as schema from "../db/schema";
 import { tasks as tasksTable } from "../db/schema";
 import { checkRule, denied, type Rule } from "../access";
 import { handlers } from "../actions";
+import { taskTransitions } from "../row-actions";
 import { getSession, type Session } from "../auth";
-import { created, handleError, noContent, notFound, ok, parseBody, parseId, parseQuery } from "../http";
+import { created, fail, handleError, noContent, notFound, ok, parseBody, parseId, parseQuery } from "../http";
 import { presentProject, presentTask, presentTaskNote } from "../present";
-import { tasksClearDoneInput, tasksCompleteInput, tasksCreateInput, tasksId, tasksListQuery, tasksUpdateInput } from "../validation";
+import { tasksClearDoneInput, tasksCompleteInput, tasksCreateInput, tasksFinishInput, tasksId, tasksListQuery, tasksPauseInput, tasksStartInput, tasksUpdateInput } from "../validation";
 import { hooks } from "@/src/extensions/tasks";
 
 export type RouteContext = { params: Promise<{ id: string }> };
@@ -25,7 +26,10 @@ const RULES = {
 
 const ACTION_RULES = {
   complete: {"kind":"public","when":{"field":"status","op":"ne","value":"done"}} as Rule,
-  clear_done: {"kind":"public"} as Rule
+  clear_done: {"kind":"public"} as Rule,
+  start: {"kind":"public","when":{"field":"status","op":"ne","value":"done"}} as Rule,
+  pause: {"kind":"public","when":{"field":"status","op":"ne","value":"done"}} as Rule,
+  finish: {"kind":"public","when":{"field":"status","op":"ne","value":"done"}} as Rule
 };
 
 type ListRow = schema.Task & { project: schema.Project | null };
@@ -176,6 +180,75 @@ export const tasks = {
       const result = await handlers.tasks_clear_done({ input: body.data, row: undefined, session, db, now: new Date() });
 
       return ok(result);
+    } catch (err) {
+      return handleError(err, "write");
+    }
+  },
+
+  /** POST /api/tasks/{id}/start */
+  async start(request: Request, ctx: RouteContext): Promise<Response> {
+    try {
+      const session = await getSession(request);
+      const verdict = checkRule(ACTION_RULES.start, session);
+      if (!verdict.ok) return denied(verdict);
+      const id = parseId(tasksId, (await ctx.params).id);
+      if (!id.ok) return id.response;
+      const current = await db.query.tasks.findFirst({ where: eq(tasksTable.id, id.data) });
+      if (!current) return notFound();
+      const rowVerdict = checkRule(ACTION_RULES.start, session, current);
+      if (!rowVerdict.ok) return denied(rowVerdict);
+      const body = await parseBody(tasksStartInput, request);
+      if (!body.ok) return body.response;
+      const result = await taskTransitions.start(current.id);
+      if (!result) fail(409, "invalid_transition", `start needs status todo; this row's status is ${current.status}`);
+
+      return ok(presentTask(result));
+    } catch (err) {
+      return handleError(err, "write");
+    }
+  },
+
+  /** POST /api/tasks/{id}/pause */
+  async pause(request: Request, ctx: RouteContext): Promise<Response> {
+    try {
+      const session = await getSession(request);
+      const verdict = checkRule(ACTION_RULES.pause, session);
+      if (!verdict.ok) return denied(verdict);
+      const id = parseId(tasksId, (await ctx.params).id);
+      if (!id.ok) return id.response;
+      const current = await db.query.tasks.findFirst({ where: eq(tasksTable.id, id.data) });
+      if (!current) return notFound();
+      const rowVerdict = checkRule(ACTION_RULES.pause, session, current);
+      if (!rowVerdict.ok) return denied(rowVerdict);
+      const body = await parseBody(tasksPauseInput, request);
+      if (!body.ok) return body.response;
+      const result = await taskTransitions.pause(current.id);
+      if (!result) fail(409, "invalid_transition", `pause needs status doing; this row's status is ${current.status}`);
+
+      return ok(presentTask(result));
+    } catch (err) {
+      return handleError(err, "write");
+    }
+  },
+
+  /** POST /api/tasks/{id}/finish */
+  async finish(request: Request, ctx: RouteContext): Promise<Response> {
+    try {
+      const session = await getSession(request);
+      const verdict = checkRule(ACTION_RULES.finish, session);
+      if (!verdict.ok) return denied(verdict);
+      const id = parseId(tasksId, (await ctx.params).id);
+      if (!id.ok) return id.response;
+      const current = await db.query.tasks.findFirst({ where: eq(tasksTable.id, id.data) });
+      if (!current) return notFound();
+      const rowVerdict = checkRule(ACTION_RULES.finish, session, current);
+      if (!rowVerdict.ok) return denied(rowVerdict);
+      const body = await parseBody(tasksFinishInput, request);
+      if (!body.ok) return body.response;
+      const result = await taskTransitions.finish(current.id, new Date());
+      if (!result) fail(409, "invalid_transition", `finish needs status doing; this row's status is ${current.status}`);
+
+      return ok(presentTask(result));
     } catch (err) {
       return handleError(err, "write");
     }

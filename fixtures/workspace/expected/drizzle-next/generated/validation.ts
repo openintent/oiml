@@ -260,6 +260,30 @@ export const milestone_labelsCreateInput = z
   })
   .strict();
 
+export const requestsId = z.string().uuid();
+export const requestsListQuery = z
+  .object({
+    page: z.coerce.number().int().min(1).default(1),
+    page_size: z.coerce.number().int().min(1).max(200).default(20),
+    team_id: z.string().uuid().optional(),
+    status: z.enum(["pending", "approved", "declined", "expired"]).optional(),
+    requester_id: z.string().uuid().optional()
+  })
+  .strict();
+export const requestsCreateInput = z
+  .object({
+    team_id: z.string().uuid(),
+    title: z.string().min(1).max(160),
+    amount: z.number().int().min(1)
+  })
+  .strict();
+export const requestsUpdateInput = z
+  .object({
+    title: z.string().min(1).max(160).optional(),
+    amount: z.number().int().min(1).optional()
+  })
+  .strict();
+
 export const tasksRemindInput = z.object({}).strict();
 export type TasksRemindInput = z.infer<typeof tasksRemindInput>;
 
@@ -284,3 +308,15 @@ export type LabelsArchiveInput = z.infer<typeof labelsArchiveInput>;
 
 export const labelsRestoreInput = z.object({}).strict();
 export type LabelsRestoreInput = z.infer<typeof labelsRestoreInput>;
+
+export const requestsApproveInput = z.object({}).strict();
+export type RequestsApproveInput = z.infer<typeof requestsApproveInput>;
+
+export const requestsDeclineInput = z.object({}).strict();
+export type RequestsDeclineInput = z.infer<typeof requestsDeclineInput>;
+
+export const requestsReopenInput = z.object({}).strict();
+export type RequestsReopenInput = z.infer<typeof requestsReopenInput>;
+
+export const requestsExpireInput = z.object({}).strict();
+export type RequestsExpireInput = z.infer<typeof requestsExpireInput>;

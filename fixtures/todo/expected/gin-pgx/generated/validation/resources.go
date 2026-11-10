@@ -37,7 +37,6 @@ var TasksListQuery = Query{PageSize: 50, Filters: []Filter{
 // TasksCreateInput validates POST /api/tasks bodies.
 var TasksCreateInput = Object{Fields: []Field{
 	{Name: "title", Required: true, Type: String{MaxLength: 200}},
-	{Name: "status", Type: Enum{Values: []string{"todo", "doing", "done"}}},
 	{Name: "estimate_hours", Nullable: true, Type: Decimal{}},
 	{Name: "due_on", Nullable: true, Type: Date{}},
 	{Name: "assignee", Nullable: true, Type: String{MaxLength: 80}},
@@ -47,7 +46,6 @@ var TasksCreateInput = Object{Fields: []Field{
 // TasksUpdateInput validates PATCH /api/tasks/{id} bodies.
 var TasksUpdateInput = Object{Fields: []Field{
 	{Name: "title", Type: String{MaxLength: 200}},
-	{Name: "status", Type: Enum{Values: []string{"todo", "doing", "done"}}},
 	{Name: "estimate_hours", Nullable: true, Type: Decimal{}},
 	{Name: "due_on", Nullable: true, Type: Date{}},
 	{Name: "assignee", Nullable: true, Type: String{MaxLength: 80}},
@@ -83,3 +81,12 @@ var TasksCompleteInput = Object{}
 
 // TasksClearDoneInput validates POST /api/tasks/clear_done bodies.
 var TasksClearDoneInput = Object{}
+
+// TasksStartInput validates POST /api/tasks/{id}/start bodies.
+var TasksStartInput = Object{}
+
+// TasksPauseInput validates POST /api/tasks/{id}/pause bodies.
+var TasksPauseInput = Object{}
+
+// TasksFinishInput validates POST /api/tasks/{id}/finish bodies.
+var TasksFinishInput = Object{}

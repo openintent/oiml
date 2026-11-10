@@ -8,6 +8,7 @@ import * as schema from "../../db/schema";
 import { labels as labelsTable } from "../../db/schema";
 import { presentLabel } from "../../present";
 import { labelsArchiveInput, labelsCreateInput, labelsId, labelsListQuery, labelsRestoreInput, labelsUpdateInput } from "../../validation";
+import { setLabelArchived } from "../../row-actions";
 import { checkRule, memberTenantIds, rulesDisabled, verdict, type Rule } from "../access";
 import type { Session } from "../auth";
 import { fail, notFound, parseId, toTRPCError } from "../errors";
@@ -39,16 +40,6 @@ function presentListRow(row: ListRow) {
 type GetRow = schema.Label;
 function presentGetRow(row: GetRow) {
   return { ...presentLabel(row) };
-}
-
-/** archive and restore: sets archived_at on a live row or clears it on an archived one, in one statement; undefined when there was nothing to do */
-async function setArchived(row: schema.Label, archived: boolean): Promise<schema.Label | undefined> {
-  const [updated] = await db
-    .update(labelsTable)
-    .set({ archived_at: archived ? new Date() : null })
-    .where(and(eq(labelsTable.id, row.id), archived ? isNull(labelsTable.archived_at) : isNotNull(labelsTable.archived_at)))
-    .returning();
-  return updated;
 }
 
 export const labelsRouter = router({
@@ -159,7 +150,7 @@ export const labelsRouter = router({
     checkRule(ACTION_RULES.archive, ctx.session, current);
     try {
       void input;
-      const result = await setArchived(current, true);
+      const result = await setLabelArchived(current.id, true, new Date());
       if (!result) fail(409, "conflict", "The row is archived already");
 
       return presentLabel(result);
@@ -181,7 +172,7 @@ export const labelsRouter = router({
     checkRule(ACTION_RULES.restore, ctx.session, current);
     try {
       void input;
-      const result = await setArchived(current, false);
+      const result = await setLabelArchived(current.id, false, new Date());
       if (!result) fail(409, "conflict", "The row is not archived");
 
       return presentLabel(result);

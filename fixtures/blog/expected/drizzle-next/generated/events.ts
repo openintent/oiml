@@ -2,6 +2,7 @@
 // Do not edit: this file is rewritten on every osl generate.
 
 import type { PublicArticle } from "./present";
+import * as post_approved from "@/src/events/post_approved";
 import * as post_archived from "@/src/events/post_archived";
 import * as post_created from "@/src/events/post_created";
 import * as post_published from "@/src/events/post_published";
@@ -9,6 +10,7 @@ import { enqueue } from "./jobs";
 
 export type EventPayloads = {
   "Article.created": PublicArticle;
+  "posts.approve": PublicArticle;
   "posts.archive": PublicArticle;
   "posts.publish": PublicArticle;
 };
@@ -18,6 +20,7 @@ type Handler<K extends keyof EventPayloads> = (payload: EventPayloads[K]) => Pro
 /** Handlers run in the request, before it answers */
 const inline: { [K in keyof EventPayloads]: Handler<K>[] } = {
   "Article.created": [post_created.handler],
+  "posts.approve": [post_approved.handler],
   "posts.archive": [],
   "posts.publish": []
 };
@@ -25,6 +28,7 @@ const inline: { [K in keyof EventPayloads]: Handler<K>[] } = {
 /** Handlers run by the worker from a job in the database, with retries */
 const queued: { [K in keyof EventPayloads]: Handler<K>[] } = {
   "Article.created": [],
+  "posts.approve": [],
   "posts.archive": [post_archived.handler],
   "posts.publish": [post_published.handler]
 };

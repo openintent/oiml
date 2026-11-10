@@ -5,6 +5,33 @@ fixture intent on all three backends before it is listed here.
 
 ## Unreleased
 
+- State machines (round B4 of the road to 1.0.0). `transitions` on an entity names one `read_only` enum field and,
+  per transition, the states it may start from, the state it ends in, who may run it (`rule`, default the update
+  rule) and an optional datetime `stamp`. Each transition is a row action the compiler writes on every resource
+  over the entity, with no handler of yours: `POST <resource>/{id}/<name>` checks the read rule and the
+  transition's rule, then runs one conditional update, and a row whose state is not in `from` answers 409 with code
+  `invalid_transition`; of two callers at once one moves the row. Scenario steps call it, events follow it, and a
+  timer runs it as the system, where a row in another state is left alone; a transition with `rule: none` has no
+  route and is a timer's alone. Timers now also run the compiler's `archive` and `restore` (round B3 refused that
+  with M133), and after a timer ran one of these the entity's timers are scheduled again, so a second timer can
+  wait on what the first one stamped. The statements of `archive`, `restore` and the transitions live in one
+  generated module per backend (`generated/row-actions.ts`, `generated/rowactions` in Go), which handlers and
+  timers both call: a project whose entities archive gets that file on its next generate. A board page grouped by
+  the field shows the enum's values as columns and lets a card be dropped only on a column a transition takes it to
+  from where it is, under a rule its viewer passes; the drop runs the transition, a refusal puts the card back, and
+  the page needs no update operation. A detail pane shows a transition's button only on a row it starts from.
+  Under `isolation: database` nothing is added to the database: the row is loaded under the policy, so another
+  tenant's row answers what the rule answers (or 404 under `hidden: not_found`) before the update is tried. An
+  archived row still takes its transitions; a count with a `where` on the field follows them. The rule walk
+  predicts 200 or 409 from the row's state. New op and key: `set_transitions`, `Entity.transitions`; diagnostics
+  M160 to M163, M151 for a transition named `archive` or `restore` on an archiving entity, and M087 for a board
+  over a read-only enum without transitions. Not built: input on a transition, two state machines on one entity,
+  a history of transitions; on the tRPC backend the code `invalid_transition` is the cause of a `CONFLICT` error
+  and is not on the wire, like every code there. Fixtures: blog FEAT-14 (an editorial review beside the `publish`
+  action, a timer that retires and one that archives, a count of approved articles), todo TODO-8 (the task flow
+  beside the `complete` action, which keeps its handler, and the board) and workspace
+  WS-14 (requests and approvals under `isolation: database`, with an expiry only a timer runs). Design:
+  `docs/designs/state-machines.md`.
 - Archive and counts (round B3 of the road to 1.0.0). `archive: true` on an entity (or `{ field, rule }`) gives it
   a server-owned `archived_at`: lists leave archived rows out unless asked with `?archived=true`, every resource
   over the entity gets the row actions `archive` and `restore` without declaring them (under the update rule or the

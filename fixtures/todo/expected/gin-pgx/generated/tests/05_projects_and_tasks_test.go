@@ -10,8 +10,8 @@ import (
 	"todo/generated/client"
 )
 
-// TestScenario01ProjectsAndTasks is the scenario "projects and tasks".
-func TestScenario01ProjectsAndTasks(t *testing.T) {
+// TestScenario05ProjectsAndTasks is the scenario "projects and tasks".
+func TestScenario05ProjectsAndTasks(t *testing.T) {
 	vars := map[string]any{}
 	t.Run("1. projects.create", func(t *testing.T) {
 		c := client.New()
@@ -56,18 +56,26 @@ func TestScenario01ProjectsAndTasks(t *testing.T) {
 		c := client.New()
 		scope := client.WithActor(vars, nil)
 		path := "/api/tasks/" + url.PathEscape(client.Stringify(client.Resolve("{task}", scope)))
-		r := request(t, c, "PATCH", path, nil, client.Resolve(client.MustJSON("{\"status\":\"doing\",\"assignee\":\"Sam\"}"), scope))
+		r := request(t, c, "PATCH", path, nil, client.Resolve(client.MustJSON("{\"assignee\":\"Sam\"}"), scope))
+		expectStatus(t, r, 200)
+		expectBody(t, r, client.Resolve(client.MustJSON("{\"data\":{\"status\":\"todo\",\"assignee\":\"Sam\"}}"), scope))
+	})
+	t.Run("7. tasks.start", func(t *testing.T) {
+		c := client.New()
+		scope := client.WithActor(vars, nil)
+		path := "/api/tasks/" + url.PathEscape(client.Stringify(client.Resolve("{task}", scope))) + "/start"
+		r := request(t, c, "POST", path, nil, map[string]any{})
 		expectStatus(t, r, 200)
 		expectBody(t, r, client.Resolve(client.MustJSON("{\"data\":{\"status\":\"doing\",\"assignee\":\"Sam\"}}"), scope))
 	})
-	t.Run("7. tasks.update", func(t *testing.T) {
+	t.Run("8. tasks.update", func(t *testing.T) {
 		c := client.New()
 		scope := client.WithActor(vars, nil)
 		path := "/api/tasks/" + url.PathEscape(client.Stringify(client.Resolve("{task}", scope)))
 		r := request(t, c, "PATCH", path, nil, client.Resolve(client.MustJSON("{\"status\":\"blocked\"}"), scope))
 		expectStatus(t, r, 400)
 	})
-	t.Run("8. tasks.list", func(t *testing.T) {
+	t.Run("9. tasks.list", func(t *testing.T) {
 		c := client.New()
 		scope := client.WithActor(vars, nil)
 		path := "/api/tasks"
@@ -75,7 +83,7 @@ func TestScenario01ProjectsAndTasks(t *testing.T) {
 		expectStatus(t, r, 200)
 		expectBody(t, r, client.Resolve(client.MustJSON("{\"data\":[{\"title\":\"Paint fence\",\"project\":{\"name\":\"Home\"}}]}"), scope))
 	})
-	t.Run("9. projects.get", func(t *testing.T) {
+	t.Run("10. projects.get", func(t *testing.T) {
 		c := client.New()
 		scope := client.WithActor(vars, nil)
 		path := "/api/projects/" + url.PathEscape(client.Stringify(client.Resolve("{project}", scope)))
@@ -83,21 +91,21 @@ func TestScenario01ProjectsAndTasks(t *testing.T) {
 		expectStatus(t, r, 200)
 		expectBody(t, r, client.Resolve(client.MustJSON("{\"data\":{\"name\":\"Home\",\"tasks\":[{\"title\":\"Paint fence\"}]}}"), scope))
 	})
-	t.Run("10. tasks.get", func(t *testing.T) {
+	t.Run("11. tasks.get", func(t *testing.T) {
 		c := client.New()
 		scope := client.WithActor(vars, nil)
 		path := "/api/tasks/" + url.PathEscape(client.Stringify(client.Resolve("abc", scope)))
 		r := request(t, c, "GET", path, nil, nil)
 		expectStatus(t, r, 404)
 	})
-	t.Run("11. projects.delete", func(t *testing.T) {
+	t.Run("12. projects.delete", func(t *testing.T) {
 		c := client.New()
 		scope := client.WithActor(vars, nil)
 		path := "/api/projects/" + url.PathEscape(client.Stringify(client.Resolve("{project}", scope)))
 		r := request(t, c, "DELETE", path, nil, nil)
 		expectStatus(t, r, 204)
 	})
-	t.Run("12. tasks.get", func(t *testing.T) {
+	t.Run("13. tasks.get", func(t *testing.T) {
 		c := client.New()
 		scope := client.WithActor(vars, nil)
 		path := "/api/tasks/" + url.PathEscape(client.Stringify(client.Resolve("{task}", scope)))
@@ -105,7 +113,7 @@ func TestScenario01ProjectsAndTasks(t *testing.T) {
 		expectStatus(t, r, 200)
 		expectBody(t, r, client.Resolve(client.MustJSON("{\"data\":{\"title\":\"Paint fence\",\"project_id\":null}}"), scope))
 	})
-	t.Run("13. tasks.delete", func(t *testing.T) {
+	t.Run("14. tasks.delete", func(t *testing.T) {
 		c := client.New()
 		scope := client.WithActor(vars, nil)
 		path := "/api/tasks/" + url.PathEscape(client.Stringify(client.Resolve("{task}", scope)))

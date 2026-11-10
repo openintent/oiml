@@ -17,6 +17,7 @@ import (
 	"workspace/generated/db"
 	"workspace/generated/jobs"
 	"workspace/generated/models"
+	"workspace/generated/rowactions"
 )
 
 var pool *pgxpool.Pool
@@ -107,6 +108,28 @@ func loadTask(ctx context.Context, raw json.RawMessage) (*models.Task, error) {
 	return row, err
 }
 
+// ScheduleRequest schedules the timers of a Request just written: one job per timer, due at the field plus its offset.
+func ScheduleRequest(ctx context.Context, row *models.Request) error {
+	if due := dueRequestCreatedAt(row); due != nil {
+		if err := jobs.EnqueueTimer(ctx, "request_created_at", row.ID, *due); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func loadRequest(ctx context.Context, raw json.RawMessage) (*models.Request, error) {
+	var id string
+	if err := json.Unmarshal(raw, &id); err != nil {
+		return nil, err
+	}
+	row, err := models.ScanRequest(pool.QueryRow(ctx, `SELECT `+models.RequestColumns+` FROM `+models.RequestTable+` WHERE "id" = $1`, id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	return row, err
+}
+
 func dueTaskDueAt(row *models.Task) *time.Time {
 	if row.DueAt == nil {
 		return nil
@@ -142,6 +165,41 @@ func dueRowsTaskDueAt(ctx context.Context, now time.Time) ([]*models.Task, error
 	return out, rows.Err()
 }
 
+func dueRequestCreatedAt(row *models.Request) *time.Time {
+	due := row.CreatedAt.Add(1209600 * time.Second)
+	return &due
+}
+
+func holdsRequestCreatedAt(ctx context.Context, row *models.Request) (bool, error) {
+	_, _ = ctx, row
+	return true, nil
+}
+
+func runRequestCreatedAt(ctx context.Context, row *models.Request, now time.Time) error {
+	result, err := rowactions.TransitionRequestExpire(ctx, db.System(pool), row.ID, now)
+	if err != nil || result == nil {
+		return err
+	}
+	return ScheduleRequest(ctx, result)
+}
+
+func dueRowsRequestCreatedAt(ctx context.Context, now time.Time) ([]*models.Request, error) {
+	rows, err := pool.Query(ctx, `SELECT `+models.RequestColumns+` FROM `+models.RequestTable+` WHERE "created_at" IS NOT NULL AND "created_at" <= $1`, now.Add(-1209600*time.Second))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]*models.Request, 0)
+	for rows.Next() {
+		row, err := models.ScanRequest(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
 // RunTimerJob runs a timer job the queue fired, if the row still says so: same due time, condition holds.
 func RunTimerJob(ctx context.Context, name string, id json.RawMessage, due string) error {
 	switch name {
@@ -158,6 +216,19 @@ func RunTimerJob(ctx context.Context, name string, id json.RawMessage, due strin
 			return err
 		}
 		return runTaskDueAt(ctx, row, time.Now().UTC())
+	case "request_created_at":
+		row, err := loadRequest(ctx, id)
+		if err != nil || row == nil {
+			return err
+		}
+		at := dueRequestCreatedAt(row)
+		if at == nil || at.UTC().Format(time.RFC3339Nano) != due {
+			return nil
+		}
+		if ok, err := holdsRequestCreatedAt(ctx, row); err != nil || !ok {
+			return err
+		}
+		return runRequestCreatedAt(ctx, row, time.Now().UTC())
 	}
 	return errors.New("unknown timer " + name)
 }
@@ -179,6 +250,25 @@ func RunDueTimers(ctx context.Context, now time.Time) (int, error) {
 				continue
 			}
 			if err := runTaskDueAt(ctx, row, now); err != nil {
+				return ran, err
+			}
+			ran++
+		}
+	}
+	{
+		rows, err := dueRowsRequestCreatedAt(ctx, now)
+		if err != nil {
+			return ran, err
+		}
+		for _, row := range rows {
+			ok, err := holdsRequestCreatedAt(ctx, row)
+			if err != nil {
+				return ran, err
+			}
+			if !ok {
+				continue
+			}
+			if err := runRequestCreatedAt(ctx, row, now); err != nil {
 				return ran, err
 			}
 			ran++

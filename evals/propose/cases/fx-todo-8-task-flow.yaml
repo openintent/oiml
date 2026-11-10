@@ -1,0 +1,31 @@
+id: fx-todo-8-task-flow
+tags: [fixture, fields, enum, transitions, app, no-auth, scenario]
+base: { fixture: todo, through: TODO-7 }
+oracle: fixtures/todo/intents/TODO-8/diff.yaml
+intent:
+  title: Task flow
+  ask: >-
+    A task moves from todo to doing to done, and nobody sets the status by hand any more. Starting a task takes it
+    from todo to doing; a task that is being worked on can be put back or finished, and finishing records when. Done
+    is final. The Complete button stays what it is, a shortcut that marks any open task done. The board lets me drag
+    a card only where it is allowed to go.
+  acceptance:
+    - Starting a task moves it from todo to doing, and starting it again is a conflict
+    - A task that is not being worked on can be neither put back nor finished
+    - Finishing a task records when, and a done task takes no further step
+    - Setting the status in a create or an update is refused
+expect:
+  transitions: { Task: ["todo -> doing", "doing -> todo", "doing -> done"] }
+  field_props: { Task.status: { read_only: true } }
+  types: { "Task.completed_at|done_at|finished_at": datetime }
+  pages: { "tasks|board": { kind: resource, layout: board } }
+  actions: [tasks.complete, tasks.clear_done]
+  scenarios: { min: 1, rejections: 2, statuses: [409, 400] }
+  touches: ["tasks.start|tasks.begin", "tasks.finish|tasks.done|tasks.close"]
+  ops: { require: [update_field, set_transitions], forbid: [add_action, remove_action] }
+notes: >-
+  The status existed and was writable. The answer makes it read_only and declares the three transitions; the
+  complete action keeps its handler, which still writes the field, and the scenarios that call it are untouched.
+  The scenario that set the status through update is removed and added again without that step, and the seed
+  starts its task instead of creating it started. The board needs no change: grouped by the field of the
+  transitions, it drags along them, so a card goes from todo to done only through doing.

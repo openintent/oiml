@@ -20,12 +20,14 @@ import {
   ruleAlternatives,
   rulePaths,
   ruleMemberships,
+  transitionOf,
   type MembershipIR
 } from "@osl/core";
 import type { AlternativeIR, PredicateIR, RowRuleIR, RuleConditionIR, RuleHopIR } from "@osl/core";
 import { actionParseFunc } from "./actions.js";
 import { fileSpecsLiteral } from "./auth.js";
 import { eventFunc } from "./events.js";
+import { isStatementAction, statementCall } from "./rowactions.js";
 import {
   columnsConst,
   presentFunc,
@@ -778,24 +780,34 @@ ${fail("write")}
     lines.push(`}`);
     return lines.join("\n");
   }
-  if ((action.builtin === "archive" || action.builtin === "restore") && row) {
-    // The compiler's own actions: one conditional update, so two callers at once cannot both archive a row; when
-    // it matches no row there was nothing to do, which is a conflict
+  if (isStatementAction(action) && row) {
+    // The compiler's own actions (archive, restore, a transition): one conditional update in generated/rowactions,
+    // so two callers at once cannot both change the row; when it matches no row there was nothing to do, or the
+    // row is in a state the transition does not start from, which is a conflict
     const pk = singlePrimaryKey(row.entity);
-    const column = quoteIdent(row.entity.archive!.column);
-    const archiving = action.builtin === "archive";
-    const statement = archiving
-      ? `SET ${column} = $2 WHERE ${quoteIdent(pk.name)} = $1 AND ${column} IS NULL`
-      : `SET ${column} = NULL WHERE ${quoteIdent(pk.name)} = $1 AND ${column} IS NOT NULL`;
+    let refusal: string;
+    if (action.builtin === "transition") {
+      const step = transitionOf(ir, action);
+      const machine = row.entity.transitions!;
+      const field = `row.${exported(machine.column)}`;
+      const pointer = rowGoType(column(row.entity, machine.column)).startsWith("*");
+      const prefix = q(
+        `${step.name} needs ${machine.column} ${step.from.join(" or ")}; this row's ${machine.column} is `
+      );
+      refusal = pointer
+        ? `\t\tstate := "null"\n\t\tif ${field} != nil {\n\t\t\tstate = *${field}\n\t\t}\n\t\thttpx.Fail(c, httpx.NewError(http.StatusConflict, "invalid_transition", ${prefix}+state))`
+        : `\t\thttpx.Fail(c, httpx.NewError(http.StatusConflict, "invalid_transition", ${prefix}+${field}))`;
+    } else {
+      refusal = `\t\thttpx.Fail(c, httpx.NewError(http.StatusConflict, "conflict", ${q(action.builtin === "archive" ? "The row is archived already" : "The row is not archived")}))`;
+    }
     lines.push(`\t_ = values
-	_ = row
-	result, err := models.${scanFunc(row.entity)}(h.db.QueryRow(ctx, \`UPDATE \`+models.${tableConst(row.entity)}+\` ${statement} RETURNING \`+models.${columnsConst(row.entity)}, id${archiving ? ", time.Now().UTC()" : ""}))
-	if errors.Is(err, pgx.ErrNoRows) {
-		httpx.Fail(c, httpx.NewError(http.StatusConflict, "conflict", ${q(archiving ? "The row is archived already" : "The row is not archived")}))
+	result, err := ${statementCall(ir, action, "h.db", `row.${exported(pk.name)}`, "time.Now().UTC()")}
+${fail("write")}
+	if result == nil {
+${refusal}
 		return
-	}
-${fail("write")}`);
-    // The row was written, as by an update: the entity's timers are scheduled, and one may wait on the stamp
+	}`);
+    // The row was written, as by an update: the entity's timers are scheduled, and one may wait on a stamp
     if (ir.timers.some(t => t.entity === row.entity.name))
       lines.push(
         `\tif err := scheduling.Schedule${typeName(row.entity)}(ctx, result); err != nil {\n\t\thttpx.HandleError(c, err, "write")\n\t\treturn\n\t}`
@@ -882,11 +894,10 @@ export function resourceFile(ir: IR, resource: ResourceIR, modulePath: string): 
     imports.add("time");
     imports.add(`${modulePath}/generated/actions/handlers`);
   }
-  if (actions.some(a => a.builtin === "archive" || a.builtin === "restore")) {
-    imports.add("errors");
+  if (actions.some(isStatementAction)) {
     imports.add("net/http");
     imports.add("time");
-    imports.add("github.com/jackc/pgx/v5");
+    imports.add(`${modulePath}/generated/rowactions`);
   }
   const allRules = [...Object.values(entity.rules), ...actions.map(a => a.rule)];
   const ruleRow = ruleRowMethod(ir, handler, allRules);

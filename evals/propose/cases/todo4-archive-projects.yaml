@@ -1,6 +1,6 @@
 id: todo4-archive-projects
 tags: [actions, fields, app, no-auth, archive]
-base: { fixture: todo }
+base: { fixture: todo, through: TODO-7 }
 intent:
   title: Archive projects
   ask: Projects can be archived with one operation. The dashboard shows how many projects are archived.

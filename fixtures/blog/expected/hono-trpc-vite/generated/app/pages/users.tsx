@@ -371,6 +371,7 @@ function UsersDetailInner() {
           <p className="whitespace-pre-wrap">{text(row.ban_reason) || "—"}</p>
         </FieldRow>
         <FieldRow label="Post Count">{text(row.post_count) || "—"}</FieldRow>
+        <FieldRow label="Approved Count">{text(row.approved_count) || "—"}</FieldRow>
         <FieldRow label="Posts">
           {row.posts.length === 0 ? (
             "—"

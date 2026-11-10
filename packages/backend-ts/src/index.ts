@@ -12,7 +12,9 @@ import {
   eventFiles,
   filesFile,
   hasProviders,
+  hasRowActions,
   hasScheduling,
+  rowActionsFile,
   schedulingFile,
   testHooksFile,
   installCommand,
@@ -79,6 +81,7 @@ export function generate(input: GenerateInput): GeneratedFile[] {
     files.push({ path: `${gen}/email.ts`, content: emailFile(NEXT_SERVER) });
     files.push({ path: `${gen}/auth-providers.ts`, content: authProvidersFile(ir, NEXT_SERVER) });
   }
+  if (hasRowActions(ir)) files.push({ path: `${gen}/row-actions.ts`, content: rowActionsFile(ir, NEXT) });
   if (userActions(ir).length) {
     files.push({ path: `${gen}/actions.ts`, content: actionsFile(ir, NEXT_SERVER) });
     files.push(...actionScaffolds(ir, NEXT_SERVER));

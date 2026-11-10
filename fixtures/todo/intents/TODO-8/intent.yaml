@@ -1,0 +1,12 @@
+osl: "1.0"
+title: Task flow
+ask: >-
+  A task moves from todo to doing to done, and nobody sets the status by hand any more. Starting a task takes it
+  from todo to doing; a task that is being worked on can be put back or finished, and finishing records when. Done
+  is final. The Complete button stays what it is, a shortcut that marks any open task done. The board lets me drag
+  a card only where it is allowed to go.
+acceptance:
+  - Starting a task moves it from todo to doing, and starting it again is a conflict
+  - A task that is not being worked on can be neither put back nor finished
+  - Finishing a task records when, and a done task takes no further step
+  - Setting the status in a create or an update is refused

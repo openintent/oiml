@@ -1,0 +1,40 @@
+id: fx-ws-14-requests
+tags: [fixture, entity, rules, tenancy, isolation, transitions, timers, counts, app, scenario]
+base: { fixture: workspace, through: WS-13 }
+oracle: fixtures/workspace/intents/WS-14/diff.yaml
+intent:
+  title: Requests and approvals
+  ask: >-
+    Members of a team file purchase requests: a title and an amount. A request starts pending. The team's admins
+    approve or decline a pending request, and the time of the decision is recorded; the member who filed a declined
+    request can reopen it. People see and edit their own requests while they are pending, and admins see every
+    request of the team. A request nobody decided expires on its own after fourteen days; nobody can expire one by
+    hand. A team shows how many of its requests are pending. Give the team a board of requests by status.
+  acceptance:
+    - A member who is not an admin is refused when approving, and so is someone from another team
+    - Approving a request that is not pending is a conflict
+    - A declined request can be reopened by the member who filed it, and by nobody else
+    - A request can be edited by its author only while it is pending
+    - The team's count of pending requests follows every step, the expiry included
+expect:
+  entities: ["Request|PurchaseRequest"]
+  transitions:
+    "Request|PurchaseRequest": ["approve|accept", "decline|reject|deny", "reopen|resubmit", "pending -> expired"]
+  field_props: { "Request|PurchaseRequest.status|state": { read_only: true } }
+  rules:
+    "Request|PurchaseRequest":
+      update: "owner:requester_id when status = pending|owner:requested_by when status = pending|owner:author_id when status = pending|owner:user_id when status = pending|owner:created_by when status = pending"
+  counts: ["Team.* -> Request|PurchaseRequest"]
+  actions_on: { "requests|purchase_requests": { scope: row, rule: "member:team_id:admin" } }
+  timers:
+    - "Request|PurchaseRequest.created_at -> requests.expire|purchase_requests.expire|requests.lapse|requests.time_out"
+  pages: { "requests|purchase_requests|approvals": { kind: resource, layout: board } }
+  scenarios: { min: 1, rejections: 3, statuses: [403, 409] }
+  touches: ["requests.approve|purchase_requests.approve|requests.accept", timers.run]
+  ops: { require: [add_entity, set_timers], forbid: [add_action] }
+notes: >-
+  A state machine on a tenant table under isolation: database. "Nobody can expire one by hand" is a transition with
+  rule none, which has no route and which only the timer runs, as the system. "While they are pending" is the row
+  condition on the update rule, not a transition. Someone from another team is refused by the rule, never told the
+  state: the row does not come back under the policy, and the probe answers as the rule would. The count on Team
+  follows the transitions by itself.

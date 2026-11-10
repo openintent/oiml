@@ -88,7 +88,8 @@ The `hono-trpc-vite` contract tests speak tRPC's HTTP transport but assert the s
 | Membership relations (`member:members`, `member:channel_id.members:admin`)      | `withRuleValues(row, session)` looks the caller's junction row up under the path's key and the access module ranks it by the junction's enum; lists filter with a subquery through the junction                                                  | the same                                                                                       | `ruleRow(ctx, session, row)` and `access.CheckRow` with `Through` and `Roles`; the list filter as `IN (SELECT ...)` through `where.Raw` |
 | Relations through a junction (`relations: { genres: { through: TrackGenre } }`) | a `load<Relation>(ids)` per relation: the junction joined to the far table for the page of rows, in the junction's order or by the far rows' display column; `attachList` and `attachGet` put the far rows on the rows before they are presented | the same                                                                                       | `load<Relation>` on the handler: the links in order, then the far rows they name, grouped by the near key                               |
 | Ordered collections (`position: { within: album_id }`)                          | the column has a default the insert trigger overwrites; `POST <resource>/{id}/move` calls `osl_move_<table>(id, to)` and reads the row again; delete calls `osl_remove_<table>(id)`; a reverse include is `with: { tracks: { orderBy } }`        | the same, `move` as a tRPC mutation                                                            | the same statements through the handler's pool or scope; the reverse loader's `ORDER BY`                                                |
-| Archive (`archive: true`) | the list's own condition (`isNull(archived_at)`, or `isNotNull` when `?archived=true`); `POST <resource>/{id}/archive` and `/restore` call one module-level `setArchived(row, archived)`, a conditional update, and answer 409 when it changed no row; the entity's timers are scheduled as after an update | the same, `archived` a boolean of the list input and the two actions tRPC mutations | `archived` parses like a boolean filter and becomes `IS NULL` or `IS NOT NULL` on the `Where`; the two handlers run the same conditional update and answer 409 on `pgx.ErrNoRows` |
+| Archive (`archive: true`) | the list's own condition (`isNull(archived_at)`, or `isNotNull` when `?archived=true`); `POST <resource>/{id}/archive` and `/restore` call `set<Entity>Archived(id, archived, now)` in `generated/row-actions.ts`, a conditional update, and answer 409 when it changed no row; the entity's timers are scheduled as after an update, and a timer may run either one | the same, `archived` a boolean of the list input and the two actions tRPC mutations | `archived` parses like a boolean filter and becomes `IS NULL` or `IS NOT NULL` on the `Where`; the two handlers call `rowactions.Set<Entity>Archived`, the same conditional update, and answer 409 when it returns no row |
+| Transitions (`transitions: { field: status, approve: { from, to, rule, stamp } }`) | `generated/row-actions.ts` holds `<entity>Transitions`, one function per step over one `UPDATE ... WHERE id = $1 AND status IN (from) RETURNING *`; `POST <resource>/{id}/<step>` loads the row, checks the read rule and the step's rule, calls it and answers 409 `invalid_transition` when no row came back; a timer calls the same function as the system and schedules the entity's timers again; a board grouped by the field drags along the steps (below) | the same, each step a tRPC mutation; the code travels as the cause of a `CONFLICT` | package `generated/rowactions`: `Transition<Entity><Step>(ctx, db, id, now)` with the same statement, `nil` when it matched no row; the handler answers 409 `invalid_transition`; `run<Timer>` in the scheduling package calls it through the system's pool |
 | Counts (`count_of: comments`) | none beyond the column: `integer NOT NULL DEFAULT 0`, read-only, kept by the database (see below); filters, sorts and tiles read it like any integer | the same | the same |
 | Schedules, timers                                                               | pg-boss cron schedules and jobs with `startAfter`; a timer job reloads the row and runs the action only if the row still says so; test hooks at `/api/osl-hooks/*` when `OSL_TEST_HOOKS=1`                                                       | the same, with the hooks as REST routes beside tRPC                                            | River periodic jobs (robfig/cron) and `ScheduledAt` jobs; the same hooks                                                                |
 | Magic links, OAuth                                                              | `POST /api/auth/magic-link`, `/verify`, `GET /api/auth/oauth/<name>[/callback]`, `GET /api/auth/providers`; email through log, Resend or capture                                                                                                 | procedures `auth.magic_link`, `auth.magic_link_verify`, `auth.providers`; OAuth as REST routes | the same routes                                                                                                                         |
@@ -187,6 +188,30 @@ PostgreSQL ends such a pair by failing one side (`deadlock_detected`), and the c
 `packages/core/test/count.database.test.ts` runs both loads, and a control that writes the increments from a value
 read before the row was held ends with counts that are short.
 
+## Transitions and the compiler's row actions
+
+A transition adds nothing to the database: no trigger, no function, no policy. The guard is the statement itself,
+`UPDATE <table> SET <field> = <to>[, <stamp> = <now>] WHERE <key> = $1 AND <field> IN (<from>) RETURNING *`, so of
+two requests at once one moves the row and the other finds it gone from `from`. A request answers in this order:
+the action's rule without a row (401, 403), the row loaded (404; under `isolation: database` a row of another
+tenant does not come back and the existence probe answers what the rule would), the read rule under
+`hidden: not_found` (404), the transition's rule on the row (401, 403), then the statement, 409 `invalid_transition`
+when it returned no row. A caller the rule refuses is never told the state.
+
+`archive`, `restore` and every transition are one statement on one row, and each backend keeps them in one
+module, `generated/row-actions.ts` (`generated/rowactions` in Go), so that the request handlers and the timers run
+the same code. A timer runs the statement as the system (under `isolation: database` through the owner's pool, as
+it runs a handler), and, the row being written, schedules the entity's timers again: a second timer can wait on
+what the first one stamped. A transition whose rule is `none` has no route and is in that module for a timer
+alone. `move` is not there: it needs a place, which a timer cannot give (M133).
+
+A board page grouped by the field of the entity's transitions is generated from the same table. `MOVES` lists each
+transition with a route, its `from`, its `to`, the viewer's rule as the page can evaluate it, and the client call;
+a column takes a drop only when one of them takes the dragged card there from its column (no other column answers
+`dragover`, so the browser shows no-drop and the card never leaves); the drop runs that transition, moves the card
+at once and puts it back when the API refuses (a stale card's 409, a rule that depends on more than the page
+knows). The page never calls update for the field. A board over any other enum updates the field as before.
+
 ## The conformance walks
 
 After the scenarios, the harness runs six checks over every fixture that no scenario names, each a function of
@@ -201,8 +226,11 @@ skips them).
   straight from the database. The step's detail counts what the predictions said, so the coverage is visible. On
   an archiving entity the prediction leaves an archived row out of the list, expects 200 from `archive` on a live
   row and 409 on an archived one (the reverse for `restore`), and after each one that went through looks for the
-  row in the caller's plain list and in the one asked with `archived=true`. Before and after its deletes the walk
-  compares every count of the model with the rows the database holds.
+  row in the caller's plain list and in the one asked with `archived=true`. A transition is predicted the same
+  way: the rule first, then 200 when the row's state is one the step starts from and 409 when it is not; after one
+  the rule allowed, the walk reads the row and wants the field at the step's `to` (and its stamp set) or where it
+  was. The detail says how many allowed calls moved a row and how many answered 409. Before and after its deletes
+  the walk compares every count of the model with the rows the database holds.
 - **tenant**: with tenancy, a member of another team (an actor outside the home team, or a user the walk registers)
   gets, updates, deletes and runs actions on the home team's rows and must be refused with the rows unchanged, lists
   nothing of theirs, and cannot create a row under one of their parents. A row the read rule opens to everyone is

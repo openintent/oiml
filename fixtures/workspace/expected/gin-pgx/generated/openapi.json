@@ -43,6 +43,9 @@
       "name": "milestone_labels"
     },
     {
+      "name": "requests"
+    },
+    {
       "name": "auth",
       "description": "Sign-in"
     }
@@ -4715,6 +4718,695 @@
         }
       }
     },
+    "/api/requests": {
+      "get": {
+        "tags": [
+          "requests"
+        ],
+        "operationId": "requests_list",
+        "description": "Any of: All of: Only the row's owner (requester_id); Only members of the row's tenant (team_id); Only members of the row's tenant (team_id) with at least role admin.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "summary": "List requests",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 20
+            }
+          },
+          {
+            "name": "team_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "approved",
+                "declined",
+                "expired"
+              ]
+            }
+          },
+          {
+            "name": "requester_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "page"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "team_id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "requester_id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "title": {
+                            "type": "string",
+                            "maxLength": 160,
+                            "minLength": 1
+                          },
+                          "amount": {
+                            "type": "integer",
+                            "minimum": 1
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "pending",
+                              "approved",
+                              "declined",
+                              "expired"
+                            ],
+                            "readOnly": true
+                          },
+                          "decided_at": {
+                            "oneOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "readOnly": true
+                          },
+                          "created_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "team_id",
+                          "requester_id",
+                          "title",
+                          "amount",
+                          "status",
+                          "decided_at",
+                          "created_at"
+                        ]
+                      }
+                    },
+                    "page": {
+                      "type": "object",
+                      "required": [
+                        "page",
+                        "page_size",
+                        "total"
+                      ],
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "page_size": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "requests"
+        ],
+        "operationId": "requests_create",
+        "description": "All of: Only members of the row's tenant (team_id); Only the row's owner (requester_id).",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "summary": "Create one of requests",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "team_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "title": {
+                    "type": "string",
+                    "maxLength": 160,
+                    "minLength": 1
+                  },
+                  "amount": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "team_id",
+                  "title",
+                  "amount"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/requests/{id}": {
+      "get": {
+        "tags": [
+          "requests"
+        ],
+        "operationId": "requests_get",
+        "description": "Any of: All of: Only the row's owner (requester_id); Only members of the row's tenant (team_id); Only members of the row's tenant (team_id) with at least role admin.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "summary": "Get one of requests",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "team_id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "requester_id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "title": {
+                          "type": "string",
+                          "maxLength": 160,
+                          "minLength": 1
+                        },
+                        "amount": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "pending",
+                            "approved",
+                            "declined",
+                            "expired"
+                          ],
+                          "readOnly": true
+                        },
+                        "decided_at": {
+                          "oneOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "readOnly": true
+                        },
+                        "created_at": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "team_id",
+                        "requester_id",
+                        "title",
+                        "amount",
+                        "status",
+                        "decided_at",
+                        "created_at"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "requests"
+        ],
+        "operationId": "requests_update",
+        "description": "All of: Only the row's owner (requester_id), only when status = pending; Only members of the row's tenant (team_id).",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "summary": "Update one of requests",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "maxLength": 160,
+                    "minLength": 1
+                  },
+                  "amount": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "requests"
+        ],
+        "operationId": "requests_delete",
+        "description": "Only members of the row's tenant (team_id) with at least role admin.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "summary": "Delete one of requests",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/requests/{id}/approve": {
+      "post": {
+        "tags": [
+          "requests"
+        ],
+        "operationId": "requests_approve",
+        "summary": "Moves the row's status from pending to approved and sets decided_at. 409 (invalid_transition) when the row is in another state",
+        "description": "Only members of the row's tenant (team_id) with at least role admin.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/requests/{id}/decline": {
+      "post": {
+        "tags": [
+          "requests"
+        ],
+        "operationId": "requests_decline",
+        "summary": "Moves the row's status from pending to declined and sets decided_at. 409 (invalid_transition) when the row is in another state",
+        "description": "Only members of the row's tenant (team_id) with at least role admin.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/requests/{id}/reopen": {
+      "post": {
+        "tags": [
+          "requests"
+        ],
+        "operationId": "requests_reopen",
+        "summary": "Moves the row's status from declined to pending. 409 (invalid_transition) when the row is in another state",
+        "description": "All of: Only the row's owner (requester_id); Only members of the row's tenant (team_id).",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
     "/api/tasks": {
       "get": {
         "tags": [
@@ -5404,12 +6096,17 @@
                           "created_at": {
                             "type": "string",
                             "format": "date-time"
+                          },
+                          "pending_requests": {
+                            "type": "integer",
+                            "readOnly": true
                           }
                         },
                         "required": [
                           "id",
                           "name",
-                          "created_at"
+                          "created_at",
+                          "pending_requests"
                         ]
                       }
                     },
@@ -5575,6 +6272,10 @@
                           "type": "string",
                           "format": "date-time"
                         },
+                        "pending_requests": {
+                          "type": "integer",
+                          "readOnly": true
+                        },
                         "members": {
                           "type": "array",
                           "items": {
@@ -5586,6 +6287,7 @@
                         "id",
                         "name",
                         "created_at",
+                        "pending_requests",
                         "members"
                       ]
                     }
@@ -6283,6 +6985,68 @@
           "open_milestones"
         ]
       },
+      "Request": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "team_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "requester_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1
+          },
+          "amount": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "declined",
+              "expired"
+            ],
+            "readOnly": true
+          },
+          "decided_at": {
+            "oneOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "readOnly": true
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "team_id",
+          "requester_id",
+          "title",
+          "amount",
+          "status",
+          "decided_at",
+          "created_at"
+        ]
+      },
       "Task": {
         "type": "object",
         "properties": {
@@ -6369,12 +7133,17 @@
           "created_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "pending_requests": {
+            "type": "integer",
+            "readOnly": true
           }
         },
         "required": [
           "id",
           "name",
-          "created_at"
+          "created_at",
+          "pending_requests"
         ]
       },
       "TeamMember": {

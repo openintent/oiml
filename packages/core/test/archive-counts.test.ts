@@ -173,12 +173,23 @@ describe("archive in the model", () => {
     expect(codes(model(m => (m.events = [{ on: "users.archive", handler: "user_archived" }])))).toEqual(["error M061"]);
   });
 
-  it("tells a timer that runs archive what to run instead (M133)", () => {
+  it("lets a timer run archive and restore as the system (round B4 lifted M133 for them)", () => {
     const timed = model(m => {
       m.entities.Task.fields.due_at = { type: "datetime" };
+      m.timers = [
+        { on: "Task", at: "due_at", run: "tasks.archive" },
+        { on: "Task", at: "archived_at", after: "30d", run: "tasks.restore" }
+      ];
+    });
+    expect(validateModel(timed)).toEqual([]);
+    expect(compile(timed).timers.map(t => t.run.handler)).toEqual(["tasks_archive", "tasks_restore"]);
+    // Under a rule of none there is no archive to run
+    const closed = model(m => {
+      m.entities.Task.fields.due_at = { type: "datetime" };
+      m.entities.Task.archive = { rule: "none" };
       m.timers = [{ on: "Task", at: "due_at", run: "tasks.archive" }];
     });
-    expect(messages(timed, "M133")[0]).toContain("declare a row action whose handler sets archived_at");
+    expect(messages(closed, "M133")[0]).toContain("is not a row action of a resource over Task");
   });
 
   it("takes archived as a page or tile filter of an archiving entity only", () => {

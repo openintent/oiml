@@ -5,12 +5,10 @@ package resources
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"blog/generated/access"
@@ -23,6 +21,7 @@ import (
 	"blog/generated/hooks"
 	"blog/generated/httpx"
 	"blog/generated/models"
+	"blog/generated/rowactions"
 	"blog/generated/scheduling"
 	"blog/generated/validation"
 	postshooks "blog/src/extensions/posts"
@@ -52,6 +51,10 @@ func (h *Posts) Routes(r gin.IRouter) {
 	r.POST("/api/posts/:id/unlock", h.ActionUnlock)
 	r.POST("/api/posts/:id/archive", h.ActionArchive)
 	r.POST("/api/posts/:id/restore", h.ActionRestore)
+	r.POST("/api/posts/:id/submit", h.ActionSubmit)
+	r.POST("/api/posts/:id/approve", h.ActionApprove)
+	r.POST("/api/posts/:id/reject", h.ActionReject)
+	r.POST("/api/posts/:id/retire", h.ActionRetire)
 }
 
 var postsReadRule = access.Rule{Kind: "public"}
@@ -73,6 +76,14 @@ var postsUnlockActionRule = access.Rule{Kind: "role", Value: "admin"}
 var postsArchiveActionRule = access.Rule{Kind: "owner", Field: "author_id"}
 
 var postsRestoreActionRule = access.Rule{Kind: "owner", Field: "author_id"}
+
+var postsSubmitActionRule = access.Rule{Kind: "owner", Field: "author_id"}
+
+var postsApproveActionRule = access.Rule{Kind: "role", Value: "admin"}
+
+var postsRejectActionRule = access.Rule{Kind: "role", Value: "admin"}
+
+var postsRetireActionRule = access.Rule{Kind: "any", Any: []access.Rule{{Kind: "role", Value: "admin"}, {Kind: "owner", Field: "author_id", When: &access.Condition{Field: "status", Op: "eq", Value: "approved"}}}}
 
 // postsFileFields lists the file fields of Article and what they accept.
 var postsFileFields = []files.FieldSpec{{Column: "cover", Accept: []string{"image/*"}, MaxSize: 2097152}}
@@ -112,6 +123,9 @@ func (h *Posts) List(c *gin.Context) {
 	}
 	if v, ok := query.Filters["author_id"]; ok {
 		where.Eq(`"author_id"`, v)
+	}
+	if v, ok := query.Filters["status"]; ok {
+		where.Eq(`"status"`, v)
 	}
 	if archived, _ := query.Filters["archived"].(bool); archived {
 		where.Raw(`"archived_at" IS NOT NULL`)
@@ -558,14 +572,13 @@ func (h *Posts) ActionArchive(c *gin.Context) {
 		return
 	}
 	_ = values
-	_ = row
-	result, err := models.ScanArticle(h.db.QueryRow(ctx, `UPDATE `+models.ArticleTable+` SET "archived_at" = $2 WHERE "id" = $1 AND "archived_at" IS NULL RETURNING `+models.ArticleColumns, id, time.Now().UTC()))
-	if errors.Is(err, pgx.ErrNoRows) {
-		httpx.Fail(c, httpx.NewError(http.StatusConflict, "conflict", "The row is archived already"))
-		return
-	}
+	result, err := rowactions.SetArticleArchived(ctx, h.db, row.ID, true, time.Now().UTC())
 	if err != nil {
 		httpx.HandleError(c, err, "write")
+		return
+	}
+	if result == nil {
+		httpx.Fail(c, httpx.NewError(http.StatusConflict, "conflict", "The row is archived already"))
 		return
 	}
 	if err := scheduling.ScheduleArticle(ctx, result); err != nil {
@@ -616,14 +629,229 @@ func (h *Posts) ActionRestore(c *gin.Context) {
 		return
 	}
 	_ = values
-	_ = row
-	result, err := models.ScanArticle(h.db.QueryRow(ctx, `UPDATE `+models.ArticleTable+` SET "archived_at" = NULL WHERE "id" = $1 AND "archived_at" IS NOT NULL RETURNING `+models.ArticleColumns, id))
-	if errors.Is(err, pgx.ErrNoRows) {
+	result, err := rowactions.SetArticleArchived(ctx, h.db, row.ID, false, time.Now().UTC())
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if result == nil {
 		httpx.Fail(c, httpx.NewError(http.StatusConflict, "conflict", "The row is not archived"))
 		return
 	}
+	if err := scheduling.ScheduleArticle(ctx, result); err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	httpx.OK(c, models.PresentArticle(result))
+}
+
+// ActionSubmit handles POST /api/posts/{id}/submit: the submit action.
+func (h *Posts) ActionSubmit(c *gin.Context) {
+	ctx := c.Request.Context()
+	session, err := h.auth.Session(c)
 	if err != nil {
 		httpx.HandleError(c, err, "write")
+		return
+	}
+	if verdict := access.Check(postsSubmitActionRule, session); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	id, ok := validation.PostsID(c.Param("id"))
+	if !ok {
+		httpx.Fail(c, httpx.NotFound())
+		return
+	}
+	row, err := models.ScanArticle(h.db.QueryRow(ctx, `SELECT `+models.ArticleColumns+` FROM `+models.ArticleTable+` WHERE "id" = $1`, id))
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if verdict := access.CheckRow(postsSubmitActionRule, session, access.Row{"author_id": row.AuthorID}); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	body, perr := httpx.ParseBody(c)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	values, perr := validation.PostsSubmitInput.Parse(body)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	_ = values
+	result, err := rowactions.TransitionArticleSubmit(ctx, h.db, row.ID, time.Now().UTC())
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if result == nil {
+		httpx.Fail(c, httpx.NewError(http.StatusConflict, "invalid_transition", "submit needs status draft; this row's status is "+row.Status))
+		return
+	}
+	if err := scheduling.ScheduleArticle(ctx, result); err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	httpx.OK(c, models.PresentArticle(result))
+}
+
+// ActionApprove handles POST /api/posts/{id}/approve: the approve action.
+func (h *Posts) ActionApprove(c *gin.Context) {
+	ctx := c.Request.Context()
+	session, err := h.auth.Session(c)
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if verdict := access.Check(postsApproveActionRule, session); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	id, ok := validation.PostsID(c.Param("id"))
+	if !ok {
+		httpx.Fail(c, httpx.NotFound())
+		return
+	}
+	row, err := models.ScanArticle(h.db.QueryRow(ctx, `SELECT `+models.ArticleColumns+` FROM `+models.ArticleTable+` WHERE "id" = $1`, id))
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if verdict := access.CheckRow(postsApproveActionRule, session, nil); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	body, perr := httpx.ParseBody(c)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	values, perr := validation.PostsApproveInput.Parse(body)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	_ = values
+	result, err := rowactions.TransitionArticleApprove(ctx, h.db, row.ID, time.Now().UTC())
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if result == nil {
+		httpx.Fail(c, httpx.NewError(http.StatusConflict, "invalid_transition", "approve needs status in_review; this row's status is "+row.Status))
+		return
+	}
+	if err := scheduling.ScheduleArticle(ctx, result); err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if err := events.PostsApprove(ctx, models.PresentArticle(result)); err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	httpx.OK(c, models.PresentArticle(result))
+}
+
+// ActionReject handles POST /api/posts/{id}/reject: the reject action.
+func (h *Posts) ActionReject(c *gin.Context) {
+	ctx := c.Request.Context()
+	session, err := h.auth.Session(c)
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if verdict := access.Check(postsRejectActionRule, session); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	id, ok := validation.PostsID(c.Param("id"))
+	if !ok {
+		httpx.Fail(c, httpx.NotFound())
+		return
+	}
+	row, err := models.ScanArticle(h.db.QueryRow(ctx, `SELECT `+models.ArticleColumns+` FROM `+models.ArticleTable+` WHERE "id" = $1`, id))
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if verdict := access.CheckRow(postsRejectActionRule, session, nil); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	body, perr := httpx.ParseBody(c)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	values, perr := validation.PostsRejectInput.Parse(body)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	_ = values
+	result, err := rowactions.TransitionArticleReject(ctx, h.db, row.ID, time.Now().UTC())
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if result == nil {
+		httpx.Fail(c, httpx.NewError(http.StatusConflict, "invalid_transition", "reject needs status in_review; this row's status is "+row.Status))
+		return
+	}
+	if err := scheduling.ScheduleArticle(ctx, result); err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	httpx.OK(c, models.PresentArticle(result))
+}
+
+// ActionRetire handles POST /api/posts/{id}/retire: the retire action.
+func (h *Posts) ActionRetire(c *gin.Context) {
+	ctx := c.Request.Context()
+	session, err := h.auth.Session(c)
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if verdict := access.Check(postsRetireActionRule, session); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	id, ok := validation.PostsID(c.Param("id"))
+	if !ok {
+		httpx.Fail(c, httpx.NotFound())
+		return
+	}
+	row, err := models.ScanArticle(h.db.QueryRow(ctx, `SELECT `+models.ArticleColumns+` FROM `+models.ArticleTable+` WHERE "id" = $1`, id))
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if verdict := access.CheckRow(postsRetireActionRule, session, access.Row{"author_id": row.AuthorID, "status": row.Status}); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	body, perr := httpx.ParseBody(c)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	values, perr := validation.PostsRetireInput.Parse(body)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	_ = values
+	result, err := rowactions.TransitionArticleRetire(ctx, h.db, row.ID, time.Now().UTC())
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if result == nil {
+		httpx.Fail(c, httpx.NewError(http.StatusConflict, "invalid_transition", "retire needs status approved; this row's status is "+row.Status))
 		return
 	}
 	if err := scheduling.ScheduleArticle(ctx, result); err != nil {

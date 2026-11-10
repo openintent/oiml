@@ -2,6 +2,7 @@ import type { ActionIR, EntityIR, IR, ScheduleIR, TimerIR } from "@osl/core";
 import { columnsConst, scanFunc, tableConst } from "./models.js";
 import { HEADER, column, entityByName, exported, goFile, q, quoteIdent, rowGoType, typeName } from "./util.js";
 import { actionInputType } from "./actions.js";
+import { isStatementAction, statementCall } from "./rowactions.js";
 
 export function hasScheduling(ir: IR): boolean {
   return ir.schedules.length > 0 || ir.timers.length > 0;
@@ -65,24 +66,36 @@ export function schedulingFile(ir: IR, modulePath: string): string {
     "errors",
     "time",
     "github.com/jackc/pgx/v5/pgxpool",
-    `${modulePath}/generated/actions`,
-    `${modulePath}/generated/actions/handlers`,
     `${modulePath}/generated/jobs`,
     `${modulePath}/generated/models`
   ]);
+  // A timer may run one of the compiler's own row actions: its one statement, as the system, with no handler
+  const statementTimers = ir.timers.filter(t => isStatementAction(actionOf(ir, t.run)));
+  const usesHandlers = ir.schedules.length > 0 || statementTimers.length < ir.timers.length;
+  if (usesHandlers) {
+    imports.add(`${modulePath}/generated/actions`);
+    imports.add(`${modulePath}/generated/actions/handlers`);
+  }
+  if (statementTimers.length) imports.add(`${modulePath}/generated/rowactions`);
   // Under isolation: database a schedule or timer acts as the system: through the owner's pool, which no policy binds
-  if (ir.auth?.tenancy?.isolation) imports.add(`${modulePath}/generated/db`);
+  const isolated = Boolean(ir.auth?.tenancy?.isolation);
+  const systemDb = isolated ? "db.System(pool)" : "pool";
+  if (isolated && (usesHandlers || statementTimers.length)) imports.add(`${modulePath}/generated/db`);
   const sections: string[] = [];
   sections.push(`var pool *pgxpool.Pool
 
 // Use gives the package the database the handlers run against; app.New calls it.
 func Use(p *pgxpool.Pool) {
 	pool = p
-}
+}${
+    usesHandlers
+      ? `
 
 func systemContext(ctx context.Context, now time.Time) *actions.Context {
-	return &actions.Context{Ctx: ctx, Session: nil, DB: ${ir.auth?.tenancy?.isolation ? "db.System(pool)" : "pool"}, Now: now}
-}`);
+	return &actions.Context{Ctx: ctx, Session: nil, DB: ${systemDb}, Now: now}
+}`
+      : ""
+  }`);
 
   // Schedules
   sections.push(`// Schedule is a cron (UTC) and the action it runs as the system, with literal input.
@@ -195,6 +208,15 @@ func load${T}(ctx context.Context, raw json.RawMessage) (*models.${T}, error) {
     const pointer = rowGoType(col).startsWith("*");
     const action = actionOf(ir, t.run);
     const N = exported(t.name);
+    // The compiler's own row action: its statement, and, the row being written, the entity's timers again (another
+    // may wait on what it stamped). Nothing to do when the row was in another state
+    const runBody = isStatementAction(action)
+      ? `result, err := ${statementCall(ir, action, systemDb, `row.${exported(entity.primaryKey[0])}`, "now")}
+	if err != nil || result == nil {
+		return err
+	}
+	return Schedule${T}(ctx, result)`
+      : runStatement(action, `systemContext(ctx, now), actions.${actionInputType(action)}{}, row`);
     sections.push(`func due${N}(row *models.${T}) *time.Time {
 ${pointer ? `	if row.${exported(t.column)} == nil {\n\t\treturn nil\n\t}\n\tdue := row.${exported(t.column)}.Add(${t.afterSeconds} * time.Second)` : `	due := row.${exported(t.column)}.Add(${t.afterSeconds} * time.Second)`}
 	return &due
@@ -205,7 +227,7 @@ ${holdsBody(ir, t, entity)}
 }
 
 func run${N}(ctx context.Context, row *models.${T}, now time.Time) error {
-	${runStatement(action, `systemContext(ctx, now), actions.${actionInputType(action)}{}, row`)}
+	${runBody}
 }
 
 func dueRows${N}(ctx context.Context, now time.Time) ([]*models.${T}, error) {

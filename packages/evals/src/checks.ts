@@ -3,7 +3,15 @@
  * is applied (and its IR, for rules and actions after defaults). Every failure is one line a reader can act on.
  */
 import type { Diff, IR, Model, RuleIR } from "@osl/core";
-import { archiveOf, compile, countLink, positionOf, ruleText as coreRuleText, throughRelation } from "@osl/core";
+import {
+  archiveOf,
+  compile,
+  countLink,
+  positionOf,
+  ruleText as coreRuleText,
+  throughRelation,
+  transitionsOf
+} from "@osl/core";
 import { Expect as ExpectSchema, type Expect } from "./cases.js";
 
 export interface Checked {
@@ -333,6 +341,29 @@ export function checkExpectations(expect: Expect, checked: Checked): string[] {
     const entity = pick(entityName, entities);
     if (!entity) fail(`entity ${entityName} missing (for its archive)`);
     else if (!archiveOf(model.entities[entity])) fail(`${entity} does not archive (no archive: on the entity)`);
+  }
+
+  for (const [entityName, wanted] of Object.entries(expect.transitions ?? {})) {
+    const entity = pick(entityName, entities);
+    const machine = entity ? transitionsOf(model.entities[entity]) : undefined;
+    if (!entity) fail(`entity ${entityName} missing (for its transitions)`);
+    else if (!machine) fail(`${entity} declares no transitions (no transitions: on the entity)`);
+    else
+      for (const want of wanted) {
+        if (want.includes("->")) {
+          const [from, to] = want.split("->").map(s => s.trim());
+          const hit = machine.steps.some(
+            step => alts(to).includes(step.to) && alts(from).some(value => step.from.includes(value))
+          );
+          if (!hit) fail(`${entity} has no transition from ${from} to ${to}`);
+        } else if (
+          !pick(
+            want,
+            machine.steps.map(step => step.name)
+          )
+        )
+          fail(`${entity} has no transition ${want}`);
+      }
   }
 
   for (const spec of expect.counts ?? []) {

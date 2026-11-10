@@ -4,12 +4,10 @@
 package resources
 
 import (
-	"errors"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5"
 
 	"workspace/generated/access"
 	"workspace/generated/auth"
@@ -17,6 +15,7 @@ import (
 	"workspace/generated/hooks"
 	"workspace/generated/httpx"
 	"workspace/generated/models"
+	"workspace/generated/rowactions"
 	"workspace/generated/validation"
 	labelshooks "workspace/src/extensions/labels"
 )
@@ -333,14 +332,13 @@ func (h *Labels) ActionArchive(c *gin.Context) {
 		return
 	}
 	_ = values
-	_ = row
-	result, err := models.ScanLabel(h.db.QueryRow(ctx, `UPDATE `+models.LabelTable+` SET "archived_at" = $2 WHERE "id" = $1 AND "archived_at" IS NULL RETURNING `+models.LabelColumns, id, time.Now().UTC()))
-	if errors.Is(err, pgx.ErrNoRows) {
-		httpx.Fail(c, httpx.NewError(http.StatusConflict, "conflict", "The row is archived already"))
-		return
-	}
+	result, err := rowactions.SetLabelArchived(ctx, h.db, row.ID, true, time.Now().UTC())
 	if err != nil {
 		httpx.HandleError(c, err, "write")
+		return
+	}
+	if result == nil {
+		httpx.Fail(c, httpx.NewError(http.StatusConflict, "conflict", "The row is archived already"))
 		return
 	}
 	httpx.OK(c, models.PresentLabel(result))
@@ -387,14 +385,13 @@ func (h *Labels) ActionRestore(c *gin.Context) {
 		return
 	}
 	_ = values
-	_ = row
-	result, err := models.ScanLabel(h.db.QueryRow(ctx, `UPDATE `+models.LabelTable+` SET "archived_at" = NULL WHERE "id" = $1 AND "archived_at" IS NOT NULL RETURNING `+models.LabelColumns, id))
-	if errors.Is(err, pgx.ErrNoRows) {
-		httpx.Fail(c, httpx.NewError(http.StatusConflict, "conflict", "The row is not archived"))
-		return
-	}
+	result, err := rowactions.SetLabelArchived(ctx, h.db, row.ID, false, time.Now().UTC())
 	if err != nil {
 		httpx.HandleError(c, err, "write")
+		return
+	}
+	if result == nil {
+		httpx.Fail(c, httpx.NewError(http.StatusConflict, "conflict", "The row is not archived"))
 		return
 	}
 	httpx.OK(c, models.PresentLabel(result))

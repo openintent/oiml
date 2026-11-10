@@ -1,6 +1,7 @@
-import type { IR, TimerIR } from "@osl/core";
+import type { ActionIR, IR, TimerIR } from "@osl/core";
 import { entityByName, q, tableExport, typeName, type TsConventions } from "./conventions.js";
 import { isolationOf } from "./isolation.js";
+import { isStatementAction, rowActionImports, statementCall } from "./row-actions.js";
 
 /** Whether the model has anything the queue runs on its own */
 export function hasScheduling(ir: IR): boolean {
@@ -40,12 +41,25 @@ ${steps.join("\n")}
  * the functions the worker and the test hooks call.
  */
 export function schedulingFile(ir: IR, conv: TsConventions): string {
+  /** The action a schedule or timer runs */
+  const actionOf = (run: TimerIR["run"]): ActionIR =>
+    ir.actions.find(a => a.name === run.action && (run.resource ? a.resource === run.resource : !a.resource))!;
+  // A timer may run one of the compiler's own row actions: its one statement, as the system. The row was written,
+  // so the entity's timers are scheduled again: another may wait on what it stamped
+  const statementRuns = ir.timers.map(timer => actionOf(timer.run)).filter(isStatementAction);
+  const statementImports = rowActionImports(ir, statementRuns);
+  const usesHandlers = ir.schedules.length > 0 || ir.timers.some(timer => !isStatementAction(actionOf(timer.run)));
   const timerDefs = ir.timers.map(timer => {
     const entity = entityByName(ir, timer.entity);
     const T = typeName(entity);
     const table = `schema.${tableExport(entity)}`;
     const pk = entity.primaryKey[0];
     const handler = `handlers.${timer.run.handler}`;
+    const action = actionOf(timer.run);
+    const run = isStatementAction(action)
+      ? `const result = await ${statementCall(ir, action, `row.${pk}`, "now")};
+    if (result) await scheduleTimers(${q(timer.entity)}, result);`
+      : `await ${handler}({ input: {} as Parameters<typeof ${handler}>[0]["input"], row, session: null, db, now });`;
     return `const ${timer.name}: TimerDef<schema.${T}> = {
   name: ${q(timer.name)},
   entity: ${q(timer.entity)},
@@ -59,7 +73,7 @@ export function schedulingFile(ir: IR, conv: TsConventions): string {
       .from(${table})
       .where(and(isNotNull(${table}.${timer.column}), lte(${table}.${timer.column}, new Date(now.getTime() - ${timer.afterSeconds} * 1000)))),
   run: async (row, now) => {
-    await ${handler}({ input: {} as Parameters<typeof ${handler}>[0]["input"], row, session: null, db, now });
+    ${run}
   }
 };`;
   });
@@ -71,8 +85,7 @@ export function schedulingFile(ir: IR, conv: TsConventions): string {
   });
   return `${conv.header("Schedules and timers: work the queue runs as the system. The worker and the test hooks call these.")}
 ${ir.timers.length ? `import { and, eq, isNotNull, lte } from "drizzle-orm";\n` : ""}import { db } from "./db/client";
-${ir.timers.length ? `import * as schema from "./db/schema";\n` : ""}import { handlers } from "./actions";
-${ir.timers.length ? `import { enqueueAt } from "./jobs";\n` : ""}
+${ir.timers.length ? `import * as schema from "./db/schema";\n` : ""}${usesHandlers ? `import { handlers } from "./actions";\n` : ""}${statementImports.length ? `import { ${statementImports.join(", ")} } from "./row-actions";\n` : ""}${ir.timers.length ? `import { enqueueAt } from "./jobs";\n` : ""}
 /** A schedule: a cron (UTC) and the action it runs, with literal input */
 export interface ScheduleDef {
   name: string;

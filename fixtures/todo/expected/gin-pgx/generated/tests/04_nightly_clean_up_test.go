@@ -10,8 +10,8 @@ import (
 	"todo/generated/client"
 )
 
-// TestScenario05NightlyCleanUp is the scenario "nightly clean-up".
-func TestScenario05NightlyCleanUp(t *testing.T) {
+// TestScenario04NightlyCleanUp is the scenario "nightly clean-up".
+func TestScenario04NightlyCleanUp(t *testing.T) {
 	vars := map[string]any{}
 	t.Run("1. tasks.create", func(t *testing.T) {
 		c := client.New()

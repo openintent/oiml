@@ -16,6 +16,7 @@ import (
 	"blog/generated/actions/handlers"
 	"blog/generated/jobs"
 	"blog/generated/models"
+	"blog/generated/rowactions"
 )
 
 var pool *pgxpool.Pool
@@ -95,6 +96,16 @@ func ScheduleArticle(ctx context.Context, row *models.Article) error {
 			return err
 		}
 	}
+	if due := dueArticleApprovedAt(row); due != nil {
+		if err := jobs.EnqueueTimer(ctx, "article_approved_at", row.ID, *due); err != nil {
+			return err
+		}
+	}
+	if due := dueArticleRetiredAt(row); due != nil {
+		if err := jobs.EnqueueTimer(ctx, "article_retired_at", row.ID, *due); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -145,6 +156,82 @@ func dueRowsArticlePublishAt(ctx context.Context, now time.Time) ([]*models.Arti
 	return out, rows.Err()
 }
 
+func dueArticleApprovedAt(row *models.Article) *time.Time {
+	if row.ApprovedAt == nil {
+		return nil
+	}
+	due := row.ApprovedAt.Add(2592000 * time.Second)
+	return &due
+}
+
+func holdsArticleApprovedAt(ctx context.Context, row *models.Article) (bool, error) {
+	_, _ = ctx, row
+	return true, nil
+}
+
+func runArticleApprovedAt(ctx context.Context, row *models.Article, now time.Time) error {
+	result, err := rowactions.TransitionArticleRetire(ctx, pool, row.ID, now)
+	if err != nil || result == nil {
+		return err
+	}
+	return ScheduleArticle(ctx, result)
+}
+
+func dueRowsArticleApprovedAt(ctx context.Context, now time.Time) ([]*models.Article, error) {
+	rows, err := pool.Query(ctx, `SELECT `+models.ArticleColumns+` FROM `+models.ArticleTable+` WHERE "approved_at" IS NOT NULL AND "approved_at" <= $1`, now.Add(-2592000*time.Second))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]*models.Article, 0)
+	for rows.Next() {
+		row, err := models.ScanArticle(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
+func dueArticleRetiredAt(row *models.Article) *time.Time {
+	if row.RetiredAt == nil {
+		return nil
+	}
+	due := row.RetiredAt.Add(2592000 * time.Second)
+	return &due
+}
+
+func holdsArticleRetiredAt(ctx context.Context, row *models.Article) (bool, error) {
+	_, _ = ctx, row
+	return true, nil
+}
+
+func runArticleRetiredAt(ctx context.Context, row *models.Article, now time.Time) error {
+	result, err := rowactions.SetArticleArchived(ctx, pool, row.ID, true, now)
+	if err != nil || result == nil {
+		return err
+	}
+	return ScheduleArticle(ctx, result)
+}
+
+func dueRowsArticleRetiredAt(ctx context.Context, now time.Time) ([]*models.Article, error) {
+	rows, err := pool.Query(ctx, `SELECT `+models.ArticleColumns+` FROM `+models.ArticleTable+` WHERE "retired_at" IS NOT NULL AND "retired_at" <= $1`, now.Add(-2592000*time.Second))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]*models.Article, 0)
+	for rows.Next() {
+		row, err := models.ScanArticle(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
 // RunTimerJob runs a timer job the queue fired, if the row still says so: same due time, condition holds.
 func RunTimerJob(ctx context.Context, name string, id json.RawMessage, due string) error {
 	switch name {
@@ -161,6 +248,32 @@ func RunTimerJob(ctx context.Context, name string, id json.RawMessage, due strin
 			return err
 		}
 		return runArticlePublishAt(ctx, row, time.Now().UTC())
+	case "article_approved_at":
+		row, err := loadArticle(ctx, id)
+		if err != nil || row == nil {
+			return err
+		}
+		at := dueArticleApprovedAt(row)
+		if at == nil || at.UTC().Format(time.RFC3339Nano) != due {
+			return nil
+		}
+		if ok, err := holdsArticleApprovedAt(ctx, row); err != nil || !ok {
+			return err
+		}
+		return runArticleApprovedAt(ctx, row, time.Now().UTC())
+	case "article_retired_at":
+		row, err := loadArticle(ctx, id)
+		if err != nil || row == nil {
+			return err
+		}
+		at := dueArticleRetiredAt(row)
+		if at == nil || at.UTC().Format(time.RFC3339Nano) != due {
+			return nil
+		}
+		if ok, err := holdsArticleRetiredAt(ctx, row); err != nil || !ok {
+			return err
+		}
+		return runArticleRetiredAt(ctx, row, time.Now().UTC())
 	}
 	return errors.New("unknown timer " + name)
 }
@@ -182,6 +295,44 @@ func RunDueTimers(ctx context.Context, now time.Time) (int, error) {
 				continue
 			}
 			if err := runArticlePublishAt(ctx, row, now); err != nil {
+				return ran, err
+			}
+			ran++
+		}
+	}
+	{
+		rows, err := dueRowsArticleApprovedAt(ctx, now)
+		if err != nil {
+			return ran, err
+		}
+		for _, row := range rows {
+			ok, err := holdsArticleApprovedAt(ctx, row)
+			if err != nil {
+				return ran, err
+			}
+			if !ok {
+				continue
+			}
+			if err := runArticleApprovedAt(ctx, row, now); err != nil {
+				return ran, err
+			}
+			ran++
+		}
+	}
+	{
+		rows, err := dueRowsArticleRetiredAt(ctx, now)
+		if err != nil {
+			return ran, err
+		}
+		for _, row := range rows {
+			ok, err := holdsArticleRetiredAt(ctx, row)
+			if err != nil {
+				return ran, err
+			}
+			if !ok {
+				continue
+			}
+			if err := runArticleRetiredAt(ctx, row, now); err != nil {
 				return ran, err
 			}
 			ran++

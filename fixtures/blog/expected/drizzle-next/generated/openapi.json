@@ -2570,6 +2570,19 @@
             }
           },
           {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "in_review",
+                "approved",
+                "retired"
+              ]
+            }
+          },
+          {
             "name": "archived",
             "in": "query",
             "description": "true: only archived rows (archived_at set). Absent or false: only live rows",
@@ -2698,6 +2711,40 @@
                             ],
                             "readOnly": true
                           },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "draft",
+                              "in_review",
+                              "approved",
+                              "retired"
+                            ],
+                            "readOnly": true
+                          },
+                          "approved_at": {
+                            "oneOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "readOnly": true
+                          },
+                          "retired_at": {
+                            "oneOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "readOnly": true
+                          },
                           "author": {
                             "oneOf": [
                               {
@@ -2722,6 +2769,9 @@
                           "locked",
                           "comment_count",
                           "archived_at",
+                          "status",
+                          "approved_at",
+                          "retired_at",
                           "author"
                         ]
                       }
@@ -2992,6 +3042,40 @@
                           ],
                           "readOnly": true
                         },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "draft",
+                            "in_review",
+                            "approved",
+                            "retired"
+                          ],
+                          "readOnly": true
+                        },
+                        "approved_at": {
+                          "oneOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "readOnly": true
+                        },
+                        "retired_at": {
+                          "oneOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "readOnly": true
+                        },
                         "author": {
                           "oneOf": [
                             {
@@ -3016,6 +3100,9 @@
                         "locked",
                         "comment_count",
                         "archived_at",
+                        "status",
+                        "approved_at",
+                        "retired_at",
                         "author"
                       ]
                     }
@@ -3184,6 +3271,67 @@
         "responses": {
           "204": {
             "description": "Deleted"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/posts/{id}/approve": {
+      "post": {
+        "tags": [
+          "posts"
+        ],
+        "operationId": "posts_approve",
+        "summary": "Moves the row's status from in_review to approved and sets approved_at. 409 (invalid_transition) when the row is in another state",
+        "description": "Only users with role admin.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Article"
+                    }
+                  }
+                }
+              }
+            }
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
@@ -3386,6 +3534,67 @@
         }
       }
     },
+    "/api/posts/{id}/reject": {
+      "post": {
+        "tags": [
+          "posts"
+        ],
+        "operationId": "posts_reject",
+        "summary": "Moves the row's status from in_review to draft. 409 (invalid_transition) when the row is in another state",
+        "description": "Only users with role admin.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Article"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
     "/api/posts/{id}/restore": {
       "post": {
         "tags": [
@@ -3393,6 +3602,128 @@
         ],
         "operationId": "posts_restore",
         "summary": "Restores an archived row: clears archived_at. 409 when it is not archived",
+        "description": "Only the row's owner (author_id).",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Article"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/posts/{id}/retire": {
+      "post": {
+        "tags": [
+          "posts"
+        ],
+        "operationId": "posts_retire",
+        "summary": "Moves the row's status from approved to retired and sets retired_at. 409 (invalid_transition) when the row is in another state",
+        "description": "Any of: Only users with role admin; Only the row's owner (author_id), only when status = approved.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Article"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/posts/{id}/submit": {
+      "post": {
+        "tags": [
+          "posts"
+        ],
+        "operationId": "posts_submit",
+        "summary": "Moves the row's status from draft to in_review. 409 (invalid_transition) when the row is in another state",
         "description": "Only the row's owner (author_id).",
         "security": [
           {
@@ -3676,6 +4007,10 @@
                           "post_count": {
                             "type": "integer",
                             "readOnly": true
+                          },
+                          "approved_count": {
+                            "type": "integer",
+                            "readOnly": true
                           }
                         },
                         "required": [
@@ -3687,7 +4022,8 @@
                           "banned",
                           "banned_at",
                           "ban_reason",
-                          "post_count"
+                          "post_count",
+                          "approved_count"
                         ]
                       }
                     },
@@ -3829,6 +4165,10 @@
                           "type": "integer",
                           "readOnly": true
                         },
+                        "approved_count": {
+                          "type": "integer",
+                          "readOnly": true
+                        },
                         "posts": {
                           "type": "array",
                           "items": {
@@ -3846,6 +4186,7 @@
                         "banned_at",
                         "ban_reason",
                         "post_count",
+                        "approved_count",
                         "posts"
                       ]
                     }
@@ -4154,6 +4495,40 @@
               }
             ],
             "readOnly": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "in_review",
+              "approved",
+              "retired"
+            ],
+            "readOnly": true
+          },
+          "approved_at": {
+            "oneOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "readOnly": true
+          },
+          "retired_at": {
+            "oneOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "readOnly": true
           }
         },
         "required": [
@@ -4168,7 +4543,10 @@
           "publish_at",
           "locked",
           "comment_count",
-          "archived_at"
+          "archived_at",
+          "status",
+          "approved_at",
+          "retired_at"
         ]
       },
       "Bulletin": {
@@ -4369,6 +4747,10 @@
           "post_count": {
             "type": "integer",
             "readOnly": true
+          },
+          "approved_count": {
+            "type": "integer",
+            "readOnly": true
           }
         },
         "required": [
@@ -4380,7 +4762,8 @@
           "banned",
           "banned_at",
           "ban_reason",
-          "post_count"
+          "post_count",
+          "approved_count"
         ]
       }
     },

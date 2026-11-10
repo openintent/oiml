@@ -17,7 +17,7 @@ import type {
   TileGroupIR,
   TileIR
 } from "@osl/core";
-import { actionsOf, toPascalCase, toTitleCase } from "@osl/core";
+import { actionsOf, toPascalCase, toTitleCase, transitionOf } from "@osl/core";
 import { entityByName, q, singlePrimaryKey, type TsConventions } from "../conventions.js";
 import { pageComponent } from "./routes.js";
 import type { WebTarget } from "./target.js";
@@ -1131,7 +1131,7 @@ export function ${Comp}Index() {
       );
     else
       sections.push(
-        boardIndex(ctx, list, update!, headerExtras, collectionActionDecls, collectionActionForms, collectionErrors)
+        boardIndex(ctx, list, idPk, headerExtras, collectionActionDecls, collectionActionForms, collectionErrors)
       );
   }
 
@@ -1187,13 +1187,16 @@ export function ${Comp}Index() {
   for (const a of rowActions) {
     shadcn(ctx, "button", "Button");
     const Pascal = toPascalCase(a.name);
-    // The compiler's archive shows on a live row and its restore on an archived one: the other would answer 409
+    // The compiler's archive shows on a live row and its restore on an archived one, and a transition on a row in
+    // one of the states it starts from: the others would answer 409
     const when =
       a.builtin === "archive"
         ? ` && !row.${entity.archive!.column}`
         : a.builtin === "restore"
           ? ` && row.${entity.archive!.column}`
-          : "";
+          : a.builtin === "transition"
+            ? ` && [${transitionOf(ir, a).from.map(q).join(", ")}].includes(String(row.${entity.transitions!.column}))`
+            : "";
     actions.push(
       a.input.length
         ? `          {can${Pascal}(user, row) ? (
@@ -1516,11 +1519,15 @@ ${cells.join("\n")}
 }`;
 }
 
-/** The index of a board page: one column per value of the group field, native drag and drop to move cards */
+/**
+ * The index of a board page: one column per value of the group field, native drag and drop to move cards. A drop
+ * updates the field, unless the field is the one a state machine moves: then a drop runs the transition that takes
+ * the card from its column to that one, and a column no transition reaches from there takes no drop at all.
+ */
 function boardIndex(
   ctx: Ctx,
   list: ListOp,
-  update: UpdateOp,
+  idPk: string,
   headerExtras: string,
   actionDecls: string[],
   actionForms: string[],
@@ -1548,7 +1555,12 @@ function boardIndex(
   use(ctx, "ui", "ListSkeleton");
   use(ctx, "client", "Inputs");
   use(ctx, "client", "Outputs");
-  void update;
+  if (entity.transitions?.column === groupBy)
+    return transitionBoard(ctx, idPk, values, first, metaExpr, listIncludes, headerExtras, [
+      actionDecls,
+      actionForms,
+      actionErrors
+    ]);
   return `const BOARD_INPUT = { page: 1, page_size: PAGE_SIZE } as Inputs[${q(R)}]["list"];
 const COLUMNS = [${values.map(q).join(", ")}] as const;
 type Column = (typeof COLUMNS)[number];
@@ -1638,6 +1650,196 @@ ${actionErrors.join("\n")}
               </div>
             </section>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}`;
+}
+
+/**
+ * The index of a board over the field of a state machine. MOVES is the transition table the viewer may use; a card
+ * dragged over a column is offered the drop only when one of them takes it there from where it is, and the drop
+ * runs that transition. The field is never updated: a refused transition (409 when the card was stale, 403 when the
+ * rule depends on more than the page knows) puts the card back.
+ */
+function transitionBoard(
+  ctx: Ctx,
+  idPk: string,
+  values: string[],
+  first: ColumnIR,
+  metaExpr: string | null,
+  listIncludes: RelationIR[],
+  headerExtras: string,
+  [actionDecls, actionForms, actionErrors]: [string[], string[], string[]]
+): string {
+  const { page, entity, resource, target, ir } = ctx;
+  const Comp = pageComponent(page);
+  const R = resource.name;
+  const pk = ctx.pk.name;
+  const groupBy = page.groupBy!;
+  const { queryOpts, fixedSpread } = listQueryOptions(page);
+  const toggle = archiveToggle(ctx, false);
+  const steps = actionsOf(ir, R).filter(a => a.builtin === "transition" && a.rule.kind !== "none");
+  use(ctx, "client", "SessionUser");
+  use(ctx, "react", "useRef");
+  use(ctx, "ui", "cn");
+  const moves = steps.map(a => {
+    const step = transitionOf(ir, a);
+    return `  {
+    name: ${q(step.name)},
+    from: [${step.from.map(q).join(", ")}],
+    to: ${q(step.to)},
+    allowed: (user, row) => ${rulePredicate(a.rule, "user", "row", idPk)},
+    run: id => client.${R}.${a.name}({ id })
+  }`;
+  });
+  return `const BOARD_INPUT = { page: 1, page_size: PAGE_SIZE } as Inputs[${q(R)}]["list"];
+const COLUMNS = [${values.map(q).join(", ")}] as const;
+type Column = (typeof COLUMNS)[number];
+
+/** The transitions of ${entity.name}: a card moves from one column to another only along one of these */
+interface Move {
+  name: string;
+  from: readonly string[];
+  to: Column;
+  /** Whether the viewer's rule lets them run it on this card */
+  allowed(user: SessionUser | null, row: Row): boolean;
+  run(id: Row[${q(pk)}]): Promise<unknown>;
+}
+
+const MOVES: Move[] = [
+${moves.join(",\n")}
+];
+
+/** The transition that takes a card to a column from where it is, if the viewer may run one */
+function moveTo(user: SessionUser | null, row: Row, column: Column): Move | undefined {
+  return MOVES.find(move => move.to === column && move.from.includes(String(row.${groupBy})) && move.allowed(user, row));
+}
+
+export function ${Comp}Index() {${toggle?.decl ?? ""}
+  const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
+  const user = sessionUser(session.data);
+  const boardInput = { ...BOARD_INPUT${toggle?.spread ?? ""}${fixedSpread} } as Inputs[${q(R)}]["list"];
+  const boardKey = [...KEY, "list", boardInput] as const;
+  const list = useQuery({ queryKey: boardKey, queryFn: () => client.${R}.list(boardInput)${queryOpts} });
+  const [openAction, setOpenAction] = useState<string | null>(null);
+  void openAction;
+  void setOpenAction;
+  // The card in the air, the column that last refused it, and what the board says about a drop it did not take
+  const [dragging, setDragging] = useState<Row | null>(null);
+  const refusedBy = useRef<Column | null>(null);
+  const [refusal, setRefusal] = useState<string | null>(null);
+  ${target.navigateDecl}
+  const queryClient = useQueryClient();
+${actionDecls.join("\n")}
+  const move = useMutation({
+    mutationFn: ({ id, step }: { id: Row[${q(pk)}]; step: Move }) => step.run(id),
+    onMutate: async ({ id, step }) => {
+      await queryClient.cancelQueries({ queryKey: boardKey });
+      const previous = queryClient.getQueryData<Outputs[${q(R)}]["list"]>(boardKey);
+      if (previous) {
+        queryClient.setQueryData<Outputs[${q(R)}]["list"]>(boardKey, {
+          ...previous,
+          data: previous.data.map(row => (row.${pk} === id ? { ...row, ${groupBy}: step.to } : row))
+        });
+      }
+      return { previous };
+    },
+    onError: (_error, _input, context) => {
+      if (context?.previous) queryClient.setQueryData(boardKey, context.previous);
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: KEY })
+  });
+  const rows = list.data?.data ?? [];
+  return (
+    <div
+      className="flex h-full min-h-0 flex-col"
+      onDragOverCapture={() => {
+        refusedBy.current = null;
+      }}
+    >
+      <PaneHeader title=${q(page.title)} count={list.data?.page.total}>
+          ${[toggle?.button, headerExtras].filter(Boolean).join("\n          ")}
+      </PaneHeader>
+${actionForms.join("\n")}
+${actionErrors.join("\n")}
+      <ErrorNote error={move.error ?? list.error} className="m-4" />
+      {refusal ? (
+        <p role="status" data-board-refusal className="mx-4 mt-4 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+          {refusal}
+        </p>
+      ) : null}
+      {list.isPending ? (
+        <ListSkeleton />
+      ) : (
+        <div className="flex min-h-0 flex-1 gap-4 overflow-x-auto p-4">
+          {COLUMNS.map(column => {
+            const offered = dragging && dragging.${groupBy} !== column ? Boolean(moveTo(user, dragging, column)) : null;
+            return (
+              <section
+                key={column}
+                data-column={column}
+                data-offered={offered === null ? undefined : offered}
+                className={cn(
+                  "flex w-72 shrink-0 flex-col rounded-lg border border-border bg-muted/30",
+                  offered === true && "ring-2 ring-ring",
+                  offered === false && "opacity-50"
+                )}
+                onDragOver={event => {
+                  if (!dragging || dragging.${groupBy} === column) return;
+                  // Only a column a transition reaches takes the drop; over any other the browser shows no-drop
+                  if (moveTo(user, dragging, column)) event.preventDefault();
+                  else refusedBy.current = column;
+                }}
+                onDrop={event => {
+                  event.preventDefault();
+                  const step = dragging ? moveTo(user, dragging, column) : undefined;
+                  if (dragging && step) move.mutate({ id: dragging.${pk}, step });
+                  setDragging(null);
+                }}
+              >
+                <header className="flex items-center justify-between px-3 py-2 text-sm font-medium">
+                  <span>{column}</span>
+                  <span className="text-xs text-muted-foreground">{rows.filter(r => r.${groupBy} === column).length}</span>
+                </header>
+                <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2">
+                  {rows
+                    .filter(r => r.${groupBy} === column)
+                    .map((row: Row) => (
+                      <div
+                        key={text(row.${pk})}
+                        data-card={text(row.${pk})}
+                        draggable
+                        onDragStart={event => {
+                          event.dataTransfer.setData("text/plain", text(row.${pk}));
+                          event.dataTransfer.effectAllowed = "move";
+                          refusedBy.current = null;
+                          setRefusal(null);
+                          setDragging(row);
+                        }}
+                        onDragEnd={() => {
+                          // Let go over a column no transition reaches: the card never left, and the board says why
+                          if (refusedBy.current)
+                            setRefusal(\`No transition takes a card from \${row.${groupBy}} to \${refusedBy.current}.\`);
+                          refusedBy.current = null;
+                          setDragging(null);
+                        }}
+                        onClick={() => ${target.navigateTo(page.path, `text(row.${pk})`)}}
+                        className="cursor-grab rounded-md border border-border bg-card p-3 text-sm shadow-xs hover:bg-accent/40 active:cursor-grabbing"
+                      >
+                        <div className="font-medium">{${showExpr(ctx, first, "row", listIncludes, "list")} || text(row.${pk})}</div>${
+                          metaExpr
+                            ? `
+                        <div className="mt-1 text-xs text-muted-foreground">{${metaExpr}}</div>`
+                            : ""
+                        }
+                      </div>
+                    ))}
+                </div>
+              </section>
+            );
+          })}
         </div>
       )}
     </div>

@@ -7,11 +7,12 @@ import { db } from "../../db/client";
 import * as schema from "../../db/schema";
 import { tasks as tasksTable } from "../../db/schema";
 import { presentProject, presentTask, presentTaskNote } from "../../present";
-import { tasksClearDoneInput, tasksCompleteInput, tasksCreateInput, tasksId, tasksListQuery, tasksUpdateInput } from "../../validation";
+import { tasksClearDoneInput, tasksCompleteInput, tasksCreateInput, tasksFinishInput, tasksId, tasksListQuery, tasksPauseInput, tasksStartInput, tasksUpdateInput } from "../../validation";
 import { handlers } from "../../actions";
+import { taskTransitions } from "../../row-actions";
 import { checkRule, type Rule } from "../access";
 import type { Session } from "../auth";
-import { notFound, parseId, toTRPCError } from "../errors";
+import { fail, notFound, parseId, toTRPCError } from "../errors";
 import { publicProcedure, router } from "../trpc";
 import { hooks } from "@/extensions/tasks";
 
@@ -26,7 +27,10 @@ const RULES = {
 
 const ACTION_RULES = {
   complete: {"kind":"public","when":{"field":"status","op":"ne","value":"done"}} as Rule,
-  clear_done: {"kind":"public"} as Rule
+  clear_done: {"kind":"public"} as Rule,
+  start: {"kind":"public","when":{"field":"status","op":"ne","value":"done"}} as Rule,
+  pause: {"kind":"public","when":{"field":"status","op":"ne","value":"done"}} as Rule,
+  finish: {"kind":"public","when":{"field":"status","op":"ne","value":"done"}} as Rule
 };
 
 /** Ids as clients send them; parseId applies tasksId and answers NOT_FOUND to a malformed one. */
@@ -156,6 +160,69 @@ export const tasksRouter = router({
       const result = await handlers.tasks_clear_done({ input, row: undefined, session: ctx.session, db, now: new Date() });
 
       return result;
+    } catch (err) {
+      throw toTRPCError(err, "write");
+    }
+  }),
+
+  /** POST /api/tasks/{id}/start */
+  start: publicProcedure.input(tasksStartInput.extend({ id: ID })).mutation(async ({ ctx, input: raw }) => {
+    const { id: rawId, ...input } = raw;
+    checkRule(ACTION_RULES.start, ctx.session);
+    const id = parseId(tasksId, rawId);
+    const current = await db.query.tasks.findFirst({ where: eq(tasksTable.id, id) }).catch(err => {
+      throw toTRPCError(err, "read");
+    });
+    if (!current) throw notFound();
+    checkRule(ACTION_RULES.start, ctx.session, current);
+    try {
+      void input;
+      const result = await taskTransitions.start(current.id);
+      if (!result) fail(409, "invalid_transition", `start needs status todo; this row's status is ${current.status}`);
+
+      return presentTask(result);
+    } catch (err) {
+      throw toTRPCError(err, "write");
+    }
+  }),
+
+  /** POST /api/tasks/{id}/pause */
+  pause: publicProcedure.input(tasksPauseInput.extend({ id: ID })).mutation(async ({ ctx, input: raw }) => {
+    const { id: rawId, ...input } = raw;
+    checkRule(ACTION_RULES.pause, ctx.session);
+    const id = parseId(tasksId, rawId);
+    const current = await db.query.tasks.findFirst({ where: eq(tasksTable.id, id) }).catch(err => {
+      throw toTRPCError(err, "read");
+    });
+    if (!current) throw notFound();
+    checkRule(ACTION_RULES.pause, ctx.session, current);
+    try {
+      void input;
+      const result = await taskTransitions.pause(current.id);
+      if (!result) fail(409, "invalid_transition", `pause needs status doing; this row's status is ${current.status}`);
+
+      return presentTask(result);
+    } catch (err) {
+      throw toTRPCError(err, "write");
+    }
+  }),
+
+  /** POST /api/tasks/{id}/finish */
+  finish: publicProcedure.input(tasksFinishInput.extend({ id: ID })).mutation(async ({ ctx, input: raw }) => {
+    const { id: rawId, ...input } = raw;
+    checkRule(ACTION_RULES.finish, ctx.session);
+    const id = parseId(tasksId, rawId);
+    const current = await db.query.tasks.findFirst({ where: eq(tasksTable.id, id) }).catch(err => {
+      throw toTRPCError(err, "read");
+    });
+    if (!current) throw notFound();
+    checkRule(ACTION_RULES.finish, ctx.session, current);
+    try {
+      void input;
+      const result = await taskTransitions.finish(current.id, new Date());
+      if (!result) fail(409, "invalid_transition", `finish needs status doing; this row's status is ${current.status}`);
+
+      return presentTask(result);
     } catch (err) {
       throw toTRPCError(err, "write");
     }

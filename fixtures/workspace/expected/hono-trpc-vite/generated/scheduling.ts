@@ -5,6 +5,7 @@ import { and, eq, isNotNull, lte } from "drizzle-orm";
 import { db } from "./db/client";
 import * as schema from "./db/schema";
 import { handlers } from "./actions";
+import { requestTransitions } from "./row-actions";
 import { enqueueAt } from "./jobs";
 
 /** A schedule: a cron (UTC) and the action it runs, with literal input */
@@ -78,8 +79,26 @@ const task_due_at: TimerDef<schema.Task> = {
   }
 };
 
+const request_created_at: TimerDef<schema.Request> = {
+  name: "request_created_at",
+  entity: "Request",
+  dueOf: row => due(row.created_at, 1209600),
+  holds: async () => true,
+  id: row => row.id,
+  load: async id => (await db.select().from(schema.requests).where(eq(schema.requests.id, id as schema.Request["id"])))[0],
+  dueRows: now =>
+    db
+      .select()
+      .from(schema.requests)
+      .where(and(isNotNull(schema.requests.created_at), lte(schema.requests.created_at, new Date(now.getTime() - 1209600 * 1000)))),
+  run: async (row, now) => {
+    const result = await requestTransitions.expire(row.id);
+    if (result) await scheduleTimers("Request", result);
+  }
+};
+
 type AnyTimer = TimerDef<Record<string, unknown>>;
-export const TIMERS: AnyTimer[] = [task_due_at as unknown as AnyTimer];
+export const TIMERS: AnyTimer[] = [task_due_at as unknown as AnyTimer, request_created_at as unknown as AnyTimer];
 
 /** Schedule the timers of an entity for a row just written: one job per timer, due at the field plus the offset */
 export async function scheduleTimers(entity: string, row: Record<string, unknown>): Promise<void> {

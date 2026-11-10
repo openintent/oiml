@@ -175,6 +175,9 @@ or than the round was recommended to do.
     them. A timer runs an action's handler as the system, and these have none; M133 says to declare a row action
     whose handler sets the field. A timer may wait on `archived_at` (the "kept for thirty days, then purged" ask):
     archive and restore schedule the entity's timers as an update does.
+    Round B4 (2026-11-10) lifted this for every row action the compiler writes as one statement: a timer runs
+    `archive`, `restore` and a transition as the system (`state-machines.md`, decision 2), and the statement moved
+    from each resource module into one generated module that handlers and timers both call.
 14. **`archived` is the list's own parameter, a tile's and a page's filter key, and nothing else's.** A scenario
     writes it as a string (`query: { archived: "true" }`), like every query value; a tile and a fixed page filter
     write `archived: true` without a list filter behind it; a field named `archived` in `list.filters` of an
@@ -249,6 +252,7 @@ tests of the rendered objects.
   the junction's rows".
 - A count per viewer (unread for me) and a count grouped by a value (reactions per emoji): not a column of the row.
 - A timer that runs `archive` or `restore`: "declare a row action whose handler sets the field and run that".
+  (Built in round B4; the reference no longer says this.)
 - Archived rows left out of includes: "an include is not a list".
 
 ## Proof

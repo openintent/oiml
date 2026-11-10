@@ -10,8 +10,8 @@ import (
 	"todo/generated/client"
 )
 
-// TestScenario03CompletingTasks is the scenario "completing tasks".
-func TestScenario03CompletingTasks(t *testing.T) {
+// TestScenario02CompletingTasks is the scenario "completing tasks".
+func TestScenario02CompletingTasks(t *testing.T) {
 	vars := map[string]any{}
 	t.Run("1. tasks.create", func(t *testing.T) {
 		c := client.New()

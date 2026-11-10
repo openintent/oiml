@@ -326,6 +326,7 @@ function TeamsDetailInner() {
         <FieldRow label="Id">{text(row.id) || "—"}</FieldRow>
         <FieldRow label="Name">{text(row.name) || "—"}</FieldRow>
         <FieldRow label="Created At">{formatDateTime(row.created_at) || "—"}</FieldRow>
+        <FieldRow label="Pending Requests">{text(row.pending_requests) || "—"}</FieldRow>
         <FieldRow label="Members">
           {row.members.length === 0 ? (
             "—"

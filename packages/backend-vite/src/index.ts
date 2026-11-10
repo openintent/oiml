@@ -10,7 +10,9 @@ import {
   dockerFiles,
   emailFile,
   eventFiles,
+  hasRowActions,
   hasScheduling,
+  rowActionsFile,
   schedulingFile,
   testHooksFile,
   filesFile,
@@ -102,6 +104,7 @@ export function generate(input: GenerateInput): GeneratedFile[] {
     files.push({ path: `${gen}/email.ts`, content: emailFile(VITE_SERVER) });
     files.push({ path: `${gen}/auth-providers.ts`, content: authProvidersFile(ir, VITE_SERVER) });
   }
+  if (hasRowActions(ir)) files.push({ path: `${gen}/row-actions.ts`, content: rowActionsFile(ir, VITE) });
   if (userActions(ir).length) {
     files.push({ path: `${gen}/actions.ts`, content: actionsFile(ir, VITE_SERVER) });
     files.push(...actionScaffolds(ir, VITE_SERVER));

@@ -5,6 +5,7 @@ import { relations } from "drizzle-orm";
 import { boolean, index, integer, jsonb, pgEnum, pgTable, text, timestamp, unique, uuid, varchar } from "drizzle-orm/pg-core";
 
 export const userRoleEnum = pgEnum("user_role", ["member", "admin"]);
+export const articleStatusEnum = pgEnum("article_status", ["draft", "in_review", "approved", "retired"]);
 export const oslFileStatusEnum = pgEnum("osl_file_status", ["pending", "ready"]);
 export const oslAuthTokenPurposeEnum = pgEnum("osl_auth_token_purpose", ["magic_link"]);
 
@@ -21,6 +22,7 @@ export const users = pgTable("users", {
   banned_at: timestamp({ withTimezone: true }),
   ban_reason: text(),
   post_count: integer().notNull().default(0),
+  approved_count: integer().notNull().default(0),
   password_hash: varchar({ length: 255 })
 });
 
@@ -38,7 +40,10 @@ export const articles = pgTable(
     publish_at: timestamp({ withTimezone: true }),
     locked: boolean().notNull().default(false),
     comment_count: integer().notNull().default(0),
-    archived_at: timestamp({ withTimezone: true })
+    archived_at: timestamp({ withTimezone: true }),
+    status: articleStatusEnum().notNull().default("draft"),
+    approved_at: timestamp({ withTimezone: true }),
+    retired_at: timestamp({ withTimezone: true })
   },
   t => [unique("articles_author_id_title_key").on(t.author_id, t.title), index("articles_author_id_idx").on(t.author_id)]
 );

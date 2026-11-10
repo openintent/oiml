@@ -89,6 +89,12 @@ export const Expect = z
     archive: Names.optional(),
     /** "Entity.field -> Counted": a count_of field on Entity over rows of Counted; field may be "*" for any name */
     counts: Names.optional(),
+    /**
+     * entity -> transitions it must declare (`transitions:` on the entity, not actions with handlers), each with
+     * alternatives; "from -> to" asks for a transition that takes a row from the one state to the other under any
+     * name; [] asks only for the block
+     */
+    transitions: z.record(z.string(), Names).optional(),
     /** entity -> operation -> rule alternatives, compared after defaults are applied */
     rules: z.record(z.string(), z.record(z.string(), z.string())).optional(),
     resources: Names.optional(),

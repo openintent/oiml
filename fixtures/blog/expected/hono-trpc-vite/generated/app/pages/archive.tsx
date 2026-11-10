@@ -61,6 +61,22 @@ function canRestore(user: SessionUser | null, row: Detail): boolean {
   return user !== null && row.author_id === user.id;
 }
 
+function canSubmit(user: SessionUser | null, row: Detail): boolean {
+  return user !== null && row.author_id === user.id;
+}
+
+function canApprove(user: SessionUser | null, row: Detail): boolean {
+  return user !== null && (user as { role?: unknown }).role === "admin";
+}
+
+function canReject(user: SessionUser | null, row: Detail): boolean {
+  return user !== null && (user as { role?: unknown }).role === "admin";
+}
+
+function canRetire(user: SessionUser | null, row: Detail): boolean {
+  return (user !== null && (user as { role?: unknown }).role === "admin" || (user !== null && row.author_id === user.id && String(row.status) === "approved"));
+}
+
 function canUnpublishAll(user: SessionUser | null): boolean {
   return user !== null && (user as { role?: unknown }).role === "admin";
 }
@@ -299,7 +315,7 @@ function ArchiveIndexInner() {
   const [sort, setSort] = useState<string | undefined>(undefined);
   const [search, setSearch] = useState("");
   const q = useDebounced(search);
-  const [filters, setFilters] = useState<{ published?: string; author_id?: string }>({});
+  const [filters, setFilters] = useState<{ published?: string; author_id?: string; status?: string }>({});
   const [openAction, setOpenAction] = useState<string | null>(null);
   void openAction;
   void setOpenAction;
@@ -315,7 +331,7 @@ function ArchiveIndexInner() {
     page_size: PAGE_SIZE,
     sort,
     q: q || undefined,
-    published: filters.published === "true" ? true : filters.published === "false" ? false : undefined, author_id: filters.author_id || undefined,
+    published: filters.published === "true" ? true : filters.published === "false" ? false : undefined, author_id: filters.author_id || undefined, status: filters.status || undefined,
     ...(archived ? { archived: true } : {})
   } as Inputs["posts"]["list"];
   const list = useQuery({ queryKey: [...KEY, "list", input], queryFn: () => client.posts.list(input) });
@@ -363,6 +379,13 @@ function ArchiveIndexInner() {
             <option value="false">Published: no</option>
           </select>
           <Input aria-label="Author" type="text" placeholder="Author" className="w-40" value={filters.author_id ?? ""} onChange={e => setFilter("author_id", e.target.value)} />
+          <select aria-label="Status" className={selectClass + " w-auto"} value={filters.status ?? ""} onChange={e => setFilter("status", e.target.value)}>
+            <option value="">Status: any</option>
+            <option value="draft">draft</option>
+            <option value="in_review">in_review</option>
+            <option value="approved">approved</option>
+            <option value="retired">retired</option>
+          </select>
       </div>
       <div className="min-h-0 flex-1 overflow-auto px-4">
         {list.isPending ? (
@@ -497,6 +520,34 @@ function ArchiveDetailInner() {
       await queryClient.invalidateQueries({ queryKey: KEY });
     }
   });
+  const submitAction = useMutation({
+    mutationFn: (input: Inputs["posts"]["submit"]) => client.posts.submit(input),
+    onSuccess: async () => {
+      setOpenAction(null);
+      await queryClient.invalidateQueries({ queryKey: KEY });
+    }
+  });
+  const approveAction = useMutation({
+    mutationFn: (input: Inputs["posts"]["approve"]) => client.posts.approve(input),
+    onSuccess: async () => {
+      setOpenAction(null);
+      await queryClient.invalidateQueries({ queryKey: KEY });
+    }
+  });
+  const rejectAction = useMutation({
+    mutationFn: (input: Inputs["posts"]["reject"]) => client.posts.reject(input),
+    onSuccess: async () => {
+      setOpenAction(null);
+      await queryClient.invalidateQueries({ queryKey: KEY });
+    }
+  });
+  const retireAction = useMutation({
+    mutationFn: (input: Inputs["posts"]["retire"]) => client.posts.retire(input),
+    onSuccess: async () => {
+      setOpenAction(null);
+      await queryClient.invalidateQueries({ queryKey: KEY });
+    }
+  });
   if (query.isPending) return <PaneSkeleton />;
   if (query.error) return <ErrorNote error={query.error} className="m-6" />;
   const row: Detail = query.data;
@@ -533,6 +584,26 @@ function ArchiveDetailInner() {
               Restore
             </Button>
           ) : null}
+          {canSubmit(user, row) && ["draft"].includes(String(row.status)) ? (
+            <Button variant="outline" size="sm" disabled={submitAction.isPending} onClick={() => submitAction.mutate({ id })}>
+              Submit
+            </Button>
+          ) : null}
+          {canApprove(user, row) && ["in_review"].includes(String(row.status)) ? (
+            <Button variant="outline" size="sm" disabled={approveAction.isPending} onClick={() => approveAction.mutate({ id })}>
+              Approve
+            </Button>
+          ) : null}
+          {canReject(user, row) && ["in_review"].includes(String(row.status)) ? (
+            <Button variant="outline" size="sm" disabled={rejectAction.isPending} onClick={() => rejectAction.mutate({ id })}>
+              Reject
+            </Button>
+          ) : null}
+          {canRetire(user, row) && ["approved"].includes(String(row.status)) ? (
+            <Button variant="outline" size="sm" disabled={retireAction.isPending} onClick={() => retireAction.mutate({ id })}>
+              Retire
+            </Button>
+          ) : null}
           {canUpdate(user, row) ? (
             <Button variant="outline" size="sm" onClick={() => setEditing(current => !current)}>
               {editing ? "Cancel" : "Edit"}
@@ -559,6 +630,10 @@ function ArchiveDetailInner() {
       <ErrorNote error={unlockAction.error} className="mb-4" />
       <ErrorNote error={archiveAction.error} className="mb-4" />
       <ErrorNote error={restoreAction.error} className="mb-4" />
+      <ErrorNote error={submitAction.error} className="mb-4" />
+      <ErrorNote error={approveAction.error} className="mb-4" />
+      <ErrorNote error={rejectAction.error} className="mb-4" />
+      <ErrorNote error={retireAction.error} className="mb-4" />
       {editing ? (
         <ArchiveForm
           fields={ARCHIVE_UPDATE}
@@ -596,6 +671,9 @@ function ArchiveDetailInner() {
         <FieldRow label="Locked">{row.locked == null ? "—" : <Badge variant={row.locked ? "default" : "outline"}>{yesNo(row.locked)}</Badge>}</FieldRow>
         <FieldRow label="Comment Count">{text(row.comment_count) || "—"}</FieldRow>
         <FieldRow label="Archived At">{formatDateTime(row.archived_at) || "—"}</FieldRow>
+        <FieldRow label="Status">{row.status == null ? "—" : <Badge variant="secondary">{text(row.status)}</Badge>}</FieldRow>
+        <FieldRow label="Approved At">{formatDateTime(row.approved_at) || "—"}</FieldRow>
+        <FieldRow label="Retired At">{formatDateTime(row.retired_at) || "—"}</FieldRow>
         </dl>
       )}
     </Pane>

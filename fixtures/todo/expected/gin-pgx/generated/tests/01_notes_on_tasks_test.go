@@ -10,8 +10,8 @@ import (
 	"todo/generated/client"
 )
 
-// TestScenario02NotesOnTasks is the scenario "notes on tasks".
-func TestScenario02NotesOnTasks(t *testing.T) {
+// TestScenario01NotesOnTasks is the scenario "notes on tasks".
+func TestScenario01NotesOnTasks(t *testing.T) {
 	vars := map[string]any{}
 	t.Run("1. tasks.create", func(t *testing.T) {
 		c := client.New()

@@ -177,6 +177,7 @@ var TenantTables = []TenantTable{
 	{Table: "messages", Key: "id", PublicRead: false},
 	{Table: "labels", Key: "id", PublicRead: false},
 	{Table: "milestone_labels", Key: "id", PublicRead: false},
+	{Table: "requests", Key: "id", PublicRead: false},
 }
 
 // Scope is what request code reads and writes through under isolation: database. Its methods are the pool's.

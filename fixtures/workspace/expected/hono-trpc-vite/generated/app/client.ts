@@ -123,6 +123,16 @@ export const client = {
     get: (input: Inputs["milestone_labels"]["get"]) => trpc.milestone_labels.get.query(input),
     create: (input: Inputs["milestone_labels"]["create"]) => trpc.milestone_labels.create.mutate(input),
     delete: (input: Inputs["milestone_labels"]["delete"]) => trpc.milestone_labels.delete.mutate(input)
+  },
+  requests: {
+    list: (input: Inputs["requests"]["list"]) => trpc.requests.list.query(input),
+    get: (input: Inputs["requests"]["get"]) => trpc.requests.get.query(input),
+    create: (input: Inputs["requests"]["create"]) => trpc.requests.create.mutate(input),
+    update: (input: Inputs["requests"]["update"]) => trpc.requests.update.mutate(input),
+    delete: (input: Inputs["requests"]["delete"]) => trpc.requests.delete.mutate(input),
+    approve: (input: Inputs["requests"]["approve"]) => trpc.requests.approve.mutate(input),
+    decline: (input: Inputs["requests"]["decline"]) => trpc.requests.decline.mutate(input),
+    reopen: (input: Inputs["requests"]["reopen"]) => trpc.requests.reopen.mutate(input)
   }
 };
 

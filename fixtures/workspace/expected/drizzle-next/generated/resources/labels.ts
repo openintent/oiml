@@ -6,6 +6,7 @@ import { db } from "../db/client";
 import * as schema from "../db/schema";
 import { labels as labelsTable } from "../db/schema";
 import { checkRule, denied, memberTenantIds, rulesDisabled, type Rule } from "../access";
+import { setLabelArchived } from "../row-actions";
 import { getSession, type Session } from "../auth";
 import { created, fail, handleError, noContent, notFound, ok, parseBody, parseId, parseQuery } from "../http";
 import { presentLabel } from "../present";
@@ -35,16 +36,6 @@ function presentListRow(row: ListRow) {
 type GetRow = schema.Label;
 function presentGetRow(row: GetRow) {
   return { ...presentLabel(row) };
-}
-
-/** archive and restore: sets archived_at on a live row or clears it on an archived one, in one statement; undefined when there was nothing to do */
-async function setArchived(row: schema.Label, archived: boolean): Promise<schema.Label | undefined> {
-  const [updated] = await db
-    .update(labelsTable)
-    .set({ archived_at: archived ? new Date() : null })
-    .where(and(eq(labelsTable.id, row.id), archived ? isNull(labelsTable.archived_at) : isNotNull(labelsTable.archived_at)))
-    .returning();
-  return updated;
 }
 
 export const labels = {
@@ -175,7 +166,7 @@ export const labels = {
       if (!rowVerdict.ok) return denied(rowVerdict);
       const body = await parseBody(labelsArchiveInput, request);
       if (!body.ok) return body.response;
-      const result = await setArchived(current, true);
+      const result = await setLabelArchived(current.id, true, new Date());
       if (!result) fail(409, "conflict", "The row is archived already");
 
       return ok(presentLabel(result));
@@ -199,7 +190,7 @@ export const labels = {
       if (!rowVerdict.ok) return denied(rowVerdict);
       const body = await parseBody(labelsRestoreInput, request);
       if (!body.ok) return body.response;
-      const result = await setArchived(current, false);
+      const result = await setLabelArchived(current.id, false, new Date());
       if (!result) fail(409, "conflict", "The row is not archived");
 
       return ok(presentLabel(result));

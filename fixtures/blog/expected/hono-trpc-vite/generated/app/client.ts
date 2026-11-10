@@ -63,7 +63,11 @@ export const client = {
     lock: (input: Inputs["posts"]["lock"]) => trpc.posts.lock.mutate(input),
     unlock: (input: Inputs["posts"]["unlock"]) => trpc.posts.unlock.mutate(input),
     archive: (input: Inputs["posts"]["archive"]) => trpc.posts.archive.mutate(input),
-    restore: (input: Inputs["posts"]["restore"]) => trpc.posts.restore.mutate(input)
+    restore: (input: Inputs["posts"]["restore"]) => trpc.posts.restore.mutate(input),
+    submit: (input: Inputs["posts"]["submit"]) => trpc.posts.submit.mutate(input),
+    approve: (input: Inputs["posts"]["approve"]) => trpc.posts.approve.mutate(input),
+    reject: (input: Inputs["posts"]["reject"]) => trpc.posts.reject.mutate(input),
+    retire: (input: Inputs["posts"]["retire"]) => trpc.posts.retire.mutate(input)
   },
   comments: {
     list: (input: Inputs["comments"]["list"]) => trpc.comments.list.query(input),

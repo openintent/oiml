@@ -6,10 +6,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Plus } from "lucide-react";
-import { Fragment, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import { client, sessionUser, type Inputs, type Outputs, type SessionUser } from "../client";
 import { EmptyPane, ErrorNote, FieldRow, FormRow, ListSkeleton, Pane, PaneHeader, PaneSkeleton, formatDateTime, selectClass, splitList, text } from "../ui";
 
@@ -40,16 +41,27 @@ function canComplete(user: SessionUser | null, row: Detail): boolean {
   return (true && String(row.status) !== "done");
 }
 
+function canStart(user: SessionUser | null, row: Detail): boolean {
+  return (true && String(row.status) !== "done");
+}
+
+function canPause(user: SessionUser | null, row: Detail): boolean {
+  return (true && String(row.status) !== "done");
+}
+
+function canFinish(user: SessionUser | null, row: Detail): boolean {
+  return (true && String(row.status) !== "done");
+}
+
 function canClearDone(user: SessionUser | null): boolean {
   return true;
 }
 
-const TASKS_FIELDS = ["title", "status", "estimate_hours", "due_on", "assignee", "project_id"] as const;
+const TASKS_FIELDS = ["title", "estimate_hours", "due_on", "assignee", "project_id"] as const;
 type TasksField = (typeof TASKS_FIELDS)[number];
 
 type TasksValues = {
   title: string;
-  status: "todo" | "doing" | "done";
   estimate_hours: string;
   due_on: string;
   assignee: string;
@@ -58,19 +70,17 @@ type TasksValues = {
 
 const EMPTY_TASKS: TasksValues = {
   title: "",
-  status: "todo",
   estimate_hours: "",
   due_on: "",
   assignee: "",
   project_id: ""
 };
 
-const TASKS_CREATE: readonly TasksField[] = ["title", "status", "estimate_hours", "due_on", "assignee", "project_id"];
+const TASKS_CREATE: readonly TasksField[] = ["title", "estimate_hours", "due_on", "assignee", "project_id"];
 
 function toTasksCreateInput(v: TasksValues): Input<"create"> {
   return {
     title: v.title,
-    status: (v.status || undefined),
     estimate_hours: (v.estimate_hours || null),
     due_on: (v.due_on || null),
     assignee: (v.assignee || null),
@@ -78,12 +88,11 @@ function toTasksCreateInput(v: TasksValues): Input<"create"> {
   };
 }
 
-const TASKS_UPDATE: readonly TasksField[] = ["title", "status", "estimate_hours", "due_on", "assignee", "project_id"];
+const TASKS_UPDATE: readonly TasksField[] = ["title", "estimate_hours", "due_on", "assignee", "project_id"];
 
 function toTasksUpdateInput(v: TasksValues): Input<"update">["data"] {
   return {
     title: v.title,
-    status: v.status,
     estimate_hours: (v.estimate_hours || null),
     due_on: (v.due_on || null),
     assignee: (v.assignee || null),
@@ -94,7 +103,6 @@ function toTasksUpdateInput(v: TasksValues): Input<"update">["data"] {
 function tasksFromRow(row: Detail): TasksValues {
   return {
     title: text(row.title),
-    status: row.status,
     estimate_hours: text(row.estimate_hours),
     due_on: text(row.due_on).slice(0, 10),
     assignee: text(row.assignee),
@@ -135,16 +143,6 @@ function renderTasksField(field: TasksField, values: TasksValues, set: TasksSett
       return (
       <FormRow label="Title" htmlFor="title">
         <Input id="title" type="text" maxLength={200} value={values.title} onChange={e => set("title", e.target.value)} required />
-      </FormRow>
-      );
-    case "status":
-      return (
-      <FormRow label="Status" htmlFor="status">
-        <select id="status" className={selectClass} value={values.status} onChange={e => set("status", e.target.value as TasksValues["status"])}>
-          <option value="todo">todo</option>
-          <option value="doing">doing</option>
-          <option value="done">done</option>
-        </select>
       </FormRow>
       );
     case "estimate_hours":
@@ -231,16 +229,58 @@ const BOARD_INPUT = { page: 1, page_size: PAGE_SIZE } as Inputs["tasks"]["list"]
 const COLUMNS = ["todo", "doing", "done"] as const;
 type Column = (typeof COLUMNS)[number];
 
+/** The transitions of Task: a card moves from one column to another only along one of these */
+interface Move {
+  name: string;
+  from: readonly string[];
+  to: Column;
+  /** Whether the viewer's rule lets them run it on this card */
+  allowed(user: SessionUser | null, row: Row): boolean;
+  run(id: Row["id"]): Promise<unknown>;
+}
+
+const MOVES: Move[] = [
+  {
+    name: "start",
+    from: ["todo"],
+    to: "doing",
+    allowed: (user, row) => (true && String(row.status) !== "done"),
+    run: id => client.tasks.start({ id })
+  },
+  {
+    name: "pause",
+    from: ["doing"],
+    to: "todo",
+    allowed: (user, row) => (true && String(row.status) !== "done"),
+    run: id => client.tasks.pause({ id })
+  },
+  {
+    name: "finish",
+    from: ["doing"],
+    to: "done",
+    allowed: (user, row) => (true && String(row.status) !== "done"),
+    run: id => client.tasks.finish({ id })
+  }
+];
+
+/** The transition that takes a card to a column from where it is, if the viewer may run one */
+function moveTo(user: SessionUser | null, row: Row, column: Column): Move | undefined {
+  return MOVES.find(move => move.to === column && move.from.includes(String(row.status)) && move.allowed(user, row));
+}
+
 export function TasksIndex() {
   const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
   const user = sessionUser(session.data);
-  void user;
   const boardInput = { ...BOARD_INPUT } as Inputs["tasks"]["list"];
   const boardKey = [...KEY, "list", boardInput] as const;
   const list = useQuery({ queryKey: boardKey, queryFn: () => client.tasks.list(boardInput) });
   const [openAction, setOpenAction] = useState<string | null>(null);
   void openAction;
   void setOpenAction;
+  // The card in the air, the column that last refused it, and what the board says about a drop it did not take
+  const [dragging, setDragging] = useState<Row | null>(null);
+  const refusedBy = useRef<Column | null>(null);
+  const [refusal, setRefusal] = useState<string | null>(null);
   const router = useRouter();
   const queryClient = useQueryClient();
   const clear_doneAction = useMutation({
@@ -251,14 +291,14 @@ export function TasksIndex() {
     }
   });
   const move = useMutation({
-    mutationFn: ({ id, status }: { id: Row["id"]; status: Column }) => client.tasks.update({ id, data: { status } }),
-    onMutate: async ({ id, status }) => {
+    mutationFn: ({ id, step }: { id: Row["id"]; step: Move }) => step.run(id),
+    onMutate: async ({ id, step }) => {
       await queryClient.cancelQueries({ queryKey: boardKey });
       const previous = queryClient.getQueryData<Outputs["tasks"]["list"]>(boardKey);
       if (previous) {
         queryClient.setQueryData<Outputs["tasks"]["list"]>(boardKey, {
           ...previous,
-          data: previous.data.map(row => (row.id === id ? { ...row, status } : row))
+          data: previous.data.map(row => (row.id === id ? { ...row, status: step.to } : row))
         });
       }
       return { previous };
@@ -270,7 +310,12 @@ export function TasksIndex() {
   });
   const rows = list.data?.data ?? [];
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div
+      className="flex h-full min-h-0 flex-col"
+      onDragOverCapture={() => {
+        refusedBy.current = null;
+      }}
+    >
       <PaneHeader title="Board" count={list.data?.page.total}>
           {canCreate(user) ? (
             <Link href="/tasks/new" className={buttonVariants({ variant: "ghost", size: "icon-sm" })} aria-label="New task">
@@ -286,47 +331,77 @@ export function TasksIndex() {
 
         <ErrorNote error={clear_doneAction.error} className="m-4" />
       <ErrorNote error={move.error ?? list.error} className="m-4" />
+      {refusal ? (
+        <p role="status" data-board-refusal className="mx-4 mt-4 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+          {refusal}
+        </p>
+      ) : null}
       {list.isPending ? (
         <ListSkeleton />
       ) : (
         <div className="flex min-h-0 flex-1 gap-4 overflow-x-auto p-4">
-          {COLUMNS.map(column => (
-            <section
-              key={column}
-              className="flex w-72 shrink-0 flex-col rounded-lg border border-border bg-muted/30"
-              onDragOver={event => event.preventDefault()}
-              onDrop={event => {
-                event.preventDefault();
-                const dragged = event.dataTransfer.getData("text/plain");
-                const row = rows.find(r => text(r.id) === dragged);
-                if (row && row.status !== column) move.mutate({ id: row.id, status: column });
-              }}
-            >
-              <header className="flex items-center justify-between px-3 py-2 text-sm font-medium">
-                <span>{column}</span>
-                <span className="text-xs text-muted-foreground">{rows.filter(r => r.status === column).length}</span>
-              </header>
-              <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2">
-                {rows
-                  .filter(r => r.status === column)
-                  .map((row: Row) => (
-                    <div
-                      key={text(row.id)}
-                      draggable
-                      onDragStart={event => {
-                        event.dataTransfer.setData("text/plain", text(row.id));
-                        event.dataTransfer.effectAllowed = "move";
-                      }}
-                      onClick={() => router.push(`/tasks/${text(row.id)}`)}
-                      className="cursor-grab rounded-md border border-border bg-card p-3 text-sm shadow-xs hover:bg-accent/40 active:cursor-grabbing"
-                    >
-                      <div className="font-medium">{text(row.title) || text(row.id)}</div>
-                      <div className="mt-1 text-xs text-muted-foreground">{[text(row.due_on)].filter(Boolean).join(" · ")}</div>
-                    </div>
-                  ))}
-              </div>
-            </section>
-          ))}
+          {COLUMNS.map(column => {
+            const offered = dragging && dragging.status !== column ? Boolean(moveTo(user, dragging, column)) : null;
+            return (
+              <section
+                key={column}
+                data-column={column}
+                data-offered={offered === null ? undefined : offered}
+                className={cn(
+                  "flex w-72 shrink-0 flex-col rounded-lg border border-border bg-muted/30",
+                  offered === true && "ring-2 ring-ring",
+                  offered === false && "opacity-50"
+                )}
+                onDragOver={event => {
+                  if (!dragging || dragging.status === column) return;
+                  // Only a column a transition reaches takes the drop; over any other the browser shows no-drop
+                  if (moveTo(user, dragging, column)) event.preventDefault();
+                  else refusedBy.current = column;
+                }}
+                onDrop={event => {
+                  event.preventDefault();
+                  const step = dragging ? moveTo(user, dragging, column) : undefined;
+                  if (dragging && step) move.mutate({ id: dragging.id, step });
+                  setDragging(null);
+                }}
+              >
+                <header className="flex items-center justify-between px-3 py-2 text-sm font-medium">
+                  <span>{column}</span>
+                  <span className="text-xs text-muted-foreground">{rows.filter(r => r.status === column).length}</span>
+                </header>
+                <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2">
+                  {rows
+                    .filter(r => r.status === column)
+                    .map((row: Row) => (
+                      <div
+                        key={text(row.id)}
+                        data-card={text(row.id)}
+                        draggable
+                        onDragStart={event => {
+                          event.dataTransfer.setData("text/plain", text(row.id));
+                          event.dataTransfer.effectAllowed = "move";
+                          refusedBy.current = null;
+                          setRefusal(null);
+                          setDragging(row);
+                        }}
+                        onDragEnd={() => {
+                          // Let go over a column no transition reaches: the card never left, and the board says why
+                          if (refusedBy.current)
+                            setRefusal(`No transition takes a card from ${row.status} to ${refusedBy.current}.`);
+                          refusedBy.current = null;
+                          setDragging(null);
+                        }}
+                        onClick={() => router.push(`/tasks/${text(row.id)}`)}
+                        className="cursor-grab rounded-md border border-border bg-card p-3 text-sm shadow-xs hover:bg-accent/40 active:cursor-grabbing"
+                      >
+                        <div className="font-medium">{text(row.title) || text(row.id)}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">{[text(row.due_on)].filter(Boolean).join(" · ")}</div>
+                      </div>
+                    ))}
+                </div>
+              </section>
+            );
+          })}
         </div>
       )}
     </div>
@@ -395,6 +470,27 @@ export function TasksDetail() {
       await queryClient.invalidateQueries({ queryKey: KEY });
     }
   });
+  const startAction = useMutation({
+    mutationFn: (input: Inputs["tasks"]["start"]) => client.tasks.start(input),
+    onSuccess: async () => {
+      setOpenAction(null);
+      await queryClient.invalidateQueries({ queryKey: KEY });
+    }
+  });
+  const pauseAction = useMutation({
+    mutationFn: (input: Inputs["tasks"]["pause"]) => client.tasks.pause(input),
+    onSuccess: async () => {
+      setOpenAction(null);
+      await queryClient.invalidateQueries({ queryKey: KEY });
+    }
+  });
+  const finishAction = useMutation({
+    mutationFn: (input: Inputs["tasks"]["finish"]) => client.tasks.finish(input),
+    onSuccess: async () => {
+      setOpenAction(null);
+      await queryClient.invalidateQueries({ queryKey: KEY });
+    }
+  });
   if (query.isPending) return <PaneSkeleton />;
   if (query.error) return <ErrorNote error={query.error} className="m-6" />;
   const row: Detail = query.data;
@@ -409,6 +505,21 @@ export function TasksDetail() {
           {canComplete(user, row) ? (
             <Button variant="outline" size="sm" disabled={completeAction.isPending} onClick={() => completeAction.mutate({ id })}>
               Complete
+            </Button>
+          ) : null}
+          {canStart(user, row) && ["todo"].includes(String(row.status)) ? (
+            <Button variant="outline" size="sm" disabled={startAction.isPending} onClick={() => startAction.mutate({ id })}>
+              Start
+            </Button>
+          ) : null}
+          {canPause(user, row) && ["doing"].includes(String(row.status)) ? (
+            <Button variant="outline" size="sm" disabled={pauseAction.isPending} onClick={() => pauseAction.mutate({ id })}>
+              Pause
+            </Button>
+          ) : null}
+          {canFinish(user, row) && ["doing"].includes(String(row.status)) ? (
+            <Button variant="outline" size="sm" disabled={finishAction.isPending} onClick={() => finishAction.mutate({ id })}>
+              Finish
             </Button>
           ) : null}
           {canUpdate(user, row) ? (
@@ -433,6 +544,9 @@ export function TasksDetail() {
     >
 
       <ErrorNote error={completeAction.error} className="mb-4" />
+      <ErrorNote error={startAction.error} className="mb-4" />
+      <ErrorNote error={pauseAction.error} className="mb-4" />
+      <ErrorNote error={finishAction.error} className="mb-4" />
       {editing ? (
         <TasksForm
           fields={TASKS_UPDATE}
@@ -445,14 +559,13 @@ export function TasksDetail() {
         />
       ) : (
         <dl className="grid gap-3">
-        <FieldRow label="Id">{text(row.id) || "—"}</FieldRow>
         <FieldRow label="Title">{text(row.title) || "—"}</FieldRow>
         <FieldRow label="Status">{row.status == null ? "—" : <Badge variant="secondary">{text(row.status)}</Badge>}</FieldRow>
+        <FieldRow label="Completed At">{formatDateTime(row.completed_at) || "—"}</FieldRow>
         <FieldRow label="Estimate Hours">{text(row.estimate_hours) || "—"}</FieldRow>
         <FieldRow label="Due On">{text(row.due_on) || "—"}</FieldRow>
         <FieldRow label="Assignee">{text(row.assignee) || "—"}</FieldRow>
         <FieldRow label="Project">{(row.project ? text(row.project.name) : text(row.project_id)) || "—"}</FieldRow>
-        <FieldRow label="Created At">{formatDateTime(row.created_at) || "—"}</FieldRow>
         <FieldRow label="Note">{row.note ? text(row.note.body) : "—"}</FieldRow>
         </dl>
       )}

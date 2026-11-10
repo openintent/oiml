@@ -23,6 +23,7 @@ export const postsListQuery = z
     page_size: z.number().int().min(1).max(200).default(20),
     published: z.boolean().optional(),
     author_id: z.string().uuid().optional(),
+    status: z.enum(["draft", "in_review", "approved", "retired"]).optional(),
     archived: z.boolean().optional(),
     sort: z.enum(["title:asc", "title:desc", "posted_at:asc", "posted_at:desc", "comment_count:asc", "comment_count:desc"]).optional(),
     q: z.string().max(200).optional()
@@ -152,6 +153,18 @@ export type PostsArchiveInput = z.infer<typeof postsArchiveInput>;
 
 export const postsRestoreInput = z.object({}).strict();
 export type PostsRestoreInput = z.infer<typeof postsRestoreInput>;
+
+export const postsSubmitInput = z.object({}).strict();
+export type PostsSubmitInput = z.infer<typeof postsSubmitInput>;
+
+export const postsApproveInput = z.object({}).strict();
+export type PostsApproveInput = z.infer<typeof postsApproveInput>;
+
+export const postsRejectInput = z.object({}).strict();
+export type PostsRejectInput = z.infer<typeof postsRejectInput>;
+
+export const postsRetireInput = z.object({}).strict();
+export type PostsRetireInput = z.infer<typeof postsRetireInput>;
 
 export const announcementsPublishInput = z.object({}).strict();
 export type AnnouncementsPublishInput = z.infer<typeof announcementsPublishInput>;

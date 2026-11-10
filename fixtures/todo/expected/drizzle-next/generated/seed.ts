@@ -30,15 +30,22 @@ async function main(): Promise<void> {
   {
     const client = anonymous;
     const scope = { ...vars, actor: { id: null } };
-    const reply = await client.request("POST", "/api/tasks", { body: resolve({"title":"Plant tomatoes","project_id":"{garden}","status":"doing"}, scope) });
+    const reply = await client.request("POST", "/api/tasks", { body: resolve({"title":"Plant tomatoes","project_id":"{garden}"}, scope) });
     report(2, "tasks.create", reply);
+    vars.tomatoes = pick(reply.body, "data.id");
+  }
+  {
+    const client = anonymous;
+    const scope = { ...vars, actor: { id: null } };
+    const reply = await client.request("POST", "/api/tasks/" + encodeURIComponent(String(resolve("{tomatoes}", scope))) + "/start", { body: {} });
+    report(3, "tasks.start", reply);
 
   }
   {
     const client = anonymous;
     const scope = { ...vars, actor: { id: null } };
     const reply = await client.request("POST", "/api/tasks", { body: resolve({"title":"Water the beds","project_id":"{garden}"}, scope) });
-    report(3, "tasks.create", reply);
+    report(4, "tasks.create", reply);
 
   }
   void resolve;

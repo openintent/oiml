@@ -17,6 +17,7 @@ import {
   openapiDocument,
   planMigration,
   readIntent,
+  transitionOf,
   type ActionIR,
   type ActorIR,
   type ColumnIR,
@@ -82,6 +83,8 @@ interface State {
   rows: Map<string, WalkRow[]>;
   notes: string[];
   calls: number;
+  /** Transition calls the rule allowed: how many moved the row and how many answered 409 from another state */
+  transitions: { moved: number; refused: number };
   /** How often the rules predicted each outcome, so the detail shows what the walk exercised */
   predicted: Map<string, number>;
 }
@@ -141,6 +144,7 @@ export async function runWalks(ctx: WalkContext, which: ReadonlySet<string> = ne
       rows: new Map(),
       notes: [],
       calls: 0,
+      transitions: { moved: 0, refused: 0 },
       predicted: new Map()
     };
     const needsWalks =
@@ -174,6 +178,10 @@ export async function runWalks(ctx: WalkContext, which: ReadonlySet<string> = ne
     }
     if (which.has("rule")) {
       await deleteWalk(ctx, state, resolver, roles, ruleFindings);
+      if (state.transitions.moved + state.transitions.refused)
+        state.notes.push(
+          `${state.transitions.moved + state.transitions.refused} allowed transition calls predicted by the row's state (${state.transitions.moved} moved the row, ${state.transitions.refused} answered 409)`
+        );
       if (counts) {
         await countFindings(ir, db, "after the deletes of the walk", ruleFindings);
         state.notes.push(
@@ -537,6 +545,28 @@ async function readWalk(
                   state,
                   findings
                 );
+              continue;
+            }
+            if (entity.transitions && action.builtin === "transition") {
+              // The compiler's own: the rule first, then the row's state says which of 200 and 409 it answers
+              const step = transitionOf(ir, action);
+              const column = entity.transitions.column;
+              const starts = step.from.includes(String(fresh[column]));
+              const what = `${label({ action }, caller, row)}${
+                starts ? "" : ` (its ${column} is ${String(fresh[column])}, so 409 is expected)`
+              }`;
+              const went = compare(findings, what, expect, reply, s => (starts ? success(s) : s === 409), state);
+              if (went && expect.allow) {
+                state.transitions[starts ? "moved" : "refused"]++;
+                const after = await resolver.fresh(entity, row.id);
+                const wanted = starts ? step.to : fresh[column];
+                if (after && !same(after[column], wanted))
+                  findings.push(
+                    `${what}: afterwards ${column} should be ${String(wanted)} but is ${String(after[column])}`
+                  );
+                if (after && starts && step.stamp && after[step.stamp] == null)
+                  findings.push(`${what}: the transition ran but ${step.stamp} is not set`);
+              }
               continue;
             }
             compare(findings, label({ action }, caller, row), expect, reply, notRefused, state);

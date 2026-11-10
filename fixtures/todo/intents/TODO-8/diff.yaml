@@ -1,0 +1,169 @@
+osl: "1.0"
+summary: Task status is a state machine (start, pause, finish with completed_at) beside the complete action, clients no longer write it, and the board drags along the transitions
+ops:
+  - op: update_field
+    entity: Task
+    name: status
+    field: { type: enum, enum_values: [todo, doing, done], required: true, default: todo, read_only: true }
+  - op: add_field
+    entity: Task
+    name: completed_at
+    field: { type: datetime, read_only: true }
+  - op: set_transitions
+    entity: Task
+    transitions:
+      field: status
+      start: { from: [todo], to: doing }
+      pause: { from: [doing], to: todo }
+      finish: { from: [doing], to: done, stamp: completed_at }
+  - op: update_page
+    name: tasks
+    page:
+      resource: tasks
+      layout: board
+      group_by: status
+      columns: [title, status, due_on]
+      fields: [title, status, completed_at, estimate_hours, due_on, assignee, project_id]
+      title: Board
+  - op: remove_scenario
+    name: projects and tasks
+  - op: add_scenario
+    scenario:
+      name: projects and tasks
+      steps:
+        - op: projects.create
+          body: { name: Home, color: "#aabbcc" }
+          expect: { status: 201, body: { data: { name: Home, color: "#aabbcc" } } }
+          capture: { project: data.id }
+        - op: projects.create
+          body: { name: Home }
+          expect: { status: 409 }
+        - op: projects.create
+          body: { name: Bad colour, color: red }
+          expect: { status: 400 }
+        - op: tasks.create
+          body: { title: Paint fence, estimate_hours: 2.5, due_on: "2026-12-01", project_id: "{project}" }
+          expect:
+            {
+              status: 201,
+              body: { data: { title: Paint fence, status: todo, estimate_hours: "2.5", due_on: "2026-12-01" } }
+            }
+          capture: { task: data.id }
+        - op: tasks.create
+          body: { title: Orphan, project_id: 999999 }
+          expect: { status: 400 }
+        - op: tasks.update
+          path: { id: "{task}" }
+          body: { assignee: Sam }
+          expect: { status: 200, body: { data: { status: todo, assignee: Sam } } }
+        - op: tasks.start
+          path: { id: "{task}" }
+          expect: { status: 200, body: { data: { status: doing, assignee: Sam } } }
+        - op: tasks.update
+          path: { id: "{task}" }
+          body: { status: blocked }
+          expect: { status: 400 }
+        - op: tasks.list
+          query: { status: doing }
+          expect: { status: 200, body: { data: [{ title: Paint fence, project: { name: Home } }] } }
+        - op: projects.get
+          path: { id: "{project}" }
+          expect: { status: 200, body: { data: { name: Home, tasks: [{ title: Paint fence }] } } }
+        - op: tasks.get
+          path: { id: abc }
+          expect: { status: 404 }
+        - op: projects.delete
+          path: { id: "{project}" }
+          expect: { status: 204 }
+        - op: tasks.get
+          path: { id: "{task}" }
+          expect: { status: 200, body: { data: { title: Paint fence, project_id: null } } }
+        - op: tasks.delete
+          path: { id: "{task}" }
+          expect: { status: 204 }
+  - op: add_scenario
+    scenario:
+      name: task flow
+      steps:
+        - op: tasks.create
+          body: { title: Fix the gate }
+          expect: { status: 201, body: { data: { status: todo, completed_at: null } } }
+          capture: { gate: data.id }
+        - op: tasks.create
+          body: { title: Started by hand, status: doing }
+          expect: { status: 400 }
+        - op: tasks.update
+          path: { id: "{gate}" }
+          body: { status: done }
+          expect: { status: 400 }
+        - op: tasks.update
+          path: { id: "{gate}" }
+          body: { completed_at: "2026-01-01T00:00:00Z" }
+          expect: { status: 400 }
+        - op: tasks.pause
+          path: { id: "{gate}" }
+          expect: { status: 409 }
+        - op: tasks.finish
+          path: { id: "{gate}" }
+          expect: { status: 409 }
+        - op: tasks.start
+          path: { id: "{gate}" }
+          expect: { status: 200, body: { data: { title: Fix the gate, status: doing, completed_at: null } } }
+        - op: tasks.start
+          path: { id: "{gate}" }
+          expect: { status: 409 }
+        - op: tasks.get
+          path: { id: "{gate}" }
+          expect: { status: 200, body: { data: { status: doing } } }
+        - op: tasks.pause
+          path: { id: "{gate}" }
+          expect: { status: 200, body: { data: { status: todo } } }
+        - op: tasks.start
+          path: { id: "{gate}" }
+          expect: { status: 200, body: { data: { status: doing } } }
+        - op: tasks.list
+          query: { status: doing }
+          expect: { status: 200, body: { data: [{ title: Fix the gate }] } }
+        - op: tasks.finish
+          path: { id: "{gate}" }
+          expect: { status: 200, body: { data: { status: done } } }
+          capture: { finished: data.completed_at }
+        - op: tasks.get
+          path: { id: "{gate}" }
+          expect: { status: 200, body: { data: { status: done, completed_at: "{finished}" } } }
+        - op: tasks.start
+          path: { id: "{gate}" }
+          expect: { status: 403 }
+        - op: tasks.pause
+          path: { id: "{gate}" }
+          expect: { status: 403 }
+        - op: tasks.finish
+          path: { id: "{gate}" }
+          expect: { status: 403 }
+        - op: tasks.start
+          path: { id: abc }
+          expect: { status: 404 }
+        - op: tasks.start
+          path: { id: 999999 }
+          expect: { status: 404 }
+        - op: tasks.create
+          body: { title: Straight to done }
+          expect: { status: 201 }
+          capture: { straight: data.id }
+        - op: tasks.complete
+          path: { id: "{straight}" }
+          expect: { status: 200, body: { data: { status: done, completed_at: null } } }
+        - op: tasks.clear_done
+          expect: { status: 200, body: { data: { count: 2 } } }
+  - op: set_seed
+    seed:
+      - op: projects.create
+        body: { name: Garden, color: "#22aa44" }
+        capture: { garden: data.id }
+      - op: tasks.create
+        body: { title: Plant tomatoes, project_id: "{garden}" }
+        capture: { tomatoes: data.id }
+      - op: tasks.start
+        path: { id: "{tomatoes}" }
+      - op: tasks.create
+        body: { title: Water the beds, project_id: "{garden}" }

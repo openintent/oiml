@@ -4,6 +4,7 @@ import { actionHandlersFile, actionScaffolds, actionsFile } from "./actions.js";
 import { appFile, mainScaffold, openapiFile, workerScaffold } from "./app.js";
 import { authFile, authProvidersFile, hasProviders } from "./auth.js";
 import { emailFile } from "./email.js";
+import { hasRowActions, rowActionsFile } from "./rowactions.js";
 import { hasScheduling, schedulingFile, testHooksFile } from "./scheduling.js";
 import { eventHandlerScaffolds, eventsFile } from "./events.js";
 import { filesApiFile, filesFile } from "./files.js";
@@ -50,6 +51,7 @@ export function generate(input: GenerateInput): GeneratedFile[] {
     files.push({ path: `${gen}/files/files.go`, content: filesFile(ir, mod) });
     files.push({ path: `${gen}/filesapi/api.go`, content: filesApiFile(ir, mod) });
   }
+  if (hasRowActions(ir)) files.push({ path: `${gen}/rowactions/rowactions.go`, content: rowActionsFile(ir, mod) });
   if (userActions(ir).length) {
     files.push({ path: `${gen}/actions/actions.go`, content: actionsFile(ir, mod) });
     files.push({ path: `${gen}/actions/handlers/handlers.go`, content: actionHandlersFile(ir, mod) });

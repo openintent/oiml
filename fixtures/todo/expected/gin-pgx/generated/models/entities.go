@@ -63,7 +63,7 @@ func PresentProjects(rows []*Project) []PublicProject {
 const TaskTable = `"tasks"`
 
 // TaskColumns lists the columns of Task in model order, for SELECT and RETURNING.
-const TaskColumns = `"id", "title", "status", "estimate_hours", "due_on", "assignee", "project_id", "created_at"`
+const TaskColumns = `"id", "title", "status", "estimate_hours", "due_on", "assignee", "project_id", "created_at", "completed_at"`
 
 // Task is a row of tasks.
 type Task struct {
@@ -75,6 +75,7 @@ type Task struct {
 	Assignee      *string    `json:"assignee"`
 	ProjectID     *int       `json:"project_id"`
 	CreatedAt     time.Time  `json:"created_at"`
+	CompletedAt   *time.Time `json:"completed_at"`
 }
 
 // PublicTask is Task as the API returns it: hidden columns removed, dates rendered.
@@ -87,12 +88,13 @@ type PublicTask struct {
 	Assignee      *string `json:"assignee"`
 	ProjectID     *int    `json:"project_id"`
 	CreatedAt     string  `json:"created_at"`
+	CompletedAt   *string `json:"completed_at"`
 }
 
 // ScanTask reads one Task from a row selected with TaskColumns.
 func ScanTask(row Scanner) (*Task, error) {
 	var r Task
-	if err := row.Scan(&r.ID, &r.Title, &r.Status, &r.EstimateHours, &r.DueOn, &r.Assignee, &r.ProjectID, &r.CreatedAt); err != nil {
+	if err := row.Scan(&r.ID, &r.Title, &r.Status, &r.EstimateHours, &r.DueOn, &r.Assignee, &r.ProjectID, &r.CreatedAt, &r.CompletedAt); err != nil {
 		return nil, err
 	}
 	return &r, nil
@@ -100,7 +102,7 @@ func ScanTask(row Scanner) (*Task, error) {
 
 // PresentTask returns the public shape of a Task.
 func PresentTask(row *Task) PublicTask {
-	return PublicTask{ID: row.ID, Title: row.Title, Status: row.Status, EstimateHours: row.EstimateHours, DueOn: FormatDatePtr(row.DueOn), Assignee: row.Assignee, ProjectID: row.ProjectID, CreatedAt: FormatDateTime(row.CreatedAt)}
+	return PublicTask{ID: row.ID, Title: row.Title, Status: row.Status, EstimateHours: row.EstimateHours, DueOn: FormatDatePtr(row.DueOn), Assignee: row.Assignee, ProjectID: row.ProjectID, CreatedAt: FormatDateTime(row.CreatedAt), CompletedAt: FormatDateTimePtr(row.CompletedAt)}
 }
 
 // PresentTaskPtr presents an optional Task; nil stays nil.

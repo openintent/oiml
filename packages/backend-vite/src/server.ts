@@ -21,11 +21,11 @@ import {
   verdictSource,
   zodForColumn,
   ARCHIVE_DRIZZLE,
-  archiveCall,
   archiveCondition,
-  archiveSource,
-  isArchive,
   isMove,
+  isStatementAction,
+  rowActionImports,
+  statementHandlerLines,
   moveSource,
   removeStatement,
   throughOf,
@@ -761,9 +761,10 @@ export function resourceRouterFile(ir: IR, resource: ResourceIR): string {
   for (const name of through.drizzle) drizzleImports.add(name);
   const move = actions.find(isMove);
   if (move || (remove && entity.order)) drizzleImports.add("sql");
-  // An archiving entity: the list's own condition, and the update behind archive and restore
-  const archives = actions.some(isArchive);
-  if (entity.archive && (list || archives)) for (const name of ARCHIVE_DRIZZLE) drizzleImports.add(name);
+  // An archiving entity: the list's own condition
+  if (entity.archive && list) for (const name of ARCHIVE_DRIZZLE) drizzleImports.add(name);
+  // The compiler's one-statement row actions (archive, restore, the transitions) answer 409 when nothing changed
+  const statements = rowActionImports(ir, actions);
 
   const sections: string[] = [];
   sections.push(`const RULES = {
@@ -808,10 +809,7 @@ async function missing(id: unknown, rule: Rule, session: Session | null) {
   if (get) sections.push(rowSection("Get", get.include, get.through));
   sections.push(...through.sections);
   if (move) sections.push(moveSource(entity, table, query));
-  if (archives) {
-    sections.push(archiveSource(entity, table));
-    errorImports.add("fail");
-  }
+  if (statements.length) errorImports.add("fail");
 
   const resolveFiles = (expr: string) => (hasFiles ? `await resolveFileRefs(${expr}, FILE_FIELDS)` : expr);
   const procedures: string[] = [];
@@ -1022,6 +1020,7 @@ ${emitLines.join("\n")}
     `import { ${[...presents].sort().join(", ")} } from "../../present";`,
     `import { ${[...validationImports].sort().join(", ")} } from "../../validation";`,
     ...(actions.some(a => !a.builtin) ? [`import { handlers } from "../../actions";`] : []),
+    ...(statements.length ? [`import { ${statements.join(", ")} } from "../../row-actions";`] : []),
     `import { ${[...accessImports].sort().join(", ")}, type Rule } from "../access";`,
     `import type { Session } from "../auth";`,
     `import { ${[...errorImports].sort().join(", ")} } from "../errors";`,
@@ -1085,8 +1084,8 @@ function actionProcedure(
       ${
         isMove(action)
           ? `const result = await moveRow(current, input.to);\n      if (!result) throw notFound();`
-          : isArchive(action)
-            ? ["void input;", ...archiveCall(ir, action, "current")].join("\n      ")
+          : isStatementAction(action)
+            ? ["void input;", ...statementHandlerLines(ir, action, "current")].join("\n      ")
             : `const result = await handlers.${action.handler}({ input, row: current, session: ctx.session, db, now: new Date() });`
       }
 ${emitLines.join("\n")}

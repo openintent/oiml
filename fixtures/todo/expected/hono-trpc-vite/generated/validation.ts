@@ -37,7 +37,6 @@ export const tasksListQuery = z
 export const tasksCreateInput = z
   .object({
     title: z.string().max(200),
-    status: z.enum(["todo", "doing", "done"]).optional(),
     estimate_hours: z.union([z.number(), z.string().regex(/^-?\d+(\.\d+)?$/)]).transform(value => String(value)).nullish(),
     due_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
     assignee: z.string().max(80).nullish(),
@@ -47,7 +46,6 @@ export const tasksCreateInput = z
 export const tasksUpdateInput = z
   .object({
     title: z.string().max(200).optional(),
-    status: z.enum(["todo", "doing", "done"]).optional(),
     estimate_hours: z.union([z.number(), z.string().regex(/^-?\d+(\.\d+)?$/)]).transform(value => String(value)).nullish(),
     due_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
     assignee: z.string().max(80).nullish(),
@@ -81,3 +79,12 @@ export type TasksCompleteInput = z.infer<typeof tasksCompleteInput>;
 
 export const tasksClearDoneInput = z.object({}).strict();
 export type TasksClearDoneInput = z.infer<typeof tasksClearDoneInput>;
+
+export const tasksStartInput = z.object({}).strict();
+export type TasksStartInput = z.infer<typeof tasksStartInput>;
+
+export const tasksPauseInput = z.object({}).strict();
+export type TasksPauseInput = z.infer<typeof tasksPauseInput>;
+
+export const tasksFinishInput = z.object({}).strict();
+export type TasksFinishInput = z.infer<typeof tasksFinishInput>;

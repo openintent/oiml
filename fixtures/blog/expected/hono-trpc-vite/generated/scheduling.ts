@@ -5,6 +5,7 @@ import { and, eq, isNotNull, lte } from "drizzle-orm";
 import { db } from "./db/client";
 import * as schema from "./db/schema";
 import { handlers } from "./actions";
+import { articleTransitions, setArticleArchived } from "./row-actions";
 import { enqueueAt } from "./jobs";
 
 /** A schedule: a cron (UTC) and the action it runs, with literal input */
@@ -80,8 +81,44 @@ const article_publish_at: TimerDef<schema.Article> = {
   }
 };
 
+const article_approved_at: TimerDef<schema.Article> = {
+  name: "article_approved_at",
+  entity: "Article",
+  dueOf: row => due(row.approved_at, 2592000),
+  holds: async () => true,
+  id: row => row.id,
+  load: async id => (await db.select().from(schema.articles).where(eq(schema.articles.id, id as schema.Article["id"])))[0],
+  dueRows: now =>
+    db
+      .select()
+      .from(schema.articles)
+      .where(and(isNotNull(schema.articles.approved_at), lte(schema.articles.approved_at, new Date(now.getTime() - 2592000 * 1000)))),
+  run: async (row, now) => {
+    const result = await articleTransitions.retire(row.id, now);
+    if (result) await scheduleTimers("Article", result);
+  }
+};
+
+const article_retired_at: TimerDef<schema.Article> = {
+  name: "article_retired_at",
+  entity: "Article",
+  dueOf: row => due(row.retired_at, 2592000),
+  holds: async () => true,
+  id: row => row.id,
+  load: async id => (await db.select().from(schema.articles).where(eq(schema.articles.id, id as schema.Article["id"])))[0],
+  dueRows: now =>
+    db
+      .select()
+      .from(schema.articles)
+      .where(and(isNotNull(schema.articles.retired_at), lte(schema.articles.retired_at, new Date(now.getTime() - 2592000 * 1000)))),
+  run: async (row, now) => {
+    const result = await setArticleArchived(row.id, true, now);
+    if (result) await scheduleTimers("Article", result);
+  }
+};
+
 type AnyTimer = TimerDef<Record<string, unknown>>;
-export const TIMERS: AnyTimer[] = [article_publish_at as unknown as AnyTimer];
+export const TIMERS: AnyTimer[] = [article_publish_at as unknown as AnyTimer, article_approved_at as unknown as AnyTimer, article_retired_at as unknown as AnyTimer];
 
 /** Schedule the timers of an entity for a row just written: one job per timer, due at the field plus the offset */
 export async function scheduleTimers(entity: string, row: Record<string, unknown>): Promise<void> {

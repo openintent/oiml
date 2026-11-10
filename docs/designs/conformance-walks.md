@@ -25,6 +25,12 @@ Since round B3 (`archive-and-counts.md`) the rule walk predicts what an archivin
 `archive` and `restore` answer (the 409 when there is nothing to do included), and the rule and order walks end by
 comparing every count of the model with the rows the database holds.
 
+Since round B4 (`state-machines.md`) the rule walk predicts a transition from the row's state: after the rule, 200
+when the state is one the transition starts from and 409 when it is not, and it reads the row afterwards (the field
+at the transition's `to` with its stamp set, or where it was). The tenant walk needed nothing: it already calls
+every row action as the outsider and takes nothing but 401, 403 or 404, so a 409 from another tenant's row would be
+a finding. No walk drives a page: the board's drag was checked once with a browser outside the repository.
+
 Scenarios prove what a fixture's author thought to write. The hand-written applications surveyed for these notes
 learned that the properties worth proving are the ones nobody writes a test for per entity: every procedure records
 a permission or is on a reviewed open list; every id-taking procedure called by another tenant's owner returns or

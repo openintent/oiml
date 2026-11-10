@@ -10,8 +10,9 @@ import { emit } from "../../events";
 import { scheduleTimers } from "../../scheduling";
 import { resolveFileRefs } from "../../files";
 import { presentArticle, presentUser } from "../../present";
-import { postsArchiveInput, postsCreateInput, postsId, postsListQuery, postsLockInput, postsPublishInput, postsRestoreInput, postsUnlockInput, postsUnpublishAllInput, postsUpdateInput } from "../../validation";
+import { postsApproveInput, postsArchiveInput, postsCreateInput, postsId, postsListQuery, postsLockInput, postsPublishInput, postsRejectInput, postsRestoreInput, postsRetireInput, postsSubmitInput, postsUnlockInput, postsUnpublishAllInput, postsUpdateInput } from "../../validation";
 import { handlers } from "../../actions";
+import { articleTransitions, setArticleArchived } from "../../row-actions";
 import { checkRule, type Rule } from "../access";
 import type { Session } from "../auth";
 import { fail, notFound, parseId, toTRPCError } from "../errors";
@@ -33,7 +34,11 @@ const ACTION_RULES = {
   lock: {"kind":"role","value":"admin"} as Rule,
   unlock: {"kind":"role","value":"admin"} as Rule,
   archive: {"kind":"owner","field":"author_id"} as Rule,
-  restore: {"kind":"owner","field":"author_id"} as Rule
+  restore: {"kind":"owner","field":"author_id"} as Rule,
+  submit: {"kind":"owner","field":"author_id"} as Rule,
+  approve: {"kind":"role","value":"admin"} as Rule,
+  reject: {"kind":"role","value":"admin"} as Rule,
+  retire: {"kind":"any","rules":[{"kind":"role","value":"admin"},{"kind":"owner","field":"author_id","when":{"field":"status","op":"eq","value":"approved"}}]} as Rule
 };
 
 /** Ids as clients send them; parseId applies postsId and answers NOT_FOUND to a malformed one. */
@@ -58,16 +63,6 @@ function presentGetRow(row: GetRow) {
   return { ...presentArticle(row), author: row.author ? presentUser(row.author) : null };
 }
 
-/** archive and restore: sets archived_at on a live row or clears it on an archived one, in one statement; undefined when there was nothing to do */
-async function setArchived(row: schema.Article, archived: boolean): Promise<schema.Article | undefined> {
-  const [updated] = await db
-    .update(articlesTable)
-    .set({ archived_at: archived ? new Date() : null })
-    .where(and(eq(articlesTable.id, row.id), archived ? isNull(articlesTable.archived_at) : isNotNull(articlesTable.archived_at)))
-    .returning();
-  return updated;
-}
-
 function sortOrder(sort: keyof typeof SORTABLE | string): SQL[] {
   const [field, direction] = sort.split(":");
   const column = SORTABLE[field as keyof typeof SORTABLE];
@@ -82,6 +77,7 @@ export const postsRouter = router({
     const conditions: SQL[] = [];
     if (filters.published !== undefined) conditions.push(eq(articlesTable.published, filters.published));
     if (filters.author_id !== undefined) conditions.push(eq(articlesTable.author_id, filters.author_id));
+    if (filters.status !== undefined) conditions.push(eq(articlesTable.status, filters.status));
     conditions.push(archived ? isNotNull(articlesTable.archived_at) : isNull(articlesTable.archived_at));
     if (q) {
       const pattern = "%" + q.replace(/[\\%_]/g, "\\$&") + "%";
@@ -250,7 +246,7 @@ export const postsRouter = router({
     checkRule(ACTION_RULES.archive, ctx.session, current);
     try {
       void input;
-      const result = await setArchived(current, true);
+      const result = await setArticleArchived(current.id, true, new Date());
       if (!result) fail(409, "conflict", "The row is archived already");
       await scheduleTimers("Article", result);
       await emit("posts.archive", presentArticle(result));
@@ -272,8 +268,96 @@ export const postsRouter = router({
     checkRule(ACTION_RULES.restore, ctx.session, current);
     try {
       void input;
-      const result = await setArchived(current, false);
+      const result = await setArticleArchived(current.id, false, new Date());
       if (!result) fail(409, "conflict", "The row is not archived");
+      await scheduleTimers("Article", result);
+
+      return presentArticle(result);
+    } catch (err) {
+      throw toTRPCError(err, "write");
+    }
+  }),
+
+  /** POST /api/posts/{id}/submit */
+  submit: publicProcedure.input(postsSubmitInput.extend({ id: ID })).mutation(async ({ ctx, input: raw }) => {
+    const { id: rawId, ...input } = raw;
+    checkRule(ACTION_RULES.submit, ctx.session);
+    const id = parseId(postsId, rawId);
+    const current = await db.query.articles.findFirst({ where: eq(articlesTable.id, id) }).catch(err => {
+      throw toTRPCError(err, "read");
+    });
+    if (!current) throw notFound();
+    checkRule(ACTION_RULES.submit, ctx.session, current);
+    try {
+      void input;
+      const result = await articleTransitions.submit(current.id);
+      if (!result) fail(409, "invalid_transition", `submit needs status draft; this row's status is ${current.status}`);
+      await scheduleTimers("Article", result);
+
+      return presentArticle(result);
+    } catch (err) {
+      throw toTRPCError(err, "write");
+    }
+  }),
+
+  /** POST /api/posts/{id}/approve */
+  approve: publicProcedure.input(postsApproveInput.extend({ id: ID })).mutation(async ({ ctx, input: raw }) => {
+    const { id: rawId, ...input } = raw;
+    checkRule(ACTION_RULES.approve, ctx.session);
+    const id = parseId(postsId, rawId);
+    const current = await db.query.articles.findFirst({ where: eq(articlesTable.id, id) }).catch(err => {
+      throw toTRPCError(err, "read");
+    });
+    if (!current) throw notFound();
+    checkRule(ACTION_RULES.approve, ctx.session, current);
+    try {
+      void input;
+      const result = await articleTransitions.approve(current.id, new Date());
+      if (!result) fail(409, "invalid_transition", `approve needs status in_review; this row's status is ${current.status}`);
+      await scheduleTimers("Article", result);
+      await emit("posts.approve", presentArticle(result));
+      return presentArticle(result);
+    } catch (err) {
+      throw toTRPCError(err, "write");
+    }
+  }),
+
+  /** POST /api/posts/{id}/reject */
+  reject: publicProcedure.input(postsRejectInput.extend({ id: ID })).mutation(async ({ ctx, input: raw }) => {
+    const { id: rawId, ...input } = raw;
+    checkRule(ACTION_RULES.reject, ctx.session);
+    const id = parseId(postsId, rawId);
+    const current = await db.query.articles.findFirst({ where: eq(articlesTable.id, id) }).catch(err => {
+      throw toTRPCError(err, "read");
+    });
+    if (!current) throw notFound();
+    checkRule(ACTION_RULES.reject, ctx.session, current);
+    try {
+      void input;
+      const result = await articleTransitions.reject(current.id);
+      if (!result) fail(409, "invalid_transition", `reject needs status in_review; this row's status is ${current.status}`);
+      await scheduleTimers("Article", result);
+
+      return presentArticle(result);
+    } catch (err) {
+      throw toTRPCError(err, "write");
+    }
+  }),
+
+  /** POST /api/posts/{id}/retire */
+  retire: publicProcedure.input(postsRetireInput.extend({ id: ID })).mutation(async ({ ctx, input: raw }) => {
+    const { id: rawId, ...input } = raw;
+    checkRule(ACTION_RULES.retire, ctx.session);
+    const id = parseId(postsId, rawId);
+    const current = await db.query.articles.findFirst({ where: eq(articlesTable.id, id) }).catch(err => {
+      throw toTRPCError(err, "read");
+    });
+    if (!current) throw notFound();
+    checkRule(ACTION_RULES.retire, ctx.session, current);
+    try {
+      void input;
+      const result = await articleTransitions.retire(current.id, new Date());
+      if (!result) fail(409, "invalid_transition", `retire needs status approved; this row's status is ${current.status}`);
       await scheduleTimers("Article", result);
 
       return presentArticle(result);

@@ -5,6 +5,7 @@ package resources
 
 import (
 	"context"
+	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -18,6 +19,7 @@ import (
 	"todo/generated/hooks"
 	"todo/generated/httpx"
 	"todo/generated/models"
+	"todo/generated/rowactions"
 	"todo/generated/validation"
 	taskshooks "todo/src/extensions/tasks"
 )
@@ -42,6 +44,9 @@ func (h *Tasks) Routes(r gin.IRouter) {
 	r.DELETE("/api/tasks/:id", h.Delete)
 	r.POST("/api/tasks/:id/complete", h.ActionComplete)
 	r.POST("/api/tasks/clear_done", h.ActionClearDone)
+	r.POST("/api/tasks/:id/start", h.ActionStart)
+	r.POST("/api/tasks/:id/pause", h.ActionPause)
+	r.POST("/api/tasks/:id/finish", h.ActionFinish)
 }
 
 var tasksReadRule = access.Rule{Kind: "public"}
@@ -55,6 +60,12 @@ var tasksDeleteRule = access.Rule{Kind: "public"}
 var tasksCompleteActionRule = access.Rule{Kind: "public", When: &access.Condition{Field: "status", Op: "ne", Value: "done"}}
 
 var tasksClearDoneActionRule = access.Rule{Kind: "public"}
+
+var tasksStartActionRule = access.Rule{Kind: "public", When: &access.Condition{Field: "status", Op: "ne", Value: "done"}}
+
+var tasksPauseActionRule = access.Rule{Kind: "public", When: &access.Condition{Field: "status", Op: "ne", Value: "done"}}
+
+var tasksFinishActionRule = access.Rule{Kind: "public", When: &access.Condition{Field: "status", Op: "ne", Value: "done"}}
 
 // tasksListRow is a list item with its includes.
 type tasksListRow struct {
@@ -377,6 +388,153 @@ func (h *Tasks) ActionClearDone(c *gin.Context) {
 		return
 	}
 	httpx.OK(c, result)
+}
+
+// ActionStart handles POST /api/tasks/{id}/start: the start action.
+func (h *Tasks) ActionStart(c *gin.Context) {
+	ctx := c.Request.Context()
+	session, err := h.auth.Session(c)
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if verdict := access.Check(tasksStartActionRule, session); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	id, ok := validation.TasksID(c.Param("id"))
+	if !ok {
+		httpx.Fail(c, httpx.NotFound())
+		return
+	}
+	row, err := models.ScanTask(h.db.QueryRow(ctx, `SELECT `+models.TaskColumns+` FROM `+models.TaskTable+` WHERE "id" = $1`, id))
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if verdict := access.CheckRow(tasksStartActionRule, session, access.Row{"status": row.Status}); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	body, perr := httpx.ParseBody(c)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	values, perr := validation.TasksStartInput.Parse(body)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	_ = values
+	result, err := rowactions.TransitionTaskStart(ctx, h.db, row.ID, time.Now().UTC())
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if result == nil {
+		httpx.Fail(c, httpx.NewError(http.StatusConflict, "invalid_transition", "start needs status todo; this row's status is "+row.Status))
+		return
+	}
+	httpx.OK(c, models.PresentTask(result))
+}
+
+// ActionPause handles POST /api/tasks/{id}/pause: the pause action.
+func (h *Tasks) ActionPause(c *gin.Context) {
+	ctx := c.Request.Context()
+	session, err := h.auth.Session(c)
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if verdict := access.Check(tasksPauseActionRule, session); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	id, ok := validation.TasksID(c.Param("id"))
+	if !ok {
+		httpx.Fail(c, httpx.NotFound())
+		return
+	}
+	row, err := models.ScanTask(h.db.QueryRow(ctx, `SELECT `+models.TaskColumns+` FROM `+models.TaskTable+` WHERE "id" = $1`, id))
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if verdict := access.CheckRow(tasksPauseActionRule, session, access.Row{"status": row.Status}); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	body, perr := httpx.ParseBody(c)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	values, perr := validation.TasksPauseInput.Parse(body)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	_ = values
+	result, err := rowactions.TransitionTaskPause(ctx, h.db, row.ID, time.Now().UTC())
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if result == nil {
+		httpx.Fail(c, httpx.NewError(http.StatusConflict, "invalid_transition", "pause needs status doing; this row's status is "+row.Status))
+		return
+	}
+	httpx.OK(c, models.PresentTask(result))
+}
+
+// ActionFinish handles POST /api/tasks/{id}/finish: the finish action.
+func (h *Tasks) ActionFinish(c *gin.Context) {
+	ctx := c.Request.Context()
+	session, err := h.auth.Session(c)
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if verdict := access.Check(tasksFinishActionRule, session); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	id, ok := validation.TasksID(c.Param("id"))
+	if !ok {
+		httpx.Fail(c, httpx.NotFound())
+		return
+	}
+	row, err := models.ScanTask(h.db.QueryRow(ctx, `SELECT `+models.TaskColumns+` FROM `+models.TaskTable+` WHERE "id" = $1`, id))
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if verdict := access.CheckRow(tasksFinishActionRule, session, access.Row{"status": row.Status}); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	body, perr := httpx.ParseBody(c)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	values, perr := validation.TasksFinishInput.Parse(body)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	_ = values
+	result, err := rowactions.TransitionTaskFinish(ctx, h.db, row.ID, time.Now().UTC())
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if result == nil {
+		httpx.Fail(c, httpx.NewError(http.StatusConflict, "invalid_transition", "finish needs status doing; this row's status is "+row.Status))
+		return
+	}
+	httpx.OK(c, models.PresentTask(result))
 }
 
 // loadNote fetches the note of each Task, grouped by task_id.

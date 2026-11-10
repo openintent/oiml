@@ -18,6 +18,7 @@ import (
 	"workspace/generated/hooks"
 	"workspace/generated/httpx"
 	"workspace/generated/models"
+	"workspace/generated/rowactions"
 	"workspace/generated/validation"
 	milestoneshooks "workspace/src/extensions/milestones"
 )
@@ -456,14 +457,13 @@ func (h *Milestones) ActionArchive(c *gin.Context) {
 		return
 	}
 	_ = values
-	_ = row
-	result, err := models.ScanMilestone(h.db.QueryRow(ctx, `UPDATE `+models.MilestoneTable+` SET "archived_at" = $2 WHERE "id" = $1 AND "archived_at" IS NULL RETURNING `+models.MilestoneColumns, id, time.Now().UTC()))
-	if errors.Is(err, pgx.ErrNoRows) {
-		httpx.Fail(c, httpx.NewError(http.StatusConflict, "conflict", "The row is archived already"))
-		return
-	}
+	result, err := rowactions.SetMilestoneArchived(ctx, h.db, row.ID, true, time.Now().UTC())
 	if err != nil {
 		httpx.HandleError(c, err, "write")
+		return
+	}
+	if result == nil {
+		httpx.Fail(c, httpx.NewError(http.StatusConflict, "conflict", "The row is archived already"))
 		return
 	}
 	httpx.OK(c, models.PresentMilestone(result))
@@ -515,14 +515,13 @@ func (h *Milestones) ActionRestore(c *gin.Context) {
 		return
 	}
 	_ = values
-	_ = row
-	result, err := models.ScanMilestone(h.db.QueryRow(ctx, `UPDATE `+models.MilestoneTable+` SET "archived_at" = NULL WHERE "id" = $1 AND "archived_at" IS NOT NULL RETURNING `+models.MilestoneColumns, id))
-	if errors.Is(err, pgx.ErrNoRows) {
-		httpx.Fail(c, httpx.NewError(http.StatusConflict, "conflict", "The row is not archived"))
-		return
-	}
+	result, err := rowactions.SetMilestoneArchived(ctx, h.db, row.ID, false, time.Now().UTC())
 	if err != nil {
 		httpx.HandleError(c, err, "write")
+		return
+	}
+	if result == nil {
+		httpx.Fail(c, httpx.NewError(http.StatusConflict, "conflict", "The row is not archived"))
 		return
 	}
 	httpx.OK(c, models.PresentMilestone(result))

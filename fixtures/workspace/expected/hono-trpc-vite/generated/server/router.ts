@@ -14,6 +14,7 @@ import { channel_membersRouter } from "./resources/channel_members";
 import { messagesRouter } from "./resources/messages";
 import { labelsRouter } from "./resources/labels";
 import { milestone_labelsRouter } from "./resources/milestone_labels";
+import { requestsRouter } from "./resources/requests";
 import { router } from "./trpc";
 
 export const appRouter = router({
@@ -29,7 +30,8 @@ export const appRouter = router({
   channel_members: channel_membersRouter,
   messages: messagesRouter,
   labels: labelsRouter,
-  milestone_labels: milestone_labelsRouter
+  milestone_labels: milestone_labelsRouter,
+  requests: requestsRouter
 });
 
 export type AppRouter = typeof appRouter;

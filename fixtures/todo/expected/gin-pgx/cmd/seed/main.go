@@ -5,6 +5,7 @@ package main
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 
 	"todo/generated/client"
@@ -40,15 +41,23 @@ func main() {
 		c := anonymous
 		scope := client.WithActor(vars, nil)
 		path := "/api/tasks"
-		r, err := c.Request("POST", path, nil, client.Resolve(client.MustJSON("{\"title\":\"Plant tomatoes\",\"project_id\":\"{garden}\",\"status\":\"doing\"}"), scope))
+		r, err := c.Request("POST", path, nil, client.Resolve(client.MustJSON("{\"title\":\"Plant tomatoes\",\"project_id\":\"{garden}\"}"), scope))
 		report(2, "tasks.create", r, err)
+		vars["tomatoes"] = client.Pick(r.Body, "data.id")
+	}
+	{
+		c := anonymous
+		scope := client.WithActor(vars, nil)
+		path := "/api/tasks/" + url.PathEscape(client.Stringify(client.Resolve("{tomatoes}", scope))) + "/start"
+		r, err := c.Request("POST", path, nil, map[string]any{})
+		report(3, "tasks.start", r, err)
 	}
 	{
 		c := anonymous
 		scope := client.WithActor(vars, nil)
 		path := "/api/tasks"
 		r, err := c.Request("POST", path, nil, client.Resolve(client.MustJSON("{\"title\":\"Water the beds\",\"project_id\":\"{garden}\"}"), scope))
-		report(3, "tasks.create", r, err)
+		report(4, "tasks.create", r, err)
 	}
 	if failed {
 		os.Exit(1)

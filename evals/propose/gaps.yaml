@@ -268,12 +268,18 @@ gaps:
     note: "A read rule on a field; the key is absent when it refuses. Design: docs/designs/field-visibility.md."
   - key: state machines and transitions
     kind: not_delivered
-    status: open
+    status: built
     first_seen: designs-2026-11-09
     last_seen: designs-2026-11-09
     cases: 0
-    note: "Declared transitions on a read_only enum: guard, action, event and board affordance from one line.
-      Design: docs/designs/state-machines.md."
+    construct: "transitions on an entity: one read_only enum field and, per transition, from, to, rule and an
+      optional stamp; each a row action the compiler writes (one conditional update, 409 invalid_transition from
+      another state), run by a timer too, and the moves of a board grouped by the field"
+    version: unreleased
+    note: "Built 2026-11-10 (round B4) with blog FEAT-14 (an editorial review, timers that retire and archive),
+      todo TODO-8 (the task flow and its board) and workspace WS-14 (requests and approvals under isolation:
+      database, an expiry only a timer runs). Declined: input on a transition, two state machines on one entity, a
+      history of transitions. Design: docs/designs/state-machines.md."
   - key: money and currency
     kind: not_delivered
     status: open
@@ -299,7 +305,8 @@ gaps:
     version: unreleased
     note: "Built 2026-11-10 (round B3) with workspace WS-13 (milestones and labels, under isolation: database) and
       blog FEAT-13 (articles, with a queued event on posts.archive). Declined: a cascading archive, a list of live
-      and archived rows together, a timer that runs archive itself. Design: docs/designs/archive-and-counts.md."
+      and archived rows together. A timer runs archive and restore since round B4. Design:
+      docs/designs/archive-and-counts.md."
   - key: history, versions and audit
     kind: not_delivered
     status: open

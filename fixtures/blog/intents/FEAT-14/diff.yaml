@@ -1,0 +1,260 @@
+osl: "1.0"
+summary: Article status is a review state machine (submit, approve, reject, retire) with stamps, a count of approved articles on User, timers that retire and then archive, an event on approve, a board by status
+ops:
+  - op: add_field
+    entity: Article
+    name: status
+    field:
+      type: enum
+      enum_values: [draft, in_review, approved, retired]
+      required: true
+      default: draft
+      read_only: true
+  - op: add_field
+    entity: Article
+    name: approved_at
+    field: { type: datetime, read_only: true }
+  - op: add_field
+    entity: Article
+    name: retired_at
+    field: { type: datetime, read_only: true }
+  - op: set_transitions
+    entity: Article
+    transitions:
+      field: status
+      submit: { from: [draft], to: in_review, rule: "owner:author_id" }
+      approve: { from: [in_review], to: approved, rule: "role:admin", stamp: approved_at }
+      reject: { from: [in_review], to: draft, rule: "role:admin" }
+      retire:
+        from: [approved]
+        to: retired
+        rule: "role:admin or owner:author_id when status = approved"
+        stamp: retired_at
+  - op: add_field
+    entity: User
+    name: approved_count
+    field: { type: integer, count_of: posts, where: "status = approved" }
+  - op: update_resource
+    name: posts
+    resource:
+      entity: Article
+      operations: [list, get, create, update, delete]
+      list:
+        filters: [published, author_id, status]
+        order: [[posted_at, desc]]
+        include: [author]
+        sortable: [title, posted_at, comment_count]
+        search: [title, content]
+      get: { include: [author] }
+      actions:
+        publish: { description: Mark the article published, rule: "owner:author_id" }
+        unpublish_all:
+          description: Unpublish every article
+          scope: collection
+          rule: "role:admin"
+          returns: { count: { type: integer, required: true } }
+        lock: { description: Close the article to new comments, rule: "role:admin" }
+        unlock: { description: Reopen the article to comments, rule: "role:admin" }
+  - op: add_event
+    event: { on: posts.approve, handler: post_approved }
+  - op: set_timers
+    timers:
+      - { on: Article, at: publish_at, run: posts.publish, when: "published = false" }
+      - { on: Article, at: approved_at, after: 30d, run: posts.retire }
+      - { on: Article, at: retired_at, after: 30d, run: posts.archive }
+  - op: add_page
+    name: desk
+    page:
+      resource: posts
+      layout: board
+      group_by: status
+      title: Editorial desk
+      columns: [title, status, author_id]
+      access: authenticated
+  - op: set_sidebar
+    sidebar:
+      items:
+        - { page: overview, icon: house }
+        - { page: my_posts, icon: pen-line }
+        - { page: posts, icon: file-text }
+        - { page: desk, icon: kanban }
+        - { page: announcements, icon: megaphone }
+        - { page: archive, icon: archive }
+        - { page: moderation, icon: shield }
+        - { page: users, icon: users }
+        - { page: about, icon: info }
+      footer: { user: true, settings: true }
+  - op: add_scenario
+    scenario:
+      name: editorial review
+      steps:
+        - as: dave
+          op: auth.me
+          expect: { status: 200, body: { data: { approved_count: 0 } } }
+          capture: { dave_id: data.id }
+        - as: dave
+          op: posts.create
+          body: { title: Field notes, content: What the season taught us }
+          expect: { status: 201, body: { data: { status: draft, approved_at: null, retired_at: null } } }
+          capture: { notes: data.id }
+        - as: dave
+          op: posts.create
+          body: { title: Approved by hand, content: Not mine to say, status: approved }
+          expect: { status: 400 }
+        - as: dave
+          op: posts.update
+          path: { id: "{notes}" }
+          body: { status: in_review }
+          expect: { status: 400 }
+        - op: posts.submit
+          path: { id: "{notes}" }
+          expect: { status: 401 }
+        - as: bob
+          op: posts.submit
+          path: { id: "{notes}" }
+          expect: { status: 403 }
+        - as: admin
+          op: posts.submit
+          path: { id: "{notes}" }
+          expect: { status: 403 }
+        - as: admin
+          op: posts.approve
+          path: { id: "{notes}" }
+          expect: { status: 409 }
+        - as: dave
+          op: posts.retire
+          path: { id: "{notes}" }
+          expect: { status: 403 }
+        - as: admin
+          op: posts.retire
+          path: { id: "{notes}" }
+          expect: { status: 409 }
+        - as: dave
+          op: posts.submit
+          path: { id: "{notes}" }
+          expect: { status: 200, body: { data: { title: Field notes, status: in_review, approved_at: null } } }
+        - as: dave
+          op: posts.submit
+          path: { id: "{notes}" }
+          expect: { status: 409 }
+        - as: dave
+          op: posts.approve
+          path: { id: "{notes}" }
+          expect: { status: 403 }
+        - as: admin
+          op: posts.reject
+          path: { id: "{notes}" }
+          expect: { status: 200, body: { data: { status: draft } } }
+        - as: admin
+          op: posts.reject
+          path: { id: "{notes}" }
+          expect: { status: 409 }
+        - as: dave
+          op: posts.submit
+          path: { id: "{notes}" }
+          expect: { status: 200, body: { data: { status: in_review } } }
+        - op: posts.list
+          query: { author_id: "{dave_id}", status: in_review }
+          expect: { status: 200, body: { data: [{ title: Field notes }], page: { total: 1 } } }
+        - as: admin
+          op: posts.approve
+          path: { id: "{notes}" }
+          expect: { status: 200, body: { data: { status: approved, published: false, retired_at: null } } }
+          capture: { notes_approved: data.approved_at }
+        - as: admin
+          op: posts.approve
+          path: { id: "{notes}" }
+          expect: { status: 409 }
+        - as: admin
+          op: posts.reject
+          path: { id: "{notes}" }
+          expect: { status: 409 }
+        - op: users.get
+          path: { id: "{dave_id}" }
+          expect: { status: 200, body: { data: { approved_count: 1 } } }
+        - as: dave
+          op: posts.publish
+          path: { id: "{notes}" }
+          expect: { status: 200, body: { data: { published: true, status: approved } } }
+        - as: dave
+          op: posts.create
+          body: { title: Evergreen, content: Still true next year }
+          expect: { status: 201, body: { data: { status: draft } } }
+          capture: { evergreen: data.id }
+        - as: dave
+          op: posts.submit
+          path: { id: "{evergreen}" }
+          expect: { status: 200 }
+        - as: admin
+          op: posts.approve
+          path: { id: "{evergreen}" }
+          expect: { status: 200, body: { data: { status: approved } } }
+        - op: users.get
+          path: { id: "{dave_id}" }
+          expect: { status: 200, body: { data: { approved_count: 2 } } }
+        - as: dave
+          op: posts.archive
+          path: { id: "{notes}" }
+          expect: { status: 200, body: { data: { status: approved } } }
+        - as: bob
+          op: posts.retire
+          path: { id: "{notes}" }
+          expect: { status: 403 }
+        - as: dave
+          op: posts.retire
+          path: { id: "{notes}" }
+          expect: { status: 200, body: { data: { status: retired, approved_at: "{notes_approved}" } } }
+          capture: { notes_retired: data.retired_at, notes_archived: data.archived_at }
+        - as: dave
+          op: posts.retire
+          path: { id: "{notes}" }
+          expect: { status: 403 }
+        - as: admin
+          op: posts.retire
+          path: { id: "{notes}" }
+          expect: { status: 409 }
+        - op: users.get
+          path: { id: "{dave_id}" }
+          expect: { status: 200, body: { data: { approved_count: 1 } } }
+        - op: timers.run
+          body: { now: "{now+29d}" }
+          expect: { status: 200 }
+        - op: posts.get
+          path: { id: "{evergreen}" }
+          expect: { status: 200, body: { data: { status: approved, retired_at: null } } }
+        - op: timers.run
+          body: { now: "{now+31d}" }
+          expect: { status: 200 }
+        - op: posts.get
+          path: { id: "{evergreen}" }
+          expect: { status: 200, body: { data: { status: retired, archived_at: null } } }
+        - op: posts.get
+          path: { id: "{notes}" }
+          expect:
+            status: 200
+            body: { data: { status: retired, retired_at: "{notes_retired}", archived_at: "{notes_archived}" } }
+        - op: users.get
+          path: { id: "{dave_id}" }
+          expect: { status: 200, body: { data: { approved_count: 0 } } }
+        - op: posts.list
+          query: { author_id: "{dave_id}", status: retired }
+          expect: { status: 200, body: { data: [{ title: Evergreen }], page: { total: 1 } } }
+        - op: timers.run
+          body: { now: "{now+62d}" }
+          expect: { status: 200 }
+        - op: posts.list
+          query: { author_id: "{dave_id}", status: retired }
+          expect: { status: 200, body: { data: [], page: { total: 0 } } }
+        - op: posts.list
+          query: { author_id: "{dave_id}", status: retired, archived: "true", sort: "title:asc" }
+          expect:
+            status: 200
+            body: { data: [{ title: Evergreen }, { title: Field notes }], page: { total: 2 } }
+        - as: dave
+          op: posts.delete
+          path: { id: "{evergreen}" }
+          expect: { status: 204 }
+        - as: dave
+          op: posts.delete
+          path: { id: "{notes}" }
+          expect: { status: 204 }

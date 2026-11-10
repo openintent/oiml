@@ -97,6 +97,7 @@ describe("gin-pgx backend", () => {
       "generated/tests/13_private_drafts_test.go",
       "generated/tests/14_followers_read_bulletins_test.go",
       "generated/tests/15_comment_counts_and_archived_articles_test.go",
+      "generated/tests/16_editorial_review_test.go",
       "generated/tests/support_test.go"
     ]);
     const runtime = ginPgxBackend.runtime(project.config);
@@ -121,7 +122,7 @@ describe("gin-pgx backend", () => {
     const entities = files.find(f => f.path === "generated/models/entities.go")!.content;
     const publicUser = entities.slice(entities.indexOf("type PublicUser struct"), entities.indexOf("// ScanUser"));
     expect(publicUser).not.toContain("password_hash");
-    expect(entities).toMatch(/PasswordHash \*string\s+`json:"-"`/);
+    expect(entities).toMatch(/PasswordHash\s+\*string\s+`json:"-"`/);
     const validation = files.find(f => f.path === "generated/validation/resources.go")!.content;
     expect(validation).not.toContain("password_hash");
   });

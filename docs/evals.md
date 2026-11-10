@@ -57,7 +57,8 @@ defaults), so they judge the result, not the spelling of the ops. The full list 
 schema in `packages/evals/src/cases.ts`: entities and fields present or absent, types, field properties,
 relations with their `on_delete`, unique constraints, junction entities, relations through a junction
 (`through: ["Track.* -> Genre"]`), ordered collections (`ordered: { PlaylistTrack: playlist_id }`), archiving
-entities (`archive: [Article]`), counts (`counts: ["Article.* -> Comment"]`), rules,
+entities (`archive: [Article]`), counts (`counts: ["Article.* -> Comment"]`), transitions by name or by what
+they move (`transitions: { Task: [complete, "todo -> doing"] }`), rules,
 resources and operations,
 list options, actions by name or by shape, auth providers and tenancy (its `isolation` too; rules are read as
 the model declares them, before isolation adds the tenant's membership), events, pages and the sidebar, file

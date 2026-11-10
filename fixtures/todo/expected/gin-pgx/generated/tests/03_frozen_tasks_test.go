@@ -10,8 +10,8 @@ import (
 	"todo/generated/client"
 )
 
-// TestScenario04FrozenTasks is the scenario "frozen tasks".
-func TestScenario04FrozenTasks(t *testing.T) {
+// TestScenario03FrozenTasks is the scenario "frozen tasks".
+func TestScenario03FrozenTasks(t *testing.T) {
 	vars := map[string]any{}
 	t.Run("1. tasks.create", func(t *testing.T) {
 		c := client.New()

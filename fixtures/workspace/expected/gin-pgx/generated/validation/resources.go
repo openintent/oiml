@@ -267,6 +267,31 @@ var MilestoneLabelsCreateInput = Object{Fields: []Field{
 	{Name: "label_id", Required: true, Type: UUID{}},
 }}
 
+// RequestsID parses a requests id from the path.
+func RequestsID(raw string) (string, bool) {
+	return ParseUUIDID(raw)
+}
+
+// RequestsListQuery validates the GET /api/requests query string.
+var RequestsListQuery = Query{PageSize: 20, Filters: []Filter{
+	{Name: "team_id", Type: UUID{}},
+	{Name: "status", Type: Enum{Values: []string{"pending", "approved", "declined", "expired"}}},
+	{Name: "requester_id", Type: UUID{}},
+}}
+
+// RequestsCreateInput validates POST /api/requests bodies.
+var RequestsCreateInput = Object{Fields: []Field{
+	{Name: "team_id", Required: true, Type: UUID{}},
+	{Name: "title", Required: true, Type: String{MinLength: 1, MaxLength: 160}},
+	{Name: "amount", Required: true, Type: Integer{Min: F(1)}},
+}}
+
+// RequestsUpdateInput validates PATCH /api/requests/{id} bodies.
+var RequestsUpdateInput = Object{Fields: []Field{
+	{Name: "title", Type: String{MinLength: 1, MaxLength: 160}},
+	{Name: "amount", Type: Integer{Min: F(1)}},
+}}
+
 // TasksRemindInput validates POST /api/tasks/{id}/remind bodies.
 var TasksRemindInput = Object{}
 
@@ -289,3 +314,15 @@ var LabelsArchiveInput = Object{}
 
 // LabelsRestoreInput validates POST /api/labels/{id}/restore bodies.
 var LabelsRestoreInput = Object{}
+
+// RequestsApproveInput validates POST /api/requests/{id}/approve bodies.
+var RequestsApproveInput = Object{}
+
+// RequestsDeclineInput validates POST /api/requests/{id}/decline bodies.
+var RequestsDeclineInput = Object{}
+
+// RequestsReopenInput validates POST /api/requests/{id}/reopen bodies.
+var RequestsReopenInput = Object{}
+
+// RequestsExpireInput validates POST /api/requests/{id}/expire bodies.
+var RequestsExpireInput = Object{}

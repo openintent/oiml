@@ -30,15 +30,22 @@ async function main(): Promise<void> {
   {
     const client = anonymous;
     const scope = { ...vars, actor: { id: null } };
-    const reply = await client.call("tasks.create", resolve({"title":"Plant tomatoes","project_id":"{garden}","status":"doing"}, scope), "mutation", "data");
+    const reply = await client.call("tasks.create", resolve({"title":"Plant tomatoes","project_id":"{garden}"}, scope), "mutation", "data");
     report(2, "tasks.create", reply);
+    vars.tomatoes = pick(reply.body, "data.id");
+  }
+  {
+    const client = anonymous;
+    const scope = { ...vars, actor: { id: null } };
+    const reply = await client.call("tasks.start", { ...({} as object), id: resolve("{tomatoes}", scope) }, "mutation", "data");
+    report(3, "tasks.start", reply);
 
   }
   {
     const client = anonymous;
     const scope = { ...vars, actor: { id: null } };
     const reply = await client.call("tasks.create", resolve({"title":"Water the beds","project_id":"{garden}"}, scope), "mutation", "data");
-    report(3, "tasks.create", reply);
+    report(4, "tasks.create", reply);
 
   }
   void coerce;

@@ -8,6 +8,7 @@ import * as schema from "../../db/schema";
 import { milestones as milestonesTable, labels as labelsTable, milestoneLabels as milestoneLabelsTable, projects as projectsTable } from "../../db/schema";
 import { presentLabel, presentMilestone } from "../../present";
 import { milestonesArchiveInput, milestonesCreateInput, milestonesId, milestonesListQuery, milestonesMoveInput, milestonesRestoreInput, milestonesUpdateInput } from "../../validation";
+import { setMilestoneArchived } from "../../row-actions";
 import { checkRule, memberTenantIds, rulesDisabled, verdict, type Rule } from "../access";
 import type { Session } from "../auth";
 import { fail, notFound, parseId, toTRPCError } from "../errors";
@@ -85,16 +86,6 @@ async function attachGet(rows: Omit<GetRow, "labels">[]): Promise<GetRow[]> {
 async function moveRow(row: schema.Milestone, to: number): Promise<schema.Milestone | undefined> {
   await db.execute(sql`select "osl_move_milestones"(${row.id}, ${to})`);
   return db.query.milestones.findFirst({ where: eq(milestonesTable.id, row.id) });
-}
-
-/** archive and restore: sets archived_at on a live row or clears it on an archived one, in one statement; undefined when there was nothing to do */
-async function setArchived(row: schema.Milestone, archived: boolean): Promise<schema.Milestone | undefined> {
-  const [updated] = await db
-    .update(milestonesTable)
-    .set({ archived_at: archived ? new Date() : null })
-    .where(and(eq(milestonesTable.id, row.id), archived ? isNull(milestonesTable.archived_at) : isNotNull(milestonesTable.archived_at)))
-    .returning();
-  return updated;
 }
 
 export const milestonesRouter = router({
@@ -233,7 +224,7 @@ export const milestonesRouter = router({
     checkRule(ACTION_RULES.archive, ctx.session, currentValues);
     try {
       void input;
-      const result = await setArchived(current, true);
+      const result = await setMilestoneArchived(current.id, true, new Date());
       if (!result) fail(409, "conflict", "The row is archived already");
 
       return presentMilestone(result);
@@ -256,7 +247,7 @@ export const milestonesRouter = router({
     checkRule(ACTION_RULES.restore, ctx.session, currentValues);
     try {
       void input;
-      const result = await setArchived(current, false);
+      const result = await setMilestoneArchived(current.id, false, new Date());
       if (!result) fail(409, "conflict", "The row is not archived");
 
       return presentMilestone(result);

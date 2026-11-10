@@ -72,7 +72,8 @@ describe("app section", () => {
       "banned",
       "banned_at",
       "ban_reason",
-      "post_count"
+      "post_count",
+      "approved_count"
     ]);
     expect(posts.fields).toEqual([
       "title",
@@ -90,6 +91,7 @@ describe("app section", () => {
       ["Home", "/", "house"],
       ["My articles", "/my-posts", "pen-line"],
       ["Posts", "/posts", "file-text"],
+      ["Editorial desk", "/desk", "kanban"],
       ["Announcements", "/announcements", "megaphone"],
       ["Archive", "/archive", "archive"],
       ["Moderation", "/moderation", "shield"],

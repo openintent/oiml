@@ -8,9 +8,9 @@ export function presentProject(row: schema.Project): PublicProject {
   return { id: row.id, name: row.name, color: row.color, created_at: row.created_at };
 }
 
-export type PublicTask = Pick<schema.Task, "id" | "title" | "status" | "estimate_hours" | "due_on" | "assignee" | "project_id" | "created_at">;
+export type PublicTask = Pick<schema.Task, "id" | "title" | "status" | "estimate_hours" | "due_on" | "assignee" | "project_id" | "created_at" | "completed_at">;
 export function presentTask(row: schema.Task): PublicTask {
-  return { id: row.id, title: row.title, status: row.status, estimate_hours: row.estimate_hours, due_on: row.due_on, assignee: row.assignee, project_id: row.project_id, created_at: row.created_at };
+  return { id: row.id, title: row.title, status: row.status, estimate_hours: row.estimate_hours, due_on: row.due_on, assignee: row.assignee, project_id: row.project_id, created_at: row.created_at, completed_at: row.completed_at };
 }
 
 export type PublicLabel = Pick<schema.Label, "id" | "name">;

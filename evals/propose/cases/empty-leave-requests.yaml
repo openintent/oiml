@@ -1,0 +1,32 @@
+id: empty-leave-requests
+tags: [entity, rules, auth, transitions, scenario]
+base: { empty: leave }
+intent:
+  title: Leave requests
+  ask: >-
+    People sign up and ask for leave: a first day, a last day and a note. A request starts pending. A manager
+    approves or declines a pending request; the person who asked can withdraw their own request while it is
+    pending or approved. Nothing else changes where a request stands, and a request can be edited only while it is
+    pending. Record when a request was decided.
+  acceptance:
+    - Someone who is not a manager cannot approve a request
+    - Approving a request that was already declined is a conflict
+    - The person who asked withdraws their own request, and nobody else's
+    - The status cannot be set through a create or an update
+expect:
+  entities: [User, "LeaveRequest|Leave|Request|TimeOff"]
+  transitions:
+    "LeaveRequest|Leave|Request|TimeOff":
+      - "pending -> approved"
+      - "pending -> declined|rejected|denied"
+      - "approved -> withdrawn|cancelled|canceled"
+      - "pending -> withdrawn|cancelled|canceled"
+  types: { "LeaveRequest|Leave|Request|TimeOff.status|state": enum }
+  field_props: { "LeaveRequest|Leave|Request|TimeOff.status|state": { read_only: true } }
+  scenarios: { min: 1, rejections: 3, statuses: [403, 409, 400] }
+  ops: { forbid: [add_action] }
+notes: >-
+  A state machine over an empty model. The withdraw step starts from two states (`from: [pending, approved]`) and
+  is the owner's; approve and decline are the manager's (a role on User) and stamp the decision time. "Edited only
+  while it is pending" is a row condition on the update rule. Three actions with handlers, or a writable status
+  with rules about its values, have not used the construct.

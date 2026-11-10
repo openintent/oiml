@@ -16,6 +16,16 @@ expect:
   types: { Post.status: enum }
   list: { posts: { filters: [status] } }
   actions_on: { posts: { scope: row, rule: "role:reviewer" } }
-  actions: ["posts.submit|posts.submit_for_review|posts.request_review"]
+  any_of:
+    - transitions:
+        {
+          Post:
+            ["draft -> in_review|review|pending|pending_review", "in_review|review|pending|pending_review -> published"]
+        }
+    - actions: ["posts.submit|posts.submit_for_review|posts.request_review"]
   scenarios: { min: 1, rejections: 1, statuses: [403] }
-notes: Needs update_field on User.role to add the reviewer value, an enum status, two row actions and filters.
+notes: >-
+  Needs update_field on User.role to add the reviewer value, an enum status and filters. Since round B4 the two
+  steps are transitions on Post (submit from draft, approve from in review under role:reviewer) with the status
+  read_only; two row actions with handlers stay accepted until a round shows the reference steers every answer to
+  transitions.

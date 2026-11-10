@@ -809,6 +809,7 @@ export function explainedBy(change: OpenApiChange, ops: DiffOp[], before: IR): b
       case "set_rules":
       case "set_relations":
       case "set_archive":
+      case "set_transitions":
         return subject.entities.has(op.entity);
       case "rename_field":
         return subject.entities.has(op.entity);

@@ -5,7 +5,7 @@ import { QueryClient } from "@tanstack/react-query";
 import type { z } from "zod";
 import type { FileRecord } from "../files";
 import type { PublicAnnouncement, PublicArticle, PublicBulletin, PublicComment, PublicFollow, PublicUser } from "../present";
-import type { announcementsCreateInput, announcementsListQuery, announcementsPublishInput, announcementsUpdateInput, bulletinsCreateInput, bulletinsListQuery, bulletinsUpdateInput, commentsCreateInput, commentsListQuery, commentsUpdateInput, followsCreateInput, followsListQuery, postsArchiveInput, postsCreateInput, postsListQuery, postsLockInput, postsPublishInput, postsRestoreInput, postsUnlockInput, postsUnpublishAllInput, postsUpdateInput, sendDigestInput, usersBanInput, usersListQuery, usersUpdateInput } from "../validation";
+import type { announcementsCreateInput, announcementsListQuery, announcementsPublishInput, announcementsUpdateInput, bulletinsCreateInput, bulletinsListQuery, bulletinsUpdateInput, commentsCreateInput, commentsListQuery, commentsUpdateInput, followsCreateInput, followsListQuery, postsApproveInput, postsArchiveInput, postsCreateInput, postsListQuery, postsLockInput, postsPublishInput, postsRejectInput, postsRestoreInput, postsRetireInput, postsSubmitInput, postsUnlockInput, postsUnpublishAllInput, postsUpdateInput, sendDigestInput, usersBanInput, usersListQuery, usersUpdateInput } from "../validation";
 
 export class ApiError extends Error {
   constructor(
@@ -83,6 +83,10 @@ export type Inputs = {
     unlock: z.input<typeof postsUnlockInput> & { id: string };
     archive: z.input<typeof postsArchiveInput> & { id: string };
     restore: z.input<typeof postsRestoreInput> & { id: string };
+    submit: z.input<typeof postsSubmitInput> & { id: string };
+    approve: z.input<typeof postsApproveInput> & { id: string };
+    reject: z.input<typeof postsRejectInput> & { id: string };
+    retire: z.input<typeof postsRetireInput> & { id: string };
   };
   comments: {
     list: z.input<typeof commentsListQuery>;
@@ -151,6 +155,10 @@ export type Outputs = {
     unlock: PublicArticle;
     archive: PublicArticle;
     restore: PublicArticle;
+    submit: PublicArticle;
+    approve: PublicArticle;
+    reject: PublicArticle;
+    retire: PublicArticle;
   };
   comments: {
     list: { data: (PublicComment & { author: PublicUser | null })[]; page: Page };
@@ -225,7 +233,11 @@ export const client = {
     lock: ({ id, ...input }: Inputs["posts"]["lock"]) => call<PublicArticle>("POST", "/api/posts" + "/" + id + "/lock", { body: input }),
     unlock: ({ id, ...input }: Inputs["posts"]["unlock"]) => call<PublicArticle>("POST", "/api/posts" + "/" + id + "/unlock", { body: input }),
     archive: ({ id, ...input }: Inputs["posts"]["archive"]) => call<PublicArticle>("POST", "/api/posts" + "/" + id + "/archive", { body: input }),
-    restore: ({ id, ...input }: Inputs["posts"]["restore"]) => call<PublicArticle>("POST", "/api/posts" + "/" + id + "/restore", { body: input })
+    restore: ({ id, ...input }: Inputs["posts"]["restore"]) => call<PublicArticle>("POST", "/api/posts" + "/" + id + "/restore", { body: input }),
+    submit: ({ id, ...input }: Inputs["posts"]["submit"]) => call<PublicArticle>("POST", "/api/posts" + "/" + id + "/submit", { body: input }),
+    approve: ({ id, ...input }: Inputs["posts"]["approve"]) => call<PublicArticle>("POST", "/api/posts" + "/" + id + "/approve", { body: input }),
+    reject: ({ id, ...input }: Inputs["posts"]["reject"]) => call<PublicArticle>("POST", "/api/posts" + "/" + id + "/reject", { body: input }),
+    retire: ({ id, ...input }: Inputs["posts"]["retire"]) => call<PublicArticle>("POST", "/api/posts" + "/" + id + "/retire", { body: input })
   },
   comments: {
     list: (input: Inputs["comments"]["list"]) => call<Outputs["comments"]["list"]>("GET", "/api/comments", { query: input as Record<string, unknown>, whole: true }),

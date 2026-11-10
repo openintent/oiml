@@ -4,7 +4,7 @@
 import { QueryClient } from "@tanstack/react-query";
 import type { z } from "zod";
 import type { PublicLabel, PublicProject, PublicTask, PublicTaskNote } from "../present";
-import type { labelsCreateInput, labelsListQuery, notesCreateInput, projectsCreateInput, projectsListQuery, projectsUpdateInput, tasksClearDoneInput, tasksCompleteInput, tasksCreateInput, tasksListQuery, tasksUpdateInput } from "../validation";
+import type { labelsCreateInput, labelsListQuery, notesCreateInput, projectsCreateInput, projectsListQuery, projectsUpdateInput, tasksClearDoneInput, tasksCompleteInput, tasksCreateInput, tasksFinishInput, tasksListQuery, tasksPauseInput, tasksStartInput, tasksUpdateInput } from "../validation";
 
 export class ApiError extends Error {
   constructor(
@@ -71,6 +71,9 @@ export type Inputs = {
     delete: { id: number };
     complete: z.input<typeof tasksCompleteInput> & { id: number };
     clear_done: z.input<typeof tasksClearDoneInput>;
+    start: z.input<typeof tasksStartInput> & { id: number };
+    pause: z.input<typeof tasksPauseInput> & { id: number };
+    finish: z.input<typeof tasksFinishInput> & { id: number };
   };
   labels: {
     list: z.input<typeof labelsListQuery>;
@@ -109,6 +112,9 @@ export type Outputs = {
     delete: null;
     complete: PublicTask;
     clear_done: { count: number };
+    start: PublicTask;
+    pause: PublicTask;
+    finish: PublicTask;
   };
   labels: {
     list: { data: (PublicLabel)[]; page: Page };
@@ -147,7 +153,10 @@ export const client = {
     update: ({ id, data }: Inputs["tasks"]["update"]) => call<PublicTask>("PATCH", "/api/tasks" + "/" + id, { body: data }),
     delete: ({ id }: Inputs["tasks"]["delete"]) => call<null>("DELETE", "/api/tasks" + "/" + id),
     complete: ({ id, ...input }: Inputs["tasks"]["complete"]) => call<PublicTask>("POST", "/api/tasks" + "/" + id + "/complete", { body: input }),
-    clear_done: (input: Inputs["tasks"]["clear_done"]) => call<{ count: number }>("POST", "/api/tasks/clear_done", { body: input })
+    clear_done: (input: Inputs["tasks"]["clear_done"]) => call<{ count: number }>("POST", "/api/tasks/clear_done", { body: input }),
+    start: ({ id, ...input }: Inputs["tasks"]["start"]) => call<PublicTask>("POST", "/api/tasks" + "/" + id + "/start", { body: input }),
+    pause: ({ id, ...input }: Inputs["tasks"]["pause"]) => call<PublicTask>("POST", "/api/tasks" + "/" + id + "/pause", { body: input }),
+    finish: ({ id, ...input }: Inputs["tasks"]["finish"]) => call<PublicTask>("POST", "/api/tasks" + "/" + id + "/finish", { body: input })
   },
   labels: {
     list: (input: Inputs["labels"]["list"]) => call<Outputs["labels"]["list"]>("GET", "/api/labels", { query: input as Record<string, unknown>, whole: true }),

@@ -66,26 +66,28 @@ func PresentUsers(rows []*User) []PublicUser {
 const TeamTable = `"teams"`
 
 // TeamColumns lists the columns of Team in model order, for SELECT and RETURNING.
-const TeamColumns = `"id", "name", "created_at"`
+const TeamColumns = `"id", "name", "created_at", "pending_requests"`
 
 // Team is a row of teams.
 type Team struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	CreatedAt time.Time `json:"created_at"`
+	ID              string    `json:"id"`
+	Name            string    `json:"name"`
+	CreatedAt       time.Time `json:"created_at"`
+	PendingRequests int       `json:"pending_requests"`
 }
 
 // PublicTeam is Team as the API returns it: hidden columns removed, dates rendered.
 type PublicTeam struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	CreatedAt string `json:"created_at"`
+	ID              string `json:"id"`
+	Name            string `json:"name"`
+	CreatedAt       string `json:"created_at"`
+	PendingRequests int    `json:"pending_requests"`
 }
 
 // ScanTeam reads one Team from a row selected with TeamColumns.
 func ScanTeam(row Scanner) (*Team, error) {
 	var r Team
-	if err := row.Scan(&r.ID, &r.Name, &r.CreatedAt); err != nil {
+	if err := row.Scan(&r.ID, &r.Name, &r.CreatedAt, &r.PendingRequests); err != nil {
 		return nil, err
 	}
 	return &r, nil
@@ -93,7 +95,7 @@ func ScanTeam(row Scanner) (*Team, error) {
 
 // PresentTeam returns the public shape of a Team.
 func PresentTeam(row *Team) PublicTeam {
-	return PublicTeam{ID: row.ID, Name: row.Name, CreatedAt: FormatDateTime(row.CreatedAt)}
+	return PublicTeam{ID: row.ID, Name: row.Name, CreatedAt: FormatDateTime(row.CreatedAt), PendingRequests: row.PendingRequests}
 }
 
 // PresentTeamPtr presents an optional Team; nil stays nil.
@@ -684,6 +686,68 @@ func PresentMilestoneLabels(rows []*MilestoneLabel) []PublicMilestoneLabel {
 	out := make([]PublicMilestoneLabel, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, PresentMilestoneLabel(row))
+	}
+	return out
+}
+
+// RequestTable is the quoted table of Request.
+const RequestTable = `"requests"`
+
+// RequestColumns lists the columns of Request in model order, for SELECT and RETURNING.
+const RequestColumns = `"id", "team_id", "requester_id", "title", "amount", "status", "decided_at", "created_at"`
+
+// Request is a row of requests.
+type Request struct {
+	ID          string     `json:"id"`
+	TeamID      string     `json:"team_id"`
+	RequesterID string     `json:"requester_id"`
+	Title       string     `json:"title"`
+	Amount      int        `json:"amount"`
+	Status      string     `json:"status"`
+	DecidedAt   *time.Time `json:"decided_at"`
+	CreatedAt   time.Time  `json:"created_at"`
+}
+
+// PublicRequest is Request as the API returns it: hidden columns removed, dates rendered.
+type PublicRequest struct {
+	ID          string  `json:"id"`
+	TeamID      string  `json:"team_id"`
+	RequesterID string  `json:"requester_id"`
+	Title       string  `json:"title"`
+	Amount      int     `json:"amount"`
+	Status      string  `json:"status"`
+	DecidedAt   *string `json:"decided_at"`
+	CreatedAt   string  `json:"created_at"`
+}
+
+// ScanRequest reads one Request from a row selected with RequestColumns.
+func ScanRequest(row Scanner) (*Request, error) {
+	var r Request
+	if err := row.Scan(&r.ID, &r.TeamID, &r.RequesterID, &r.Title, &r.Amount, &r.Status, &r.DecidedAt, &r.CreatedAt); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// PresentRequest returns the public shape of a Request.
+func PresentRequest(row *Request) PublicRequest {
+	return PublicRequest{ID: row.ID, TeamID: row.TeamID, RequesterID: row.RequesterID, Title: row.Title, Amount: row.Amount, Status: row.Status, DecidedAt: FormatDateTimePtr(row.DecidedAt), CreatedAt: FormatDateTime(row.CreatedAt)}
+}
+
+// PresentRequestPtr presents an optional Request; nil stays nil.
+func PresentRequestPtr(row *Request) *PublicRequest {
+	if row == nil {
+		return nil
+	}
+	out := PresentRequest(row)
+	return &out
+}
+
+// PresentRequests presents a list of Request, never nil.
+func PresentRequests(rows []*Request) []PublicRequest {
+	out := make([]PublicRequest, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, PresentRequest(row))
 	}
 	return out
 }

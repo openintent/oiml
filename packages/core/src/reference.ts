@@ -21,6 +21,7 @@ Every op has an \`op\` key. Validation runs after all ops, so order within one d
 - \`set_indexes\` { entity, indexes?: Index[], unique?: string[][] }
 - \`set_relations\` { entity, relations: { <name>: { through: <JunctionEntity>, from?, to? } } } (replaces the entity's whole relations block; {} removes it)
 - \`set_archive\` { entity, archive: true | { field?, rule? } | false } (true or options: the entity archives, and gets its \`archived_at\` field if it lacks it; false: it no longer does, and the field stays)
+- \`set_transitions\` { entity, transitions: { field, <name>: { from: [values], to: value, rule?, stamp? } } | false } (replaces the entity's whole transitions block; false removes it, and the field and stamps stay; see Transitions)
 - \`add_resource\` { name: snake_case, resource: Resource }
 - \`update_resource\` { name, resource: Resource }  (replaces the whole resource: repeat the operations, list options and actions you keep)
 - \`remove_resource\` { name }  (also drops the events, scenarios and seed steps that used it; do not remove those separately)
@@ -50,6 +51,7 @@ indexes: [{ fields: [a, b], unique: false, name: optional }]
 unique: [[a, b]]        # multi-column unique constraints
 relations: { genres: { through: TrackGenre } } # many-to-many: the rows a junction entity links this one to (from, to: the junction's two relation fields, when it has more)
 archive: true           # rows can be archived and restored; or { field: archived_at, rule: "member:team_id:admin" } (see Archive)
+transitions: { field: status, start: { from: [todo], to: doing } }   # a state machine over a read_only enum: which value may follow which (see Transitions)
 \`\`\`
 
 Default rules: read public; create, update and delete are authenticated when auth exists, public otherwise.
@@ -202,8 +204,59 @@ archived. Scenario steps call \`projects.archive\` and \`projects.restore\` with
 \`archived\` flag with a list filter beside it (M157), and never write a handler for it. Delete is unchanged: keep it
 for "gone for good", or set \`delete: none\` when archiving is the only way out. Not expressible, say so in
 not_delivered: archiving a row archives the rows under it (an event handler on \`projects.archive\` may), a list of
-live and archived rows together, a timer that runs archive itself (declare an action whose handler sets the field
-and run that; a timer may wait on \`archived_at\` to purge), archived rows hidden from includes.
+live and archived rows together, archived rows hidden from includes. A timer may run them as the system
+(\`{ on: Project, at: closed_at, after: 30d, run: projects.archive }\` archives a project thirty days after it closed; a
+row archived already is left alone), and a timer may wait on \`archived_at\` to purge.
+
+Transitions: a status whose next value depends on its current one is a state machine: "authors submit a draft, an
+editor approves or rejects it", "pending requests are approved or declined", "todo, doing, done". Declare the field
+as a \`read_only\` enum with a \`default\` (the state a row starts in), then say which value may follow which:
+
+\`\`\`yaml
+fields:
+  status: { type: enum, enum_values: [draft, in_review, published], required: true, default: draft, read_only: true }
+  published_at: { type: datetime, read_only: true }
+transitions:
+  field: status # the enum the transitions move; every other key is a transition by name (snake_case)
+  submit: { from: [draft], to: in_review, rule: "owner:author_id" }
+  approve: { from: [in_review], to: published, rule: "role:editor", stamp: published_at }
+  reject: { from: [in_review], to: draft, rule: "role:editor" }
+\`\`\`
+
+\`from\` lists the values a row may hold when the transition runs, \`to\` the value it holds afterwards (never one of
+its own \`from\`). \`rule\` says who may run it, in the rules' full spelling (\`"owner:author_id when locked = false"\`
+guards on another field); default the entity's update rule. \`stamp\` names a nullable \`read_only\` datetime field set
+to the time the transition ran. Each transition is a row action on every resource over the entity, written by the
+compiler: \`POST /api/<resource>/{id}/<name>\` with no body answers the row. The entity's read rule and \`hidden\` apply
+as for any row action, then the transition's rule (401, 403), then the state: a row whose field is not in \`from\`
+answers 409 with code \`invalid_transition\`, and of two callers at once one moves the row and the other gets the 409.
+Nothing else changes the field for a client: create and update answer 400 when one sends it, so leave it out of
+\`create.fields\` and \`update.fields\`. Scenario steps call \`posts.submit\` with \`path: { id }\` and no body; events
+follow a transition (\`on: posts.approve\`); a timer runs one as the system (\`{ on: Article, at: published_at, after:
+30d, run: posts.retire }\`), and a row in another state by then is left alone, so the timer needs no \`when\`. A
+transition with \`rule: none\` has no route: only a timer runs it. A board page with \`group_by\` on the field shows the
+enum's values as columns, in declared order, and a card can be dragged only to a column a transition takes it to
+from where it is, under a rule the viewer passes; the drop runs that transition, and such a page needs no update
+operation. A detail pane shows a transition's button only on a row in a state it starts from.
+
+Choosing: a step that only sets the status (and a timestamp) is a transition; never declare an action with a
+handler for it, and never leave the status writable with rules about its values. A step that takes input (a
+rejection reason) or does more than set the field stays an action with a handler, which writes the field itself;
+a side effect of a transition (an email, a reason stored elsewhere) is an event handler on it. A transition may not
+take the name of an action the resource declares (M162), \`move\` on an entity with a position, or \`archive\` and
+\`restore\` on an entity with \`archive:\` (M151). "Removed but recoverable, out of the lists" is \`archive:\`; a step in
+a lifecycle is a transition; an entity with both names its step otherwise (\`retire\`, \`close\`). An archived row
+still takes its transitions (archive only takes a row out of the lists): write \`when archived_at = null\` on a
+transition's rule to stop that. A \`count_of\` with \`where: "status = open"\` follows the transitions by itself.
+Under \`isolation: database\` a transition's rule is a row action's (no public alternative on a tenant table, M117),
+and another tenant's row answers what every operation on it answers, never 409. On an entity that exists, make the
+status \`read_only\` with \`update_field\` (scenarios and seed steps that sent it now answer 400: remove and re-add
+them without it), then \`set_transitions\`. An action whose handler sets the status may stay beside the
+transitions (a handler of yours still writes the field), or be replaced: drop it from the resource with
+\`update_resource\` and give a transition its name, so the scenarios that call it keep running; its handler file
+under src/actions is then dead code to delete. Not expressible, say so in not_delivered: input on a transition, two
+state machines on one entity (the second status is actions with handlers), a transition that sets other fields or
+clears a stamp, a history of transitions.
 
 Counts: \`count_of: <reverse relation>\` on an integer field is "how many related rows": comments of a post, tasks of
 a project, members of a team. The relation is the \`reverse\` name a relation field of the counted entity declares
@@ -272,7 +325,8 @@ The generated handler stub is \`src/actions/<resource>_<name>\` (or \`src/action
 the row for row actions, the session (null when a schedule or timer runs it), the database and \`now\`, and returns the
 row, nothing, or the declared shape. A handler is
 where a \`read_only\` field gets its value (\`ban\` sets \`banned\` and \`banned_at\`). Scenario steps call actions as
-\`posts.publish\` or \`actions.send_digest\`. Events may follow an action: \`on: posts.publish\`.
+\`posts.publish\` or \`actions.send_digest\`. Events may follow an action: \`on: posts.publish\`. A step that only moves a
+status from one value to another is not an action with a handler: declare it under the entity's \`transitions\`.
 
 ## Auth
 
@@ -328,7 +382,8 @@ events:
 ## Schedules and timers
 
 Work that runs on its own, on the same job queue as queued events; the API runs the worker in-process unless started
-as web only. Both run an action's handler as the system: no session, no access rule.
+as web only. Both run an action's handler as the system: no session, no access rule. A timer may also run a row
+action the compiler writes: a transition (\`run: posts.retire\`), \`archive\` or \`restore\`, with the 409 cases skipped.
 
 \`\`\`yaml
 schedules:
@@ -366,7 +421,7 @@ pages:
     refresh: 15                    # seconds; the page refetches its data on this interval while open (polling; there is no push)
   tasks:
     resource: tasks
-    layout: board                  # cards grouped by an enum field; dragging a card updates it
+    layout: board                  # cards grouped by an enum field; dragging a card updates it, or runs a transition when group_by is the field of the entity's transitions
     group_by: status
   home:
     kind: dashboard

@@ -24,6 +24,7 @@ import {
   positionOf,
   tenantLinks,
   throughRelation,
+  transitionsOf,
   splitCondition,
   splitWhen,
   type Action,
@@ -135,6 +136,28 @@ export interface ArchiveIR {
   column: string;
   /** The rule of `archive` and `restore`: the archive's own, else the entity's update rule */
   rule: RuleIR;
+}
+
+/** One step of a state machine, resolved */
+export interface TransitionIR {
+  name: string;
+  /** The values of the column a row may hold when the step runs */
+  from: string[];
+  /** The value the column holds afterwards */
+  to: string;
+  /** A nullable datetime column set to the time the step ran */
+  stamp?: string;
+  /** Who may run it: the transition's own rule, else the entity's update rule. `none`: only a timer runs it */
+  rule: RuleIR;
+}
+
+/** The state machine of an entity: the enum column it moves and its steps, in declared order */
+export interface TransitionsIR {
+  /** A read-only enum column: only the steps below change it for a client */
+  column: string;
+  /** The column's values in declared order: the columns of a board grouped by it */
+  values: string[];
+  steps: TransitionIR[];
 }
 
 /** A count over a reverse relation: an integer column the database keeps with triggers on the counted table */
@@ -450,6 +473,8 @@ export interface EntityIR {
   through?: ThroughIR[];
   /** Present when the entity archives */
   archive?: ArchiveIR;
+  /** Present when the entity declares transitions */
+  transitions?: TransitionsIR;
   /** The count_of fields of the entity; absent without any */
   counts?: CountIR[];
 }
@@ -513,9 +538,10 @@ export interface ActionIR {
   handler: string;
   /**
    * Written by the compiler, with no handler of yours: `move` on a resource over an ordered entity, `archive` and
-   * `restore` on one over an archiving entity
+   * `restore` on one over an archiving entity, `transition` for each step of the entity's state machine
+   * (`EntityIR.transitions` has the step by the action's name)
    */
-  builtin?: "move" | "archive" | "restore";
+  builtin?: "move" | "archive" | "restore" | "transition";
 }
 
 export type ProviderIR =
@@ -1402,6 +1428,33 @@ export function compile(input: Model): IR {
     entity.archive = { column: archive.field, rule: archive.rule ? withinTenant(entity.name, rule) : rule };
   }
 
+  // State machines: the column, its values, and each step with the rule it runs under
+  for (const entity of entities) {
+    const machine = transitionsOf(allEntities[entity.name]);
+    if (!machine) continue;
+    entity.transitions = {
+      column: machine.field,
+      values: allEntities[entity.name].fields[machine.field].enum_values ?? [],
+      steps: machine.steps.map(step => {
+        const rule = step.rule
+          ? withinTenant(
+              entity.name,
+              parseRule(
+                step.rule,
+                entity.rules.update,
+                path => hopsFrom(entity.name, path),
+                conditionOn(entity.name),
+                path => memberPathFrom(entity.name, path)
+              )
+            )
+          : entity.rules.update;
+        const out: TransitionIR = { name: step.name, from: step.from, to: step.to, rule };
+        if (step.stamp) out.stamp = step.stamp;
+        return out;
+      })
+    };
+  }
+
   const entityByName = (name: string) => entities.find(e => e.name === name)!;
 
   let auth: AuthIR | undefined;
@@ -1660,6 +1713,21 @@ export function compile(input: Model): IR {
         action.builtin = name;
         actions.push(action);
       }
+    }
+    // The compiler's own row action per step of a state machine: one conditional update, no handler of the user's.
+    // A step whose rule is none has no route; it stays an action so a timer can run it
+    for (const step of entity.transitions?.steps ?? []) {
+      const declared = transitionsOf(allEntities[entity.name])!.steps.find(s => s.name === step.name)!;
+      const action = compileAction(
+        step.name,
+        {
+          description: `Moves the row's ${entity.transitions!.column} from ${step.from.join(" or ")} to ${step.to}${step.stamp ? ` and sets ${step.stamp}` : ""}. 409 (invalid_transition) when the row is in another state`,
+          ...(declared.rule ? { rule: declared.rule } : {})
+        },
+        { name: resourceName, entity, path }
+      );
+      action.builtin = "transition";
+      actions.push(action);
     }
   }
   for (const [actionName, action] of Object.entries(model.actions))
@@ -2032,9 +2100,27 @@ export function actionsOf(ir: IR, resource: string): ActionIR[] {
 }
 
 /** Actions not tied to a resource */
-/** The actions whose handler the user owns in src/actions: every one but the compiler's own (`move`, `archive`, `restore`) */
+/** The actions whose handler the user owns in src/actions: every one but the compiler's own (`move`, `archive`, `restore`, a transition) */
 export function userActions(ir: IR): ActionIR[] {
   return ir.actions.filter(a => !a.builtin);
+}
+
+/**
+ * The compiler's own row actions that are one statement on the row and take no input: `archive`, `restore` and the
+ * transitions. A request runs them after the rule; a timer runs them as the system, as it runs a handler.
+ */
+export function statementActions(ir: IR): ActionIR[] {
+  return ir.actions.filter(a => a.builtin === "archive" || a.builtin === "restore" || a.builtin === "transition");
+}
+
+/** The step of the entity's state machine behind a transition action */
+export function transitionOf(ir: IR, action: ActionIR): TransitionIR {
+  const step =
+    action.builtin === "transition"
+      ? entityOf(ir, action.entity!).transitions?.steps.find(s => s.name === action.name)
+      : undefined;
+  if (!step) throw new Error(`action ${action.resource}.${action.name} is not a transition`);
+  return step;
 }
 
 export function globalActions(ir: IR): ActionIR[] {

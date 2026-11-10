@@ -889,7 +889,8 @@
                               "todo",
                               "doing",
                               "done"
-                            ]
+                            ],
+                            "readOnly": true
                           },
                           "estimate_hours": {
                             "oneOf": [
@@ -938,6 +939,18 @@
                             "type": "string",
                             "format": "date-time"
                           },
+                          "completed_at": {
+                            "oneOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "readOnly": true
+                          },
                           "project": {
                             "oneOf": [
                               {
@@ -958,6 +971,7 @@
                           "assignee",
                           "project_id",
                           "created_at",
+                          "completed_at",
                           "project"
                         ]
                       }
@@ -1021,14 +1035,6 @@
                   "title": {
                     "type": "string",
                     "maxLength": 200
-                  },
-                  "status": {
-                    "type": "string",
-                    "enum": [
-                      "todo",
-                      "doing",
-                      "done"
-                    ]
                   },
                   "estimate_hours": {
                     "oneOf": [
@@ -1165,7 +1171,8 @@
                             "todo",
                             "doing",
                             "done"
-                          ]
+                          ],
+                          "readOnly": true
                         },
                         "estimate_hours": {
                           "oneOf": [
@@ -1214,6 +1221,18 @@
                           "type": "string",
                           "format": "date-time"
                         },
+                        "completed_at": {
+                          "oneOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "readOnly": true
+                        },
                         "project": {
                           "oneOf": [
                             {
@@ -1244,6 +1263,7 @@
                         "assignee",
                         "project_id",
                         "created_at",
+                        "completed_at",
                         "project",
                         "note"
                       ]
@@ -1298,14 +1318,6 @@
                   "title": {
                     "type": "string",
                     "maxLength": 200
-                  },
-                  "status": {
-                    "type": "string",
-                    "enum": [
-                      "todo",
-                      "doing",
-                      "done"
-                    ]
                   },
                   "estimate_hours": {
                     "oneOf": [
@@ -1439,6 +1451,174 @@
         ],
         "operationId": "tasks_complete",
         "summary": "Mark the task done",
+        "description": "Open to everyone, only when status != done.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Task"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/tasks/{id}/finish": {
+      "post": {
+        "tags": [
+          "tasks"
+        ],
+        "operationId": "tasks_finish",
+        "summary": "Moves the row's status from doing to done and sets completed_at. 409 (invalid_transition) when the row is in another state",
+        "description": "Open to everyone, only when status != done.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Task"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/tasks/{id}/pause": {
+      "post": {
+        "tags": [
+          "tasks"
+        ],
+        "operationId": "tasks_pause",
+        "summary": "Moves the row's status from doing to todo. 409 (invalid_transition) when the row is in another state",
+        "description": "Open to everyone, only when status != done.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Task"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/tasks/{id}/start": {
+      "post": {
+        "tags": [
+          "tasks"
+        ],
+        "operationId": "tasks_start",
+        "summary": "Moves the row's status from todo to doing. 409 (invalid_transition) when the row is in another state",
         "description": "Open to everyone, only when status != done.",
         "security": [],
         "parameters": [
@@ -1637,7 +1817,8 @@
               "todo",
               "doing",
               "done"
-            ]
+            ],
+            "readOnly": true
           },
           "estimate_hours": {
             "oneOf": [
@@ -1685,6 +1866,18 @@
           "created_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "completed_at": {
+            "oneOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "readOnly": true
           }
         },
         "required": [
@@ -1695,7 +1888,8 @@
           "due_on",
           "assignee",
           "project_id",
-          "created_at"
+          "created_at",
+          "completed_at"
         ]
       },
       "TaskLabel": {

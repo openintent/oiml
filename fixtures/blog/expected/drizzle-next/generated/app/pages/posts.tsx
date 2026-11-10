@@ -61,6 +61,22 @@ function canRestore(user: SessionUser | null, row: Detail): boolean {
   return user !== null && row.author_id === user.id;
 }
 
+function canSubmit(user: SessionUser | null, row: Detail): boolean {
+  return user !== null && row.author_id === user.id;
+}
+
+function canApprove(user: SessionUser | null, row: Detail): boolean {
+  return user !== null && (user as { role?: unknown }).role === "admin";
+}
+
+function canReject(user: SessionUser | null, row: Detail): boolean {
+  return user !== null && (user as { role?: unknown }).role === "admin";
+}
+
+function canRetire(user: SessionUser | null, row: Detail): boolean {
+  return (user !== null && (user as { role?: unknown }).role === "admin" || (user !== null && row.author_id === user.id && String(row.status) === "approved"));
+}
+
 function canUnpublishAll(user: SessionUser | null): boolean {
   return user !== null && (user as { role?: unknown }).role === "admin";
 }
@@ -461,6 +477,34 @@ function PostsDetailInner() {
       await queryClient.invalidateQueries({ queryKey: KEY });
     }
   });
+  const submitAction = useMutation({
+    mutationFn: (input: Inputs["posts"]["submit"]) => client.posts.submit(input),
+    onSuccess: async () => {
+      setOpenAction(null);
+      await queryClient.invalidateQueries({ queryKey: KEY });
+    }
+  });
+  const approveAction = useMutation({
+    mutationFn: (input: Inputs["posts"]["approve"]) => client.posts.approve(input),
+    onSuccess: async () => {
+      setOpenAction(null);
+      await queryClient.invalidateQueries({ queryKey: KEY });
+    }
+  });
+  const rejectAction = useMutation({
+    mutationFn: (input: Inputs["posts"]["reject"]) => client.posts.reject(input),
+    onSuccess: async () => {
+      setOpenAction(null);
+      await queryClient.invalidateQueries({ queryKey: KEY });
+    }
+  });
+  const retireAction = useMutation({
+    mutationFn: (input: Inputs["posts"]["retire"]) => client.posts.retire(input),
+    onSuccess: async () => {
+      setOpenAction(null);
+      await queryClient.invalidateQueries({ queryKey: KEY });
+    }
+  });
   if (query.isPending) return <PaneSkeleton />;
   if (query.error) return <ErrorNote error={query.error} className="m-6" />;
   const row: Detail = query.data;
@@ -494,6 +538,26 @@ function PostsDetailInner() {
               Restore
             </Button>
           ) : null}
+          {canSubmit(user, row) && ["draft"].includes(String(row.status)) ? (
+            <Button variant="outline" size="sm" disabled={submitAction.isPending} onClick={() => submitAction.mutate({ id })}>
+              Submit
+            </Button>
+          ) : null}
+          {canApprove(user, row) && ["in_review"].includes(String(row.status)) ? (
+            <Button variant="outline" size="sm" disabled={approveAction.isPending} onClick={() => approveAction.mutate({ id })}>
+              Approve
+            </Button>
+          ) : null}
+          {canReject(user, row) && ["in_review"].includes(String(row.status)) ? (
+            <Button variant="outline" size="sm" disabled={rejectAction.isPending} onClick={() => rejectAction.mutate({ id })}>
+              Reject
+            </Button>
+          ) : null}
+          {canRetire(user, row) && ["approved"].includes(String(row.status)) ? (
+            <Button variant="outline" size="sm" disabled={retireAction.isPending} onClick={() => retireAction.mutate({ id })}>
+              Retire
+            </Button>
+          ) : null}
           {canUpdate(user, row) ? (
             <Button variant="outline" size="sm" onClick={() => setEditing(current => !current)}>
               {editing ? "Cancel" : "Edit"}
@@ -520,6 +584,10 @@ function PostsDetailInner() {
       <ErrorNote error={unlockAction.error} className="mb-4" />
       <ErrorNote error={archiveAction.error} className="mb-4" />
       <ErrorNote error={restoreAction.error} className="mb-4" />
+      <ErrorNote error={submitAction.error} className="mb-4" />
+      <ErrorNote error={approveAction.error} className="mb-4" />
+      <ErrorNote error={rejectAction.error} className="mb-4" />
+      <ErrorNote error={retireAction.error} className="mb-4" />
       {editing ? (
         <PostsForm
           fields={POSTS_UPDATE}

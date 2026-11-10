@@ -7,6 +7,7 @@ import { boolean, date, index, integer, pgEnum, pgTable, text, timestamp, unique
 export const teamMemberRoleEnum = pgEnum("team_member_role", ["owner", "admin", "member"]);
 export const projectStatusEnum = pgEnum("project_status", ["active", "archived"]);
 export const channelMemberRoleEnum = pgEnum("channel_member_role", ["admin", "member"]);
+export const requestStatusEnum = pgEnum("request_status", ["pending", "approved", "declined", "expired"]);
 export const oslAuthTokenPurposeEnum = pgEnum("osl_auth_token_purpose", ["magic_link"]);
 
 export const users = pgTable("users", {
@@ -21,7 +22,8 @@ export const users = pgTable("users", {
 export const teams = pgTable("teams", {
   id: uuid().primaryKey().defaultRandom(),
   name: varchar({ length: 100 }).notNull(),
-  created_at: timestamp({ withTimezone: true }).notNull().defaultNow()
+  created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  pending_requests: integer().notNull().default(0)
 });
 
 export const teamMembers = pgTable(
@@ -151,6 +153,21 @@ export const milestoneLabels = pgTable(
   t => [unique("milestone_labels_milestone_id_label_id_key").on(t.milestone_id, t.label_id), index("milestone_labels_team_id_idx").on(t.team_id), index("milestone_labels_milestone_id_idx").on(t.milestone_id), index("milestone_labels_label_id_idx").on(t.label_id)]
 );
 
+export const requests = pgTable(
+  "requests",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    team_id: uuid().notNull().references(() => teams.id, { onDelete: "cascade" }),
+    requester_id: uuid().notNull().references(() => users.id, { onDelete: "cascade" }),
+    title: varchar({ length: 160 }).notNull(),
+    amount: integer().notNull(),
+    status: requestStatusEnum().notNull().default("pending"),
+    decided_at: timestamp({ withTimezone: true }),
+    created_at: timestamp({ withTimezone: true }).notNull().defaultNow()
+  },
+  t => [index("requests_team_id_idx").on(t.team_id), index("requests_requester_id_idx").on(t.requester_id)]
+);
+
 export const oslAuthTokens = pgTable("osl_auth_tokens", {
   id: uuid().primaryKey().defaultRandom(),
   token_hash: varchar({ length: 255 }).notNull().unique(),
@@ -169,7 +186,8 @@ export const teamsRelations = relations(teams, ({ many }) => ({
   members: many(teamMembers, { relationName: "team" }),
   projects: many(projects, { relationName: "team" }),
   channels: many(channels, { relationName: "team" }),
-  labels: many(labels, { relationName: "team" })
+  labels: many(labels, { relationName: "team" }),
+  requests: many(requests, { relationName: "team" })
 }));
 
 export const teamMembersRelations = relations(teamMembers, ({ one }) => ({
@@ -225,6 +243,11 @@ export const milestoneLabelsRelations = relations(milestoneLabels, ({ one }) => 
   label: one(labels, { fields: [milestoneLabels.label_id], references: [labels.id], relationName: "label" })
 }));
 
+export const requestsRelations = relations(requests, ({ one }) => ({
+  team: one(teams, { fields: [requests.team_id], references: [teams.id], relationName: "team" }),
+  requester: one(users, { fields: [requests.requester_id], references: [users.id], relationName: "requester" })
+}));
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Team = typeof teams.$inferSelect;
@@ -249,5 +272,7 @@ export type Label = typeof labels.$inferSelect;
 export type NewLabel = typeof labels.$inferInsert;
 export type MilestoneLabel = typeof milestoneLabels.$inferSelect;
 export type NewMilestoneLabel = typeof milestoneLabels.$inferInsert;
+export type Request = typeof requests.$inferSelect;
+export type NewRequest = typeof requests.$inferInsert;
 export type OslAuthToken = typeof oslAuthTokens.$inferSelect;
 export type NewOslAuthToken = typeof oslAuthTokens.$inferInsert;

@@ -589,6 +589,41 @@ export const ArchiveOptions = z
   .strict();
 export type ArchiveOptions = z.infer<typeof ArchiveOptions>;
 
+/** One transition: the states a row may be in to take it, the state it ends in, who may run it, what it stamps */
+export const Transition = z
+  .object({
+    /** The values of the field a row may hold when the transition runs */
+    from: z.array(z.string().min(1)).min(1),
+    /** The value the field holds afterwards */
+    to: z.string().min(1),
+    /** Who may run it; default the entity's update rule */
+    rule: Rule.optional(),
+    /** A nullable read_only datetime field of the entity, set to the time the transition ran */
+    stamp: Identifier.optional()
+  })
+  .strict();
+export type Transition = z.infer<typeof Transition>;
+
+/** The key of a transitions block that names the field; every other key is a transition */
+export const TRANSITIONS_FIELD_KEY = "field";
+
+/**
+ * The state machine of an entity: `field` names one read_only enum field, every other key is a transition by name.
+ * Each transition is a row action the compiler writes on every resource over the entity.
+ */
+export type Transitions = { field: string } & { [name: string]: Transition | string };
+export const Transitions: z.ZodType<Transitions, z.ZodTypeDef, unknown> = z
+  .object({ field: Identifier })
+  .catchall(Transition)
+  .superRefine((block, ctx) => {
+    const names = Object.keys(block).filter(key => key !== TRANSITIONS_FIELD_KEY);
+    if (names.length === 0)
+      ctx.addIssue({ code: "custom", message: "transitions needs at least one transition beside field" });
+    for (const name of names)
+      if (!Identifier.safeParse(name).success)
+        ctx.addIssue({ code: "custom", message: `transition name ${name} must be snake_case`, path: [name] });
+  }) as unknown as z.ZodType<Transitions, z.ZodTypeDef, unknown>;
+
 export const Entity = z
   .object({
     table: Identifier.optional(),
@@ -601,6 +636,11 @@ export const Entity = z
      * (`?archived=true`), and every resource over the entity gets the row actions `archive` and `restore`.
      */
     archive: z.union([z.literal(true), ArchiveOptions]).optional(),
+    /**
+     * A state machine over one read_only enum field: which value may follow which, who may make each step, and a
+     * row action per step on every resource over the entity (409 when the row is in another state).
+     */
+    transitions: Transitions.optional(),
     rules: Rules.optional(),
     indexes: z.array(Index).optional(),
     /** Multi-column unique constraints */
@@ -632,6 +672,21 @@ export type ArchiveAction = (typeof ARCHIVE_ACTIONS)[number];
 
 /** The list parameter of an archiving entity: `?archived=true` answers the archived rows instead of the live ones */
 export const ARCHIVED_PARAM = "archived";
+
+/** A transition by name, as declared */
+export interface NamedTransition extends Transition {
+  name: string;
+}
+
+/** The transitions of an entity, resolved: the field they move and the steps in declared order */
+export function transitionsOf(entity: Entity | undefined): { field: string; steps: NamedTransition[] } | undefined {
+  if (!entity?.transitions) return undefined;
+  const { field, ...rest } = entity.transitions;
+  return {
+    field,
+    steps: Object.entries(rest).map(([name, step]) => ({ name, ...(step as Transition) }))
+  };
+}
 
 /** A count_of field resolved against the model: the entity whose rows it counts and the relation field they point with */
 export interface CountLink {
@@ -1419,6 +1474,10 @@ export function validateModel(model: Model): Diagnostic[] {
           check(action.rule, resource.entity, `resources.${resourceName}.actions.${actionName}.rule`, "action");
       }
     }
+    // A transition is a row action on every resource over its entity
+    for (const [entityName, entity] of Object.entries(model.entities))
+      for (const step of transitionsOf(entity)?.steps ?? [])
+        if (step.rule) check(step.rule, entityName, `entities.${entityName}.transitions.${step.name}.rule`, "action");
   };
 
   for (const [entityName, entity] of Object.entries(model.entities)) {
@@ -1548,6 +1607,87 @@ export function validateModel(model: Model): Diagnostic[] {
               ? "the membership: an archived membership leaves the lists but still makes its user a member"
               : undefined;
       if (special) warn("M152", `${entityName} is ${special}; archive only takes rows out of lists`, apath);
+    }
+    const machine = transitionsOf(entity);
+    if (machine) {
+      const tpath = `${base}.transitions`;
+      const field = entity.fields[machine.field];
+      const fits = Boolean(field && field.type === "enum" && field.read_only && !field.hidden && !field.primary);
+      if (!fits)
+        error(
+          "M160",
+          `transitions field ${machine.field} must be an enum field of ${entityName} with read_only: true: its transitions are the only way a client changes it`,
+          `${tpath}.field`
+        );
+      const values = fits ? field.enum_values! : undefined;
+      const over = Object.entries(model.resources).filter(([, resource]) => resource.entity === entityName);
+      for (const step of machine.steps) {
+        const spath = `${tpath}.${step.name}`;
+        if (values) {
+          for (const value of new Set([...step.from, step.to]))
+            if (!values.includes(value))
+              error(
+                "M161",
+                `transition ${step.name}: ${value} is not a value of ${entityName}.${machine.field} (${values.join(", ")})`,
+                spath
+              );
+        }
+        if (step.from.includes(step.to))
+          error(
+            "M161",
+            `transition ${step.name} ends in ${step.to}, which is also in its from: a transition changes the state, so a row already there answers 409`,
+            spath
+          );
+        if (new Set(step.from).size !== step.from.length)
+          error("M161", `transition ${step.name} names a state twice in from`, spath);
+        const archive = archiveOf(entity);
+        if (RESERVED_ACTION_NAMES.has(step.name))
+          error("M162", `transition name ${step.name} is reserved: it is an operation of every resource`, spath);
+        else if (step.name === MOVE_ACTION && positionOf(entity))
+          error(
+            "M162",
+            `${entityName} has a position field, so move is the compiler's reorder on every resource over it; give the transition another name`,
+            spath
+          );
+        else if ((ARCHIVE_ACTIONS as readonly string[]).includes(step.name) && archive)
+          error(
+            "M151",
+            archiveNameClash(
+              over[0]?.[0] ?? toSnakeCase(entityName),
+              entityName,
+              archive.field,
+              "transition",
+              step.name
+            ),
+            spath
+          );
+        for (const [resourceName, resource] of over)
+          if (resource.actions?.[step.name])
+            error(
+              "M162",
+              `${resourceName} declares an action ${step.name}, and the transition ${step.name} is a row action on every resource over ${entityName}; drop the action (the transition is its handler now) or give one of them another name`,
+              spath
+            );
+        if (step.stamp) {
+          const stamp = entity.fields[step.stamp];
+          if (
+            !stamp ||
+            stamp.type !== "datetime" ||
+            stamp.required ||
+            stamp.primary ||
+            stamp.hidden ||
+            stamp.default !== undefined ||
+            !stamp.read_only ||
+            step.stamp === archive?.field
+          )
+            error(
+              "M163",
+              `transition ${step.name}: stamp ${step.stamp} must be a nullable datetime field of ${entityName} with read_only: true and no default${step.stamp === archive?.field ? ", and not the archive field" : ""}: the server sets it when the transition runs`,
+              `${spath}.stamp`
+            );
+        }
+        if (step.rule) checkRule(step.rule, entityName, `${spath}.rule`, true);
+      }
     }
     for (const [fieldName, field] of Object.entries(entity.fields)) {
       if (!field.count_of) continue;
@@ -1899,7 +2039,11 @@ export function validateModel(model: Model): Diagnostic[] {
     } else {
       const resource = model.resources[m[3]];
       if (!resource) error("M061", `event resource ${m[3]} does not exist`, `events[${i}]`);
-      else if (!resource.actions?.[m[4]] && !isArchiveAction(model, resource, m[4]))
+      else if (
+        !resource.actions?.[m[4]] &&
+        !isArchiveAction(model, resource, m[4]) &&
+        !isTransitionAction(model, resource, m[4])
+      )
         error(
           "M061",
           m[4] === MOVE_ACTION && hasMoveAction(model, resource)
@@ -1914,8 +2058,14 @@ export function validateModel(model: Model): Diagnostic[] {
   const runTarget = (run: string): { resource?: string; action: Action } | undefined => {
     const [ns, name] = run.split(".");
     if (ns === "actions") return model.actions[name] ? { action: model.actions[name] } : undefined;
-    const action = model.resources[ns]?.actions?.[name];
-    return action ? { resource: ns, action } : undefined;
+    const resource = model.resources[ns];
+    const action = resource?.actions?.[name];
+    if (action) return { resource: ns, action };
+    // The compiler's own row actions that take no input: a transition (whatever its rule: one with rule none is
+    // the system's alone), archive and restore. The queue runs their one statement as it runs a handler
+    if (resource && (isArchiveAction(model, resource, name) || hasTransition(model.entities[resource.entity], name)))
+      return { resource: ns, action: {} as Action };
+    return undefined;
   };
   for (const [i, schedule] of model.schedules.entries()) {
     const spath = `schedules[${i}]`;
@@ -1960,10 +2110,15 @@ export function validateModel(model: Model): Diagnostic[] {
     const target = runTarget(timer.run);
     const resourceEntity = target?.resource ? model.resources[target.resource]?.entity : undefined;
     const [runResource, runName] = timer.run.split(".");
-    if (!target && model.resources[runResource] && isArchiveAction(model, model.resources[runResource], runName))
+    if (
+      !target &&
+      runName === MOVE_ACTION &&
+      model.resources[runResource] &&
+      hasMoveAction(model, model.resources[runResource])
+    )
       error(
         "M133",
-        `run ${timer.run} is the compiler's ${runName}, which a timer cannot run yet; declare a row action whose handler sets ${archiveOf(model.entities[model.resources[runResource].entity])!.field} and run that`,
+        `run ${timer.run} is the compiler's move, which needs a place (to) a timer cannot give`,
         `${tpath}.run`
       );
     else if (!target || !target.resource || (target.action.scope ?? "row") !== "row" || resourceEntity !== timer.on)
@@ -2118,9 +2273,17 @@ export function validateModel(model: Model): Diagnostic[] {
       }
       if (page.group_by) {
         const field = entity.fields[page.group_by];
+        // A board over the field of a state machine drags along its transitions: no update involved
+        const machine = transitionsOf(entity)?.field === page.group_by;
         if (!field || field.type !== "enum")
           error("M087", `group_by ${page.group_by} must be an enum field of ${resource.entity}`, `${base}.group_by`);
-        else if (!resource.operations.includes("update"))
+        else if (!machine && field.read_only)
+          error(
+            "M087",
+            `board pages move cards by changing ${page.group_by}, which is read_only and has no transitions; declare transitions on it (a drag then runs the one that fits) or use another layout`,
+            `${base}.group_by`
+          );
+        else if (!machine && !resource.operations.includes("update"))
           error(
             "M087",
             `board pages move cards by updating ${page.group_by}; ${page.resource} needs an update operation`,
@@ -2288,6 +2451,7 @@ export function resolveStepOp(model: Model, op: string): ResolvedStepOp {
   if (resource.actions?.[name]) return { kind: "action", resource: ns, action: name };
   if (name === MOVE_ACTION && hasMoveAction(model, resource)) return { kind: "action", resource: ns, action: name };
   if (isArchiveAction(model, resource, name)) return { kind: "action", resource: ns, action: name };
+  if (isTransitionAction(model, resource, name)) return { kind: "action", resource: ns, action: name };
   return { kind: "unknown", reason: `resource ${ns} has no operation or action ${name}` };
 }
 
@@ -2309,6 +2473,21 @@ export function isArchiveAction(model: Model, resource: Resource, name: string):
   const entity = model.entities[resource.entity];
   const archive = archiveOf(entity);
   return Boolean(archive) && (archive!.rule ?? entity.rules?.update) !== "none";
+}
+
+/**
+ * Whether `name` is a transition of the resource's entity, and so one of the compiler's row actions on it: the rule
+ * it runs under (its own, else the entity's update rule) is not none.
+ */
+export function isTransitionAction(model: Model, resource: Resource, name: string): boolean {
+  const entity = model.entities[resource.entity];
+  const step = transitionsOf(entity)?.steps.find(s => s.name === name);
+  return Boolean(step) && (step!.rule ?? entity.rules?.update) !== "none";
+}
+
+/** Whether the entity declares a transition by that name, whatever its rule */
+export function hasTransition(entity: Entity | undefined, name: string): boolean {
+  return Boolean(transitionsOf(entity)?.steps.some(step => step.name === name));
 }
 
 /**

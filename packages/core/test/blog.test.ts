@@ -30,7 +30,8 @@ describe("blog fixture", () => {
       "FEAT-10",
       "FEAT-11",
       "FEAT-12",
-      "FEAT-13"
+      "FEAT-13",
+      "FEAT-14"
     ]);
 
     for (const id of ids) {
@@ -41,7 +42,7 @@ describe("blog fixture", () => {
     expect(again.status).toBe("noop");
 
     const project = await loadProject(root);
-    expect(project.lock.revisions).toHaveLength(13);
+    expect(project.lock.revisions).toHaveLength(14);
     const ir = project.ir;
 
     const article = ir.entities.find(e => e.name === "Article")!;
@@ -58,7 +59,10 @@ describe("blog fixture", () => {
       "publish_at",
       "locked",
       "comment_count",
-      "archived_at"
+      "archived_at",
+      "status",
+      "approved_at",
+      "retired_at"
     ]);
     expect(article.foreignKeys[0]).toMatchObject({ column: "author_id", targetTable: "users", onDelete: "cascade" });
     expect(article.relations.map(r => r.name)).toEqual(["author", "comments"]);
@@ -117,7 +121,8 @@ describe("blog fixture", () => {
       "locked articles",
       "private drafts",
       "followers read bulletins",
-      "comment counts and archived articles"
+      "comment counts and archived articles",
+      "editorial review"
     ]);
     expect(ir.examples.seed.map(s => s.op)).toEqual(["posts.create", "posts.create"]);
     expect(ir.actions.map(a => `${a.resource ?? "actions"}.${a.name}:${a.scope}`)).toEqual([
@@ -128,6 +133,10 @@ describe("blog fixture", () => {
       "posts.unlock:row",
       "posts.archive:row",
       "posts.restore:row",
+      "posts.submit:row",
+      "posts.approve:row",
+      "posts.reject:row",
+      "posts.retire:row",
       "announcements.publish:row",
       "actions.send_digest:global"
     ]);

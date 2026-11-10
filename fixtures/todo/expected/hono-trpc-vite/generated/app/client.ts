@@ -46,7 +46,10 @@ export const client = {
     update: (input: Inputs["tasks"]["update"]) => trpc.tasks.update.mutate(input),
     delete: (input: Inputs["tasks"]["delete"]) => trpc.tasks.delete.mutate(input),
     complete: (input: Inputs["tasks"]["complete"]) => trpc.tasks.complete.mutate(input),
-    clear_done: (input: Inputs["tasks"]["clear_done"]) => trpc.tasks.clear_done.mutate(input)
+    clear_done: (input: Inputs["tasks"]["clear_done"]) => trpc.tasks.clear_done.mutate(input),
+    start: (input: Inputs["tasks"]["start"]) => trpc.tasks.start.mutate(input),
+    pause: (input: Inputs["tasks"]["pause"]) => trpc.tasks.pause.mutate(input),
+    finish: (input: Inputs["tasks"]["finish"]) => trpc.tasks.finish.mutate(input)
   },
   labels: {
     list: (input: Inputs["labels"]["list"]) => trpc.labels.list.query(input),
