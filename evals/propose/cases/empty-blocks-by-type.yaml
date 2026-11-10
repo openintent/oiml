@@ -1,0 +1,36 @@
+id: empty-blocks-by-type
+tags: [entity, fields, json, shape, ordering, auth, scenario]
+base: { empty: pages }
+intent:
+  title: Pages made of blocks
+  ask: >-
+    People sign up and write pages. A page is made of blocks, in an order its author arranges. A block is a
+    paragraph, a heading, a code sample or a to-do item, and what it holds depends on which: a paragraph has its
+    text, a heading has its text and a level from 1 to 3, a code sample has the code and the language it is in, a
+    to-do item has its text and whether it is done. A block of one type must never be saved with the content of
+    another, and a block cannot change its type without its content changing with it.
+  acceptance:
+    - A heading without text, or with level 4, is refused, and the answer says which part is wrong
+    - A paragraph saved with a heading's level is refused
+    - Changing a block from a paragraph to a to-do item without sending the new content is refused
+    - A to-do item created without saying whether it is done is not done
+    - Blocks come back in the order the author arranged
+expect:
+  entities: [User, "Page|Document|Note", "Block|PageBlock"]
+  types:
+    "Block|PageBlock.type|kind|block_type": enum
+    "Block|PageBlock.content|data|props|body|payload": json
+  shapes:
+    "Block|PageBlock.content|data|props|body|payload": "shape_by:type|kind|block_type"
+  ordered: { "Block|PageBlock": "page_id|document_id|note_id" }
+  scenarios: { min: 1, rejections: 2, statuses: [400] }
+  touches: ["blocks.create|page_blocks.create", "blocks.update|page_blocks.update"]
+  ops: { forbid: [add_action] }
+notes: >-
+  The Notion exercise's NO-3 as an ask (docs/exercises/notion.md), which had no construct: the backlog entry
+  "conditional validation". The content is one json field with `shape_by` over the block's type enum, each value
+  naming its shape (text; text and a level with min 1 and max 3; code and a language; text and a `done` boolean
+  with `default: false`). One json field per type, nullable columns for every type's keys, a plain json field, or
+  an action that validates has not used the construct. Both fields belong in create.fields and update.fields, or
+  M188 warns. The scenario's 400s are a missing required key, a level out of range, another type's key, and a
+  type changed without its content. The order is a `position` within the page.

@@ -15,6 +15,10 @@ import { startWorker } from "../jobs";
 import { emailsSent, schedulesRun, testHooksEnabled, timersRun } from "../test-hooks";
 import { createContext } from "./context";
 import { appRouter } from "./router";
+import { sealKey } from "../seal";
+
+// Sealed fields: the server does not start without OSL_SEAL_KEY, or with one that is not a key
+sealKey();
 
 /** Errors from the shared modules are tRPC errors; REST routes answer them in the contract's shape. */
 function restError(c: HonoContext, err: unknown): Response {

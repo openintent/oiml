@@ -74,7 +74,9 @@ describe("app section", () => {
       "ban_reason",
       "post_count",
       "approved_count",
-      "phone"
+      "phone",
+      "preferences",
+      "recovery_code"
     ]);
     expect(posts.fields).toEqual([
       "title",
@@ -97,6 +99,7 @@ describe("app section", () => {
       ["Archive", "/archive", "archive"],
       ["Moderation", "/moderation", "shield"],
       ["Users", "/users", "users"],
+      ["Integrations", "/integrations", "plug"],
       ["About", "/about", "info"]
     ]);
     const archive = ir.app!.pages.find(p => p.name === "archive")!;

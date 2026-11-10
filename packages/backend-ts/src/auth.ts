@@ -5,6 +5,7 @@ import {
   fillEnums,
   membershipType,
   membershipsLoader,
+  registerValidators,
   selfSessionSource,
   takesViewer,
   zodForColumn
@@ -66,7 +67,7 @@ export async function getSession(_request: Request): Promise<Session | null> {
 import { createHmac, randomBytes${credentials ? ", scryptSync" : ""}, timingSafeEqual } from "node:crypto";
 import { eq${isolated ? ", sql" : ""} } from "drizzle-orm";
 import { z } from "zod";
-${registerFields.some(c => c.money) ? `import { money } from "./validation";\n` : ""}import { db${isolated ? ", withTenants" : ""} } from "./db/client";
+${registerValidators(registerFields).length ? `import { ${registerValidators(registerFields).join(", ")} } from "./validation";\n` : ""}import { db${isolated ? ", withTenants" : ""} } from "./db/client";
 import { ${schemaImports.join(", ")} } from "./db/schema";
 import { created, error, handleError, noContent, ok, parseBody } from "./http";
 import { ${presentImports.join(", ")} } from "./present";

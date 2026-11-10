@@ -4,6 +4,7 @@
  */
 import { z } from "zod";
 import { toSnakeCase } from "./naming.js";
+import { shapeByOf, shapeProblems, shapeValueProblem, compileShape } from "./shapes.js";
 
 const Identifier = z.string().regex(/^[a-z][a-z0-9_]*$/, "lower_snake_case identifier");
 const EntityName = z.string().regex(/^[A-Z][A-Za-z0-9]*$/, "PascalCase entity name");
@@ -116,6 +117,48 @@ export type Relation = z.infer<typeof Relation>;
 const COUNT_WHERE_PATTERN =
   /^[a-z][a-z0-9_]* (?:=|!=) [A-Za-z0-9_.+-]+(?: and [a-z][a-z0-9_]* (?:=|!=) [A-Za-z0-9_.+-]+)*$/;
 
+/**
+ * One key of a shape, in a field's spelling. Every option of a field parses here, so that an option a key cannot
+ * carry (a relation, `read`, `sealed`, `unique`) is refused with its reason (M186) instead of as an unknown key.
+ */
+const shapeKeyOptions = {
+  type: z.enum(FIELD_TYPES),
+  required: z.boolean().optional(),
+  default: z.union([z.string(), z.number(), z.boolean()]).optional(),
+  max_length: z.number().int().positive().optional(),
+  enum_values: z.array(z.string().min(1)).min(1).optional(),
+  array_type: z.enum(ARRAY_ELEMENT_TYPES).optional(),
+  validate: Validate.optional(),
+  description: z.string().optional(),
+  primary: z.unknown().optional(),
+  unique: z.unknown().optional(),
+  hidden: z.unknown().optional(),
+  read_only: z.unknown().optional(),
+  read: z.unknown().optional(),
+  relation: z.unknown().optional(),
+  file: z.unknown().optional(),
+  sealed: z.unknown().optional(),
+  ranked: z.unknown().optional(),
+  position: z.unknown().optional(),
+  count_of: z.unknown().optional(),
+  where: z.unknown().optional(),
+  currency: z.unknown().optional(),
+  currency_field: z.unknown().optional(),
+  prefix: z.unknown().optional(),
+  scope: z.unknown().optional(),
+  width: z.unknown().optional(),
+  shape_by: z.unknown().optional()
+};
+const NestedShapeKey = z.object({ ...shapeKeyOptions, shape: z.unknown().optional() }).strict();
+export const ShapeKey = z
+  .object({ ...shapeKeyOptions, shape: z.record(Identifier, NestedShapeKey).optional() })
+  .strict();
+export type ShapeKey = z.infer<typeof ShapeKey>;
+
+/** The keys a JSON value holds: a map of fields without storage options, one nested level */
+export const Shape = z.record(Identifier, ShapeKey);
+export type Shape = z.infer<typeof Shape>;
+
 export const Field = z
   .object({
     type: z.enum(FIELD_TYPES),
@@ -177,10 +220,48 @@ export const Field = z
     scope: z.array(Identifier).max(4).optional(),
     /** Sequence fields only: the digits a number is padded to with zeros; a longer number keeps all its digits */
     width: z.number().int().min(1).max(18).optional(),
+    /**
+     * String and text fields only: encrypted at rest with AES-256-GCM under OSL_SEAL_KEY and stored as bytea. The
+     * presenter decrypts it for a caller `read:` allows, and for nobody when the field has no `read:`; a handler
+     * opens it by name. Never in an event, a filter, a sort, a search or a rule.
+     */
+    sealed: z.boolean().optional(),
+    /** JSON fields only: the keys the value holds. A write is held to it and refused with the path of the key that does not fit */
+    shape: Shape.optional(),
+    /**
+     * JSON fields only: a shape per value of a required enum field of the same entity, as
+     * `{ <enum field>: { <value>: <shape>, ... } }`. Every write that touches either is held to the pair.
+     */
+    shape_by: z.record(Identifier, z.record(z.string().min(1), Shape)).optional(),
     description: z.string().optional()
   })
   .strict()
   .superRefine((field, ctx) => {
+    if (field.sealed && field.type !== "string" && field.type !== "text")
+      ctx.addIssue({ code: "custom", message: "sealed only applies to string and text fields" });
+    if (field.sealed && (field.primary || field.unique || field.relation || field.default !== undefined))
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "a sealed field cannot be primary, unique, a relation or defaulted: the database holds ciphertext, which it can neither compare nor fill in"
+      });
+    if (field.type !== "json" && (field.shape !== undefined || field.shape_by !== undefined))
+      ctx.addIssue({ code: "custom", message: "shape and shape_by only apply to json fields" });
+    if (field.shape !== undefined && field.shape_by !== undefined)
+      ctx.addIssue({
+        code: "custom",
+        message: "a json field has one shape, or a shape per value of an enum field (shape_by), not both"
+      });
+    if (field.shape_by !== undefined && Object.keys(field.shape_by).length !== 1)
+      ctx.addIssue({
+        code: "custom",
+        message: "shape_by names one enum field of the entity: { <enum field>: { <value>: <shape>, ... } }"
+      });
+    if (field.shape_by !== undefined && field.default !== undefined)
+      ctx.addIssue({
+        code: "custom",
+        message: "a json field with shape_by takes no default: which shape a value fits depends on the row"
+      });
     if (field.type !== "sequence" && (field.prefix !== undefined || field.scope || field.width !== undefined))
       ctx.addIssue({ code: "custom", message: "prefix, scope and width only apply to sequence fields" });
     if (
@@ -326,6 +407,7 @@ export function splitCondition(text: string): RuleCondition | undefined {
 
 /** Why a when literal does not fit the field it tests, or undefined when it does */
 export function conditionProblem(field: Field, raw: string): string | undefined {
+  if (field.sealed) return "the field is sealed: the database holds ciphertext, which no condition can compare";
   if (raw === "null") return field.required || field.primary ? "the field is never null" : undefined;
   switch (field.type) {
     case "boolean":
@@ -1328,7 +1410,10 @@ function registerFields(model: Model): string[] {
   if (!identity) return [];
   const email = model.auth.email_field ?? "email";
   return Object.entries(identity.fields)
-    .filter(([name, f]) => isClientWritable(f) && f.type !== "file" && name !== email && name !== "role")
+    .filter(
+      ([name, f]) =>
+        isClientWritable(f) && f.type !== "file" && !f.sealed && !f.shape_by && name !== email && name !== "role"
+    )
     .map(([name]) => name);
 }
 
@@ -1343,7 +1428,10 @@ export function provisionFields(model: Model): string[] {
   const email = model.auth.email_field ?? "email";
   const accepted = new Set(registerFields(model));
   return Object.entries(identity.fields)
-    .filter(([name, f]) => isWritable(f) && f.type !== "file" && name !== email && !accepted.has(name))
+    .filter(
+      ([name, f]) =>
+        isWritable(f) && f.type !== "file" && !f.sealed && !f.shape_by && name !== email && !accepted.has(name)
+    )
     .map(([name]) => name);
 }
 
@@ -1715,8 +1803,9 @@ export function validateModel(model: Model): Diagnostic[] {
         `${spelled} is unique${uniqueWith && !field.unique ? ` with ${uniqueWith.filter(c => c !== fieldName).join(", ")}` : ""}: a write that repeats a value answers 409, which tells the writer the value exists whatever read says`,
         rpath
       );
-    // A caller the create or update rule lets write the field, and the read rule may refuse: their own answer leaves it out
-    if (isClientWritable(field)) {
+    // A caller the create or update rule lets write the field, and the read rule may refuse: their own answer leaves it out.
+    // Not said of a sealed field: writing what one does not read back is what it is for
+    if (isClientWritable(field) && !field.sealed) {
       for (const [resourceName, resource] of Object.entries(model.resources)) {
         if (resource.entity !== entityName) continue;
         for (const op of ["create", "update"] as const) {
@@ -1814,6 +1903,85 @@ export function validateModel(model: Model): Diagnostic[] {
           fpath
         );
       if (field.read !== undefined) checkFieldRead(entityName, entity, fieldName, field, fpath);
+      if (field.sealed) {
+        const named = (entity.unique ?? []).some(cols => cols.includes(fieldName))
+          ? "unique"
+          : (entity.indexes ?? []).some(index => index.fields.includes(fieldName))
+            ? "indexes"
+            : undefined;
+        if (named)
+          error(
+            "M185",
+            `${entityName}.${fieldName} is sealed and named in ${named}: the database holds ciphertext, and the same value never seals to the same bytes twice, so a constraint or an index over it holds nothing; drop it there, or keep a field of its own that may be compared`,
+            `${base}.${named}`
+          );
+      }
+      if (field.shape !== undefined) {
+        const problems = shapeProblems(field.shape);
+        for (const problem of problems)
+          error("M186", `shape key ${problem.path} ${problem.message}`, `${fpath}.shape.${problem.path}`);
+        if (!problems.length && field.default !== undefined) {
+          let parsed: unknown;
+          let wrong: string | undefined;
+          try {
+            parsed = JSON.parse(String(field.default));
+          } catch {
+            wrong = "is not JSON";
+          }
+          const misfit = wrong === undefined ? shapeValueProblem(compileShape(field.shape), parsed) : undefined;
+          if (misfit) wrong = `does not fit the shape: ${misfit.path || "the value"} ${misfit.message}`;
+          if (wrong)
+            error(
+              "M186",
+              `the default of ${entityName}.${fieldName} ${wrong}; a default is the JSON a row starts with, written as a string ('{"digest": true}')`,
+              `${fpath}.default`
+            );
+        }
+      }
+      const shaped = shapeByOf(field);
+      if (shaped) {
+        const spath = `${fpath}.shape_by`;
+        const holder = entity.fields[shaped.by];
+        const problem = !holder
+          ? "is not a field of the entity"
+          : holder.type !== "enum"
+            ? `is a ${holder.type} field`
+            : !holder.required
+              ? "is not required, and a row without it would have no shape to hold its value to"
+              : holder.hidden
+                ? "is hidden, so a reader would get the value without what says which shape it has"
+                : holder.read !== undefined
+                  ? "has a read rule, and the keys of the value tell which shape it has to a caller the rule refuses"
+                  : transitionsOf(entity)?.field === shaped.by
+                    ? "is the field of the transitions: a transition writes the state and nothing else, so it would leave a value that no longer fits; a transition that carries the new value is not built in this version (keep the value in a json field with one shape, or let an action with an input change both)"
+                    : undefined;
+        if (problem)
+          error(
+            "M187",
+            `shape_by ${shaped.by} ${problem}; it names a required enum field of ${entityName} that every reader of the row reads, and each of its values names the shape ${fieldName} has on a row with that value`,
+            spath
+          );
+        else {
+          const values = holder!.enum_values!;
+          const missing = values.filter(value => shaped.shapes[value] === undefined);
+          const unknown = Object.keys(shaped.shapes).filter(value => !values.includes(value));
+          if (missing.length)
+            error(
+              "M187",
+              `shape_by ${shaped.by} has no shape for ${missing.join(", ")}: every value of ${entityName}.${shaped.by} names one, and a value with nothing to hold names the empty shape ({})`,
+              `${spath}.${shaped.by}`
+            );
+          if (unknown.length)
+            error(
+              "M187",
+              `shape_by ${shaped.by} names ${unknown.join(", ")}, which ${unknown.length === 1 ? "is not a value" : "are not values"} of ${entityName}.${shaped.by} (${values.join(", ")})`,
+              `${spath}.${shaped.by}`
+            );
+        }
+        for (const [value, shape] of Object.entries(shaped.shapes))
+          for (const found of shapeProblems(shape))
+            error("M186", `shape key ${found.path} ${found.message}`, `${spath}.${shaped.by}.${value}.${found.path}`);
+      }
     }
     const positions = Object.entries(entity.fields).filter(([, f]) => f.position);
     if (positions.length > 1)
@@ -1854,11 +2022,13 @@ export function validateModel(model: Model): Diagnostic[] {
           ? "is not a field of the entity"
           : seen.has(name)
             ? "is named twice"
-            : !kinds.includes(scoped.type) || scoped.position || scoped.count_of
-              ? `is a ${scoped.position ? "position" : scoped.count_of ? "count" : scoped.type} field`
-              : !scoped.required && !scoped.primary
-                ? "is not required, and rows without it would share no counter the unique constraint holds"
-                : undefined;
+            : scoped.sealed
+              ? "is sealed, and the same value never seals to the same bytes twice"
+              : !kinds.includes(scoped.type) || scoped.position || scoped.count_of
+                ? `is a ${scoped.position ? "position" : scoped.count_of ? "count" : scoped.type} field`
+                : !scoped.required && !scoped.primary
+                  ? "is not required, and rows without it would share no counter the unique constraint holds"
+                  : undefined;
         seen.add(name);
         if (problem)
           error(
@@ -2281,8 +2451,18 @@ export function validateModel(model: Model): Diagnostic[] {
           where
         );
     };
+    /** A sealed field is ciphertext in the database: nothing can narrow, order or search a list by it */
+    const neverSealed = (f: string, what: string, where: string) => {
+      if (entity.fields[f]?.sealed)
+        error(
+          "M185",
+          `${what} ${f}: ${resource.entity}.${f} is sealed, and the database holds ciphertext that no query can compare, order or search; drop it here, or keep a field of its own for what may be looked up (the last four characters, a fingerprint)`,
+          where
+        );
+    };
     for (const f of resource.list?.filters ?? []) {
       queryable(f, "filter", `${base}.list.filters`);
+      neverSealed(f, "filter", `${base}.list.filters`);
       everyoneReads(f, "filter", "which rows a filter answers", `${base}.list.filters`);
     }
     if (archiveOf(entity) && (resource.list?.filters ?? []).includes(ARCHIVED_PARAM))
@@ -2293,14 +2473,17 @@ export function validateModel(model: Model): Diagnostic[] {
       );
     for (const [f] of resource.list?.order ?? []) {
       queryable(f, "order", `${base}.list.order`);
+      neverSealed(f, "order", `${base}.list.order`);
       everyoneReads(f, "order", "the order of the list", `${base}.list.order`);
     }
     for (const f of resource.list?.sortable ?? []) {
       queryable(f, "sortable", `${base}.list.sortable`);
+      neverSealed(f, "sortable", `${base}.list.sortable`);
       everyoneReads(f, "sortable", "the order of a sorted list", `${base}.list.sortable`);
     }
     for (const f of resource.list?.search ?? []) {
       everyoneReads(f, "search", "which rows a search answers", `${base}.list.search`);
+      neverSealed(f, "search", `${base}.list.search`);
       if (!fieldNames.has(f)) error("M059", `search field ${f} does not exist`, `${base}.list.search`);
       else if (!["string", "text", "sequence"].includes(entity.fields[f].type))
         error("M059", `search field ${f} must be a string, text or sequence field`, `${base}.list.search`);
@@ -2387,6 +2570,23 @@ export function validateModel(model: Model): Diagnostic[] {
         warn(
           "M184",
           `${resourceName}.update writes ${holder}, the currency of ${resource.entity}.${name}, but not ${name}: a row that has an amount then refuses every change of ${holder} (400), because the amount cannot be sent with it; leave ${holder} out of update.fields, or let update write ${name}`,
+          `${base}.update`
+        );
+      }
+    }
+    // An update that may change the enum a value's shape follows but not the value: the value would keep another shape
+    if (ops.has("update")) {
+      const owner = directOwnerField(entity.rules?.update);
+      const written = (f: string) =>
+        isClientWritable(entity.fields[f]) &&
+        f !== owner &&
+        (resource.update?.fields ? resource.update.fields.includes(f) : true);
+      for (const [name, field] of Object.entries(entity.fields)) {
+        const by = shapeByOf(field)?.by;
+        if (!by || !entity.fields[by] || !written(by) || written(name)) continue;
+        warn(
+          "M188",
+          `${resourceName}.update writes ${by}, which says the shape of ${resource.entity}.${name}, but not ${name}: a row that has a value then refuses every change of ${by} (400), because the value cannot be sent with it; add ${name} to update.fields or drop ${by} from them`,
           `${base}.update`
         );
       }
@@ -2799,6 +2999,18 @@ function checkActionFields(
       error("M090", `action field ${name} cannot be primary, hidden, a relation, a file or bytes`, `${apath}.${name}`);
     if (field.type === "sequence")
       error("M090", `action field ${name} cannot be a sequence: only a stored row is numbered`, `${apath}.${name}`);
+    if (field.sealed)
+      error(
+        "M090",
+        `action field ${name} cannot be sealed: only a stored value is; an input is read by the handler and never stored by the compiler`,
+        `${apath}.${name}`
+      );
+    if (field.shape !== undefined || field.shape_by !== undefined)
+      error(
+        "M090",
+        `action field ${name} cannot carry a shape: an action's fields are already the keys of its input; name them as fields`,
+        `${apath}.${name}`
+      );
     if (field.type === "money" && field.currency_field !== undefined)
       error(
         "M090",

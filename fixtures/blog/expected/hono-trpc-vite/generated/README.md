@@ -16,3 +16,12 @@ never touches them again.
 Install with `pnpm install` (the package manager is `backend_options.package_manager` in
 .osl/config.yaml). Run `pnpm dev` for the API and the Vite dev server together, `pnpm build` then
 `pnpm start` to serve the built app from the API process.
+
+## Sealed fields
+
+`users.recovery_code`, `integrations.secret`, `integrations.token` are sealed: encrypted with AES-256-GCM before they reach the database, in a `bytea` column. The key is `OSL_SEAL_KEY` (64 hexadecimal characters, 32 bytes: openssl rand -hex 32). It is in no generated file; the server does not start without it, and nothing is ever sealed under a default.
+
+- Keep the key as long as the data. A value sealed under one key does not open under another: a read answers 500 and the log names the column, never the value. Rotating the key is not built yet.
+- The API opens a value only for a caller the field's `read:` rule allows, and for nobody when the field has none. It is in no event payload, and no list can filter, sort or search by it.
+- Your own code reads one with `unseal("<table>.<column>", row.<column>)` and writes one with `seal("<table>.<column>", value)`, both from `@generated/seal`. A row you load yourself holds the stored bytes.
+- A stored value is `0x01`, a 12-byte random nonce, the ciphertext and a 16-byte tag, bound to its table and column: copied into another column it does not open. Every OSL backend reads and writes the same bytes.

@@ -3,6 +3,8 @@
 
 package validation
 
+import "encoding/json"
+
 // UsersID parses a users id from the path.
 func UsersID(raw string) (string, bool) {
 	return ParseUUIDID(raw)
@@ -15,6 +17,15 @@ var UsersListQuery = Query{PageSize: 20}
 var UsersUpdateInput = Object{Fields: []Field{
 	{Name: "name", Type: String{MinLength: 1, MaxLength: 100}},
 	{Name: "phone", Nullable: true, Type: String{MaxLength: 40}},
+	{Name: "preferences", Nullable: true, Type: Shape{Keys: []Key{
+		{Name: "theme", Default: json.RawMessage("\"light\""), Type: Enum{Values: []string{"light", "dark"}}},
+		{Name: "digest", Default: json.RawMessage("true"), Type: Boolean{}},
+		{Name: "quiet_hours", Type: Shape{Keys: []Key{
+			{Name: "from", Required: true, Type: Integer{Min: F(0), Max: F(23)}},
+			{Name: "to", Required: true, Type: Integer{Min: F(0), Max: F(23)}},
+		}}},
+	}}},
+	{Name: "recovery_code", Nullable: true, Type: String{MaxLength: 120}},
 }}
 
 // PostsID parses a posts id from the path.
@@ -135,6 +146,52 @@ var BulletinsUpdateInput = Object{Fields: []Field{
 	{Name: "body", Type: String{}},
 }}
 
+// IntegrationsID parses a integrations id from the path.
+func IntegrationsID(raw string) (string, bool) {
+	return ParseUUIDID(raw)
+}
+
+var integrationsConfigShapesWebhook = Shape{Keys: []Key{
+	{Name: "url", Required: true, Type: String{MaxLength: 255, Format: "url"}},
+	{Name: "retries", Default: json.RawMessage("3"), Type: Integer{Min: F(0), Max: F(10)}},
+}}
+
+var integrationsConfigShapesSlack = Shape{Keys: []Key{
+	{Name: "channel", Required: true, Type: String{MaxLength: 80}},
+	{Name: "mention", Default: json.RawMessage("false"), Type: Boolean{}},
+}}
+
+var integrationsConfigShapesEmail = Shape{Keys: []Key{
+	{Name: "to", Required: true, Type: Array{Of: String{MaxLength: 255}}},
+	{Name: "digest", Default: json.RawMessage("\"instant\""), Type: Enum{Values: []string{"instant", "daily"}}},
+}}
+
+// IntegrationsConfigShapes holds the shape of Integration.config for each value of kind.
+var IntegrationsConfigShapes = map[string]Shape{"webhook": integrationsConfigShapesWebhook, "slack": integrationsConfigShapesSlack, "email": integrationsConfigShapesEmail}
+
+// IntegrationsListQuery validates the GET /api/integrations query string.
+var IntegrationsListQuery = Query{PageSize: 20, Filters: []Filter{
+	{Name: "kind", Type: Enum{Values: []string{"webhook", "slack", "email"}}},
+}}
+
+// IntegrationsCreateInput validates POST /api/integrations bodies.
+var IntegrationsCreateInput = Object{Fields: []Field{
+	{Name: "name", Required: true, Type: String{MaxLength: 80}},
+	{Name: "kind", Required: true, Type: Enum{Values: []string{"webhook", "slack", "email"}}},
+	{Name: "config", Required: true, Type: JSON{}},
+	{Name: "secret", Nullable: true, Type: String{MaxLength: 200}},
+	{Name: "token", Nullable: true, Type: String{MaxLength: 200}},
+}}
+
+// IntegrationsUpdateInput validates PATCH /api/integrations/{id} bodies.
+var IntegrationsUpdateInput = Object{Fields: []Field{
+	{Name: "name", Type: String{MaxLength: 80}},
+	{Name: "kind", Type: Enum{Values: []string{"webhook", "slack", "email"}}},
+	{Name: "config", Type: JSON{}},
+	{Name: "secret", Nullable: true, Type: String{MaxLength: 200}},
+	{Name: "token", Nullable: true, Type: String{MaxLength: 200}},
+}}
+
 // UsersBanInput validates POST /api/users/{id}/ban bodies.
 var UsersBanInput = Object{Fields: []Field{
 	{Name: "reason", Required: true, Type: String{MinLength: 1, MaxLength: 200}},
@@ -172,6 +229,11 @@ var PostsRetireInput = Object{}
 
 // AnnouncementsPublishInput validates POST /api/announcements/{id}/publish bodies.
 var AnnouncementsPublishInput = Object{}
+
+// IntegrationsSignInput validates POST /api/integrations/{id}/sign bodies.
+var IntegrationsSignInput = Object{Fields: []Field{
+	{Name: "payload", Required: true, Type: String{MaxLength: 2000}},
+}}
 
 // SendDigestInput validates POST /api/actions/send_digest bodies.
 var SendDigestInput = Object{Fields: []Field{

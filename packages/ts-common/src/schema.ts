@@ -9,6 +9,7 @@ import {
   type TsConventions
 } from "./conventions.js";
 import { isolatedClientFile, isolationOf } from "./isolation.js";
+import { shapeTypeLines, shapeTypeName } from "./shapes.js";
 
 /** generated/db/schema.ts: Drizzle pg-core tables, enums, relations and row types. */
 export function schemaFile(ir: IR, conv: TsConventions): string {
@@ -28,7 +29,9 @@ export function schemaFile(ir: IR, conv: TsConventions): string {
       ""
     );
   }
-  const needsBytea = ir.entities.some(e => e.columns.some(c => c.type.kind === "scalar" && c.type.scalar === "bytes"));
+  const needsBytea = ir.entities.some(e =>
+    e.columns.some(c => c.sealed || (c.type.kind === "scalar" && c.type.scalar === "bytes"))
+  );
   if (needsBytea) {
     builders.add("customType");
     out.push(
@@ -39,6 +42,8 @@ export function schemaFile(ir: IR, conv: TsConventions): string {
 
   for (const entity of ir.entities) {
     const lines: string[] = [];
+    const shapes = shapeTypeLines(entity);
+    if (shapes.length) out.push(...shapes, "");
     for (const col of entity.columns) lines.push(`  ${col.name}: ${columnBuilder(ir, entity, col, builders)}`);
     const extras: string[] = [];
     if (entity.primaryKey.length > 1) {
@@ -131,6 +136,12 @@ function columnBuilder(ir: IR, entity: EntityIR, col: ColumnIR, builders: Set<st
   else if (t.kind === "file") {
     builders.add("jsonb");
     expr = "jsonb().$type<FileRef>()";
+  } else if (col.sealed)
+    // Ciphertext, whatever the declared type: the seal module turns a string into these bytes and back
+    expr = "bytea()";
+  else if (col.shape || col.shapeBy) {
+    builders.add("jsonb");
+    expr = `jsonb().$type<${shapeTypeName(entity, col)}>()`;
   } else expr = scalarBuilder(t.scalar, col.maxLength, builders);
 
   if (col.primary && entity.primaryKey.length === 1) expr += ".primaryKey()";
@@ -140,6 +151,8 @@ function columnBuilder(ir: IR, entity: EntityIR, col: ColumnIR, builders: Set<st
   if (col.default) {
     if (col.default.kind === "now") expr += ".defaultNow()";
     else if (col.default.kind === "uuid") expr += ".defaultRandom()";
+    // A shaped JSON column's default is the value itself; the model spells it as a string of JSON
+    else if (col.shape) expr += `.default(${JSON.stringify(JSON.parse(String(col.default.value)))})`;
     else if (t.kind !== "array") expr += `.default(${JSON.stringify(col.default.value)})`;
   }
   const fk = entity.foreignKeys.find(f => f.column === col.name);

@@ -2,6 +2,8 @@ import type { GeneratedFile, IR, ProjectConfig } from "@osl/core";
 import { REGION_BEGIN, REGION_END } from "@osl/core";
 import {
   appUrlEnvLine,
+  sealEnvLine,
+  sealReadme,
   isolationReadme,
   SHADCN_DEPENDENCIES,
   SHADCN_DEV_DEPENDENCIES,
@@ -233,7 +235,7 @@ storage/
     content: `# Copy to .env and fill in. Keep your own variables outside the OSL region.
 ${REGION_BEGIN("env", "#")}
 DATABASE_URL=postgres://postgres@localhost:5432/${ir.name}
-${appUrlEnvLine(ir)}${ir.auth ? "OSL_SESSION_SECRET=change-me-to-a-long-random-string\n" : ""}PORT=3111
+${appUrlEnvLine(ir)}${ir.auth ? "OSL_SESSION_SECRET=change-me-to-a-long-random-string\n" : ""}${sealEnvLine(ir)}PORT=3111
 ${envExtras(ir)}${REGION_END("env", "#")}
 `
   });
@@ -258,7 +260,7 @@ never touches them again.
 Install with \`${installText(packageManager)}\` (the package manager is \`backend_options.package_manager\` in
 .osl/config.yaml). Run \`${run("dev")}\` for the API and the Vite dev server together, \`${run("build")}\` then
 \`${run("start")}\` to serve the built app from the API process.
-${isolationReadme(ir, "pg-boss")}`
+${isolationReadme(ir, "pg-boss")}${sealReadme(ir, "@generated/seal")}`
   });
 
   return files;

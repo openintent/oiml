@@ -13,6 +13,7 @@ import type {
   RelationIR,
   ResourceIR,
   RuleIR,
+  ShapeKeyIR,
   ThroughIR,
   TileGroupIR,
   TileIR
@@ -485,6 +486,180 @@ function reverseRows(ctx: Ctx, includes: RelationIR[]): string[] {
   return out;
 }
 
+/** One input of a shape's group: where its value sits in the form's values, and what it is */
+interface ShapeInput {
+  key: ShapeKeyIR;
+  /** The keys from the column's own value down to this one (`["quiet_hours", "from"]`; a shape per enum value starts with the value) */
+  path: string[];
+}
+
+function shapeValueType(keys: ShapeKeyIR[]): string {
+  const parts = keys.map(key => {
+    if (key.kind === "object") return `${key.name}: ${shapeValueType(key.keys ?? [])}`;
+    if (key.kind === "boolean") return `${key.name}: boolean`;
+    if (key.kind === "enum") {
+      const literals = (key.values ?? []).map(q).join(" | ");
+      return `${key.name}: ${key.required || key.default !== undefined ? literals : `"" | ${literals}`}`;
+    }
+    return `${key.name}: string`;
+  });
+  return `{ ${parts.join("; ")} }`;
+}
+
+function shapeInitial(keys: ShapeKeyIR[]): string {
+  const parts = keys.map(key => {
+    if (key.kind === "object") return `${key.name}: ${shapeInitial(key.keys ?? [])}`;
+    if (key.kind === "boolean") return `${key.name}: ${key.default === true}`;
+    if (key.kind === "enum")
+      return `${key.name}: ${key.default !== undefined ? q(String(key.default)) : key.required ? q(key.values![0]) : '""'}`;
+    return `${key.name}: ${key.default !== undefined ? q(String(key.default)) : '""'}`;
+  });
+  return `{ ${parts.join(", ")} }`;
+}
+
+/** Whether the inputs of a group are all empty: every one that is not a checkbox or a select with no empty choice */
+function shapeBlank(keys: ShapeKeyIR[], at: string): string[] {
+  return keys.flatMap(key => {
+    if (key.kind === "object") return shapeBlank(key.keys ?? [], `${at}.${key.name}`);
+    if (key.kind === "boolean") return [];
+    if (key.kind === "enum" && (key.required || key.default !== undefined)) return [];
+    return [`${at}.${key.name} === ""`];
+  });
+}
+
+/** The API value of a group, from the form's values at `at` */
+function shapeToInput(keys: ShapeKeyIR[], at: string): string {
+  const parts = keys.map(key => {
+    const v = `${at}.${key.name}`;
+    const optional = (expr: string) => (key.required ? expr : `(${v} === "" ? undefined : ${expr})`);
+    switch (key.kind) {
+      case "object": {
+        const inner = shapeToInput(key.keys ?? [], v);
+        const blank = shapeBlank(key.keys ?? [], v);
+        // A group the shape does not require is left out while every one of its inputs is empty
+        return `${key.name}: ${key.required || !blank.length ? inner : `(${blank.join(" && ")} ? undefined : ${inner})`}`;
+      }
+      case "boolean":
+        return `${key.name}: ${v}`;
+      case "integer":
+      case "float":
+        return `${key.name}: ${optional(`Number(${v})`)}`;
+      case "datetime":
+        return `${key.name}: ${optional(`new Date(${v}).toISOString()`)}`;
+      case "array":
+        return `${key.name}: ${optional(key.of === "integer" || key.of === "float" ? `splitList(${v}).map(Number)` : key.of === "boolean" ? `splitList(${v}).map(item => item === "true")` : `splitList(${v})`)}`;
+      case "enum":
+        return `${key.name}: ${key.required || key.default !== undefined ? v : `(${v} || undefined)`}`;
+      default:
+        return `${key.name}: ${optional(v)}`;
+    }
+  });
+  return `{ ${parts.join(", ")} }`;
+}
+
+/** The form's values of a group, read from a stored value held in `from` (a record that may lack any key) */
+function shapeFromRow(ctx: Ctx, keys: ShapeKeyIR[], from: string): string {
+  const parts = keys.map(key => {
+    const v = `${from}.${key.name}`;
+    const fallback = key.default !== undefined ? q(String(key.default)) : '""';
+    switch (key.kind) {
+      case "object":
+        return `${key.name}: ${shapeFromRow(ctx, key.keys ?? [], `record(${v})`)}`;
+      case "boolean":
+        return `${key.name}: ${v} === undefined ? ${key.default === true} : ${v} === true`;
+      case "enum": {
+        const values = key.values ?? [];
+        const first = key.default !== undefined ? q(String(key.default)) : key.required ? q(values[0]) : '""';
+        return `${key.name}: ${values.map(value => `${v} === ${q(value)} ? ${q(value)}`).join(" : ")} : ${first}`;
+      }
+      case "datetime":
+        use(ctx, "ui", "toDateTimeInput");
+        return `${key.name}: typeof ${v} === "string" ? toDateTimeInput(${v}) : ${fallback}`;
+      case "array":
+        use(ctx, "ui", "formatList");
+        return `${key.name}: Array.isArray(${v}) ? formatList(${v}) : ""`;
+      default:
+        use(ctx, "ui", "text");
+        return `${key.name}: ${v} == null ? ${fallback} : text(${v})`;
+    }
+  });
+  return `{ ${parts.join(", ")} }`;
+}
+
+/** `set("options", { ...values.options, quiet_hours: { ...values.options.quiet_hours, from: <value> } })` */
+function shapeSet(column: string, path: string[], value: string): string {
+  const build = (at: string, rest: string[]): string =>
+    rest.length === 1
+      ? `{ ...${at}, ${rest[0]}: ${value} }`
+      : `{ ...${at}, ${rest[0]}: ${build(`${at}.${rest[0]}`, rest.slice(1))} }`;
+  return `set(${q(column)}, ${build(`values.${column}`, path)})`;
+}
+
+/** The inputs of a group, one per key, nested groups in a fieldset of their own */
+function shapeControls(ctx: Ctx, column: string, keys: ShapeKeyIR[], path: string[], pad: string): string[] {
+  return keys.map(key => {
+    const here = [...path, key.name];
+    const id = q([column, ...here].join("."));
+    const value = `values.${[column, ...here].join(".")}`;
+    const label = q(humanize(key.name));
+    if (key.kind === "object") {
+      return `${pad}<fieldset className="grid gap-3 rounded-md border p-3">
+${pad}  <legend className="px-1 text-sm font-medium">${humanize(key.name)}</legend>
+${shapeControls(ctx, column, key.keys ?? [], here, `${pad}  `).join("\n")}
+${pad}</fieldset>`;
+    }
+    if (key.kind === "boolean") {
+      shadcn(ctx, "checkbox", "Checkbox");
+      shadcn(ctx, "label", "Label");
+      return `${pad}<div className="flex items-center gap-2">
+${pad}  <Checkbox id=${id} checked={${value}} onCheckedChange={checked => ${shapeSet(column, here, "checked === true")}} />
+${pad}  <Label htmlFor=${id}>${humanize(key.name)}</Label>
+${pad}</div>`;
+    }
+    use(ctx, "ui", "FormRow");
+    if (key.kind === "enum") {
+      use(ctx, "ui", "selectClass");
+      const literals = (key.values ?? []).map(q).join(" | ");
+      const type = key.required || key.default !== undefined ? literals : `"" | ${literals}`;
+      const options = (key.values ?? []).map(v => `${pad}    <option value=${q(v)}>${v}</option>`);
+      if (!key.required && key.default === undefined) options.unshift(`${pad}    <option value="">—</option>`);
+      return `${pad}<FormRow label=${label} htmlFor=${id}>
+${pad}  <select id=${id} className={selectClass} value={${value}} onChange={e => ${shapeSet(column, here, `e.target.value as ${type}`)}}>
+${options.join("\n")}
+${pad}  </select>
+${pad}</FormRow>`;
+    }
+    const change = `onChange={e => ${shapeSet(column, here, "e.target.value")}}`;
+    const req = key.required ? " required" : "";
+    if (key.kind === "text") {
+      shadcn(ctx, "textarea", "Textarea");
+      return `${pad}<FormRow label=${label} htmlFor=${id}>
+${pad}  <Textarea id=${id} rows={3} value={${value}} ${change}${req} />
+${pad}</FormRow>`;
+    }
+    shadcn(ctx, "input", "Input");
+    let type = "text";
+    let extra = "";
+    if (key.kind === "integer") ((type = "number"), (extra = ' step="1"'));
+    else if (key.kind === "float") ((type = "number"), (extra = ' step="any"'));
+    else if (key.kind === "datetime") type = "datetime-local";
+    else if (key.kind === "date") type = "date";
+    else if (key.validate?.format === "email") type = "email";
+    else if (key.validate?.format === "url") type = "url";
+    if (key.kind === "array") extra = ' placeholder="comma, separated"';
+    return `${pad}<FormRow label=${label} htmlFor=${id}>
+${pad}  <Input id=${id} type=${q(type)}${extra} value={${value}} ${change}${req} />
+${pad}</FormRow>`;
+  });
+}
+
+/** A JSON column whose form is a group of inputs: one shape, or the shape of the enum value the form holds */
+function shapedForm(col: ColumnIR, formFields: ReadonlySet<string>): "shape" | "by" | null {
+  if (col.shape) return "shape";
+  // The group follows the enum's select, so the enum is a value of the same form; without it the field stays a JSON box
+  return col.shapeBy && formFields.has(col.shapeBy.column) ? "by" : null;
+}
+
 interface FormField {
   col: ColumnIR;
   /** TypeScript type of the form value */
@@ -495,12 +670,21 @@ interface FormField {
 }
 
 function formFields(ctx: Ctx, columns: ColumnIR[], entity: EntityIR | null): FormField[] {
+  const names = new Set(columns.map(c => c.name));
   return columns.map(col => {
     const name = col.name;
     const kind = scalar(col);
     let valueType = "string";
     let initial = '""';
-    if (kind === "boolean") {
+    const shaped = shapedForm(col, names);
+    if (shaped === "shape") {
+      valueType = shapeValueType(col.shape!);
+      initial = shapeInitial(col.shape!);
+    } else if (shaped === "by") {
+      // One group per value of the enum, so what was typed for one survives a look at another
+      valueType = `{ ${col.shapeBy!.shapes.map(s => `${s.value}: ${shapeValueType(s.keys)}`).join("; ")} }`;
+      initial = `{ ${col.shapeBy!.shapes.map(s => `${s.value}: ${shapeInitial(s.keys)}`).join(", ")} }`;
+    } else if (kind === "boolean") {
       valueType = "boolean";
       initial = col.default?.kind === "literal" ? String(Boolean(col.default.value)) : "false";
     } else if (kind === "enum") {
@@ -525,9 +709,21 @@ function formFields(ctx: Ctx, columns: ColumnIR[], entity: EntityIR | null): For
 }
 
 /** The expression turning a form value into the API input for a column */
-function convert(field: FormField, mode: "create" | "update"): string {
+function convert(field: FormField, mode: "create" | "update", formFields: ReadonlySet<string> = new Set()): string {
   const col = field.col;
   const v = `v.${col.name}`;
+  // A sealed field is never shown again, so an edit that leaves its input empty leaves the stored value alone
+  if (col.sealed && mode === "update") return `(${v} === "" ? undefined : ${v})`;
+  const shaped = shapedForm(col, formFields);
+  if (shaped === "shape") return shapeToInput(col.shape!, v);
+  if (shaped === "by") {
+    const by = col.shapeBy!;
+    const [last, ...earlier] = [...by.shapes].reverse();
+    return `${earlier
+      .reverse()
+      .map(s => `v.${by.column} === ${q(s.value)} ? ${shapeToInput(s.keys, `${v}.${s.value}`)} : `)
+      .join("")}${shapeToInput(last.keys, `${v}.${last.value}`)}`;
+  }
   const nullable = col.nullable;
   const required = mode === "create" ? !nullable && col.default === undefined && !col.generated : !nullable;
   const absent = nullable ? "null" : "undefined";
@@ -558,9 +754,17 @@ function convert(field: FormField, mode: "create" | "update"): string {
 }
 
 /** The expression reading a column of a fetched row into its form value */
-function fromRowExpr(ctx: Ctx, field: FormField): string {
+function fromRowExpr(ctx: Ctx, field: FormField, formFields: ReadonlySet<string> = new Set()): string {
   const col = field.col;
   const expr = `row.${col.name}`;
+  // Never filled in from the row: what was sealed is not put back into a page
+  if (col.sealed) return '""';
+  const shaped = shapedForm(col, formFields);
+  if (shaped === "shape") return shapeFromRow(ctx, col.shape!, `record(${expr})`);
+  if (shaped === "by")
+    return `{ ${col
+      .shapeBy!.shapes.map(s => `${s.value}: ${shapeFromRow(ctx, s.keys, `record(${expr})`)}`)
+      .join(", ")} }`;
   switch (scalar(col)) {
     case "boolean":
       return `${expr} ?? false`;
@@ -597,6 +801,35 @@ function inputControl(
   const label = q(humanize(name));
   const req = required ? " required" : "";
   const kind = scalar(col);
+  if (col.sealed) {
+    // Write-only: the page never holds the stored value, so the input starts empty and an empty input changes nothing
+    use(ctx, "ui", "FormRow");
+    shadcn(ctx, "input", "Input");
+    return `      <FormRow label=${label} htmlFor=${q(name)}>
+        <Input id=${q(name)} type="password" autoComplete="new-password" placeholder="Sealed: leave empty to keep what is stored" value={values.${name}} onChange={e => set(${q(name)}, e.target.value)} />
+      </FormRow>`;
+  }
+  const shaped = shapedForm(col, formFields);
+  if (shaped === "shape")
+    return `      <fieldset className="grid gap-3 rounded-md border p-3">
+        <legend className="px-1 text-sm font-medium">${humanize(name)}</legend>
+${shapeControls(ctx, name, col.shape!, [], "        ").join("\n")}
+      </fieldset>`;
+  if (shaped === "by") {
+    // The group follows the enum's select: the inputs are the ones of the shape the chosen value names
+    const by = col.shapeBy!;
+    const groups = by.shapes.map(
+      s => `        {values.${by.column} === ${q(s.value)} ? (
+          <>
+${s.keys.length ? shapeControls(ctx, name, s.keys, [s.value], "            ").join("\n") : `            <p className="text-sm text-muted-foreground">Nothing to set for ${s.value}.</p>`}
+          </>
+        ) : null}`
+    );
+    return `      <fieldset className="grid gap-3 rounded-md border p-3">
+        <legend className="px-1 text-sm font-medium">${humanize(name)}</legend>
+${groups.join("\n")}
+      </fieldset>`;
+  }
   if (kind === "money") {
     // A decimal string from the keyboard to the API: a text input, never a number input, whose value is a float
     use(ctx, "ui", "FormRow");
@@ -727,6 +960,7 @@ function formCode(
   use(ctx, "ui", "splitList");
   shadcn(ctx, "button", "Button");
   const ValuesT = `${prefix}Values`;
+  const formNames: ReadonlySet<string> = new Set(fields.map(f => f.col.name));
   const valuesType = fields.map(f => `  ${f.col.name}: ${f.valueType};`).join("\n");
   const empty = fields.map(f => `  ${f.col.name}: ${f.initial}`).join(",\n");
   const requiredOnCreate = (f: FormField) => !f.col.nullable && f.col.default === undefined && !f.col.generated;
@@ -749,10 +983,11 @@ ${valuesType}
 const EMPTY_${prefix.toUpperCase()}: ${ValuesT} = {
 ${empty}
 };`);
-  if (fields.some(f => f.col.read))
+  // A sealed field is written by callers who never read it back, so its input is offered whatever its read rule says
+  if (fields.some(f => f.col.read && !f.col.sealed))
     parts.push(`/** Fields with a read rule: an input is offered only to a viewer who may read the field, and a field that was not offered is not sent */
 const ${prefix.toUpperCase()}_RULED: readonly string[] = [${fields
-      .filter(f => f.col.read)
+      .filter(f => f.col.read && !f.col.sealed)
       .map(f => q(f.col.name))
       .join(", ")}];
 
@@ -772,7 +1007,7 @@ function sent${prefix}<T extends object>(input: T, readable: (field: string) => 
 
 function to${prefix}CreateInput(v: ${ValuesT}): ${options.createType} {
   return {
-${options.createFields.map(f => `    ${f.col.name}: ${convert(f, "create")}`).join(",\n")}
+${options.createFields.map(f => `    ${f.col.name}: ${convert(f, "create", formNames)}`).join(",\n")}
   };
 }`);
   if (options.updateType && options.updateFields)
@@ -780,13 +1015,18 @@ ${options.createFields.map(f => `    ${f.col.name}: ${convert(f, "create")}`).jo
 
 function to${prefix}UpdateInput(v: ${ValuesT}): ${options.updateType} {
   return {
-${options.updateFields.map(f => `    ${f.col.name}: ${convert(f, "update")}`).join(",\n")}
+${options.updateFields.map(f => `    ${f.col.name}: ${convert(f, "update", formNames)}`).join(",\n")}
   };
+}`);
+  if (options.fromRow && fields.some(f => shapedForm(f.col, formNames)))
+    parts.push(`/** A stored JSON value as a record a form reads its keys from; anything else reads as no keys */
+function record(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }`);
   if (options.fromRow)
     parts.push(`function ${prefix.charAt(0).toLowerCase()}${prefix.slice(1)}FromRow(row: Detail): ${ValuesT} {
   return {
-${fields.map(f => `    ${f.col.name}: ${fromRowExpr(ctx, f)}`).join(",\n")}
+${fields.map(f => `    ${f.col.name}: ${fromRowExpr(ctx, f, formNames)}`).join(",\n")}
   };
 }`);
   parts.push(...fields.filter(f => f.picker).map(f => pickerComponent(ctx, f)));
@@ -955,6 +1195,12 @@ export function resourcePageFile(ir: IR, page: PageIR, target: WebTarget, conv: 
   const idPk = ir.auth ? entityByName(ir, ir.auth.identity).primaryKey[0] : "id";
   // Fields with a read rule: a rule's condition on one is the API's to decide, and its column, detail row and input are for those who may read it
   const ruledNames: ReadonlySet<string> = new Set(ruledColumns(entity).map(c => c.name));
+  // A sealed field's input is offered to whoever may write it: its readers are few or none, and it is never shown again
+  const offeredByRule: ReadonlySet<string> = new Set(
+    ruledColumns(entity)
+      .filter(c => !c.sealed)
+      .map(c => c.name)
+  );
   const mutations = Boolean(create || update || remove || rowActions.length || collectionActions.length);
   if (mutations) {
     use(ctx, "query", "useMutation");
@@ -1208,7 +1454,7 @@ export function ${Comp}Index() {
   if (create) {
     use(ctx, "ui", "Pane");
     const back = layout === "split" ? "" : backLink(ctx);
-    const createRuled = create.fields.some(f => ruledNames.has(f));
+    const createRuled = create.fields.some(f => offeredByRule.has(f));
     if (createRuled) use(ctx, "client", "fieldsOf");
     sections.push(`export function ${Comp}New() {
   ${target.navigateDecl}
@@ -1247,7 +1493,7 @@ ${
   use(ctx, "ui", "Pane");
   use(ctx, "ui", "PaneSkeleton");
   const detailFields = page.fields.map(name => entity.columns.find(c => c.name === name)!);
-  const updateRuled = Boolean(update?.fields.some(f => ruledNames.has(f)));
+  const updateRuled = Boolean(update?.fields.some(f => offeredByRule.has(f)));
   const getThrough = (get.through ?? []).map(name => entity.through!.find(t => t.name === name)!);
   const rows = [
     ...detailFields.map(c => detailRow(ctx, c, getIncludes)),

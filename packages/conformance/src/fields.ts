@@ -9,6 +9,7 @@
  * the order walk) is counted and not judged.
  */
 import {
+  openValue,
   ruledColumns,
   ruleText,
   type EntityIR,
@@ -38,6 +39,8 @@ export class FieldWatch {
   gone = 0;
   /** `fields` answers of sessions compared with what the rules say of them */
   sessions = 0;
+  /** Sealed values an allowed caller was answered, each compared with what its column holds once opened */
+  opened = 0;
   private readonly signedIn = new Map<HarnessClient, unknown>();
   private readonly shapes = new Map<string, Shape>();
   private readonly identity: EntityIR | null;
@@ -46,7 +49,9 @@ export class FieldWatch {
   constructor(
     private readonly ir: IR,
     private readonly resolver: Resolver,
-    private readonly max: number
+    private readonly max: number,
+    /** The key the app seals under in this run: the database holds ciphertext, so a sealed field's value is compared, not only its presence */
+    private readonly sealKey?: Buffer
   ) {
     this.identity = ir.auth ? ir.entities.find(e => e.name === ir.auth!.identity)! : null;
     this.roles = ir.auth?.tenancy?.roles ?? [];
@@ -141,6 +146,28 @@ export class FieldWatch {
       if (allowed === there) {
         if (there) this.present++;
         else this.absent++;
+        if (there && column.sealed && this.sealKey) {
+          // What an allowed caller reads is exactly what the column holds once opened, by the reference and not by the app
+          const held = stored[column.name];
+          let expected: string | null | undefined;
+          try {
+            expected =
+              held == null ? null : openValue(this.sealKey, `${entity.table}.${column.name}`, held as Uint8Array);
+          } catch (error) {
+            expected = undefined;
+            if (this.findings.length < this.max)
+              this.findings.push(
+                `${label} as ${who}: ${where}.${column.name} was answered, and what ${entity.table}.${column.name} holds does not open under the run's key (${error instanceof Error ? error.message : error})`
+              );
+          }
+          if (expected !== undefined) {
+            this.opened++;
+            if (row[column.name] !== expected && this.findings.length < this.max)
+              this.findings.push(
+                `${label} as ${who}: ${where}.${column.name} is not what ${entity.table}.${column.name} holds once opened`
+              );
+          }
+        }
         continue;
       }
       if (this.findings.length >= this.max) return;
@@ -185,6 +212,6 @@ export class FieldWatch {
 
   summary(): string {
     if (!this.active) return "";
-    return `; ${this.present + this.absent} fields with a read rule predicted on ${this.rows} rows as their caller (${this.present} present, ${this.absent} absent${this.gone ? `, ${this.gone} rows gone before they could be read` : ""})${this.sessions ? `, the fields answer of ${this.sessions} sessions compared` : ""}`;
+    return `; ${this.present + this.absent} fields with a read rule predicted on ${this.rows} rows as their caller (${this.present} present, ${this.absent} absent${this.gone ? `, ${this.gone} rows gone before they could be read` : ""})${this.sessions ? `, the fields answer of ${this.sessions} sessions compared` : ""}${this.opened ? `, ${this.opened} sealed values compared with what their columns hold once opened` : ""}`;
   }
 }

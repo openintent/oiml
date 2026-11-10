@@ -138,6 +138,11 @@ currency_field: currency # money only, instead of currency: the required enum fi
 prefix: "INV-" # sequence only: what every number starts with (see Sequences)
 scope: [team_id] # sequence only: the required fields a number counts within; without it one counter for the table
 width: 6 # sequence only: digits, padded with zeros (INV-000042); a longer number keeps its digits
+sealed: true # string and text only: encrypted at rest; returned to the callers `read:` names, to nobody without it (see Sealed fields)
+shape: { theme: { type: enum, enum_values: [light, dark] } } # json only: the keys the value holds (see Typed JSON)
+shape_by: {
+    kind: { webhook: { url: { type: string, required: true } }, slack: { channel: { type: string, required: true } } }
+  } # json only: a shape per value of the enum field `kind`
 ```
 
 A `read_only` field is one the server owns: a `banned` flag, a `reviewed_at` stamp, a `view_count`. Only your action
@@ -354,6 +359,60 @@ relation to a tenant's row: one counter for the whole table would tell every ten
 it is the entity's first string. Not expressible, say so in not_delivered: a number that restarts each year or
 month (scope by a `year` field your handler sets), a prefix taken from another field, numbers without any hole
 after deletes, a number assigned later than create (when an order is confirmed), a number the client chooses.
+
+Sealed fields: a secret the server must be able to read back (an API token of another system, a webhook signing
+secret, a recovery code, a national identification number) is `sealed: true` on a `string` or `text` field:
+`api_token: { type: string, sealed: true }`. A password is never a field (auth owns it), and a value nobody ever
+reads back needs no field. The value is encrypted before it reaches the database (AES-256-GCM under the
+environment's OSL_SEAL_KEY, a `bytea` column) and the API accepts it like any string: create and update take it,
+`validate` and `max_length` hold the written text. Who gets it back is the field's `read:` rule, and without
+one nobody does: `sealed: true` alone is write-only through the API, which is right for a signing secret, and
+`read: "owner:owner_id"` gives it back to its owner and to nobody else, also not to an admin who reads the row.
+For a caller the rule refuses the key is absent, as for any field with `read:`. A write of `null` clears an
+optional sealed field, an empty string is a value like any other, and an update that leaves the field out leaves
+what is stored. The server's own code reads it: declare an action whose handler uses the secret (`sign`,
+`send_test`, `rotate`) and say in its description what it does with it; the handler opens the value by the
+field's name. With `hidden: true` as well the API neither accepts nor returns it and only handlers write it. A
+sealed value is never in an event's payload and never in the row a rule reads, so nothing may compare it: not a
+list filter, `sortable`, `search` or `order`, not `unique` or an index (M185), not a rule's, a count's or a
+timer's condition, not a sequence's scope; it has no `default`, is not a relation, is not taken by auth.register
+and is not an action's field. To look one up, keep a second field beside it that may be compared (the last four
+characters, a fingerprint a handler computes). A field cannot become sealed or stop being sealed, and a sealed
+field or its entity cannot be renamed (the stored values are bound to the table's and the column's name): add a
+new field, move the values in a handler, remove the old one. Not expressible, say so in not_delivered: searching
+or filtering by a sealed value, a sealed number, date or JSON value, sealing with a key per tenant or per row,
+rotating the key, a value encrypted so that the server itself cannot read it.
+
+Typed JSON: a `json` field whose keys are known declares them with `shape:`, a map of fields in the spelling of
+an action's input: `preferences: { type: json, shape: { theme: { type: enum, enum_values: [light, dark], default:
+light }, digest: { type: boolean, default: true }, quiet_hours: { type: json, shape: { from: { type: integer,
+required: true }, to: { type: integer, required: true } } } } }`. A key is `string`, `text`, `integer`,
+`float`, `boolean`, `date`, `datetime`, `uuid`, `enum`, an `array` of string, text, integer, float,
+boolean or uuid, or one nested `json` with a `shape` of its own (one level). It takes `required`, `default`,
+`enum_values`, `array_type`, `max_length`, `validate` and `description` and nothing else (M186): no
+`read` (a rule per key is not offered; `read:` on the field covers the whole value), no relation, file, money,
+sequence, `sealed`, `unique` or `hidden`, and no array of shapes (a list of objects is an entity of its own
+with a relation, and a `position` when it is ordered). A write is held to the shape: a wrong type at any depth, a
+required key left out, a key the shape does not name and null at a key answer 400 naming the key
+(`preferences.quiet_hours.to`). A key with a `default` is stored with it when the writer leaves the key out;
+a key without one that is not `required` may be absent. An update replaces the whole value, it does not merge
+keys, so send the whole object. Stored values are not rewritten when a shape changes and a read does not check
+them: a row written before the change answers what it holds until it is written again, so add keys as optional or
+with a default. The field's own `default` is the JSON a row starts with, as a string that fits the shape
+(`default: '{"digest": true}'`). Pages show a group of inputs. When what the value holds depends on a kind (a
+block's content by its type, an integration's settings by its provider, an event's payload by its name), declare
+`shape_by` instead: `config: { type: json, required: true, shape_by: { kind: { webhook: { url: { type: string,
+required: true } }, slack: { channel: { type: string, required: true } }, none: {} } } }` beside `kind: { type:
+enum, enum_values: [webhook, slack, none], required: true }`. It names one required enum field of the same entity
+that every reader of the row reads, and a shape for every one of its values (`{}` for a value with nothing to
+hold; M187). Every write is held to the pair: a create and an update check the value against the shape of the kind
+the row will have, and an update that changes the kind must send the value with it or answers 400 (M188 warns
+when an update can write the kind and not the value). The enum cannot be the field of `transitions` (a
+transition writes the state alone), and such a field is not taken by auth.register. Put both fields in
+`create.fields` and `update.fields`. A handler of yours that writes either field keeps the pair itself. Not
+expressible, say so in not_delivered: a shape chosen by two fields or by a field of a related row, a key required
+only when another key has some value, a list of typed objects inside the value, a rule per key, filtering,
+sorting or searching by a key inside the value, an index on one.
 
 ## Resource
 

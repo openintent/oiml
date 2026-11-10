@@ -230,6 +230,14 @@ var registerInput = validation.Object{Fields: []validation.Field{
 	{Name: "password", Required: true, Type: validation.String{MinLength: 8, MaxLength: 200}},
 	{Name: "name", Required: true, Type: validation.String{MinLength: 1, MaxLength: 100}},
 	{Name: "phone", Nullable: true, Type: validation.String{MaxLength: 40}},
+	{Name: "preferences", Nullable: true, Type: validation.Shape{Keys: []validation.Key{
+		{Name: "theme", Default: json.RawMessage("\"light\""), Type: validation.Enum{Values: []string{"light", "dark"}}},
+		{Name: "digest", Default: json.RawMessage("true"), Type: validation.Boolean{}},
+		{Name: "quiet_hours", Type: validation.Shape{Keys: []validation.Key{
+			{Name: "from", Required: true, Type: validation.Integer{Min: validation.F(0), Max: validation.F(23)}},
+			{Name: "to", Required: true, Type: validation.Integer{Min: validation.F(0), Max: validation.F(23)}},
+		}}},
+	}}},
 }}
 
 var loginInput = validation.Object{Fields: []validation.Field{

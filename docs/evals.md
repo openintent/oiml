@@ -59,7 +59,9 @@ relations with their `on_delete`, unique constraints, junction entities, relatio
 (`through: ["Track.* -> Genre"]`), ordered collections (`ordered: { PlaylistTrack: playlist_id }`), archiving
 entities (`archive: [Article]`), counts (`counts: ["Article.* -> Comment"]`), transitions by name or by what
 they move (`transitions: { Task: [complete, "todo -> doing"] }`), rules, the read rule of a field
-(`field_read: { "Product.cost": "role:manager" }`, `"*"` for any), resources and operations,
+(`field_read: { "Product.cost": "role:manager" }`, `"*"` for any), sealed fields
+(`sealed: ["Integration.secret"]`), a json field's shape (`shapes: { "User.preferences": shape, "Block.content":
+"shape_by:type" }`), resources and operations,
 list options, actions by name or by shape, auth providers and tenancy (its `isolation` too; rules are read as
 the model declares them, before isolation adds the tenant's membership), events, pages and the sidebar, file
 rules and accept lists, seed steps, scenario counts and rejection statuses, what the scenarios call, an actor

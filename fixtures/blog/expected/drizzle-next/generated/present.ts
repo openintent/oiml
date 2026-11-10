@@ -3,10 +3,11 @@
 
 import type * as schema from "./db/schema";
 import { presentFileRef, type PublicFile } from "./files";
+import { unseal } from "./seal";
 import { memberTenantIds, verdict, type Rule } from "./access";
 import type { Session } from "./auth";
 
-/** The server itself as a viewer: it reads every field (an event's payload, the user a session keeps for its rules) */
+/** The server itself as a viewer: it reads every field but a sealed one (an event's payload, the user a session keeps for its rules) */
 export const SERVER = "server" as const;
 
 /**
@@ -20,10 +21,15 @@ export type Viewer = Session | null | typeof SERVER;
 const FIELD_RULES = {
   User: {
     banned_at: {"kind":"any","rules":[{"kind":"owner","field":"id"},{"kind":"role","value":"admin"}]} as Rule,
-    phone: {"kind":"any","rules":[{"kind":"owner","field":"id"},{"kind":"role","value":"admin"}]} as Rule
+    phone: {"kind":"any","rules":[{"kind":"owner","field":"id"},{"kind":"role","value":"admin"}]} as Rule,
+    recovery_code: {"kind":"owner","field":"id"} as Rule
   },
   Article: {
     editor_note: {"kind":"role","value":"admin"} as Rule
+  },
+  Integration: {
+    secret: {"kind":"none"} as Rule,
+    token: {"kind":"owner","field":"owner_id"} as Rule
   }
 };
 
@@ -49,21 +55,23 @@ function could(rule: Rule, session: Session | null): boolean {
 }
 
 /** What a session is told beside its user: per resource, whether it could read each field that has a read rule */
-export type VisibleFields = { users: { banned_at: boolean; phone: boolean }; posts: { editor_note: boolean } };
+export type VisibleFields = { users: { banned_at: boolean; phone: boolean; recovery_code: boolean }; posts: { editor_note: boolean }; integrations: { secret: boolean; token: boolean } };
 
 /** The pages leave out a column or an input this answers false for; a row still leaves out what its own rule refuses */
 export function visibleFields(session: Session | null): VisibleFields {
   return {
-    users: { banned_at: could(FIELD_RULES.User.banned_at, session), phone: could(FIELD_RULES.User.phone, session) },
-    posts: { editor_note: could(FIELD_RULES.Article.editor_note, session) }
+    users: { banned_at: could(FIELD_RULES.User.banned_at, session), phone: could(FIELD_RULES.User.phone, session), recovery_code: could(FIELD_RULES.User.recovery_code, session) },
+    posts: { editor_note: could(FIELD_RULES.Article.editor_note, session) },
+    integrations: { secret: could(FIELD_RULES.Integration.secret, session), token: could(FIELD_RULES.Integration.token, session) }
   };
 }
 
-export type PublicUser = Pick<schema.User, "id" | "email" | "name" | "role" | "created_at" | "banned" | "ban_reason" | "post_count" | "approved_count"> & Partial<Pick<schema.User, "banned_at" | "phone">>;
+export type PublicUser = Pick<schema.User, "id" | "email" | "name" | "role" | "created_at" | "banned" | "ban_reason" | "post_count" | "approved_count" | "preferences"> & Partial<Pick<schema.User, "banned_at" | "phone">> & { recovery_code?: string | null };
 export function presentUser(row: schema.User, viewer: Viewer): PublicUser {
-  const out: PublicUser = { id: row.id, email: row.email, name: row.name, role: row.role, created_at: row.created_at, banned: row.banned, ban_reason: row.ban_reason, post_count: row.post_count, approved_count: row.approved_count };
+  const out: PublicUser = { id: row.id, email: row.email, name: row.name, role: row.role, created_at: row.created_at, banned: row.banned, ban_reason: row.ban_reason, post_count: row.post_count, approved_count: row.approved_count, preferences: row.preferences };
   if (reads(FIELD_RULES.User.banned_at, viewer, row)) out.banned_at = row.banned_at;
   if (reads(FIELD_RULES.User.phone, viewer, row)) out.phone = row.phone;
+  if (viewer !== SERVER && reads(FIELD_RULES.User.recovery_code, viewer, row)) out.recovery_code = row.recovery_code === null ? null : unseal("users.recovery_code", row.recovery_code);
   return out;
 }
 
@@ -92,6 +100,14 @@ export function presentFollow(row: schema.Follow): PublicFollow {
 export type PublicBulletin = Pick<schema.Bulletin, "id" | "author_id" | "body" | "created_at">;
 export function presentBulletin(row: schema.Bulletin): PublicBulletin {
   return { id: row.id, author_id: row.author_id, body: row.body, created_at: row.created_at };
+}
+
+export type PublicIntegration = Pick<schema.Integration, "id" | "owner_id" | "name" | "kind" | "config" | "created_at"> & { secret?: string | null; token?: string | null };
+export function presentIntegration(row: schema.Integration, viewer: Viewer): PublicIntegration {
+  const out: PublicIntegration = { id: row.id, owner_id: row.owner_id, name: row.name, kind: row.kind, config: row.config, created_at: row.created_at };
+  if (viewer !== SERVER && reads(FIELD_RULES.Integration.secret, viewer, row)) out.secret = row.secret === null ? null : unseal("integrations.secret", row.secret);
+  if (viewer !== SERVER && reads(FIELD_RULES.Integration.token, viewer, row)) out.token = row.token === null ? null : unseal("integrations.token", row.token);
+  return out;
 }
 
 export type PublicOslFile = Pick<schema.OslFile, "id" | "key" | "name" | "size" | "type" | "status" | "owner_id" | "created_at">;

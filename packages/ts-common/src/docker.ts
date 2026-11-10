@@ -1,4 +1,5 @@
 import type { GeneratedFile, IR } from "@osl/core";
+import { SEAL_KEY_ENV, SEAL_KEY_HINT, hasSealed } from "@osl/core";
 import type { PackageManager } from "./package-manager.js";
 
 export interface DockerOptions {
@@ -47,13 +48,17 @@ CMD ${JSON.stringify(options.start)}
   const appUrl = isolation
     ? `\n      DATABASE_APP_URL: postgres://${isolation.appRole}:\${OSL_APP_DB_PASSWORD:?set OSL_APP_DB_PASSWORD to the password osl migrate gave ${isolation.appRole}}@postgres:5432/${ir.name}`
     : "";
+  // Sealed fields: the key comes from the environment and is required; no file carries one
+  const sealKey = hasSealed(ir)
+    ? `\n      ${SEAL_KEY_ENV}: \${${SEAL_KEY_ENV}:?set ${SEAL_KEY_ENV} to the key sealed fields are encrypted under (${SEAL_KEY_HINT})}`
+    : "";
   const worker = options.worker
     ? `
   worker:
     build: .
     command: ${JSON.stringify(options.start)}
     environment:
-      DATABASE_URL: postgres://postgres:postgres@postgres:5432/${ir.name}
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/${ir.name}${sealKey}
       OSL_ROLE: worker
     depends_on:
       postgres:
@@ -84,7 +89,7 @@ services:
     ports:
       - "${options.port}:${options.port}"
     environment:
-      DATABASE_URL: postgres://postgres:postgres@postgres:5432/${ir.name}${appUrl}
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/${ir.name}${appUrl}${sealKey}
       OSL_SESSION_SECRET: change-me-to-a-long-random-string
       OSL_APP_URL: http://localhost:${options.port}${options.worker ? "\n      OSL_ROLE: all" : ""}
     depends_on:

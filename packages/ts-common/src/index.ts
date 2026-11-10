@@ -2,6 +2,8 @@ export * from "./conventions.js";
 export * from "./schema.js";
 export * from "./validation.js";
 export * from "./present.js";
+export * from "./seal.js";
+export * from "./shapes.js";
 export * from "./events.js";
 export * from "./tests.js";
 export * from "./shadcn.js";

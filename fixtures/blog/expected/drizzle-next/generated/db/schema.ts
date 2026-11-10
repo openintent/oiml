@@ -2,15 +2,21 @@
 // Do not edit: this file is rewritten on every osl generate.
 
 import { relations } from "drizzle-orm";
-import { boolean, index, integer, jsonb, pgEnum, pgTable, text, timestamp, unique, uuid, varchar } from "drizzle-orm/pg-core";
+import { boolean, customType, index, integer, jsonb, pgEnum, pgTable, text, timestamp, unique, uuid, varchar } from "drizzle-orm/pg-core";
 
 export const userRoleEnum = pgEnum("user_role", ["member", "admin"]);
 export const articleStatusEnum = pgEnum("article_status", ["draft", "in_review", "approved", "retired"]);
+export const integrationKindEnum = pgEnum("integration_kind", ["webhook", "slack", "email"]);
 export const oslFileStatusEnum = pgEnum("osl_file_status", ["pending", "ready"]);
 export const oslAuthTokenPurposeEnum = pgEnum("osl_auth_token_purpose", ["magic_link"]);
 
 /** What a file field stores: a snapshot of the uploaded file's osl_files row */
 export type FileRef = { id: string; key: string; name: string; size: number; type: string };
+
+const bytea = customType<{ data: Uint8Array; driverData: Uint8Array }>({ dataType: () => "bytea" });
+
+/** What User.preferences holds: its declared shape */
+export type UserPreferences = { theme: "light" | "dark"; digest: boolean; quiet_hours?: { from: number; to: number } };
 
 export const users = pgTable("users", {
   id: uuid().primaryKey().defaultRandom(),
@@ -24,6 +30,8 @@ export const users = pgTable("users", {
   post_count: integer().notNull().default(0),
   approved_count: integer().notNull().default(0),
   phone: varchar({ length: 40 }),
+  preferences: jsonb().$type<UserPreferences>(),
+  recovery_code: bytea(),
   password_hash: varchar({ length: 255 })
 });
 
@@ -97,6 +105,24 @@ export const bulletins = pgTable(
   t => [index("bulletins_author_id_idx").on(t.author_id)]
 );
 
+/** What Integration.config holds: the shape its row's kind names */
+export type IntegrationConfig = { url: string; retries: number } | { channel: string; mention: boolean } | { to: string[]; digest: "instant" | "daily" };
+
+export const integrations = pgTable(
+  "integrations",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    owner_id: uuid().notNull().references(() => users.id, { onDelete: "cascade" }),
+    name: varchar({ length: 80 }).notNull(),
+    kind: integrationKindEnum().notNull(),
+    config: jsonb().$type<IntegrationConfig>().notNull(),
+    secret: bytea(),
+    token: bytea(),
+    created_at: timestamp({ withTimezone: true }).defaultNow()
+  },
+  t => [index("integrations_owner_id_idx").on(t.owner_id)]
+);
+
 export const oslFiles = pgTable(
   "osl_files",
   {
@@ -148,7 +174,8 @@ export const usersRelations = relations(users, ({ many }) => ({
   posts: many(articles, { relationName: "author" }),
   following: many(follows, { relationName: "follower" }),
   followers: many(follows, { relationName: "followee" }),
-  bulletins: many(bulletins, { relationName: "author" })
+  bulletins: many(bulletins, { relationName: "author" }),
+  integrations: many(integrations, { relationName: "owner" })
 }));
 
 export const articlesRelations = relations(articles, ({ one, many }) => ({
@@ -174,6 +201,10 @@ export const bulletinsRelations = relations(bulletins, ({ one }) => ({
   author: one(users, { fields: [bulletins.author_id], references: [users.id], relationName: "author" })
 }));
 
+export const integrationsRelations = relations(integrations, ({ one }) => ({
+  owner: one(users, { fields: [integrations.owner_id], references: [users.id], relationName: "owner" })
+}));
+
 export const oslFilesRelations = relations(oslFiles, ({ one }) => ({
   owner: one(users, { fields: [oslFiles.owner_id], references: [users.id], relationName: "owner" })
 }));
@@ -194,6 +225,8 @@ export type Follow = typeof follows.$inferSelect;
 export type NewFollow = typeof follows.$inferInsert;
 export type Bulletin = typeof bulletins.$inferSelect;
 export type NewBulletin = typeof bulletins.$inferInsert;
+export type Integration = typeof integrations.$inferSelect;
+export type NewIntegration = typeof integrations.$inferInsert;
 export type OslFile = typeof oslFiles.$inferSelect;
 export type NewOslFile = typeof oslFiles.$inferInsert;
 export type OslAuthToken = typeof oslAuthTokens.$inferSelect;

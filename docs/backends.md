@@ -61,7 +61,7 @@ pnpm conformance --snapshot-only                                                
 pnpm conformance --update                                                            # rewrite snapshots after an intended change
 ```
 
-For each fixture and backend the harness runs: generate, snapshot compare, install, check, create a throwaway database, migrate, drift check, start the server, run the contract tests, drop the database. A fixture with `isolation: database` is run the way it is deployed: the database belongs to a role made for the run that is no superuser (migrations, the worker and the walks' own reads go through it), and the server gets a second connection string, `DATABASE_APP_URL`, for a login that is a member of the model's app role; both roles have random passwords that live in the harness's memory and are dropped with the database. The contract tests receive the same `DATABASE_URL` as the server: an actor that carries a `role` is registered through the API and then given it straight in the database, since register refuses it. A backend is accepted when every fixture passes. Snapshots live in `fixtures/<name>/expected/<backend>/` and are the committed proof of determinism.
+For each fixture and backend the harness runs: generate, snapshot compare, install, check, create a throwaway database, migrate, drift check, start the server, run the contract tests, drop the database. A fixture with `isolation: database` is run the way it is deployed: the database belongs to a role made for the run that is no superuser (migrations, the worker and the walks' own reads go through it), and the server gets a second connection string, `DATABASE_APP_URL`, for a login that is a member of the model's app role; both roles have random passwords that live in the harness's memory and are dropped with the database. A fixture with a sealed field gets a key made for the run (`OSL_SEAL_KEY`, in the harness's memory and the server's environment only), and before the server is started for the tests it is started twice more, without the key and with a key of 32 characters: it must stop, with a non-zero exit, saying which. The contract tests receive the same `DATABASE_URL` as the server: an actor that carries a `role` is registered through the API and then given it straight in the database, since register refuses it. A backend is accepted when every fixture passes. Snapshots live in `fixtures/<name>/expected/<backend>/` and are the committed proof of determinism.
 
 The TypeScript projects are installed and run with pnpm unless `.osl/config.yaml` says `backend_options.package_manager: bun` or `npm` (`osl init --package-manager bun`). The option changes the install command, the generated `package.json` (the lifecycle-script allowance for esbuild, `pnpm.onlyBuiltDependencies` or bun's `trustedDependencies`) and the README's commands; the scripts themselves are the same, and `dev` is a small launcher (`scripts/dev.mjs`) that works under any of them. `pnpm conformance --package-manager bun` runs the harness with another manager as a spot check; it skips the snapshot compare, since the snapshots are written for pnpm.
 
@@ -94,6 +94,9 @@ The `hono-trpc-vite` contract tests speak tRPC's HTTP transport but assert the s
 | Field rules (`read: "member:team_id:admin"` on a field) | `generated/present.ts` holds the field rules and `present<Entity>(row, viewer)`: the field is optional in the public type and set only when `reads(rule, viewer, row)` allows; the viewer is the request's session for an answer and `SERVER` for an event's payload; `auth.me` answers `fields` beside `data`; the pages read it through `fieldsOf(session)` (see below) | the same; the viewer is `ctx.session`, and `fields` is on `auth.session` | `models.Present<Entity>(row, viewer)`: the field is a `models.Maybe[T]` with `json:",omitzero"`; `access.Viewer(session)` checks the rule, `models.Server` reads everything; `auth` gets `auth.Visibility` from the app |
 | Money (`type: money`, `currency` or `currency_field`) | `numeric({ precision: 19, scale: 4 })`, which the driver hands over as the string the database printed; `generated/validation.ts` carries `money(min?, max?)`: a string of the amount's shape and nothing else, bounds compared as BigInt ten-thousandths; a filter is the same string and `eq`; an update that changes a currency field answers 400 unless the amounts in it come along; the pages take it in a text input beside its currency and show it with `formatMoney` (see below) | the same; the 400 is a `BAD_REQUEST` with code `validation` | `string` and `*string` in the row and public structs, selected as `"total"::text`; `validation.Money{Min, Max}` unmarshals a JSON string only and compares bounds as `big.Int`; the same refusal in `Update` |
 | Sequences (`type: sequence`) | none beyond the column: `varchar(255) NOT NULL DEFAULT ''`, read-only, written by a `BEFORE INSERT` trigger (see below) and read back by the insert's `RETURNING`; the fields of its scope are left out of update; filters, sorts and search read it like any string | the same | the same |
+| Sealed fields (`sealed: true` on a string or text) | the column is `bytea()`; `generated/seal.ts` has `seal`, `unseal` and `atRest`: a write is sealed before its hook and its insert, and `present<Entity>` opens the value inside the field rule's branch, never for `SERVER`; a value that does not open throws a `SealError`, logged with the column and answered 500; the key is `OSL_SEAL_KEY`, checked in `instrumentation.ts` and `startWorker` (see below) | the same; the key is checked as `generated/server/app.ts` loads | `[]byte` in the row struct, `Maybe[string]` in the public one; `generated/seal` has `Seal`, `Open` and `Load`; the handlers seal a written string in `Create` and `Update`; `PresentX` calls `seal.MustOpen` inside the rule's branch, never for `models.Server`; a failure panics into a recovery that answers 500; `app.Start` loads the key |
+| Typed JSON (`shape:` on a json field) | `jsonb().$type<EntityField>()` with the value's type exported beside the table; the Zod object of the shape in the create and update inputs, with a catch-all that refuses an unknown key under its own path; a 400 lists `{ path, message }`; the pages render a group of inputs | the same; the 400's message is Zod's list of issues | `json.RawMessage` in the row, as stored; `validation.Shape{Keys}` in the input objects answers the same paths; a struct per shape in `generated/models/shapes.go` for a handler to decode into |
+| A shape per enum value (`shape_by:`) | `<resource><Field>Shapes` in `generated/validation.ts`, one Zod object per value; `create` and `update` call `fitShape` with the shape of the enum value the row will have (the body's, else the loaded row's), and `update` answers 400 when the enum changes and the value was not sent; the pages show the group of the select's value | the same; the refusal is `BAD_REQUEST` with `<path>: <what is wrong>` | `validation.<Resource><Field>Shapes`, a map by value; the same two steps in `Create` and `Update` |
 | Schedules, timers                                                               | pg-boss cron schedules and jobs with `startAfter`; a timer job reloads the row and runs the action only if the row still says so; test hooks at `/api/osl-hooks/*` when `OSL_TEST_HOOKS=1`                                                       | the same, with the hooks as REST routes beside tRPC                                            | River periodic jobs (robfig/cron) and `ScheduledAt` jobs; the same hooks                                                                |
 | Magic links, OAuth                                                              | `POST /api/auth/magic-link`, `/verify`, `GET /api/auth/oauth/<name>[/callback]`, `GET /api/auth/providers`; email through log, Resend or capture                                                                                                 | procedures `auth.magic_link`, `auth.magic_link_verify`, `auth.providers`; OAuth as REST routes | the same routes                                                                                                                         |
 | Queued events                                                                   | pg-boss in the `pgboss` schema; the worker runs in the Next.js process from `instrumentation.ts` or alone with `tsx src/worker.ts`; `OSL_ROLE=web                                                                                                | worker                                                                                         | all`                                                                                                                                    | pg-boss; `src/server/main.ts` starts it; `src/server/worker.ts` alone | River; `river_%` tables are left alone by drift |
@@ -234,6 +237,33 @@ An update that changes a `currency_field`'s field while the row holds an amount 
 the handlers compare the body with the row they loaded for the rule and answer 400 `validation` naming the amount.
 `packages/cli/test/money.test.ts` evaluates the generated validator and formatter on amounts a float cannot hold.
 
+## Sealed fields, one format on every backend
+
+A sealed value is stored as `0x01 || nonce (12 random bytes) || ciphertext || tag (16 bytes)`: AES-256-GCM under
+the 32 bytes `OSL_SEAL_KEY` spells as 64 hexadecimal characters, with the associated data `0x01` followed by
+`<table>.<column>` in UTF-8. `packages/core/src/seal.ts` is the reference and holds four fixed vectors; a backend
+that stores other bytes for one of them, or does not open one, has left the format, and a database would no
+longer move to it. The vectors are in the reference's test, in `generated/tests/00_sealed_values.test.ts` of the
+TypeScript projects and in `generated/seal/seal_test.go`; `packages/conformance/test/sealed.test.ts` runs the
+generated TypeScript and Go against each other, through a `bytea` column of a real database when one is there.
+
+| Where                | drizzle-next and hono-trpc-vite                                                                                     | gin-pgx                                                                       |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| The key              | `sealKey()` reads `OSL_SEAL_KEY` once; unset, not hexadecimal or not 64 characters throws a `SealError`             | `seal.Load()` answers an `*seal.Error`                                        |
+| The start            | `instrumentation.ts` and `startWorker` (Next.js), `generated/server/app.ts` (Hono): no key, no server               | `app.Start`, which `cmd/server` and `cmd/worker` call                         |
+| A write              | `atRest("<table>", values)` before `beforeCreate` and `beforeUpdate`: a string becomes bytes, null and absent stay  | `values["<column>"] = seal.Seal(seal.<TableColumn>, plain)` before the hooks  |
+| The row in the code  | `Uint8Array`; inside an included row it arrives as `\x` and hexadecimal, which `unseal` reads too                   | `[]byte`, nil for NULL                                                        |
+| An answer            | `if (viewer !== SERVER && reads(rule, viewer, row)) out.f = unseal("<table>.<column>", row.f)`                       | `if viewer != Server && viewer.Reads(...) { out.F = Shown(seal.MustOpen(…)) }` |
+| An event, a session  | presented as `SERVER`: no sealed value                                                                              | presented as `models.Server`: no sealed value                                 |
+| A value that fails   | `SealError`, logged as `[seal] <table>.<column>: …`, answered 500 `internal`                                         | a panic the app's recovery logs and answers 500 `internal`                    |
+| Your own code        | `unseal("<table>.<column>", row.<column>)`, `seal(...)`                                                             | `seal.Open(seal.<TableColumn>, row.<Column>)`, `seal.Seal(...)`               |
+| Files with the key   | none: `.env.example` has `OSL_SEAL_KEY=`, the compose file `${OSL_SEAL_KEY:?…}`                                     | the same                                                                      |
+
+Nothing is added to the database for a sealed field, under `isolation: database` either: the column is a `bytea`
+on a table whose policies are the tenancy's, and the value is opened in the app for a row the policy let through.
+A sealed field cannot be renamed, and no field becomes sealed or stops being sealed: `applyDiff` refuses both,
+since a migration has no key.
+
 ## Transitions and the compiler's row actions
 
 A transition adds nothing to the database: no trigger, no function, no policy. The guard is the statement itself,
@@ -340,13 +370,25 @@ skips them).
   missing for a caller it allows is a presenter that withholds too much. This runs through the tenant walk's
   second pass too, where the rule checks are off and the field rules are not. At the end each actor's `fields`
   answer is compared with what the rules say of their session. The detail counts the fields predicted, present
-  and absent.
+  and absent. A sealed field is held to its value as well: what an allowed caller is answered must be what the
+  column holds once the harness opens it with the format's reference and the run's key. For every sealed column
+  a resource lets a caller write, each signed-in caller writes one on a row of their own: the stored bytes must
+  not contain the value and must open, by the reference, to exactly what was written; the harness then stores
+  bytes it sealed itself and every caller reads the row; then it stores a value sealed for another column, one
+  sealed under another key and bytes that were never sealed, and a caller the rule allows must get 500 each
+  time, never a value and never an absent key, while every other caller's answer stays what it was. Nothing
+  written may be in any answer under another key, or in the app's log.
 - **fuzz**: from the IR, wrong types, boundary lengths, extra keys, missing and null required fields, server-owned
   fields, malformed and missing ids and bad list parameters, as every caller; only 400, 401, 403, 404, 409 and 410
   may answer, never a 5xx, a timeout or a 2xx on an invalid input. A money field is also sent as a JSON number,
   with five fraction digits, with sixteen digits before the point, with an exponent, a separator and a currency
-  sign, and one step outside each bound it declares. The seed is `walks: { seed }` in `fixture.yaml`
-  (or `--seed`), so a failure replays.
+  sign, and one step outside each bound it declares. A json field with a shape gets, for every key at every
+  depth, a wrong type, null, the key left out when it is required, an unknown key beside it, an array and a string
+  where the object belongs, and for a shape per enum value the shape of another value and the enum changed
+  without the value; each is sent only if core's reference validator refuses it, and a 400 must name the key
+  (`config.url`). It also stores, straight into the database, a value that misses its shape, as a row written
+  before the shape would hold, and reads the row: the answer is 200 with the stored value as it is. The seed is
+  `walks: { seed }` in `fixture.yaml` (or `--seed`), so a failure replays.
 - **contract**: between every two consecutive revisions of the fixture's lock, the breaking changes of the OpenAPI
   document (`diffOpenApi` in core: removed paths, operations, parameters, schemas and properties, narrowed types,
   new required fields, a response property that may now be absent) must each be explained by an op of that revision's diff (`explainedBy`); one no op explains

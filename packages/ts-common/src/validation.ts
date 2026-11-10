@@ -1,6 +1,15 @@
 import type { ActionIR, ColumnIR, EntityIR, IR, OperationIR, ResourceIR } from "@osl/core";
 import { MONEY_PATTERN, toPascalCase } from "@osl/core";
 import { cap, column, entityByName, q, singlePrimaryKey, type TsConventions } from "./conventions.js";
+import {
+  SHAPE_BY_SOURCE,
+  SHAPE_SOURCE,
+  hasShapes,
+  hasShapesBy,
+  shapeTypeName,
+  shapeZod,
+  shapesConst
+} from "./shapes.js";
 
 /** Zod expression for a column. `create` makes required columns required; `update` makes everything optional. */
 export function zodForColumn(col: ColumnIR, mode: "create" | "update" | "filter"): string {
@@ -19,6 +28,9 @@ export function zodForColumn(col: ColumnIR, mode: "create" | "update" | "filter"
 
 function baseZod(col: ColumnIR): string {
   const t = col.type;
+  // A JSON value with a shape is held to it here; one whose shape follows an enum of its row is held by the handler
+  if (col.shape) return shapeZod(col.shape);
+  if (col.shapeBy) return `shaped<__SHAPE_${col.name}__>()`;
   if (t.kind === "enum") return `z.enum([${enumValuesPlaceholder(col)}])`;
   if (t.kind === "array") return `z.array(${scalarZod(t.of, col)})`;
   // A file field takes the id of an upload; the handler swaps it for the file's snapshot
@@ -154,7 +166,14 @@ export function filterZod(col: ColumnIR): string {
   }
 }
 
-export function fillEnums(expr: string, ir: IR, entity: EntityIR | null): string {
+export function fillEnums(expr: string, ir: IR, entity: EntityIR | null, resource?: string): string {
+  // A value whose shape follows an enum: stored as the schema's type says, written as any of the shapes takes it
+  expr = expr.replace(/__SHAPE_([a-z0-9_]+)__/g, (_, name: string) => {
+    if (!entity) throw new Error(`shaped column ${name} has no entity to take its type from`);
+    const col = column(entity, name);
+    const shapes = resource ? shapesConst(resource, col) : undefined;
+    return `${shapeTypeName(entity, col)}${shapes ? `, z.input<(typeof ${shapes})[keyof typeof ${shapes}]>` : ""}`;
+  });
   return expr.replace(/__ENUM_([a-z0-9_]+)__/g, (_, name: string) => {
     if (!entity) throw new Error(`enum column ${name} has no entity to look its values up in`);
     const col = column(entity, name);
@@ -187,13 +206,30 @@ export function validationFile(
   options: ValidationOptions = { listInput: "http" }
 ): string {
   const out: string[] = [conv.header("Input validation for every resource operation."), `import { z } from "zod";`, ""];
+  const shapedTypes = new Set<string>();
   for (const resource of ir.resources) {
     const entity = entityByName(ir, resource.entity);
     out.push(`export const ${resource.name}Id = ${idZod(entity)};`);
+    // The shapes of a value that follows an enum field, by the enum's value: the handlers hold a write to one
+    const written = new Set(
+      resource.operations.flatMap(op => (op.kind === "create" || op.kind === "update" ? op.fields : []))
+    );
+    for (const col of entity.columns.filter(c => c.shapeBy !== undefined && written.has(c.name))) {
+      shapedTypes.add(shapeTypeName(entity, col));
+      out.push(
+        `/** The shape of ${resource.entity}.${col.name} for each value of ${col.shapeBy!.column} */`,
+        `export const ${shapesConst(resource.name, col)} = {\n${col
+          .shapeBy!.shapes.map(
+            shape =>
+              `  ${/^[A-Za-z_][A-Za-z0-9_]*$/.test(shape.value) ? shape.value : q(shape.value)}: ${shapeZod(shape.keys, "  ")}`
+          )
+          .join(",\n")}\n};`
+      );
+    }
     for (const op of resource.operations) {
       if (op.kind === "create" || op.kind === "update") {
         const lines = op.fields.map(
-          f => `    ${f}: ${fillEnums(zodForColumn(column(entity, f), op.kind), ir, entity)}`
+          f => `    ${f}: ${fillEnums(zodForColumn(column(entity, f), op.kind), ir, entity, resource.name)}`
         );
         out.push(
           `export const ${resource.name}${cap(op.kind)}Input = z\n  .object({\n${lines.join(",\n")}\n  })\n  .strict();`
@@ -243,6 +279,10 @@ export function validationFile(
   // The amount helper, wherever the model has a money field: auth's register schema imports it too
   const amounts = [...ir.entities.flatMap(e => e.columns), ...ir.actions.flatMap(a => a.input)];
   if (amounts.some(c => c.money)) out.splice(3, 0, MONEY_SOURCE);
+  // The shape helpers, wherever a JSON column has a shape: auth's register schema imports unknownKey too
+  if (hasShapesBy(ir)) out.splice(3, 0, SHAPE_BY_SOURCE);
+  if (hasShapes(ir)) out.splice(3, 0, SHAPE_SOURCE.replace("const unknownKey", "export const unknownKey"));
+  if (shapedTypes.size) out.splice(2, 0, `import type { ${[...shapedTypes].sort().join(", ")} } from "./db/schema";`);
   return out.join("\n");
 }
 
@@ -293,6 +333,11 @@ export function currencyGuardLines(
     );
   }
   return lines;
+}
+
+/** What auth's register schema imports from the validation module: the helpers its fields' Zod expressions call */
+export function registerValidators(fields: ColumnIR[]): string[] {
+  return [...(fields.some(c => c.money) ? ["money"] : []), ...(fields.some(c => c.shape) ? ["unknownKey"] : [])];
 }
 
 /** `postsPublishInput` for a resource action, `sendDigestInput` for a global one */

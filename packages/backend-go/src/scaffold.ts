@@ -1,6 +1,7 @@
 import type { GeneratedFile, IR } from "@osl/core";
-import { REGION_BEGIN, REGION_END } from "@osl/core";
+import { REGION_BEGIN, REGION_END, SEAL_KEY_ENV, SEAL_KEY_HINT, hasSealed } from "@osl/core";
 import { hasProviders, oauthProviders } from "./auth.js";
+import { sealReadme } from "./seal.js";
 
 export const GO_VERSION = "1.26";
 
@@ -71,6 +72,11 @@ ${Object.entries(dependencies)
       `DATABASE_APP_URL=postgres://${isolation.appRole}:CHOOSE-A-PASSWORD@localhost:5432/${ir.name}`
     );
   if (ir.auth) env.push("OSL_SESSION_SECRET=change-me-to-a-long-random-string");
+  if (hasSealed(ir))
+    env.push(
+      `# The key sealed fields are encrypted under (${SEAL_KEY_HINT}). Keep it: without it the stored values cannot be read`,
+      `${SEAL_KEY_ENV}=`
+    );
   if (hasProviders(ir)) env.push(`OSL_APP_URL=http://localhost:${PORT}`);
   if (ir.auth?.providers.some(p => p.kind === "magic_link"))
     env.push(
@@ -129,7 +135,7 @@ The migrations create \`${isolation.appRole}\` without a login and without a pas
 Handlers and your own code hold the database as a \`*db.Scope\`: its \`Query\`, \`QueryRow\`, \`Exec\` and \`Begin\` are the pool's, and each statement runs with the tenants of its context bound for its own transaction (pass the request's context, \`ctx.Context()\` in an action). A schedule or timer gets the owner's pool behind the same type.
 `
     : ""
-}`
+}${sealReadme(ir, modulePath)}`
   });
 
   files.push(...dockerFiles(ir));
@@ -158,13 +164,17 @@ CMD ["/app/server"]
   const appUrl = isolation
     ? `\n      DATABASE_APP_URL: postgres://${isolation.appRole}:\${OSL_APP_DB_PASSWORD:?set OSL_APP_DB_PASSWORD to the password osl migrate gave ${isolation.appRole}}@postgres:5432/${ir.name}`
     : "";
+  // Sealed fields: the key comes from the environment and is required; no file carries one
+  const sealKey = hasSealed(ir)
+    ? `\n      ${SEAL_KEY_ENV}: \${${SEAL_KEY_ENV}:?set ${SEAL_KEY_ENV} to the key sealed fields are encrypted under (${SEAL_KEY_HINT})}`
+    : "";
   const worker = ir.jobs
     ? `
   worker:
     build: .
     command: ["/app/worker"]
     environment:
-      DATABASE_URL: postgres://postgres:postgres@postgres:5432/${ir.name}
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/${ir.name}${sealKey}
       OSL_ROLE: worker
     depends_on:
       postgres:
@@ -195,7 +205,7 @@ services:
     ports:
       - "${PORT}:${PORT}"
     environment:
-      DATABASE_URL: postgres://postgres:postgres@postgres:5432/${ir.name}${appUrl}
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/${ir.name}${appUrl}${sealKey}
       OSL_SESSION_SECRET: change-me-to-a-long-random-string
       OSL_APP_URL: http://localhost:${PORT}${ir.jobs ? "\n      OSL_ROLE: all" : ""}
     depends_on:

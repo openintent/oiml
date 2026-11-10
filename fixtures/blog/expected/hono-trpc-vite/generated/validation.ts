@@ -2,6 +2,35 @@
 // Do not edit: this file is rewritten on every osl generate.
 
 import { z } from "zod";
+import type { IntegrationConfig } from "./db/schema";
+
+/** A key a shape does not name: refused under its own path */
+export const unknownKey = z.unknown().superRefine((_value, ctx) => {
+  ctx.addIssue({ code: "custom", message: "Unrecognized key" });
+});
+
+/** A value whose shape follows an enum field of its row: anything but nothing here, held to the row's shape by the handler */
+function shaped<Stored, Written = Stored>() {
+  return z.custom<Stored>(value => value !== undefined && value !== null, "Required") as unknown as z.ZodType<
+    Stored,
+    z.ZodTypeDef,
+    Written
+  >;
+}
+
+/** A value held to one shape: the value as it is stored, defaults filled in, or what does not fit under the field's path */
+export function fitShape<T>(
+  shape: z.ZodTypeAny,
+  field: string,
+  value: T
+): { ok: true; value: T } | { ok: false; issues: { path: string; message: string }[] } {
+  const result = shape.safeParse(value);
+  if (result.success) return { ok: true, value: result.data as T };
+  return {
+    ok: false,
+    issues: result.error.issues.map(issue => ({ path: [field, ...issue.path.map(String)].join("."), message: issue.message }))
+  };
+}
 
 export const usersId = z.string().uuid();
 export const usersListQuery = z
@@ -13,7 +42,20 @@ export const usersListQuery = z
 export const usersUpdateInput = z
   .object({
     name: z.string().min(1).max(100).optional(),
-    phone: z.string().max(40).nullish()
+    phone: z.string().max(40).nullish(),
+    preferences: z
+      .object({
+        theme: z.enum(["light", "dark"]).default("light"),
+        digest: z.boolean().default(true),
+        quiet_hours: z
+          .object({
+            from: z.number().int().min(0).max(23),
+            to: z.number().int().min(0).max(23)
+          })
+          .catchall(unknownKey).optional()
+      })
+      .catchall(unknownKey).nullish(),
+    recovery_code: z.string().max(120).nullish()
   })
   .strict();
 
@@ -132,6 +174,54 @@ export const bulletinsUpdateInput = z
   })
   .strict();
 
+export const integrationsId = z.string().uuid();
+/** The shape of Integration.config for each value of kind */
+export const integrationsConfigShapes = {
+  webhook: z
+    .object({
+      url: z.string().url().max(255),
+      retries: z.number().int().min(0).max(10).default(3)
+    })
+    .catchall(unknownKey),
+  slack: z
+    .object({
+      channel: z.string().max(80),
+      mention: z.boolean().default(false)
+    })
+    .catchall(unknownKey),
+  email: z
+    .object({
+      to: z.array(z.string().max(255)),
+      digest: z.enum(["instant", "daily"]).default("instant")
+    })
+    .catchall(unknownKey)
+};
+export const integrationsListQuery = z
+  .object({
+    page: z.number().int().min(1).default(1),
+    page_size: z.number().int().min(1).max(200).default(20),
+    kind: z.enum(["webhook", "slack", "email"]).optional()
+  })
+  .strict();
+export const integrationsCreateInput = z
+  .object({
+    name: z.string().max(80),
+    kind: z.enum(["webhook", "slack", "email"]),
+    config: shaped<IntegrationConfig, z.input<(typeof integrationsConfigShapes)[keyof typeof integrationsConfigShapes]>>(),
+    secret: z.string().max(200).nullish(),
+    token: z.string().max(200).nullish()
+  })
+  .strict();
+export const integrationsUpdateInput = z
+  .object({
+    name: z.string().max(80).optional(),
+    kind: z.enum(["webhook", "slack", "email"]).optional(),
+    config: shaped<IntegrationConfig, z.input<(typeof integrationsConfigShapes)[keyof typeof integrationsConfigShapes]>>().optional(),
+    secret: z.string().max(200).nullish(),
+    token: z.string().max(200).nullish()
+  })
+  .strict();
+
 export const usersBanInput = z
   .object({
     reason: z.string().min(1).max(200)
@@ -171,6 +261,13 @@ export type PostsRetireInput = z.infer<typeof postsRetireInput>;
 
 export const announcementsPublishInput = z.object({}).strict();
 export type AnnouncementsPublishInput = z.infer<typeof announcementsPublishInput>;
+
+export const integrationsSignInput = z
+  .object({
+    payload: z.string().max(2000)
+  })
+  .strict();
+export type IntegrationsSignInput = z.infer<typeof integrationsSignInput>;
 
 export const sendDigestInput = z
   .object({

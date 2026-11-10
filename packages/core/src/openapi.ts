@@ -17,6 +17,7 @@ import {
   conditionText
 } from "./ir.js";
 import { MONEY_PATTERN } from "./model.js";
+import type { ShapeKeyIR } from "./shapes.js";
 import { toTitleCase } from "./naming.js";
 import type { DiffOp } from "./diff.js";
 
@@ -77,10 +78,64 @@ function columnSchema(column: ColumnIR, ir: IR): Schema {
     if (v.min !== undefined) schema.minimum = v.min;
     if (v.max !== undefined) schema.maximum = v.max;
   }
+  if (column.shape) schema = shapeSchema(column.shape);
+  if (column.shapeBy)
+    schema = {
+      description: `The value's keys follow ${column.shapeBy.column}: one shape per value, and a write is held to the shape of the row's ${column.shapeBy.column}`,
+      oneOf: column.shapeBy.shapes.map(s => ({
+        ...shapeSchema(s.keys),
+        title: `${column.shapeBy!.column} = ${s.value}`
+      }))
+    };
+  if (column.sealed) schema.description = "Encrypted at rest; never in an event, a filter, a sort or a search";
   if (column.description)
     schema.description =
-      column.money || column.sequence ? `${column.description}. ${schema.description}` : column.description;
+      column.money || column.sequence || column.sealed || column.shapeBy
+        ? `${column.description}. ${schema.description}`
+        : column.description;
   if (column.nullable) return { oneOf: [schema, { type: "null" }] };
+  return schema;
+}
+
+/** One key of a shape as a schema */
+function shapeKeySchema(key: ShapeKeyIR): Schema {
+  const v = key.validate ?? {};
+  const scalar = (kind: string): Schema => {
+    const schema = scalarSchema(kind);
+    if (kind === "string" || kind === "text") {
+      const max = v.max_length ?? key.maxLength;
+      if (v.format === "email") schema.format = "email";
+      if (v.format === "url") schema.format = "uri";
+      if (v.format === "uuid") schema.format = "uuid";
+      if (v.min_length !== undefined) schema.minLength = v.min_length;
+      if (max !== undefined) schema.maxLength = max;
+      if (v.pattern) schema.pattern = v.pattern;
+    }
+    if (kind === "integer" || kind === "float") {
+      if (v.min !== undefined) schema.minimum = v.min;
+      if (v.max !== undefined) schema.maximum = v.max;
+    }
+    return schema;
+  };
+  let schema: Schema;
+  if (key.kind === "object") schema = shapeSchema(key.keys ?? []);
+  else if (key.kind === "enum") schema = { type: "string", enum: key.values ?? [] };
+  else if (key.kind === "array") schema = { type: "array", items: scalar(key.of ?? "string") };
+  else schema = scalar(key.kind);
+  if (key.default !== undefined) schema.default = key.default;
+  if (key.description) schema.description = key.description;
+  return schema;
+}
+
+/** A shape as an object schema: its keys, the required ones, and no others */
+function shapeSchema(keys: ShapeKeyIR[]): Schema {
+  const schema: Schema = {
+    type: "object",
+    properties: Object.fromEntries(keys.map(key => [key.name, shapeKeySchema(key)])),
+    additionalProperties: false
+  };
+  const required = keys.filter(key => key.required).map(key => key.name);
+  if (required.length) schema.required = required;
   return schema;
 }
 
@@ -134,7 +189,10 @@ function presentedSchema(entity: EntityIR, ir: IR, include: string[] = [], throu
     properties[c.name] = c.readOnly ? { ...columnSchema(c, ir), readOnly: true } : columnSchema(c, ir);
     if (c.read) {
       ruled.add(c.name);
-      const note = `Present only for a caller this rule allows on the row: ${ruleText(c.read)}.`;
+      const note =
+        c.sealed && c.read.kind === "none"
+          ? "Never in a response: the field is written and kept sealed, and no caller reads it back."
+          : `Present only for a caller this rule allows on the row: ${ruleText(c.read)}.`;
       properties[c.name] = {
         ...properties[c.name],
         description: c.description ? `${c.description}. ${note}` : note

@@ -1,5 +1,5 @@
 import type { Backend, GeneratedFile, GenerateInput, IR } from "@osl/core";
-import { globalActions, migrationFiles, openapiDocument, userActions } from "@osl/core";
+import { globalActions, hasSealed, migrationFiles, openapiDocument, userActions } from "@osl/core";
 import {
   JOBS_DEPENDENCIES,
   STORAGE_DEPENDENCIES,
@@ -33,7 +33,9 @@ import {
   resourceRouteFiles,
   restClientFile,
   shellScaffolds,
-  uiFile
+  uiFile,
+  sealFile,
+  sealTestFile
 } from "@osl/ts-common";
 import { authFile, authRouteFiles } from "./auth.js";
 import { filesApiFile, filesRouteFiles } from "./files-api.js";
@@ -63,13 +65,19 @@ export function generate(input: GenerateInput): GeneratedFile[] {
   files.push({ path: `${gen}/present.ts`, content: presentFile(ir, NEXT, { access: "./access", auth: "./auth" }) });
   files.push({ path: `${gen}/auth.ts`, content: authFile(ir) });
   files.push({ path: `${gen}/validation.ts`, content: validationFile(ir, NEXT) });
+  if (hasSealed(ir)) {
+    files.push({ path: `${gen}/seal.ts`, content: sealFile(ir, NEXT) });
+    files.push({ path: `${gen}/tests/00_sealed_values.test.ts`, content: sealTestFile(NEXT, "../seal") });
+    // The server does not start without the key: instrumentation.ts is where a Next.js server starts
+    if (!ir.jobs) files.push(sealStartScaffold());
+  }
   files.push(...eventFiles(ir, NEXT));
   if (hasScheduling(ir)) files.push({ path: `${gen}/scheduling.ts`, content: schedulingFile(ir, NEXT) });
   files.push({ path: `${gen}/test-hooks.ts`, content: testHooksFile(ir, NEXT, { email: hasProviders(ir) }) });
   files.push(...testHookRouteFiles(ir, hasProviders(ir)));
   if (ir.jobs) {
     files.push({ path: `${gen}/jobs.ts`, content: jobsFile(ir, NEXT_SERVER) });
-    files.push(...workerScaffolds());
+    files.push(...workerScaffolds(hasSealed(ir)));
   }
   if (ir.files) {
     files.push({ path: `${gen}/storage.ts`, content: storageFile(ir, NEXT_SERVER) });
@@ -292,8 +300,29 @@ ${body}
   return files;
 }
 
+/** What instrumentation.ts does first when the model has a sealed field: no key, no server */
+const SEAL_START = `    // Sealed fields: the server does not start without OSL_SEAL_KEY, or with one that is not a key.
+    const { sealKey } = await import("./generated/seal");
+    sealKey();
+`;
+
+/** instrumentation.ts for a model with a sealed field and no queue: the key is checked as the server starts */
+function sealStartScaffold(): GeneratedFile {
+  return {
+    path: "instrumentation.ts",
+    mode: "scaffold",
+    content: `// Created once by OSL (@osl/backend-drizzle-next). Runs when the Next.js server starts.
+// You own this file: OSL never rewrites it.
+export async function register(): Promise<void> {
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+${SEAL_START}  }
+}
+`
+  };
+}
+
 /** instrumentation.ts runs when the Next.js server starts: the place to run queued events; src/worker.ts for a separate process */
-function workerScaffolds(): GeneratedFile[] {
+function workerScaffolds(sealed = false): GeneratedFile[] {
   return [
     {
       path: "instrumentation.ts",
@@ -302,7 +331,7 @@ function workerScaffolds(): GeneratedFile[] {
 // You own this file: OSL never rewrites it.
 export async function register(): Promise<void> {
   if (process.env.NEXT_RUNTIME === "nodejs") {
-    // Queued events run in this process unless OSL_ROLE=web (then run src/worker.ts separately).
+${sealed ? SEAL_START : ""}    // Queued events run in this process unless OSL_ROLE=web (then run src/worker.ts separately).
     const { startWorker } = await import("./generated/jobs");
     await startWorker();
   }
@@ -361,7 +390,8 @@ export const drizzleNextBackend: Backend = {
       "Write through ctx.db.update(table).set({ ... }).where(eq(table.id, ctx.row.id)).returning() and return the fresh row; insert with ctx.db.insert(table).values({ ... }).returning().",
       "Throw new HttpError(status, code, message) from the generated http module (the import path is in the stub's comment) to answer with that status.",
       "ctx.session is null for anonymous callers (and when a schedule or timer runs the action as the system); ctx.session.user.id is the caller's id. ctx.now is when the action runs; a timer or schedule passes the time it was due, so compare against ctx.now rather than new Date(). Dates are Date objects; nullable columns hold null.",
-      "To send mail, await sendEmail({ to, subject, text }) from the generated email module; it logs or captures the message outside production, so sending is safe in tests."
+      "To send mail, await sendEmail({ to, subject, text }) from the generated email module; it logs or captures the message outside production, so sending is safe in tests.",
+      'A sealed field (sealed: true in the model) is stored bytes in a row you load: read it with unseal("<table>.<column>", row.<column>) and write it with seal("<table>.<column>", value), both from the generated seal module beside db/; never return, log or compare the stored bytes or the opened value.'
     ].join("\n")
   }),
   runtime: config => ({

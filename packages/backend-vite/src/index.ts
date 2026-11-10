@@ -1,5 +1,5 @@
 import type { Backend, GeneratedFile, GenerateInput } from "@osl/core";
-import { globalActions, migrationFiles, userActions } from "@osl/core";
+import { globalActions, hasSealed, migrationFiles, userActions } from "@osl/core";
 import {
   JOBS_DEPENDENCIES,
   STORAGE_DEPENDENCIES,
@@ -33,7 +33,9 @@ import {
   resourceRouteFiles,
   shellScaffolds,
   trpcClientFile,
-  uiFile
+  uiFile,
+  sealFile,
+  sealTestFile
 } from "@osl/ts-common";
 import { APPEARANCES, projectScaffolds, type Appearance } from "./scaffold.js";
 import {
@@ -89,6 +91,10 @@ export function generate(input: GenerateInput): GeneratedFile[] {
     content: presentFile(ir, VITE, { access: "./server/access", auth: "./server/auth" })
   });
   files.push({ path: `${gen}/validation.ts`, content: validationFile(ir, VITE, { listInput: "typed" }) });
+  if (hasSealed(ir)) {
+    files.push({ path: `${gen}/seal.ts`, content: sealFile(ir, VITE) });
+    files.push({ path: `${gen}/tests/00_sealed_values.test.ts`, content: sealTestFile(VITE, "../seal") });
+  }
   files.push(...eventFiles(ir, VITE));
   if (hasScheduling(ir)) files.push({ path: `${gen}/scheduling.ts`, content: schedulingFile(ir, VITE) });
   files.push({
@@ -204,7 +210,8 @@ export const honoTrpcViteBackend: Backend = {
       "Write through ctx.db.update(table).set({ ... }).where(eq(table.id, ctx.row.id)).returning() and return the fresh row; insert with ctx.db.insert(table).values({ ... }).returning().",
       "Call fail(status, code, message) from the generated server/errors module (the import path is in the stub's comment) to answer with that status; it never returns.",
       "ctx.session is null for anonymous callers (and when a schedule or timer runs the action as the system); ctx.session.user.id is the caller's id. ctx.now is when the action runs; a timer or schedule passes the time it was due, so compare against ctx.now rather than new Date(). Dates are Date objects; nullable columns hold null.",
-      "To send mail, await sendEmail({ to, subject, text }) from the generated email module; it logs or captures the message outside production, so sending is safe in tests."
+      "To send mail, await sendEmail({ to, subject, text }) from the generated email module; it logs or captures the message outside production, so sending is safe in tests.",
+      'A sealed field (sealed: true in the model) is stored bytes in a row you load: read it with unseal("<table>.<column>", row.<column>) and write it with seal("<table>.<column>", value), both from the generated seal module beside db/; never return, log or compare the stored bytes or the opened value.'
     ].join("\n")
   }),
   runtime: config => ({

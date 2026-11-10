@@ -15,9 +15,13 @@ import {
   diffOpenApi,
   explainedBy,
   loadProject,
+  openValue,
   openapiDocument,
   planMigration,
   readIntent,
+  sealValue,
+  sealedColumns,
+  shapedColumns,
   transitionOf,
   type ActionIR,
   type ActorIR,
@@ -45,6 +49,10 @@ export interface WalkContext {
   databaseUrl: string;
   /** The generated project, for the lock and the intents the contract walk reads */
   projectDir: string;
+  /** The key this run's app seals under, in hexadecimal, when the model has a sealed field */
+  sealKey?: string;
+  /** What the app has written to its output so far */
+  serverLog?: () => string;
   /** The seed of the fuzz walk's generator, kept in the fixture so a failure replays */
   seed: number;
   log?: (line: string) => void;
@@ -102,7 +110,8 @@ export async function runWalks(ctx: WalkContext, which: ReadonlySet<string> = ne
   await db.connect();
   const resolver = new Resolver(db, ir);
   // The leak walk also holds every answer's rows to the read rules of their fields, as each answer arrives
-  const watch = which.has("leak") ? new FieldWatch(ir, resolver, MAX_FINDINGS) : null;
+  const sealKey = ctx.sealKey ? Buffer.from(ctx.sealKey, "hex") : undefined;
+  const watch = which.has("leak") ? new FieldWatch(ir, resolver, MAX_FINDINGS, sealKey) : null;
   const listen: Listener = async (label, reply, client) => {
     if (captured.length < 50_000) captured.push({ label, body: reply.body });
     if (watch) await watch.observe(label, reply, client);
@@ -181,6 +190,40 @@ export async function runWalks(ctx: WalkContext, which: ReadonlySet<string> = ne
       const findings: string[] = [];
       await timed("order", () => orderWalk(ctx, state, db, bodies, findings), findings);
     }
+    // A value stored before its shape: read as it is, while the walk's rows are still there; the fuzz walk reports it
+    if (which.has("fuzz") && results.has("fuzz")) {
+      const fuzz = results.get("fuzz")!;
+      const findings: string[] = [];
+      const started = Date.now();
+      try {
+        const read = await storedShapeWalk(ir, state, db, findings);
+        if (findings.length)
+          results.set("fuzz", {
+            ...fuzz,
+            ok: false,
+            detail: [...(fuzz.ok ? [] : [fuzz.detail]), ...findings].join("\n"),
+            ms: fuzz.ms + Date.now() - started
+          });
+        else if (fuzz.ok && read)
+          results.set("fuzz", { ...fuzz, detail: `${fuzz.detail}; ${read}`, ms: fuzz.ms + Date.now() - started });
+      } catch (error) {
+        results.set("fuzz", {
+          ...fuzz,
+          ok: false,
+          detail: `${fuzz.detail}\nstored shapes: ${error instanceof Error ? error.message : String(error)}`
+        });
+      }
+    }
+    // Sealed fields, while the walk's rows are still there; what it finds is the leak walk's to report
+    const sealFindings: string[] = [];
+    let sealed = "";
+    if (which.has("leak") && sealKey) {
+      try {
+        sealed = await sealWalk(ctx, state, db, sealKey, sealFindings);
+      } catch (error) {
+        sealFindings.push(`sealed fields: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
     if (which.has("rule")) {
       await deleteWalk(ctx, state, resolver, roles, ruleFindings);
       if (state.transitions.moved + state.transitions.refused)
@@ -228,7 +271,8 @@ export async function runWalks(ctx: WalkContext, which: ReadonlySet<string> = ne
             }
             findings.push(...watch.findings);
           }
-          return leakWalk(ir, captured, findings) + (watch?.summary() ?? "");
+          findings.push(...sealFindings);
+          return leakWalk(ir, captured, findings, sealedPlaintexts) + (watch?.summary() ?? "") + sealed;
         },
         findings
       );
@@ -705,6 +749,8 @@ function updateBody(
   for (const name of update.fields) {
     const column = entity.columns.find(c => c.name === name);
     if (!column || column.type.kind === "file" || entity.foreignKeys.some(f => f.column === name)) continue;
+    // A sealed column's stored value is ciphertext: never a value to send back
+    if (column.sealed) continue;
     if (column.type.kind === "scalar" && ["bytes", "json", "datetime", "date", "time"].includes(column.type.scalar))
       continue;
     const current = row[name];
@@ -1232,7 +1278,9 @@ async function fuzzWalk(
 ): Promise<string> {
   const { ir } = ctx;
   let probes = 0;
-  const judge = (what: string, reply: Reply | WalkTimeout, invalid: boolean): void => {
+  // Probes that bend one key of a shape: the refusal names that key, whenever the caller got as far as validation
+  let named = 0;
+  const judge = (what: string, reply: Reply | WalkTimeout, invalid: boolean, path?: string): void => {
     probes++;
     if (reply instanceof WalkTimeout) {
       findings.push(`${what}: ${reply.message}`);
@@ -1242,12 +1290,16 @@ async function fuzzWalk(
     else if (reply.status < 300 && invalid) findings.push(`${what}: accepted with ${reply.status}`);
     else if (reply.status >= 300 && !ACCEPTED_4XX.has(reply.status))
       findings.push(`${what}: unexpected ${reply.status}`);
+    else if (path !== undefined && reply.status === 400) {
+      if (namesPath(reply, path)) named++;
+      else findings.push(`${what}: answered 400 without naming ${path} (${message(reply)})`);
+    }
   };
-  const attempt = async (what: string, invalid: boolean, call: () => Promise<Reply>): Promise<void> => {
+  const attempt = async (what: string, invalid: boolean, call: () => Promise<Reply>, path?: string): Promise<void> => {
     try {
-      judge(what, await call(), invalid);
+      judge(what, await call(), invalid, path);
     } catch (error) {
-      if (error instanceof WalkTimeout) judge(what, error, invalid);
+      if (error instanceof WalkTimeout) judge(what, error, invalid, path);
       else throw error;
     }
   };
@@ -1297,9 +1349,12 @@ async function fuzzWalk(
             const fresh = await resolver.fresh(entity, row.id);
             if (!fresh) break;
             const valid = updateBody(entity, op, fresh, bodies) ?? {};
-            for (const probe of invalidProbes(entity.columns, op.fields, valid, bodies, true))
-              await attempt(`${who} with ${probe.name}`, true, () =>
-                caller.client.resource({ resource, op, id: row.id, body: probe.body })
+            for (const probe of invalidProbes(entity.columns, op.fields, valid, bodies, true, fresh))
+              await attempt(
+                `${who} with ${probe.name}`,
+                true,
+                () => caller.client.resource({ resource, op, id: row.id, body: probe.body }),
+                probe.path
               );
             break;
           }
@@ -1307,8 +1362,11 @@ async function fuzzWalk(
             const built = buildCreateBody(ir, entity, op, caller, state, bodies);
             if (built.missing.length) break;
             for (const probe of invalidProbes(entity.columns, op.fields, built.body, bodies))
-              await attempt(`${who} with ${probe.name}`, true, () =>
-                caller.client.resource({ resource, op, body: probe.body })
+              await attempt(
+                `${who} with ${probe.name}`,
+                true,
+                () => caller.client.resource({ resource, op, body: probe.body }),
+                probe.path
               );
             break;
           }
@@ -1359,11 +1417,247 @@ async function fuzzWalk(
         await attempt(`${callLabel({ action })} as ${caller.name} with ${probe.name}`, true, () =>
           caller.client.action({ action, body: probe.body })
         );
-  return `${probes} probes with seed ${ctx.seed}, none answered 5xx or accepted an invalid input`;
+  return `${probes} probes with seed ${ctx.seed}, none answered 5xx or accepted an invalid input${named ? `; ${named} refusals of a value that misses its shape named the key` : ""}`;
+}
+
+/**
+ * Whether a 400 names a key: under REST one of `error.details` has the path; under tRPC the message is Zod's own
+ * list of issues (their paths start at the procedure's input, so `data.config.url` for an update), or the
+ * handler's sentence, which spells `<path>: <what is wrong>`.
+ */
+function namesPath(reply: Reply, path: string): boolean {
+  const error = (reply.body as { error?: { message?: unknown; details?: unknown } } | null)?.error;
+  const matches = (candidate: string) => candidate === path || candidate.endsWith(`.${path}`);
+  if (Array.isArray(error?.details))
+    return error.details.some(
+      d => typeof (d as { path?: unknown })?.path === "string" && matches((d as { path: string }).path)
+    );
+  const text = typeof error?.message === "string" ? error.message : "";
+  try {
+    const issues = JSON.parse(text) as { path?: unknown }[];
+    if (Array.isArray(issues))
+      return issues.some(issue => Array.isArray(issue.path) && matches(issue.path.map(String).join(".")));
+  } catch {
+    // Not Zod's list: the handler's sentence
+  }
+  return text.split("; ").some(part => matches(part.split(": ")[0]));
+}
+
+/**
+ * A shape holds writes, not what is already stored: a migration does not rewrite JSON and a read does not check it.
+ * For every JSON column with a shape, on a row its creator reads, the harness stores a value that misses the shape
+ * (as a row written before the shape would hold) and reads the row through the API: the answer is 200 and carries
+ * the stored value as it is, on every backend. Then it puts the row's own value back.
+ */
+async function storedShapeWalk(ir: IR, state: State, db: pg.Client, findings: string[]): Promise<string> {
+  const legacy = { osl_written_before_the_shape: [1, "two", null], nested: { deeper: true } };
+  let read = 0;
+  for (const { entity, resource } of state.walkable) {
+    const get = resource.operations.find(o => o.kind === "get" && o.rule.kind !== "none");
+    if (!get) continue;
+    const pk = entity.primaryKey[0];
+    const isIdentity = ir.auth?.identity === entity.name;
+    for (const column of shapedColumns(entity)) {
+      for (const caller of state.actors) {
+        const own = isIdentity
+          ? caller.session?.id
+          : (state.rows.get(entity.name) ?? []).find(r => r.creator === caller && r.resource === resource)?.id;
+        if (own === undefined || own === null) continue;
+        const before = (
+          await db.query(`select "${column.name}" as value from "${entity.table}" where "${pk}" = $1`, [own])
+        ).rows[0]?.value;
+        await db.query(`update "${entity.table}" set "${column.name}" = $1::jsonb where "${pk}" = $2`, [
+          JSON.stringify(legacy),
+          own
+        ]);
+        try {
+          const answer = await caller.client.resource({ resource, op: get, id: own });
+          const where = `${resource.name}.get as ${caller.name} of a row whose ${column.name} was stored before its shape`;
+          if (answer.status !== 200) {
+            if (answer.status >= 500) findings.push(`${where}: ${answer.status} ${message(answer)}`);
+            continue;
+          }
+          const value = ((answer.body as { data?: Row } | null)?.data ?? {})[column.name];
+          if (!(column.name in ((answer.body as { data?: Row } | null)?.data ?? {}))) continue;
+          if (canonical(value) !== canonical(legacy))
+            findings.push(`${where}: answered ${JSON.stringify(value)}, not the stored value as it is`);
+          else read++;
+        } finally {
+          await db.query(`update "${entity.table}" set "${column.name}" = $1::jsonb where "${pk}" = $2`, [
+            before === undefined ? null : JSON.stringify(before),
+            own
+          ]);
+        }
+        break;
+      }
+    }
+  }
+  return read ? `${read} ${read === 1 ? "value" : "values"} stored before their shape read back as stored` : "";
+}
+
+/** JSON with its keys in order, so two values are compared whatever order a backend or the database wrote them in */
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  if (value && typeof value === "object")
+    return `{${Object.keys(value as object)
+      .sort()
+      .map(key => `${JSON.stringify(key)}:${canonical((value as Record<string, unknown>)[key])}`)
+      .join(",")}}`;
+  return JSON.stringify(value);
+}
+
+/** What the seal walk wrote into sealed fields: no answer may carry one of these anywhere but under its own key */
+const sealedPlaintexts = new Map<string, string>();
+
+/**
+ * Sealed fields, proven against the database and the reference implementation of the format, not against the app's
+ * own word. For every sealed column a resource lets a caller write, as every signed-in caller on a row of their own:
+ *
+ * - the value is written through the API; the bytes the column then holds do not contain it, and the reference
+ *   opens them to exactly what was written (what a backend seals, the reference reads);
+ * - the harness then stores bytes of its own, sealed by the reference, and every caller reads the row: the field
+ *   watch holds each answer to the rule (absent for a caller it refuses) and to the value (what a backend reads is
+ *   what the reference sealed);
+ * - a value sealed for another column, and one sealed under another key, are stored in its place: a caller the
+ *   rule allows gets 500, never a value and never an absent key, and a caller it refuses still reads the row;
+ * - nothing the walk wrote is in the app's log afterwards.
+ */
+async function sealWalk(
+  ctx: WalkContext,
+  state: State,
+  db: pg.Client,
+  key: Buffer,
+  findings: string[]
+): Promise<string> {
+  const { ir } = ctx;
+  const otherKey = Buffer.from(key.map(byte => byte ^ 0x5a));
+  let written = 0;
+  let read = 0;
+  let refused = 0;
+  let foreign = 0;
+  let n = 0;
+  /** Sealed columns no signed-in caller could write on a row of their own: said in the detail, since nothing was proven of them */
+  const unproven: string[] = [];
+  for (const { entity, resource } of state.walkable) {
+    const update = resource.operations.find(o => o.kind === "update" && o.rule.kind !== "none");
+    const get = resource.operations.find(o => o.kind === "get" && o.rule.kind !== "none");
+    if (!update || update.kind !== "update") continue;
+    const pk = entity.primaryKey[0];
+    const isIdentity = ir.auth?.identity === entity.name;
+    for (const column of sealedColumns(entity)) {
+      if (!update.fields.includes(column.name)) continue;
+      const name = `${entity.table}.${column.name}`;
+      const store = async (id: unknown, bytes: Buffer) => {
+        await db.query(`update "${entity.table}" set "${column.name}" = $1 where "${pk}" = $2`, [bytes, id]);
+      };
+      const held = async (id: unknown): Promise<unknown> =>
+        (await db.query(`select "${column.name}" as value from "${entity.table}" where "${pk}" = $1`, [id])).rows[0]
+          ?.value;
+      let proven = false;
+      for (const caller of state.actors) {
+        const own = isIdentity
+          ? caller.session?.id
+          : (state.rows.get(entity.name) ?? []).find(r => r.creator === caller && r.resource === resource)?.id;
+        if (own === undefined || own === null) continue;
+        const max = Math.min(column.maxLength ?? 255, column.validate?.max_length ?? 255);
+        const plaintext = `osl-seal-${++n} ✓ ünïcode 秘密`.slice(0, max);
+        const reply = await caller.client.resource({
+          resource,
+          op: update,
+          id: own,
+          body: { [column.name]: plaintext }
+        });
+        if (reply.status !== 200) continue;
+        written++;
+        sealedPlaintexts.set(plaintext, column.name);
+        const who = `${resource.name}.update as ${caller.name}`;
+        const stored = await held(own);
+        if (!Buffer.isBuffer(stored)) {
+          findings.push(
+            `${who}: ${name} holds ${stored === null ? "null" : typeof stored} after a write, not sealed bytes`
+          );
+          continue;
+        }
+        if (stored.includes(Buffer.from(plaintext, "utf8")))
+          findings.push(`${who}: the bytes ${name} holds contain the value that was written`);
+        try {
+          if (openValue(key, name, stored) !== plaintext)
+            findings.push(`${who}: ${name} opens to something other than what was written`);
+        } catch (error) {
+          findings.push(
+            `${who}: what ${name} holds does not open by the format's reference (${error instanceof Error ? error.message : error})`
+          );
+          continue;
+        }
+        const answered = (reply.body as { data?: Row } | null)?.data ?? {};
+        const mayRead = column.name in answered;
+        if (mayRead && answered[column.name] !== plaintext)
+          findings.push(`${who}: the answer to the write carries ${column.name}, and not as it was written`);
+        if (!get || get.kind !== "get") continue;
+        // What the reference seals, the backend reads: every caller reads the row, and the field watch holds each answer
+        const fromReference = `${plaintext} (sealed by the reference)`.slice(0, max);
+        sealedPlaintexts.set(fromReference, column.name);
+        await store(own, sealValue(key, name, fromReference));
+        const readers = new Set<Caller>();
+        const before = new Map<Caller, number>();
+        for (const viewer of state.callers) {
+          const answer = await viewer.client.resource({ resource, op: get, id: own });
+          before.set(viewer, answer.status);
+          if (answer.status !== 200) continue;
+          if (column.name in ((answer.body as { data?: Row } | null)?.data ?? {})) readers.add(viewer);
+          else refused++;
+        }
+        read += readers.size;
+        // Bytes that cannot be opened here: a caller the rule allows gets 500, never a value and never a missing key;
+        // a caller it refuses never opens them, so it reads the row as before
+        for (const [what, bytes] of [
+          ["a value sealed for another column", sealValue(key, `${entity.table}.osl_other_column`, fromReference)],
+          ["a value sealed under another key", sealValue(otherKey, name, fromReference)],
+          ["bytes that were never sealed", Buffer.from(fromReference, "utf8")]
+        ] as const) {
+          await store(own, bytes);
+          for (const viewer of state.callers) {
+            const answer = await viewer.client.resource({ resource, op: get, id: own });
+            const where = `${resource.name}.get as ${viewer.name} with ${what} in ${name}`;
+            if (readers.has(viewer)) {
+              if (answer.status !== 500) {
+                const row = (answer.body as { data?: Row } | null)?.data ?? {};
+                findings.push(
+                  `${where}: answered ${answer.status}${answer.status === 200 ? (column.name in row ? " with a value" : " without the field") : ""}, not 500`
+                );
+              } else if (JSON.stringify(answer.body).includes(fromReference))
+                findings.push(`${where}: the 500 carries the value`);
+              else foreign++;
+            } else if (answer.status !== before.get(viewer))
+              findings.push(
+                `${where}: answered ${answer.status} where it answered ${before.get(viewer)} before; a caller the field's rule refuses never opens the value`
+              );
+          }
+        }
+        await store(own, sealValue(key, name, plaintext));
+        proven = true;
+      }
+      if (!proven) unproven.push(name);
+    }
+  }
+  const log = ctx.serverLog?.() ?? "";
+  for (const plaintext of sealedPlaintexts.keys())
+    if (log.includes(plaintext)) findings.push(`the app's log carries a value that was written into a sealed field`);
+  const gaps = unproven.length
+    ? `; nothing proven of ${unproven.join(", ")} (no caller had a row of their own to write)`
+    : "";
+  return written
+    ? `${gaps}; ${written} sealed values written through the API and opened from the database by the format's reference, ${read} read back by callers the rule allows from bytes the reference sealed and ${refused} withheld, ${foreign} reads of bytes that do not open answered 500, the log carries none`
+    : gaps;
 }
 
 /** Keys no response may carry, and the shape of a raw key */
-function leakWalk(ir: IR, captured: { label: string; body: unknown }[], findings: string[]): string {
+function leakWalk(
+  ir: IR,
+  captured: { label: string; body: unknown }[],
+  findings: string[],
+  sealedValues: ReadonlyMap<string, string> = new Map()
+): string {
   const forbidden = new Set<string>(["password_hash", "key_hash", "token_hash"]);
   if (ir.auth?.passwordColumn) forbidden.add(ir.auth.passwordColumn);
   for (const entity of ir.entities) for (const column of entity.columns) if (column.hidden) forbidden.add(column.name);
@@ -1376,6 +1670,10 @@ function leakWalk(ir: IR, captured: { label: string; body: unknown }[], findings
     }
     if (typeof value === "string") {
       if (rawKey.test(value)) findings.push(`${label}: ${path} carries what looks like a raw key`);
+      // A value written into a sealed field is in an answer only under that field's own key
+      for (const [plaintext, column] of sealedValues)
+        if (value.includes(plaintext) && path.split(".").pop() !== column)
+          findings.push(`${label}: ${path} carries a value that was written into the sealed field ${column}`);
       return;
     }
     if (!value || typeof value !== "object") return;

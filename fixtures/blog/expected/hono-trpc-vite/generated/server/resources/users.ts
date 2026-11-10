@@ -6,6 +6,7 @@ import { z } from "zod";
 import { db } from "../../db/client";
 import * as schema from "../../db/schema";
 import { users as usersTable } from "../../db/schema";
+import { atRest } from "../../seal";
 import { presentArticle, presentUser, type Viewer } from "../../present";
 import { usersBanInput, usersId, usersListQuery, usersUpdateInput } from "../../validation";
 import { handlers } from "../../actions";
@@ -81,7 +82,7 @@ export const usersRouter = router({
       checkRule(RULES.update, ctx.session, existing);
       const hookContext: HookContext = { session: ctx.session, req: ctx.req };
       try {
-        const patch = await hooks.beforeUpdate(existing, input.data, hookContext);
+        const patch = await hooks.beforeUpdate(existing, atRest("users", input.data), hookContext);
         if (Object.keys(patch).length === 0) return presentUser(existing, ctx.session);
         const [row] = await db.update(usersTable).set(patch).where(eq(usersTable.id, id)).returning();
 

@@ -1,5 +1,6 @@
 import type { ColumnIR, EntityIR, IR, RuleIR } from "@osl/core";
 import { conditionedRules, pluralize, rowRules, ruledColumns } from "@osl/core";
+import { sealConst } from "./seal.js";
 import {
   HEADER,
   exported,
@@ -370,6 +371,12 @@ export function entitiesFile(ir: IR, modulePath: string): string {
         const row = columns.length
           ? `map[string]any{${columns.map(name => `${q(name)}: row.${exported(name)}`).join(", ")}}`
           : "nil";
+        if (c.sealed) {
+          // Opened here and nowhere else, and only once the rule has allowed this viewer; never for the server itself
+          imports.add(`${modulePath}/generated/seal`);
+          const opened = `seal.${c.nullable ? "MustOpenPtr" : "MustOpen"}(${sealConst(entity, c.name)}, row.${exported(c.name)})`;
+          return `\tif viewer != Server && viewer.Reads(${q(`${entity.name}.${c.name}`)}, ${row}) {\n\t\tout.${exported(c.name)} = Shown(${opened})\n\t}`;
+        }
         return `\tif viewer.Reads(${q(`${entity.name}.${c.name}`)}, ${row}) {\n\t\tout.${exported(c.name)} = Shown(${presentExpr(c)})\n\t}`;
       });
     const presentBody = viewed

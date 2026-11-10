@@ -221,6 +221,7 @@ export async function checkDrift(databaseUrl: string, ir: IR, options: DriftOpti
 }
 
 function expectedDataType(column: ColumnIR): string {
+  if (column.sealed) return "bytea";
   if (column.type.kind === "enum") return "USER-DEFINED";
   if (column.type.kind === "array") return "ARRAY";
   if (column.type.kind === "file") return "jsonb";

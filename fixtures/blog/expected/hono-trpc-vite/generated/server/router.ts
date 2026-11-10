@@ -10,6 +10,7 @@ import { commentsRouter } from "./resources/comments";
 import { announcementsRouter } from "./resources/announcements";
 import { followsRouter } from "./resources/follows";
 import { bulletinsRouter } from "./resources/bulletins";
+import { integrationsRouter } from "./resources/integrations";
 import { router } from "./trpc";
 
 export const appRouter = router({
@@ -21,7 +22,8 @@ export const appRouter = router({
   comments: commentsRouter,
   announcements: announcementsRouter,
   follows: followsRouter,
-  bulletins: bulletinsRouter
+  bulletins: bulletinsRouter,
+  integrations: integrationsRouter
 });
 
 export type AppRouter = typeof appRouter;

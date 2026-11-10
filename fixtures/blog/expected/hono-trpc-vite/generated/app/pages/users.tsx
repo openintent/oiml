@@ -8,10 +8,12 @@ import { Fragment, useEffect, useState, type FormEvent, type ReactNode } from "r
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { client, sessionUser, type Inputs, type Outputs, type SessionUser } from "../client";
-import { EmptyPane, ErrorNote, FieldRow, FormRow, ListSkeleton, Pagination, Pane, PaneHeader, PaneSkeleton, formatDateTime, splitList, text, yesNo } from "../ui";
+import { EmptyPane, ErrorNote, FieldRow, FormRow, ListSkeleton, Pagination, Pane, PaneHeader, PaneSkeleton, formatDateTime, formatJson, selectClass, splitList, text, yesNo } from "../ui";
 
 type Row = Outputs["users"]["list"]["data"][number];
 type Detail = Outputs["users"]["get"];
@@ -68,17 +70,21 @@ function guarded<P extends object>(Component: (props: P) => ReactNode) {
   };
 }
 
-const USERS_FIELDS = ["name", "phone"] as const;
+const USERS_FIELDS = ["name", "phone", "preferences", "recovery_code"] as const;
 type UsersField = (typeof USERS_FIELDS)[number];
 
 type UsersValues = {
   name: string;
   phone: string;
+  preferences: { theme: "light" | "dark"; digest: boolean; quiet_hours: { from: string; to: string } };
+  recovery_code: string;
 };
 
 const EMPTY_USERS: UsersValues = {
   name: "",
-  phone: ""
+  phone: "",
+  preferences: { theme: "light", digest: true, quiet_hours: { from: "", to: "" } },
+  recovery_code: ""
 };
 
 /** Fields with a read rule: an input is offered only to a viewer who may read the field, and a field that was not offered is not sent */
@@ -96,19 +102,28 @@ function sentUsers<T extends object>(input: T, readable: (field: string) => bool
   return out as T;
 }
 
-const USERS_UPDATE: readonly UsersField[] = ["name", "phone"];
+const USERS_UPDATE: readonly UsersField[] = ["name", "phone", "preferences", "recovery_code"];
 
 function toUsersUpdateInput(v: UsersValues): Input<"update">["data"] {
   return {
     name: v.name,
-    phone: (v.phone || null)
+    phone: (v.phone || null),
+    preferences: { theme: v.preferences.theme, digest: v.preferences.digest, quiet_hours: (v.preferences.quiet_hours.from === "" && v.preferences.quiet_hours.to === "" ? undefined : { from: Number(v.preferences.quiet_hours.from), to: Number(v.preferences.quiet_hours.to) }) },
+    recovery_code: (v.recovery_code === "" ? undefined : v.recovery_code)
   };
+}
+
+/** A stored JSON value as a record a form reads its keys from; anything else reads as no keys */
+function record(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
 function usersFromRow(row: Detail): UsersValues {
   return {
     name: text(row.name),
-    phone: text(row.phone)
+    phone: text(row.phone),
+    preferences: { theme: record(row.preferences).theme === "light" ? "light" : record(row.preferences).theme === "dark" ? "dark" : "light", digest: record(row.preferences).digest === undefined ? true : record(row.preferences).digest === true, quiet_hours: { from: record(record(row.preferences).quiet_hours).from == null ? "" : text(record(record(row.preferences).quiet_hours).from), to: record(record(row.preferences).quiet_hours).to == null ? "" : text(record(record(row.preferences).quiet_hours).to) } },
+    recovery_code: ""
   };
 }
 
@@ -126,6 +141,37 @@ function renderUsersField(field: UsersField, values: UsersValues, set: UsersSett
       return (
       <FormRow label="Phone" htmlFor="phone">
         <Input id="phone" type="text" maxLength={40} value={values.phone} onChange={e => set("phone", e.target.value)} />
+      </FormRow>
+      );
+    case "preferences":
+      return (
+      <fieldset className="grid gap-3 rounded-md border p-3">
+        <legend className="px-1 text-sm font-medium">Preferences</legend>
+        <FormRow label="Theme" htmlFor="preferences.theme">
+          <select id="preferences.theme" className={selectClass} value={values.preferences.theme} onChange={e => set("preferences", { ...values.preferences, theme: e.target.value as "light" | "dark" })}>
+            <option value="light">light</option>
+            <option value="dark">dark</option>
+          </select>
+        </FormRow>
+        <div className="flex items-center gap-2">
+          <Checkbox id="preferences.digest" checked={values.preferences.digest} onCheckedChange={checked => set("preferences", { ...values.preferences, digest: checked === true })} />
+          <Label htmlFor="preferences.digest">Digest</Label>
+        </div>
+        <fieldset className="grid gap-3 rounded-md border p-3">
+          <legend className="px-1 text-sm font-medium">Quiet Hours</legend>
+          <FormRow label="From" htmlFor="preferences.quiet_hours.from">
+            <Input id="preferences.quiet_hours.from" type="number" step="1" value={values.preferences.quiet_hours.from} onChange={e => set("preferences", { ...values.preferences, quiet_hours: { ...values.preferences.quiet_hours, from: e.target.value } })} required />
+          </FormRow>
+          <FormRow label="To" htmlFor="preferences.quiet_hours.to">
+            <Input id="preferences.quiet_hours.to" type="number" step="1" value={values.preferences.quiet_hours.to} onChange={e => set("preferences", { ...values.preferences, quiet_hours: { ...values.preferences.quiet_hours, to: e.target.value } })} required />
+          </FormRow>
+        </fieldset>
+      </fieldset>
+      );
+    case "recovery_code":
+      return (
+      <FormRow label="Recovery Code" htmlFor="recovery_code">
+        <Input id="recovery_code" type="password" autoComplete="new-password" placeholder="Sealed: leave empty to keep what is stored" value={values.recovery_code} onChange={e => set("recovery_code", e.target.value)} />
       </FormRow>
       );
   }
@@ -401,6 +447,12 @@ function UsersDetailInner() {
         <FieldRow label="Approved Count">{text(row.approved_count) || "—"}</FieldRow>
         {"phone" in row ? (
           <FieldRow label="Phone">{text(row.phone) || "—"}</FieldRow>
+        ) : null}
+        <FieldRow label="Preferences">
+          <pre className="overflow-x-auto rounded-md bg-muted p-3 text-xs">{formatJson(row.preferences) || "—"}</pre>
+        </FieldRow>
+        {"recovery_code" in row ? (
+          <FieldRow label="Recovery Code">{text(row.recovery_code) || "—"}</FieldRow>
         ) : null}
         <FieldRow label="Posts">
           {row.posts.length === 0 ? (

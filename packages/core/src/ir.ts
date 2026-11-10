@@ -39,6 +39,7 @@ import {
 } from "./model.js";
 import { defaultTableName, relationNameFromColumn, toSnakeCase, toTitleCase } from "./naming.js";
 import { sqlType } from "./migrations.js";
+import { compileShape, shapeByOf, type ShapeByIR, type ShapeKeyIR } from "./shapes.js";
 
 export type Scalar =
   | "string"
@@ -98,6 +99,17 @@ export interface ColumnIR {
   money?: MoneyIR;
   /** A number the database assigns on insert (`EntityIR.sequences`): a string, never null, read-only to clients */
   sequence?: { prefix: string; width: number };
+  /**
+   * Encrypted at rest (`sealed: true`): the column is `bytea` whatever `type` says, and `type` is what a writer
+   * sends and an allowed reader gets back. `read` is always set on a sealed column that is not hidden (`none`
+   * unless the field names its readers), and the server as a viewer never carries the value: not in an event,
+   * not in the user a session keeps.
+   */
+  sealed?: true;
+  /** A JSON column's keys (`shape:`): every write is held to them */
+  shape?: ShapeKeyIR[];
+  /** A JSON column's keys per value of an enum column of the same entity (`shape_by:`) */
+  shapeBy?: ShapeByIR;
   /** Relation name when this column is a foreign key */
   relation?: string;
   /** Enum values for columns that are not stored (action inputs and results), where no database enum exists */
@@ -1206,6 +1218,17 @@ export function compile(input: Model): IR {
     }
     if (field.max_length) column.maxLength = field.max_length;
     else if (field.type === "string" || field.type === "sequence") column.maxLength = 255;
+    if (field.sealed && stored) column.sealed = true;
+    if (field.shape !== undefined) column.shape = compileShape(field.shape);
+    const shapedBy = stored ? shapeByOf(field) : undefined;
+    if (shapedBy)
+      column.shapeBy = {
+        column: shapedBy.by,
+        // In the enum's declared order, whatever order the shapes were written in
+        shapes: (allEntities[owner]?.fields[shapedBy.by]?.enum_values ?? Object.keys(shapedBy.shapes))
+          .filter(value => shapedBy.shapes[value] !== undefined)
+          .map(value => ({ value, keys: compileShape(shapedBy.shapes[value]) }))
+      };
     if (field.type === "money") {
       const money: MoneyIR = field.currency !== undefined ? { currency: field.currency } : {};
       if (field.currency_field !== undefined) money.currencyField = field.currency_field;
@@ -1228,6 +1251,8 @@ export function compile(input: Model): IR {
 
     for (const [fieldName, field] of Object.entries(entity.fields)) {
       const column = compileColumn(entityName, fieldName, field, primaryKey, true);
+      // A sealed field leaves the server for the callers its read rule names, and for nobody when it names none
+      if (field.sealed && !field.hidden && !field.read) column.read = { kind: "none" };
       if (field.read)
         column.read = parseRule(
           field.read,
@@ -1571,6 +1596,9 @@ export function compile(input: Model): IR {
           !c.hidden &&
           !c.readOnly &&
           !isBytes(c) &&
+          // A sealed field, and a value whose shape follows an enum, are written through the resource or a handler
+          !c.sealed &&
+          !c.shapeBy &&
           c.type.kind !== "file" &&
           c.name !== model.auth!.email_field &&
           c.name !== "role" &&
@@ -2167,6 +2195,7 @@ function defaultColumns(entity: EntityIR, outputFields: string[]): string[] {
     c =>
       outputFields.includes(c.name) &&
       !c.primary &&
+      !c.sealed &&
       !entity.foreignKeys.some(fk => fk.column === c.name) &&
       isShortScalar(c)
   );
@@ -2177,6 +2206,26 @@ function defaultColumns(entity: EntityIR, outputFields: string[]): string[] {
 /** The columns of an entity that carry a read rule: present in a response only for a caller the rule allows */
 export function ruledColumns(entity: EntityIR): ColumnIR[] {
   return entity.columns.filter(c => c.read !== undefined && !c.hidden);
+}
+
+/** The sealed columns of an entity: bytea in the database, a string to a writer and to a reader the rule allows */
+export function sealedColumns(entity: EntityIR): ColumnIR[] {
+  return entity.columns.filter(c => c.sealed);
+}
+
+/** Whether the model has a sealed field, so the app needs OSL_SEAL_KEY and refuses to start without it */
+export function hasSealed(ir: IR): boolean {
+  return ir.entities.some(e => sealedColumns(e).length > 0);
+}
+
+/** The names sealed values are bound to, `<table>.<column>`, in model order */
+export function sealedNames(ir: IR): string[] {
+  return ir.entities.flatMap(e => sealedColumns(e).map(c => `${e.table}.${c.name}`));
+}
+
+/** The JSON columns of an entity whose value has a declared shape, one or one per enum value */
+export function shapedColumns(entity: EntityIR): ColumnIR[] {
+  return entity.columns.filter(c => c.shape !== undefined || c.shapeBy !== undefined);
 }
 
 /** Whether any entity has a field with a read rule, so presenters take a viewer and the session answers `fields` */

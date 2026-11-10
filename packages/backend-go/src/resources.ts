@@ -20,11 +20,14 @@ import {
   ruleAlternatives,
   rulePaths,
   ruleMemberships,
+  sealedColumns,
   transitionOf,
   type MembershipIR
 } from "@osl/core";
 import type { AlternativeIR, PredicateIR, RowRuleIR, RuleConditionIR, RuleHopIR } from "@osl/core";
 import { actionParseFunc } from "./actions.js";
+import { sealConst } from "./seal.js";
+import { shapeGuard } from "./shapes.js";
 import { fileSpecsLiteral } from "./auth.js";
 import { eventFunc } from "./events.js";
 import { isStatementAction, statementCall } from "./rowactions.js";
@@ -1097,6 +1100,25 @@ ${body}
 }`);
   }
 
+  /** A written string of a sealed column becomes the bytes the column stores, before a hook or the insert sees it */
+  const sealLines = (fields: string[], values: string): string => {
+    const sealed = sealedColumns(entity).filter(c => fields.includes(c.name));
+    if (sealed.length) imports.add(`${modulePath}/generated/seal`);
+    return sealed
+      .map(
+        c => `\tif plain, ok := ${values}[${q(c.name)}].(string); ok {
+		${values}[${q(c.name)}] = seal.Seal(${sealConst(entity, c.name)}, plain)
+	}
+`
+      )
+      .join("");
+  };
+  /** A value whose shape follows an enum of its row is held to it once the body is parsed (and the row loaded) */
+  const shapeLines = (mode: "create" | "update", fields: string[], values: string): string => {
+    const lines = shapeGuard(entity, resource, fields, mode, values);
+    if (lines.includes("json.RawMessage")) imports.add("encoding/json");
+    return lines;
+  };
   // A row written with a timed field set schedules the entity's timers
   const hasTimers = ir.timers.some(t => t.entity === entity.name);
   if (hasTimers) imports.add(`${modulePath}/generated/scheduling`);
@@ -1145,7 +1167,7 @@ func (h *${handler}) Create(c *gin.Context) {
 ${fail("write")}
 ${DENY(ruleVar("create"))}
 ${PARSE_BODY(`validation.${inputVar(resource, "create")}`, "values")}
-${bodyCheck}${resolveFiles("values")}${create.ownerField ? `\tvalues[${q(create.ownerField)}] = session.User.${identityPk}\n` : ""}	hookCtx := &hooks.Context{Gin: c, Session: session}
+${shapeLines("create", create.fields, "values")}${bodyCheck}${sealLines(create.fields, "values")}${resolveFiles("values")}${create.ownerField ? `\tvalues[${q(create.ownerField)}] = session.User.${identityPk}\n` : ""}	hookCtx := &hooks.Context{Gin: c, Session: session}
 	values, err = ${hooksPkg}.BeforeCreate(hookCtx, values)
 ${fail("write")}
 ${insert}
@@ -1171,7 +1193,7 @@ ${PARSE_ID(idFunc(resource))}
 ${failLoad(entity, "write", ruleVar("update"))}
 ${rowChecks(entity, ruleVar("read"), ruleVar("update"), entity.rules.update, "existing", "write", allRules, ruleRowSessionArg(allRules))}
 ${PARSE_BODY(`validation.${inputVar(resource, "update")}`, "patch")}
-${currencyGuard(entity, update.fields)}${resolveFiles("patch")}	hookCtx := &hooks.Context{Gin: c, Session: session}
+${currencyGuard(entity, update.fields)}${shapeLines("update", update.fields, "patch")}${sealLines(update.fields, "patch")}${resolveFiles("patch")}	hookCtx := &hooks.Context{Gin: c, Session: session}
 	patch, err = ${hooksPkg}.BeforeUpdate(hookCtx, existing, patch)
 ${fail("write")}
 	if len(patch) == 0 {

@@ -105,6 +105,25 @@ func ParseAnnouncementsPublishInput(values models.Values) AnnouncementsPublishIn
 	return input
 }
 
+// IntegrationsSignInput is the validated body of POST /api/integrations/{id}/sign.
+type IntegrationsSignInput struct {
+	Payload string
+}
+
+// ParseIntegrationsSignInput reads the validated values into the typed input.
+func ParseIntegrationsSignInput(values models.Values) IntegrationsSignInput {
+	var input IntegrationsSignInput
+	if v, ok := values["payload"]; ok && v != nil {
+		input.Payload = v.(string)
+	}
+	return input
+}
+
+// IntegrationsSignResult is what the sign action answers with.
+type IntegrationsSignResult struct {
+	Signature string `json:"signature"`
+}
+
 // SendDigestInput is the validated body of POST /api/actions/send_digest.
 type SendDigestInput struct {
 	Subject string

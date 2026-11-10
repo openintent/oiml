@@ -1,5 +1,6 @@
 import type { ActionIR, ColumnIR, EntityIR, IR, OperationIR, ResourceIR } from "@osl/core";
 import { HEADER, cap, column, entityByName, exported, goFile, q, singlePrimaryKey } from "./util.js";
+import { shapeLiteral, shapeUsesJson, shapesVar } from "./shapes.js";
 
 /** generated/validation/types.go: the validation runtime. Static. */
 export function validationRuntimeFile(modulePath: string): string {
@@ -791,6 +792,8 @@ func isURL(s string) bool {
 /** Go expression for a validation.Type that checks a column's value */
 /** `p` is the package qualifier: "validation." from other packages, "" inside it. */
 export function typeExpr(ir: IR, col: ColumnIR, mode: "body" | "filter", p = "validation."): string {
+  // A JSON value with a shape is held to it here; one whose shape follows an enum of its row is held by the handler
+  if (mode === "body" && col.shape) return shapeLiteral(col.shape, p, "\t");
   const t = col.type;
   if (t.kind === "enum") {
     const values = col.enumValues ?? ir.enums.find(e => e.name === t.name)?.values ?? [];
@@ -899,6 +902,8 @@ export function actionInputVar(action: ActionIR): string {
 /** generated/validation/resources.go: id parsers, body shapes and query shapes per resource. */
 export function validationResourcesFile(ir: IR, modulePath: string): string {
   const sections: string[] = [];
+  // A shape's default is JSON as written: the file that names one imports encoding/json
+  let usesJson = ir.entities.some(e => e.columns.some(c => c.shape && shapeUsesJson(c.shape)));
   for (const resource of ir.resources) {
     const entity = entityByName(ir, resource.entity);
     const id = idParser(entity, "");
@@ -906,6 +911,20 @@ export function validationResourcesFile(ir: IR, modulePath: string): string {
 func ${idFunc(resource)}(raw string) (${id.goType}, bool) {
 	return ${id.call}(raw)
 }`);
+    // The shapes of a value that follows an enum field, by the enum's value: the handlers hold a write to one
+    const written = new Set(
+      resource.operations.flatMap(op => (op.kind === "create" || op.kind === "update" ? op.fields : []))
+    );
+    for (const col of entity.columns.filter(c => c.shapeBy !== undefined && written.has(c.name))) {
+      const name = shapesVar(resource, col);
+      const local = `${name.charAt(0).toLowerCase()}${name.slice(1)}`;
+      for (const shape of col.shapeBy!.shapes) {
+        if (shapeUsesJson(shape.keys)) usesJson = true;
+        sections.push(`var ${local}${exported(shape.value)} = ${shapeLiteral(shape.keys, "")}`);
+      }
+      sections.push(`// ${name} holds the shape of ${resource.entity}.${col.name} for each value of ${col.shapeBy!.column}.
+var ${name} = map[string]Shape{${col.shapeBy!.shapes.map(shape => `${q(shape.value)}: ${local}${exported(shape.value)}`).join(", ")}}`);
+    }
     for (const op of resource.operations) {
       if (op.kind === "create" || op.kind === "update") {
         const fields = op.fields.map(f => fieldLiteral(ir, column(entity, f), op.kind, ""));
@@ -927,7 +946,7 @@ var ${actionInputVar(action)} = ${objectLiteral(fields, "")}`);
     modulePath,
     HEADER("Input validation for every resource operation."),
     "validation",
-    [],
+    usesJson ? ["encoding/json"] : [],
     sections.join("\n\n")
   );
 }

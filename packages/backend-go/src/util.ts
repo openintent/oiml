@@ -170,6 +170,8 @@ function isReference(type: string): boolean {
 
 /** Go type of a column in a row struct; file columns hold the stored snapshot (models.FileRef) */
 export function rowGoType(col: ColumnIR): string {
+  // A sealed column holds ciphertext; the seal package turns it back into the string that was written
+  if (col.sealed) return "[]byte";
   const base = baseGo(col, scalarGo, "FileRef");
   return col.nullable && !isReference(base) ? `*${base}` : base;
 }

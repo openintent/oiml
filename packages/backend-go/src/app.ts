@@ -1,5 +1,5 @@
 import type { GeneratedFile, IR } from "@osl/core";
-import { globalActions, hasFieldRules } from "@osl/core";
+import { globalActions, hasFieldRules, hasSealed } from "@osl/core";
 import { hasScheduling } from "./scheduling.js";
 import { HEADER, SCAFFOLD_HEADER, exported, goFile } from "./util.js";
 
@@ -40,6 +40,12 @@ export function appFile(ir: IR, modulePath: string): string {
   if (isolated) imports.push(`${modulePath}/generated/db`);
   // The auth service is handed what the access package knows about fields with a read rule
   if (ir.auth && hasFieldRules(ir)) imports.push(`${modulePath}/generated/access`);
+  // Sealed fields: the key is read as the app starts, and the app does not start without it
+  const sealed = hasSealed(ir);
+  if (sealed) imports.push(`${modulePath}/generated/seal`);
+  const sealStart = sealed
+    ? "\t// Sealed fields: no key, no server. Both the server and the worker start here.\n\tif err := seal.Load(); err != nil {\n\t\treturn err\n\t}\n"
+    : "";
   const requests = isolated ? "requests" : "pool";
   const registrations: string[] = [];
   if (scheduling) registrations.push(`\tscheduling.Use(pool)`);
@@ -65,7 +71,7 @@ export function appFile(ir: IR, modulePath: string): string {
   const start = ir.jobs
     ? `// Start runs the background work: River's migrations and, unless OSL_ROLE is web, the worker for queued events, schedules and timers.
 func Start(ctx context.Context, pool *pgxpool.Pool) error {
-	${scheduling ? "scheduling.Use(pool)\n\treturn jobs.Start(ctx, pool, events.RunQueued, scheduling.Periodic(), scheduling.RunTimerJob)" : "return jobs.Start(ctx, pool, events.RunQueued, nil, nil)"}
+${sealStart}	${scheduling ? "scheduling.Use(pool)\n\treturn jobs.Start(ctx, pool, events.RunQueued, scheduling.Periodic(), scheduling.RunTimerJob)" : "return jobs.Start(ctx, pool, events.RunQueued, nil, nil)"}
 }
 
 // Stop lets running jobs finish.
@@ -74,7 +80,7 @@ func Stop(ctx context.Context) error {
 }`
     : `// Start runs the background work; the model queues no events, so there is none.
 func Start(ctx context.Context, pool *pgxpool.Pool) error {
-	return nil
+${sealStart}	return nil
 }
 
 // Stop ends the background work.
@@ -89,7 +95,7 @@ func Stop(ctx context.Context) error {
     `// New builds the engine. Add your own middleware and routes to the result in cmd/server.${isolated ? "\n// pool is the owner's (DATABASE_URL): the worker's jobs act through it. Requests use the app role's (DATABASE_APP_URL)." : ""}
 func New(pool *pgxpool.Pool) *gin.Engine {
 	r := gin.New()
-	r.Use(gin.Recovery())
+	r.Use(${sealed ? "gin.CustomRecovery(recovered)" : "gin.Recovery()"})
 ${scope}	r.GET("/healthz", healthz)
 	r.GET("/api/openapi.json", openapi)
 	a := auth.New(${requests}${ir.auth && hasFieldRules(ir) ? ", auth.Visibility{Viewer: access.Viewer, Fields: access.VisibleFields}" : ""})
@@ -99,7 +105,17 @@ ${registrations.join("\n")}${registrations.length ? "\n" : ""}	return r
 
 ${start}
 
-func healthz(c *gin.Context) {
+${
+  sealed
+    ? `// recovered answers a request that panicked, as when a sealed value does not open under the key: 500 in the
+// contract's shape. Gin has logged the panic by then, which names the column and never the value.
+func recovered(c *gin.Context, _ any) {
+	c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "internal", "message": "Something went wrong"}})
+}
+
+`
+    : ""
+}func healthz(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 

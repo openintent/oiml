@@ -3,6 +3,7 @@
 
 import { PgBoss } from "pg-boss";
 import { QUEUED_EVENTS, runQueued } from "./events";
+import { sealKey } from "./seal";
 import { SCHEDULES, TIMERS, runSchedule, runTimerJob } from "./scheduling";
 
 /** Every queue the app uses: one per queued event, schedule and timer */
@@ -47,6 +48,8 @@ export async function enqueueAt(name: string, payload: object, at: Date): Promis
 
 /** Run queued events in this process; a no-op in the web role. */
 export async function startWorker(): Promise<void> {
+  // Sealed fields: no key, no server. This runs as the server starts, in every role.
+  sealKey();
   if (role() === "web") return;
   const boss = await getBoss();
   for (const name of QUEUED_EVENTS) {

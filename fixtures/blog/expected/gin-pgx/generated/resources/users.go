@@ -18,6 +18,7 @@ import (
 	"blog/generated/hooks"
 	"blog/generated/httpx"
 	"blog/generated/models"
+	"blog/generated/seal"
 	"blog/generated/validation"
 	usershooks "blog/src/extensions/users"
 )
@@ -165,6 +166,9 @@ func (h *Users) Update(c *gin.Context) {
 	if perr != nil {
 		httpx.Fail(c, perr)
 		return
+	}
+	if plain, ok := patch["recovery_code"].(string); ok {
+		patch["recovery_code"] = seal.Seal(seal.UsersRecoveryCode, plain)
 	}
 	hookCtx := &hooks.Context{Gin: c, Session: session}
 	patch, err = usershooks.BeforeUpdate(hookCtx, existing, patch)

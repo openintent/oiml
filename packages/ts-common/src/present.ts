@@ -37,6 +37,8 @@ export function creatorViewer(ir: IR, session: string, tenantId: string): string
 /** generated/present.ts: public shapes of every entity, hidden columns removed, file snapshots given their URL. */
 export function presentFile(ir: IR, conv: TsConventions, modules?: PresentModules): string {
   const ruled = hasFieldRules(ir);
+  // A sealed column that is not hidden always has a read rule, so the entity's presenter takes the viewer
+  const sealed = ir.entities.some(e => ruledColumns(e).some(c => c.sealed));
   if (ruled && !modules) throw new Error("presentFile needs the access and auth modules when a field has a read rule");
   // Under isolation: database a test hook switches the rule checks off; a field rule has no policy behind it and stays on
   const check = isolationOf(ir) ? "judge" : "verdict";
@@ -48,6 +50,7 @@ export function presentFile(ir: IR, conv: TsConventions, modules?: PresentModule
     ),
     `import type * as schema from "./db/schema";`,
     ...(ir.files ? [`import { presentFileRef, type PublicFile } from "./files";`] : []),
+    ...(sealed ? [`import { unseal } from "./seal";`] : []),
     ...(ruled
       ? [
           `import { memberTenantIds, ${check}, type Rule } from ${q(modules!.access)};`,
@@ -82,10 +85,15 @@ export function presentFile(ir: IR, conv: TsConventions, modules?: PresentModule
       continue;
     }
     // Fields with a read rule: optional in the shape, set only for a viewer the rule allows on this row
-    const somePlain = some.filter(c => c.type.kind !== "file");
+    const somePlain = some.filter(c => c.type.kind !== "file" && !c.sealed);
     const someFiles = some.filter(c => c.type.kind === "file");
+    // A sealed field is the string that was written, not the bytes the row holds
+    const someSealed = some.filter(c => c.sealed);
     const optional = [
       ...(somePlain.length ? [` & Partial<Pick<schema.${T}, ${somePlain.map(c => q(c.name)).join(" | ")}>>`] : []),
+      ...(someSealed.length
+        ? [` & { ${someSealed.map(c => `${c.name}?: string${c.nullable ? " | null" : ""}`).join("; ")} }`]
+        : []),
       ...(someFiles.length
         ? [` & { ${someFiles.map(c => `${c.name}?: PublicFile${c.nullable ? " | null" : ""}`).join("; ")} }`]
         : [])
@@ -94,6 +102,15 @@ export function presentFile(ir: IR, conv: TsConventions, modules?: PresentModule
     out.push(`export function present${T}(row: schema.${T}, viewer: Viewer): Public${T} {`);
     out.push(`  const out: Public${T} = { ${parts.join(", ")} };`);
     for (const c of some) {
+      if (c.sealed) {
+        // Opened here and nowhere else, and only once the rule has allowed this viewer; never for the server itself
+        const opened = `unseal(${q(`${entity.table}.${c.name}`)}, row.${c.name})`;
+        const value = c.nullable ? `row.${c.name} === null ? null : ${opened}` : opened;
+        out.push(
+          `  if (viewer !== SERVER && reads(FIELD_RULES.${T}.${c.name}, viewer, row)) out.${c.name} = ${value};`
+        );
+        continue;
+      }
       const value = c.type.kind === "file" ? `presentFileRef(row.${c.name})${c.nullable ? "" : "!"}` : `row.${c.name}`;
       out.push(`  if (reads(FIELD_RULES.${T}.${c.name}, viewer, row)) out.${c.name} = ${value};`);
     }
@@ -131,7 +148,7 @@ function viewerSource(ir: IR, check: string): string {
         .join(", ")} }`;
     })
     .join(",\n");
-  return `/** The server itself as a viewer: it reads every field (an event's payload, the user a session keeps for its rules) */
+  return `/** The server itself as a viewer: it reads every field${ir.entities.some(e => e.columns.some(c => c.sealed)) ? " but a sealed one" : ""} (an event's payload, the user a session keeps for its rules) */
 export const SERVER = "server" as const;
 
 /**

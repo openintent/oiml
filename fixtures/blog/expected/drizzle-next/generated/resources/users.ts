@@ -9,6 +9,7 @@ import { checkRule, denied, type Rule } from "../access";
 import { handlers } from "../actions";
 import { getSession, type Session } from "../auth";
 import { handleError, notFound, ok, parseBody, parseId, parseQuery } from "../http";
+import { atRest } from "../seal";
 import { presentArticle, presentUser, type Viewer } from "../present";
 import { usersBanInput, usersId, usersListQuery, usersUpdateInput } from "../validation";
 import { hooks } from "@/src/extensions/users";
@@ -90,7 +91,7 @@ export const users = {
       const body = await parseBody(usersUpdateInput, request);
       if (!body.ok) return body.response;
       const hookContext: HookContext = { request, session };
-      const patch = await hooks.beforeUpdate(existing, body.data, hookContext);
+      const patch = await hooks.beforeUpdate(existing, atRest("users", body.data), hookContext);
       if (Object.keys(patch).length === 0) return ok(presentUser(existing, session));
       const [row] = await db.update(usersTable).set(patch).where(eq(usersTable.id, id.data)).returning();
 

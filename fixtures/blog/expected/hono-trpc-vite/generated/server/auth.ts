@@ -5,6 +5,7 @@ import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypt
 import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
+import { unknownKey } from "../validation";
 import { db } from "../db/client";
 import { users as usersTable } from "../db/schema";
 import { toTRPCError } from "./errors";
@@ -102,7 +103,19 @@ const registerInput = z
   email: z.string().email().max(255),
   password: z.string().min(8).max(200),
   name: z.string().min(1).max(100),
-  phone: z.string().max(40).nullish()
+  phone: z.string().max(40).nullish(),
+  preferences: z
+      .object({
+        theme: z.enum(["light", "dark"]).default("light"),
+        digest: z.boolean().default(true),
+        quiet_hours: z
+          .object({
+            from: z.number().int().min(0).max(23),
+            to: z.number().int().min(0).max(23)
+          })
+          .catchall(unknownKey).optional()
+      })
+      .catchall(unknownKey).nullish()
   })
   .strict();
 

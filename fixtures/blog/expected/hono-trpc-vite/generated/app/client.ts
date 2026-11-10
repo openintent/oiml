@@ -97,6 +97,14 @@ export const client = {
     create: (input: Inputs["bulletins"]["create"]) => trpc.bulletins.create.mutate(input),
     update: (input: Inputs["bulletins"]["update"]) => trpc.bulletins.update.mutate(input),
     delete: (input: Inputs["bulletins"]["delete"]) => trpc.bulletins.delete.mutate(input)
+  },
+  integrations: {
+    list: (input: Inputs["integrations"]["list"]) => trpc.integrations.list.query(input),
+    get: (input: Inputs["integrations"]["get"]) => trpc.integrations.get.query(input),
+    create: (input: Inputs["integrations"]["create"]) => trpc.integrations.create.mutate(input),
+    update: (input: Inputs["integrations"]["update"]) => trpc.integrations.update.mutate(input),
+    delete: (input: Inputs["integrations"]["delete"]) => trpc.integrations.delete.mutate(input),
+    sign: (input: Inputs["integrations"]["sign"]) => trpc.integrations.sign.mutate(input)
   }
 };
 
@@ -110,8 +118,9 @@ export function sessionUser(session: Session | undefined): SessionUser | null {
 
 /** What a visitor could read of the fields with a read rule: nobody is signed in, so the rules alone answer */
 const VISITOR_FIELDS: VisibleFields = {
-  users: { banned_at: false, phone: false },
-  posts: { editor_note: false }
+  users: { banned_at: false, phone: false, recovery_code: false },
+  posts: { editor_note: false },
+  integrations: { secret: false, token: false }
 };
 
 /**

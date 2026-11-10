@@ -23,6 +23,7 @@ services:
       - "3000:3000"
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/blog
+      OSL_SEAL_KEY: ${OSL_SEAL_KEY:?set OSL_SEAL_KEY to the key sealed fields are encrypted under (64 hexadecimal characters, 32 bytes: openssl rand -hex 32)}
       OSL_SESSION_SECRET: change-me-to-a-long-random-string
       OSL_APP_URL: http://localhost:3000
       OSL_ROLE: all
@@ -35,6 +36,7 @@ services:
     command: ["node_modules/.bin/next","start"]
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/blog
+      OSL_SEAL_KEY: ${OSL_SEAL_KEY:?set OSL_SEAL_KEY to the key sealed fields are encrypted under (64 hexadecimal characters, 32 bytes: openssl rand -hex 32)}
       OSL_ROLE: worker
     depends_on:
       postgres:

@@ -4,8 +4,8 @@
 import { QueryClient } from "@tanstack/react-query";
 import type { z } from "zod";
 import type { FileRecord } from "../files";
-import type { PublicAnnouncement, PublicArticle, PublicBulletin, PublicComment, PublicFollow, PublicUser, VisibleFields } from "../present";
-import type { announcementsCreateInput, announcementsListQuery, announcementsPublishInput, announcementsUpdateInput, bulletinsCreateInput, bulletinsListQuery, bulletinsUpdateInput, commentsCreateInput, commentsListQuery, commentsUpdateInput, followsCreateInput, followsListQuery, postsApproveInput, postsArchiveInput, postsCreateInput, postsListQuery, postsLockInput, postsPublishInput, postsRejectInput, postsRestoreInput, postsRetireInput, postsSubmitInput, postsUnlockInput, postsUnpublishAllInput, postsUpdateInput, sendDigestInput, usersBanInput, usersListQuery, usersUpdateInput } from "../validation";
+import type { PublicAnnouncement, PublicArticle, PublicBulletin, PublicComment, PublicFollow, PublicIntegration, PublicUser, VisibleFields } from "../present";
+import type { announcementsCreateInput, announcementsListQuery, announcementsPublishInput, announcementsUpdateInput, bulletinsCreateInput, bulletinsListQuery, bulletinsUpdateInput, commentsCreateInput, commentsListQuery, commentsUpdateInput, followsCreateInput, followsListQuery, integrationsCreateInput, integrationsListQuery, integrationsSignInput, integrationsUpdateInput, postsApproveInput, postsArchiveInput, postsCreateInput, postsListQuery, postsLockInput, postsPublishInput, postsRejectInput, postsRestoreInput, postsRetireInput, postsSubmitInput, postsUnlockInput, postsUnpublishAllInput, postsUpdateInput, sendDigestInput, usersBanInput, usersListQuery, usersUpdateInput } from "../validation";
 
 export class ApiError extends Error {
   constructor(
@@ -53,7 +53,7 @@ async function call<T>(method: string, path: string, options: { query?: Record<s
 export type Inputs = {
   auth: {
     login: { email: string; password: string };
-    register: { email: string; password: string; name?: unknown; phone?: unknown };
+    register: { email: string; password: string; name?: unknown; phone?: unknown; preferences?: unknown };
     magic_link: { email: string };
     magic_link_verify: { token: string };
   };
@@ -115,6 +115,14 @@ export type Inputs = {
     create: z.input<typeof bulletinsCreateInput>;
     update: { id: string; data: z.input<typeof bulletinsUpdateInput> };
     delete: { id: string };
+  };
+  integrations: {
+    list: z.input<typeof integrationsListQuery>;
+    get: { id: string };
+    create: z.input<typeof integrationsCreateInput>;
+    update: { id: string; data: z.input<typeof integrationsUpdateInput> };
+    delete: { id: string };
+    sign: z.input<typeof integrationsSignInput> & { id: string };
   };
 };
 
@@ -187,6 +195,14 @@ export type Outputs = {
     create: PublicBulletin;
     update: PublicBulletin;
     delete: null;
+  };
+  integrations: {
+    list: { data: (PublicIntegration)[]; page: Page };
+    get: PublicIntegration & { owner: PublicUser | null };
+    create: PublicIntegration;
+    update: PublicIntegration;
+    delete: null;
+    sign: { signature: string };
   };
 };
 
@@ -268,6 +284,14 @@ export const client = {
     create: (input: Inputs["bulletins"]["create"]) => call<PublicBulletin>("POST", "/api/bulletins", { body: input }),
     update: ({ id, data }: Inputs["bulletins"]["update"]) => call<PublicBulletin>("PATCH", "/api/bulletins" + "/" + id, { body: data }),
     delete: ({ id }: Inputs["bulletins"]["delete"]) => call<null>("DELETE", "/api/bulletins" + "/" + id)
+  },
+  integrations: {
+    list: (input: Inputs["integrations"]["list"]) => call<Outputs["integrations"]["list"]>("GET", "/api/integrations", { query: input as Record<string, unknown>, whole: true }),
+    get: ({ id }: Inputs["integrations"]["get"]) => call<Outputs["integrations"]["get"]>("GET", "/api/integrations" + "/" + id),
+    create: (input: Inputs["integrations"]["create"]) => call<PublicIntegration>("POST", "/api/integrations", { body: input }),
+    update: ({ id, data }: Inputs["integrations"]["update"]) => call<PublicIntegration>("PATCH", "/api/integrations" + "/" + id, { body: data }),
+    delete: ({ id }: Inputs["integrations"]["delete"]) => call<null>("DELETE", "/api/integrations" + "/" + id),
+    sign: ({ id, ...input }: Inputs["integrations"]["sign"]) => call<{ signature: string }>("POST", "/api/integrations" + "/" + id + "/sign", { body: input })
   }
 };
 
@@ -281,8 +305,9 @@ export function sessionUser(session: Session | undefined): SessionUser | null {
 
 /** What a visitor could read of the fields with a read rule: nobody is signed in, so the rules alone answer */
 const VISITOR_FIELDS: VisibleFields = {
-  users: { banned_at: false, phone: false },
-  posts: { editor_note: false }
+  users: { banned_at: false, phone: false, recovery_code: false },
+  posts: { editor_note: false },
+  integrations: { secret: false, token: false }
 };
 
 /**

@@ -19,13 +19,14 @@ import (
 	"blog/generated/jobs"
 	"blog/generated/resources"
 	"blog/generated/scheduling"
+	"blog/generated/seal"
 	"blog/generated/testhooks"
 )
 
 // New builds the engine. Add your own middleware and routes to the result in cmd/server.
 func New(pool *pgxpool.Pool) *gin.Engine {
 	r := gin.New()
-	r.Use(gin.Recovery())
+	r.Use(gin.CustomRecovery(recovered))
 	r.GET("/healthz", healthz)
 	r.GET("/api/openapi.json", openapi)
 	a := auth.New(pool, auth.Visibility{Viewer: access.Viewer, Fields: access.VisibleFields})
@@ -38,6 +39,7 @@ func New(pool *pgxpool.Pool) *gin.Engine {
 	resources.NewAnnouncements(pool, a).Routes(r)
 	resources.NewFollows(pool, a).Routes(r)
 	resources.NewBulletins(pool, a).Routes(r)
+	resources.NewIntegrations(pool, a).Routes(r)
 	resources.NewGlobalActions(pool, a).Routes(r)
 	if os.Getenv("OSL_TEST_HOOKS") == "1" {
 		testhooks.Routes(r)
@@ -47,6 +49,10 @@ func New(pool *pgxpool.Pool) *gin.Engine {
 
 // Start runs the background work: River's migrations and, unless OSL_ROLE is web, the worker for queued events, schedules and timers.
 func Start(ctx context.Context, pool *pgxpool.Pool) error {
+	// Sealed fields: no key, no server. Both the server and the worker start here.
+	if err := seal.Load(); err != nil {
+		return err
+	}
 	scheduling.Use(pool)
 	return jobs.Start(ctx, pool, events.RunQueued, scheduling.Periodic(), scheduling.RunTimerJob)
 }
@@ -54,6 +60,12 @@ func Start(ctx context.Context, pool *pgxpool.Pool) error {
 // Stop lets running jobs finish.
 func Stop(ctx context.Context) error {
 	return jobs.Stop(ctx)
+}
+
+// recovered answers a request that panicked, as when a sealed value does not open under the key: 500 in the
+// contract's shape. Gin has logged the panic by then, which names the column and never the value.
+func recovered(c *gin.Context, _ any) {
+	c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "internal", "message": "Something went wrong"}})
 }
 
 func healthz(c *gin.Context) {

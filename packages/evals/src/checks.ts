@@ -396,6 +396,34 @@ export function checkExpectations(expect: Expect, checked: Checked): string[] {
       fail(`${hit.entity}.${hit.field}.read is ${ruleText(column.read)}, expected ${want}`);
   }
 
+  for (const ref of expect.sealed ?? []) {
+    const hit = pickField(model, ref);
+    if (!hit) {
+      fail(`field ${ref} missing (expected sealed: true)`);
+      continue;
+    }
+    const column = ir.entities.find(e => e.name === hit.entity)?.columns.find(c => c.name === hit.field);
+    if (!column?.sealed) fail(`field ${hit.entity}.${hit.field} is not sealed (no sealed: true on the field)`);
+  }
+
+  for (const [ref, want] of Object.entries(expect.shapes ?? {})) {
+    const hit = pickField(model, ref);
+    if (!hit) {
+      fail(`field ${ref} missing (expected a json field with ${want})`);
+      continue;
+    }
+    const column = ir.entities.find(e => e.name === hit.entity)?.columns.find(c => c.name === hit.field);
+    const where = `${hit.entity}.${hit.field}`;
+    if (want === "shape") {
+      if (!column?.shape) fail(`field ${where} declares no shape (no shape: on the json field)`);
+    } else if (want.startsWith("shape_by:")) {
+      const by = want.slice("shape_by:".length);
+      if (!column?.shapeBy) fail(`field ${where} declares no shape per enum value (no shape_by: on the json field)`);
+      else if (by !== "*" && !by.split("|").includes(column.shapeBy.column))
+        fail(`${where}.shape_by follows ${column.shapeBy.column}, expected ${by}`);
+    } else fail(`bad shapes expectation ${want} for ${ref}: shape or shape_by:<enum field>`);
+  }
+
   for (const [entityName, rules] of Object.entries(expect.rules ?? {})) {
     const entity = pick(entityName, entities);
     const irEntity = entity && ir.entities.find(e => e.name === entity);

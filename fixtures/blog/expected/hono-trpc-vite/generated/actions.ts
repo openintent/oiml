@@ -4,13 +4,14 @@
 import type { Db } from "./db/client";
 import type * as schema from "./db/schema";
 import type { Session } from "./server/auth";
-import type { AnnouncementsPublishInput, PostsLockInput, PostsPublishInput, PostsUnlockInput, PostsUnpublishAllInput, SendDigestInput, UsersBanInput } from "./validation";
+import type { AnnouncementsPublishInput, IntegrationsSignInput, PostsLockInput, PostsPublishInput, PostsUnlockInput, PostsUnpublishAllInput, SendDigestInput, UsersBanInput } from "./validation";
 import * as users_ban from "@/actions/users_ban";
 import * as posts_publish from "@/actions/posts_publish";
 import * as posts_unpublish_all from "@/actions/posts_unpublish_all";
 import * as posts_lock from "@/actions/posts_lock";
 import * as posts_unlock from "@/actions/posts_unlock";
 import * as announcements_publish from "@/actions/announcements_publish";
+import * as integrations_sign from "@/actions/integrations_sign";
 import * as send_digest from "@/actions/send_digest";
 
 /** What a handler gets: the validated input, the row for row actions, the caller's session and the database */
@@ -30,6 +31,7 @@ export type PostsUnpublishAllResult = { count: number };
 export type PostsLockResult = schema.Article;
 export type PostsUnlockResult = schema.Article;
 export type AnnouncementsPublishResult = schema.Announcement;
+export type IntegrationsSignResult = { signature: string };
 export type SendDigestResult = { sent: number };
 
 export const handlers = {
@@ -39,5 +41,6 @@ export const handlers = {
   posts_lock: posts_lock.handler as (ctx: ActionContext<PostsLockInput, schema.Article>) => Promise<PostsLockResult>,
   posts_unlock: posts_unlock.handler as (ctx: ActionContext<PostsUnlockInput, schema.Article>) => Promise<PostsUnlockResult>,
   announcements_publish: announcements_publish.handler as (ctx: ActionContext<AnnouncementsPublishInput, schema.Announcement>) => Promise<AnnouncementsPublishResult>,
+  integrations_sign: integrations_sign.handler as (ctx: ActionContext<IntegrationsSignInput, schema.Integration>) => Promise<IntegrationsSignResult>,
   send_digest: send_digest.handler as (ctx: ActionContext<SendDigestInput, undefined>) => Promise<SendDigestResult>
 };

@@ -3,49 +3,58 @@
 
 package models
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+
+	"blog/generated/seal"
+)
 
 // UserTable is the quoted table of User.
 const UserTable = `"users"`
 
 // UserColumns lists the columns of User in model order, for SELECT and RETURNING.
-const UserColumns = `"id", "email", "name", "role", "created_at", "banned", "banned_at", "ban_reason", "post_count", "approved_count", "phone", "password_hash"`
+const UserColumns = `"id", "email", "name", "role", "created_at", "banned", "banned_at", "ban_reason", "post_count", "approved_count", "phone", "preferences", "recovery_code", "password_hash"`
 
 // User is a row of users.
 type User struct {
-	ID            string     `json:"id"`
-	Email         string     `json:"email"`
-	Name          string     `json:"name"`
-	Role          string     `json:"role"`
-	CreatedAt     time.Time  `json:"created_at"`
-	Banned        bool       `json:"banned"`
-	BannedAt      *time.Time `json:"banned_at"`
-	BanReason     *string    `json:"ban_reason"`
-	PostCount     int        `json:"post_count"`
-	ApprovedCount int        `json:"approved_count"`
-	Phone         *string    `json:"phone"`
-	PasswordHash  *string    `json:"-"`
+	ID            string          `json:"id"`
+	Email         string          `json:"email"`
+	Name          string          `json:"name"`
+	Role          string          `json:"role"`
+	CreatedAt     time.Time       `json:"created_at"`
+	Banned        bool            `json:"banned"`
+	BannedAt      *time.Time      `json:"banned_at"`
+	BanReason     *string         `json:"ban_reason"`
+	PostCount     int             `json:"post_count"`
+	ApprovedCount int             `json:"approved_count"`
+	Phone         *string         `json:"phone"`
+	Preferences   json.RawMessage `json:"preferences"`
+	RecoveryCode  []byte          `json:"recovery_code"`
+	PasswordHash  *string         `json:"-"`
 }
 
 // PublicUser is User as the API returns it: hidden columns removed, dates rendered.
 type PublicUser struct {
-	ID            string         `json:"id"`
-	Email         string         `json:"email"`
-	Name          string         `json:"name"`
-	Role          string         `json:"role"`
-	CreatedAt     string         `json:"created_at"`
-	Banned        bool           `json:"banned"`
-	BannedAt      Maybe[*string] `json:"banned_at,omitzero"`
-	BanReason     *string        `json:"ban_reason"`
-	PostCount     int            `json:"post_count"`
-	ApprovedCount int            `json:"approved_count"`
-	Phone         Maybe[*string] `json:"phone,omitzero"`
+	ID            string          `json:"id"`
+	Email         string          `json:"email"`
+	Name          string          `json:"name"`
+	Role          string          `json:"role"`
+	CreatedAt     string          `json:"created_at"`
+	Banned        bool            `json:"banned"`
+	BannedAt      Maybe[*string]  `json:"banned_at,omitzero"`
+	BanReason     *string         `json:"ban_reason"`
+	PostCount     int             `json:"post_count"`
+	ApprovedCount int             `json:"approved_count"`
+	Phone         Maybe[*string]  `json:"phone,omitzero"`
+	Preferences   json.RawMessage `json:"preferences"`
+	RecoveryCode  Maybe[*string]  `json:"recovery_code,omitzero"`
 }
 
 // ScanUser reads one User from a row selected with UserColumns.
 func ScanUser(row Scanner) (*User, error) {
 	var r User
-	if err := row.Scan(&r.ID, &r.Email, &r.Name, &r.Role, &r.CreatedAt, &r.Banned, &r.BannedAt, &r.BanReason, &r.PostCount, &r.ApprovedCount, &r.Phone, &r.PasswordHash); err != nil {
+	if err := row.Scan(&r.ID, &r.Email, &r.Name, &r.Role, &r.CreatedAt, &r.Banned, &r.BannedAt, &r.BanReason, &r.PostCount, &r.ApprovedCount, &r.Phone, &r.Preferences, &r.RecoveryCode, &r.PasswordHash); err != nil {
 		return nil, err
 	}
 	return &r, nil
@@ -53,12 +62,15 @@ func ScanUser(row Scanner) (*User, error) {
 
 // PresentUser returns the public shape of a User for a viewer: a field with a read rule is set only when the rule allows.
 func PresentUser(row *User, viewer Viewer) PublicUser {
-	out := PublicUser{ID: row.ID, Email: row.Email, Name: row.Name, Role: row.Role, CreatedAt: FormatDateTime(row.CreatedAt), Banned: row.Banned, BanReason: row.BanReason, PostCount: row.PostCount, ApprovedCount: row.ApprovedCount}
+	out := PublicUser{ID: row.ID, Email: row.Email, Name: row.Name, Role: row.Role, CreatedAt: FormatDateTime(row.CreatedAt), Banned: row.Banned, BanReason: row.BanReason, PostCount: row.PostCount, ApprovedCount: row.ApprovedCount, Preferences: row.Preferences}
 	if viewer.Reads("User.banned_at", map[string]any{"id": row.ID}) {
 		out.BannedAt = Shown(FormatDateTimePtr(row.BannedAt))
 	}
 	if viewer.Reads("User.phone", map[string]any{"id": row.ID}) {
 		out.Phone = Shown(row.Phone)
+	}
+	if viewer != Server && viewer.Reads("User.recovery_code", map[string]any{"id": row.ID}) {
+		out.RecoveryCode = Shown(seal.MustOpenPtr(seal.UsersRecoveryCode, row.RecoveryCode))
 	}
 	return out
 }
@@ -381,6 +393,75 @@ func PresentBulletins(rows []*Bulletin) []PublicBulletin {
 	out := make([]PublicBulletin, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, PresentBulletin(row))
+	}
+	return out
+}
+
+// IntegrationTable is the quoted table of Integration.
+const IntegrationTable = `"integrations"`
+
+// IntegrationColumns lists the columns of Integration in model order, for SELECT and RETURNING.
+const IntegrationColumns = `"id", "owner_id", "name", "kind", "config", "secret", "token", "created_at"`
+
+// Integration is a row of integrations.
+type Integration struct {
+	ID        string          `json:"id"`
+	OwnerID   string          `json:"owner_id"`
+	Name      string          `json:"name"`
+	Kind      string          `json:"kind"`
+	Config    json.RawMessage `json:"config"`
+	Secret    []byte          `json:"secret"`
+	Token     []byte          `json:"token"`
+	CreatedAt *time.Time      `json:"created_at"`
+}
+
+// PublicIntegration is Integration as the API returns it: hidden columns removed, dates rendered.
+type PublicIntegration struct {
+	ID        string          `json:"id"`
+	OwnerID   string          `json:"owner_id"`
+	Name      string          `json:"name"`
+	Kind      string          `json:"kind"`
+	Config    json.RawMessage `json:"config"`
+	Secret    Maybe[*string]  `json:"secret,omitzero"`
+	Token     Maybe[*string]  `json:"token,omitzero"`
+	CreatedAt *string         `json:"created_at"`
+}
+
+// ScanIntegration reads one Integration from a row selected with IntegrationColumns.
+func ScanIntegration(row Scanner) (*Integration, error) {
+	var r Integration
+	if err := row.Scan(&r.ID, &r.OwnerID, &r.Name, &r.Kind, &r.Config, &r.Secret, &r.Token, &r.CreatedAt); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// PresentIntegration returns the public shape of a Integration for a viewer: a field with a read rule is set only when the rule allows.
+func PresentIntegration(row *Integration, viewer Viewer) PublicIntegration {
+	out := PublicIntegration{ID: row.ID, OwnerID: row.OwnerID, Name: row.Name, Kind: row.Kind, Config: row.Config, CreatedAt: FormatDateTimePtr(row.CreatedAt)}
+	if viewer != Server && viewer.Reads("Integration.secret", nil) {
+		out.Secret = Shown(seal.MustOpenPtr(seal.IntegrationsSecret, row.Secret))
+	}
+	if viewer != Server && viewer.Reads("Integration.token", map[string]any{"owner_id": row.OwnerID}) {
+		out.Token = Shown(seal.MustOpenPtr(seal.IntegrationsToken, row.Token))
+	}
+	return out
+}
+
+// PresentIntegrationPtr presents an optional Integration; nil stays nil.
+func PresentIntegrationPtr(row *Integration, viewer Viewer) *PublicIntegration {
+	if row == nil {
+		return nil
+	}
+	out := PresentIntegration(row, viewer)
+	return &out
+}
+
+// PresentIntegrations presents a list of Integration, never nil.
+func PresentIntegrations(rows []*Integration, viewer Viewer) []PublicIntegration {
+	out := make([]PublicIntegration, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, PresentIntegration(row, viewer))
 	}
 	return out
 }

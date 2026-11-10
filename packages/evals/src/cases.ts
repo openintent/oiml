@@ -100,6 +100,17 @@ export const Expect = z
      * that it has one. A hidden field, a second entity or a handler that strips the value has not used the construct.
      */
     field_read: z.record(z.string(), z.string()).optional(),
+    /**
+     * "Entity.field" names (with alternatives) that must be sealed (`sealed: true`): a hidden field, a hash a
+     * handler keeps or a plain string with a read rule has not used the construct.
+     */
+    sealed: Names.optional(),
+    /**
+     * "Entity.field" -> how the json field declares what it holds: `shape` (one shape), or `shape_by:<enum field
+     * alternatives>` (a shape per value of that enum field; `shape_by:*` for any). A plain json field, or one json
+     * field per kind, has not used the construct.
+     */
+    shapes: z.record(z.string(), z.string()).optional(),
     /** entity -> operation -> rule alternatives, compared after defaults are applied */
     rules: z.record(z.string(), z.record(z.string(), z.string())).optional(),
     resources: Names.optional(),

@@ -4,12 +4,13 @@
  * semantics (status codes become tRPC error codes; list returns { data, page }).
  */
 import type { ActionIR, EntityIR, GeneratedFile, IR, OperationIR, RelationIR, ResourceIR, RuleIR } from "@osl/core";
-import { actionsOf, globalActions, hasFieldRules } from "@osl/core";
+import { actionsOf, globalActions, hasFieldRules, hasSealed, sealedColumns } from "@osl/core";
 import {
   hasVia,
   actionInputName,
   fileSpecsLiteral,
   fillEnums,
+  registerValidators,
   listRuleFilter,
   membershipType,
   membershipsLoader,
@@ -38,7 +39,10 @@ import {
   selfSessionSource,
   takesViewer,
   currencyGuardLines,
-  currencyGuardMessage
+  currencyGuardMessage,
+  atRestCall,
+  shapeGuardLines,
+  shapesConst
 } from "@osl/ts-common";
 import {
   HEADER,
@@ -260,7 +264,7 @@ import { createHmac, randomBytes${credentials ? ", scryptSync" : ""}, timingSafe
 import { TRPCError } from "@trpc/server";
 import { eq${isolated ? ", sql" : ""} } from "drizzle-orm";
 import { z } from "zod";
-${registerFields.some(c => c.money) ? `import { money } from "../validation";\n` : ""}import { db } from "../db/client";
+${registerValidators(registerFields).length ? `import { ${registerValidators(registerFields).join(", ")} } from "../validation";\n` : ""}import { db } from "../db/client";
 import { ${schemaImports.join(", ")} } from "../db/schema";
 import { toTRPCError } from "./errors";
 import { ${presentImports.join(", ")} } from "../present";
@@ -579,7 +583,7 @@ import { Hono, type Context as HonoContext } from "hono";
 ${ir.files ? `import { fileContent, receiveContent } from "../files";\n` : ""}${oauth ? `import { APP_URL, oauthCallback, oauthStart } from "../auth-providers";\nimport { sessionCookie } from "./auth";\n` : ""}${ir.jobs ? `import { startWorker } from "../jobs";\n` : ""}${isolated ? `import { withTenants } from "../db/client";\n` : ""}import { emailsSent, ${isolated ? "rulesSwitch, " : ""}schedulesRun, ${isolated ? "tenancyUnbound, " : ""}testHooksEnabled, timersRun } from "../test-hooks";
 ${isolated ? `import { getSession } from "./auth";\n` : ""}import { createContext } from "./context";
 import { appRouter } from "./router";
-
+${hasSealed(ir) ? `import { sealKey } from "../seal";\n\n// Sealed fields: the server does not start without OSL_SEAL_KEY, or with one that is not a key\nsealKey();\n` : ""}
 /** Errors from the shared modules are tRPC errors; REST routes answer them in the contract's shape. */
 function restError(c: HonoContext, err: unknown): Response {
   if (err instanceof TRPCError) {
@@ -771,6 +775,15 @@ export function resourceRouterFile(ir: IR, resource: ResourceIR): string {
   };
   const validationImports = new Set<string>([`${resource.name}Id`]);
   const errorImports = new Set<string>(["parseId", "toTRPCError"]);
+  /** What a write whose value does not fit its row's shape answers: 400, with each key that does not fit by its path */
+  const SHAPE_REFUSAL = `fail(400, "validation", issues.map(issue => \`\${issue.path}: \${issue.message}\`).join("; "));`;
+  /** A procedure that holds a value to the shape its row's enum names imports the shapes and the helper */
+  const useShapes = (fields: string[]) => {
+    errorImports.add("fail");
+    validationImports.add("fitShape");
+    for (const c of entity.columns)
+      if (c.shapeBy && fields.includes(c.name)) validationImports.add(shapesConst(resource.name, c));
+  };
   const accessImports = new Set<string>(["checkRule"]);
   for (const name of listFilter?.access ?? []) accessImports.add(name);
   if (entity.hidden === "not_found") accessImports.add("verdict");
@@ -953,11 +966,23 @@ ${
         return created;
       });`
         : `      const [row] = await db.insert(${table}).values(values).returning();`;
+    const createShape = shapeGuardLines(
+      entity,
+      resource.name,
+      create.fields,
+      "create",
+      "input",
+      "",
+      SHAPE_REFUSAL,
+      "    "
+    );
+    if (createShape.length) useShapes(create.fields);
+    const createShapeLines = createShape.length ? `\n${createShape.join("\n")}` : "";
     procedures.push(`  create: publicProcedure.input(${resource.name}CreateInput).mutation(async ({ ctx, input }) => {
-    checkRule(RULES.create, ctx.session);${bodyCheck}
+    checkRule(RULES.create, ctx.session);${createShapeLines}${bodyCheck}
     const hookContext: HookContext = { session: ctx.session, req: ctx.req };
     try {
-      const values = await hooks.beforeCreate({ ...${resolveFiles("input")}${owner} }, hookContext);
+      const values = await hooks.beforeCreate(${atRestCall(entity, `{ ...${resolveFiles("input")}${owner} }`)}, hookContext);
 ${insert}
 ${emitLines.join("\n")}${timerLine}
       await hooks.afterCreate(row, hookContext);
@@ -983,6 +1008,18 @@ ${emitLines.join("\n")}${timerLine}
     );
     if (currencyGuard.length) errorImports.add("fail");
     const currencyLines = currencyGuard.length ? `\n${currencyGuard.join("\n")}` : "";
+    const updateShape = shapeGuardLines(
+      entity,
+      resource.name,
+      update.fields,
+      "update",
+      "input.data",
+      "existing",
+      SHAPE_REFUSAL,
+      "      "
+    );
+    if (updateShape.length) useShapes(update.fields);
+    const updateShapeLines = updateShape.length ? `\n${updateShape.join("\n")}` : "";
     procedures.push(`  update: publicProcedure
     .input(z.object({ id: ID, data: ${resource.name}UpdateInput }))
     .mutation(async ({ ctx, input }) => {
@@ -992,10 +1029,10 @@ ${emitLines.join("\n")}${timerLine}
         throw toTRPCError(err, "read");
       });
       if (!existing) throw ${miss("RULES.update")};${updateChecks.lines}
-      checkRule(RULES.update, ctx.session, ${updateChecks.arg});${currencyLines}
+      checkRule(RULES.update, ctx.session, ${updateChecks.arg});${currencyLines}${updateShapeLines}
       const hookContext: HookContext = { session: ctx.session, req: ctx.req };
       try {
-        const patch = await hooks.beforeUpdate(existing, ${resolveFiles("input.data")}, hookContext);
+        const patch = await hooks.beforeUpdate(existing, ${atRestCall(entity, resolveFiles("input.data"))}, hookContext);
         if (Object.keys(patch).length === 0) return ${presentCall(entity, "existing", "ctx.session")};
         const [row] = await db.update(${table}).set(patch).where(eq(${table}.${pk}, id)).returning();
 ${emitLines.map(l => "  " + l).join("\n")}${timerLine}
@@ -1069,6 +1106,7 @@ ${emitLines.join("\n")}
     ...(usesEmit ? [`import { emit } from "../../events";`] : []),
     ...(hasTimers ? [`import { scheduleTimers } from "../../scheduling";`] : []),
     ...(hasFiles ? [`import { resolveFileRefs } from "../../files";`] : []),
+    ...(sealedColumns(entity).length && (create || update) ? [`import { atRest } from "../../seal";`] : []),
     `import { ${[...presents].sort().join(", ")} } from "../../present";`,
     `import { ${[...validationImports].sort().join(", ")} } from "../../validation";`,
     ...(actions.some(a => !a.builtin) ? [`import { handlers } from "../../actions";`] : []),

@@ -192,6 +192,67 @@ describe("the bodies the walks send", () => {
     expect(update.map(p => p.name)).toContain("null title");
   });
 
+  it("fills a sealed field, and a value that follows an enum with the shape of the value it names", () => {
+    const config = column("config", {
+      type: { kind: "scalar", scalar: "json" },
+      shapeBy: {
+        column: "kind",
+        shapes: [
+          {
+            value: "webhook",
+            keys: [
+              { name: "url", kind: "string", required: true, maxLength: 255, validate: { format: "url" } },
+              { name: "retries", kind: "integer", required: false, default: 3, validate: { min: 0, max: 10 } }
+            ]
+          },
+          { value: "slack", keys: [{ name: "channel", kind: "string", required: true, maxLength: 80 }] }
+        ]
+      }
+    });
+    const kind = column("kind", { type: { kind: "enum", name: "integration_kind" } });
+    const integration: EntityIR = {
+      ...entity(owner),
+      columns: [kind, config, column("secret", { nullable: true, sealed: true }), column("note", { nullable: true })]
+    };
+    const bodies: BodyContext = {
+      ...ctx(),
+      ir: { enums: [{ name: "integration_kind", values: ["webhook", "slack"] }] } as never
+    };
+    const { body, missing } = validBody(integration, ["kind", "config", "secret", "note"], bodies, new Set());
+    expect(missing).toEqual([]);
+    expect(body.kind).toBe("webhook");
+    expect(body.config).toMatchObject({ url: expect.stringMatching(/^https:\/\/example\.com\//) });
+    expect(typeof body.secret).toBe("string");
+    expect(body.note).toBeUndefined();
+
+    // Every way the value can miss its shape, each with the key a refusal must name
+    const probes = invalidProbes(integration.columns, ["kind", "config"], body, bodies);
+    const path = (name: string) => probes.find(p => p.name === name)?.path;
+    expect(path("config with a wrong type at config.url")).toBe("config.url");
+    expect(path("config with config.url left out")).toBe("config.url");
+    expect(path("config with null at config.retries")).toBe("config.retries");
+    expect(path("config with a fraction at config.retries")).toBe("config.retries");
+    expect(path("config with an unknown key at config.osl_fuzz_unknown_key")).toBe("config.osl_fuzz_unknown_key");
+    expect(path("config with an array where config is an object")).toBe("config");
+    expect(path("config with the shape of kind slack on a row that is webhook")).toBe("config.url");
+    // A required key held to a pattern cannot be made up: the walk has no body, as for such a column
+    const strict = column("code", {
+      type: { kind: "scalar", scalar: "json" },
+      shape: [{ name: "sku", kind: "string", required: true, validate: { pattern: "^[A-Z]{3}-\\d{4}$" } }]
+    });
+    expect(validValue(strict, bodies)).toBeUndefined();
+    expect(validBody({ ...integration, columns: [strict] }, ["code"], bodies, new Set()).missing).toEqual(["code"]);
+    // An update reads the enum's value from the stored row, and may not change it without the value
+    const update = invalidProbes(integration.columns, ["kind", "config"], {}, bodies, true, {
+      kind: "slack",
+      config: { channel: "#ops" }
+    });
+    expect(update.find(p => p.name === "config with config.channel left out")?.path).toBe("config.channel");
+    const changed = update.find(p => p.name === "kind changed to webhook without config")!;
+    expect(changed.body).toEqual({ kind: "webhook" });
+    expect(changed.path).toBe("config");
+  });
+
   it("knows a malformed id from a missing one", () => {
     const uuid = badIds(column("id", { type: { kind: "scalar", scalar: "uuid" } }), ctx());
     expect(uuid.map(b => b.shape)).toEqual(["wrong", "missing"]);

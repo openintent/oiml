@@ -5,6 +5,35 @@ fixture intent on all three backends before it is listed here.
 
 ## Unreleased
 
+- Field kinds, second half: sealed fields and typed JSON, with a shape per enum value (round B6 of the road to
+  1.0.0, which this completes). `sealed: true` on a string or text field encrypts it at rest: `secret: { type:
+string, sealed: true }` is written through the API and returned to nobody, and `token: { type: string, sealed:
+true, read: "owner:owner_id" }` is returned to its owner only. The column is `bytea`; the value is sealed before
+  a hook or the insert sees it and opened in the presenter, inside the field rule's branch, never for the server
+  itself, so no event payload and no session carries one. A handler opens it by name (`unseal("<table>.<column>",
+row.<column>)`, `seal.Open(...)` in Go). The stored bytes are one format on every backend, so a database moves
+  between them with its key: `0x01`, a 12-byte random nonce, the AES-256-GCM ciphertext and its tag, bound to the
+  table and the column. The key is `OSL_SEAL_KEY`, 64 hexadecimal characters, in no generated file; the app does
+  not start without it, and a value that does not open (another key, bytes moved from another column) answers
+  500 to a caller the rule allows and names the column in the log, never the value. A sealed field is no list
+  filter, sort or search, is not unique or indexed (M185), is tested by no rule, cannot be renamed, and no field
+  becomes sealed or stops being sealed: a migration has no key. `shape:` on a json field declares its keys in the
+  spelling of an action's input (scalars, enums, arrays of scalars, one nested shape; M186 says why a key cannot
+  be money, a relation, sealed or carry `read:`): a write is held to it and a wrong type at any depth, a missing
+  required key, an unknown key or null answers 400 naming the key (`preferences.quiet_hours.to`); a key's
+  default is stored when the writer leaves the key out; an update replaces the whole value; stored values are not
+  rewritten or checked when a shape changes. `shape_by: { kind: { webhook: {...}, slack: {...} } }` gives the
+  value one shape per value of a required enum field of the same entity (M187): a create and an update hold the
+  value to the shape of the kind the row will have, and an update that changes the kind without sending the value
+  answers 400 (M188 warns where an update can write the kind and not the value); the enum cannot be the field of
+  `transitions`. The pages render a group of inputs, which follows the enum's select, and a password input that
+  starts empty for a sealed field. The leak walk writes every sealed field as every caller, opens the stored
+  bytes with the format's reference, stores bytes of its own for the app to read and bytes that cannot open; the
+  fuzz walk bends every key of every shape and wants a 400 that names it. New keys: `Field.sealed`, `shape`,
+  `shape_by`; diagnostics M185 to M188; `sealed` and `shapes` in eval expectations. Not built: key rotation, a
+  check of the key at start, a sealed number or JSON value, an array of shapes, a shape on a transitions field.
+  Fixture: blog FEAT-16 (integrations whose settings follow their kind, a signing secret a handler opens, a
+  token for its owner, preferences and a recovery code on the user). Design: `docs/designs/field-kinds.md`.
 - Field kinds, first half: sequences and money (round B6 of the road to 1.0.0; sealed fields and typed JSON
   follow). `type: sequence` is a number people quote: `number: { type: sequence, prefix: "INV-", scope: [team_id],
 width: 6 }` gives each team INV-000001, INV-000002 and so on. The field is a read-only string, unique within

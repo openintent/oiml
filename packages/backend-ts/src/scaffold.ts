@@ -2,6 +2,8 @@ import type { GeneratedFile, IR } from "@osl/core";
 import { REGION_BEGIN, REGION_END } from "@osl/core";
 import {
   appUrlEnvLine,
+  sealEnvLine,
+  sealReadme,
   isolationReadme,
   SHADCN_DEPENDENCIES,
   SHADCN_DEV_DEPENDENCIES,
@@ -227,7 +229,7 @@ storage/
     content: `# Copy to .env and fill in. Keep your own variables outside the OSL region.
 ${REGION_BEGIN("env", "#")}
 DATABASE_URL=postgres://postgres@localhost:5432/${ir.name}
-${appUrlEnvLine(ir)}${ir.auth ? "OSL_SESSION_SECRET=change-me-to-a-long-random-string\n" : ""}${envExtras(ir, 3000)}${REGION_END("env", "#")}
+${appUrlEnvLine(ir)}${ir.auth ? "OSL_SESSION_SECRET=change-me-to-a-long-random-string\n" : ""}${sealEnvLine(ir)}${envExtras(ir, 3000)}${REGION_END("env", "#")}
 `
   });
 
@@ -240,7 +242,7 @@ Everything in this directory is rewritten by \`osl generate\` from \`.osl/model.
 Put your own code in \`src/\`: \`src/extensions/<resource>.ts\` holds hooks around each resource's handlers and \`src/events/<handler>.ts\` holds event handlers. OSL creates those files once and never touches them again.
 
 Migrations in \`db/migrations\` are a pure function of the model history. Apply them with \`osl migrate\`.
-${isolationReadme(ir, "pg-boss")}`
+${isolationReadme(ir, "pg-boss")}${sealReadme(ir, "@/generated/seal")}`
   });
 
   return files;

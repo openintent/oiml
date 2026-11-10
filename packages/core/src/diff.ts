@@ -202,6 +202,12 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
       case "rename_entity": {
         const entity = entityOf(op.from);
         if (model.entities[op.to]) fail(`entity ${op.to} already exists`);
+        // A sealed value is bound to its table and column: under another table name it would no longer open
+        const sealed = Object.entries(entity.fields).find(([, field]) => field.sealed);
+        if (sealed && !entity.table)
+          fail(
+            `${op.from}.${sealed[0]} is sealed, and a sealed value is bound to its table's name: renamed, the stored values would not open; give ${op.from} its table name first (table: <the name it has>) or move the values in a handler`
+          );
         const rebuilt: Record<string, Entity> = {};
         for (const [name, value] of Object.entries(model.entities)) rebuilt[name === op.from ? op.to : name] = value;
         model.entities = rebuilt;
@@ -240,6 +246,11 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
       case "update_field": {
         const entity = entityOf(op.entity);
         if (!entity.fields[op.name]) fail(`field ${op.entity}.${op.name} does not exist`);
+        // No migration can seal what is stored or open it: it has no key. The values move through code that has one.
+        if (Boolean(entity.fields[op.name].sealed) !== Boolean(op.field.sealed))
+          fail(
+            `field ${op.entity}.${op.name} ${op.field.sealed ? "becomes sealed" : "stops being sealed"}: a migration has no key, so it can neither seal the stored values nor open them; add a field beside it, move the values in a handler, and remove this one`
+          );
         entity.fields[op.name] = op.field;
         break;
       }
@@ -319,6 +330,11 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
         const entity = entityOf(op.entity);
         if (!entity.fields[op.from]) fail(`field ${op.entity}.${op.from} does not exist`);
         if (entity.fields[op.to]) fail(`field ${op.entity}.${op.to} already exists`);
+        // A sealed value is bound to its column: under another name it would no longer open
+        if (entity.fields[op.from].sealed)
+          fail(
+            `field ${op.entity}.${op.from} is sealed, and a sealed value is bound to its column's name: renamed, the stored values would not open; add ${op.to} beside it, move the values in a handler, and remove ${op.from}`
+          );
         // Rules name fields, on this entity and through relation paths from others: rewrite them before the fields move
         forEachRule(model, (rule, from) =>
           mapRuleFields(model, from, rule, (e, f) => (e === op.entity && f === op.from ? op.to : f))
@@ -332,6 +348,8 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
           // A sequence counted within the field, and an amount in the currency it holds, follow it
           if (field.scope?.includes(op.from)) field.scope = field.scope.map(swap);
           if (field.currency_field === op.from) field.currency_field = op.to;
+          // A value whose shape follows the field follows its name
+          if (field.shape_by?.[op.from]) field.shape_by = { [op.to]: field.shape_by[op.from] };
         }
         if (archiveOf(entity)?.field === op.from)
           entity.archive = { ...(entity.archive === true ? {} : entity.archive), field: op.to };

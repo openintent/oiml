@@ -1,5 +1,5 @@
 import type { ActionIR, EntityIR, GeneratedFile, IR, OperationIR, RelationIR, ResourceIR, RuleIR } from "@osl/core";
-import { actionsOf, globalActions } from "@osl/core";
+import { actionsOf, globalActions, sealedColumns } from "@osl/core";
 import {
   hasVia,
   actionInputName,
@@ -27,7 +27,10 @@ import {
   presentMapper,
   takesViewer,
   currencyGuardLines,
-  currencyGuardMessage
+  currencyGuardMessage,
+  atRestCall,
+  shapeGuardLines,
+  shapesConst
 } from "@osl/ts-common";
 import {
   HEADER,
@@ -131,6 +134,15 @@ export function resourceFile(ir: IR, resource: ResourceIR): string {
   const extraTables = new Set<string>([...(listFilter?.tables ?? []), ...(ruleValues?.tables ?? [])]);
   extraTables.delete(entity.name);
 
+  /** What a write whose value does not fit its row's shape answers: the issues the guard found, under the field's path */
+  const SHAPE_REFUSAL = `return error(400, "validation", "Request body is invalid", issues);`;
+  /** A handler that holds a value to the shape its row's enum names imports the shapes and the helper */
+  const useShapes = (fields: string[]) => {
+    httpImports.add("error");
+    validationImports.add("fitShape");
+    for (const c of entity.columns)
+      if (c.shapeBy && fields.includes(c.name)) validationImports.add(shapesConst(resource.name, c));
+  };
   const drizzleImports = new Set<string>();
   if (get || update || remove || actions.some(a => a.scope === "row") || ruleValues) drizzleImports.add("eq");
   for (const name of ruleValues?.drizzle ?? []) drizzleImports.add(name);
@@ -320,6 +332,18 @@ ${
       ? `      const bodyVerdict = checkRule(RULES.create, session, ${rowArg(create.rule, owner || defaults ? `{ ${defaults}...body.data${owner} }` : "body.data", sessionArg)});
       if (!bodyVerdict.ok) return denied(bodyVerdict);\n`
       : "";
+    const createShape = shapeGuardLines(
+      entity,
+      resource.name,
+      create.fields,
+      "create",
+      "body.data",
+      "",
+      SHAPE_REFUSAL,
+      "      "
+    );
+    if (createShape.length) useShapes(create.fields);
+    const createShapeLines = createShape.length ? `\n${createShape.join("\n")}` : "";
     // Under isolation: database a new tenant is bound to the request before the insert, or its own policy would refuse the row
     const bind = isTenant && isolated;
     const insert =
@@ -336,9 +360,9 @@ ${
       const verdict = checkRule(RULES.create, session);
       if (!verdict.ok) return denied(verdict);
       const body = await parseBody(${resource.name}CreateInput, request);
-      if (!body.ok) return body.response;
+      if (!body.ok) return body.response;${createShapeLines}
 ${bodyCheck}      const hookContext: HookContext = { request, session };
-      const values = await hooks.beforeCreate({ ...${resolveFiles("body.data")}${owner} }, hookContext);
+      const values = await hooks.beforeCreate(${atRestCall(entity, `{ ...${resolveFiles("body.data")}${owner} }`)}, hookContext);
 ${insert}
 ${emitLines.join("\n")}${timerLine}
       await hooks.afterCreate(row, hookContext);
@@ -366,6 +390,18 @@ ${emitLines.join("\n")}${timerLine}
     );
     if (currencyGuard.length) httpImports.add("error");
     const currencyLines = currencyGuard.length ? `\n${currencyGuard.join("\n")}` : "";
+    const updateShape = shapeGuardLines(
+      entity,
+      resource.name,
+      update.fields,
+      "update",
+      "body.data",
+      "existing",
+      SHAPE_REFUSAL,
+      "      "
+    );
+    if (updateShape.length) useShapes(update.fields);
+    const updateShapeLines = updateShape.length ? `\n${updateShape.join("\n")}` : "";
     methods.push(`  async update(request: Request, ctx: RouteContext): Promise<Response> {
     try {
       const session = await getSession(request);
@@ -378,9 +414,9 @@ ${emitLines.join("\n")}${timerLine}
       const rowVerdict = checkRule(RULES.update, session, ${updateChecks.arg});
       if (!rowVerdict.ok) return denied(rowVerdict);
       const body = await parseBody(${resource.name}UpdateInput, request);
-      if (!body.ok) return body.response;${currencyLines}
+      if (!body.ok) return body.response;${currencyLines}${updateShapeLines}
       const hookContext: HookContext = { request, session };
-      const patch = await hooks.beforeUpdate(existing, ${resolveFiles("body.data")}, hookContext);
+      const patch = await hooks.beforeUpdate(existing, ${atRestCall(entity, resolveFiles("body.data"))}, hookContext);
       if (Object.keys(patch).length === 0) return ok(${presentCall(entity, "existing", "session")});
       const [row] = await db.update(${table}).set(patch).where(eq(${table}.${pk}, id.data)).returning();
 ${emitLines.join("\n")}${timerLine}
@@ -464,6 +500,7 @@ ${emitLines.join("\n")}
     ...(hasTimers ? [`import { scheduleTimers } from "../scheduling";`] : []),
     ...(hasFiles ? [`import { resolveFileRefs } from "../files";`] : []),
     `import { ${[...httpImports].sort().join(", ")} } from "../http";`,
+    ...(sealedColumns(entity).length && (create || update) ? [`import { atRest } from "../seal";`] : []),
     `import { ${[...presents].sort().join(", ")} } from "../present";`,
     `import { ${[...validationImports].sort().join(", ")} } from "../validation";`,
     `import { hooks } from "@/src/extensions/${resource.name}";`

@@ -10,6 +10,7 @@ import (
 
 	"blog/generated/jobs"
 	"blog/generated/models"
+	integrationcreated "blog/src/events/integration_created"
 	postapproved "blog/src/events/post_approved"
 	postarchived "blog/src/events/post_archived"
 	postcreated "blog/src/events/post_created"
@@ -19,6 +20,14 @@ import (
 // ArticleCreated runs every handler for Article.created: inline ones in the request (an error aborts it).
 func ArticleCreated(ctx context.Context, payload models.PublicArticle) error {
 	if err := postcreated.Handle(payload); err != nil {
+		return err
+	}
+	return nil
+}
+
+// IntegrationCreated runs every handler for Integration.created: inline ones in the request (an error aborts it).
+func IntegrationCreated(ctx context.Context, payload models.PublicIntegration) error {
+	if err := integrationcreated.Handle(payload); err != nil {
 		return err
 	}
 	return nil

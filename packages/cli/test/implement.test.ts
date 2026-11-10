@@ -25,6 +25,7 @@ describe("implement planning", () => {
     const plan = await planHandlers(root, backend);
     expect(plan.handlers.map(h => h.action.handler).sort()).toEqual([
       "announcements_publish",
+      "integrations_sign",
       "posts_lock",
       "posts_publish",
       "posts_unlock",
@@ -67,6 +68,7 @@ describe("implement planning", () => {
     const plan = await planHandlers(root, backend);
     expect(plan.handlers.map(h => h.action.handler).sort()).toEqual([
       "announcements_publish",
+      "integrations_sign",
       "posts_lock",
       "posts_unlock",
       "posts_unpublish_all",

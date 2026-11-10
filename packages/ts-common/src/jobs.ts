@@ -1,4 +1,5 @@
 import type { IR } from "@osl/core";
+import { hasSealed } from "@osl/core";
 import { isolationOf } from "./isolation.js";
 import type { ServerConventions } from "./server-conventions.js";
 
@@ -11,10 +12,12 @@ export function jobsFile(ir: IR, conv: ServerConventions): string {
   const isolated = Boolean(isolationOf(ir));
   const system = (call: string) => (isolated ? `asSystem(() => ${call})` : call);
   const send = (call: string) => (isolated ? `await afterCommit(async () => {\n    ${call}\n  });` : call);
+  // A model with a sealed field: whatever starts the worker starts nothing without the key
+  const sealed = hasSealed(ir);
   return `${conv.header("Background jobs on pg-boss: queued events, schedules and timers are stored in Postgres and run by the worker with retries.")}
 import { PgBoss } from "pg-boss";${isolated ? `\nimport { afterCommit, asSystem } from "./db/client";` : ""}
 import { QUEUED_EVENTS, runQueued } from "./events";
-${scheduling ? `import { SCHEDULES, TIMERS, runSchedule, runTimerJob } from "./scheduling";\n` : ""}
+${sealed ? `import { sealKey } from "./seal";\n` : ""}${scheduling ? `import { SCHEDULES, TIMERS, runSchedule, runTimerJob } from "./scheduling";\n` : ""}
 /** Every queue the app uses: one per queued event, schedule and timer */
 function queueNames(): string[] {
   return [${scheduling ? `...QUEUED_EVENTS, ...SCHEDULES.map(s => "schedule." + s.name), ...TIMERS.map(t => "timer." + t.name)` : "...QUEUED_EVENTS"}];
@@ -56,7 +59,7 @@ export async function enqueueAt(name: string, payload: object, at: Date): Promis
 }
 
 /** Run queued events in this process; a no-op in the web role. */
-export async function startWorker(): Promise<void> {
+export async function startWorker(): Promise<void> {${sealed ? "\n  // Sealed fields: no key, no server. This runs as the server starts, in every role.\n  sealKey();" : ""}
   if (role() === "web") return;
   const boss = await getBoss();
   for (const name of QUEUED_EVENTS) {

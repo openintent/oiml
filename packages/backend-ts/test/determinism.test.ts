@@ -90,7 +90,20 @@ describe("drizzle-next backend", () => {
     expect(users).toContain('{"phone" in row ? (');
     expect(users).toContain("fields={offeredUsers(USERS_UPDATE, field => field in row)}");
     expect(users).toContain("sentUsers(toUsersUpdateInput(values), field => field in row)");
-    expect(file("generated/app/client.ts")).toContain("users: { banned_at: false, phone: false }");
+    expect(file("generated/app/client.ts")).toContain(
+      "users: { banned_at: false, phone: false, recovery_code: false }"
+    );
+    // A sealed field is opened in the presenter, inside the rule's branch, and never for the server itself
+    expect(file("generated/present.ts")).toContain(
+      'if (viewer !== SERVER && reads(FIELD_RULES.Integration.token, viewer, row)) out.token = row.token === null ? null : unseal("integrations.token", row.token);'
+    );
+    expect(file("generated/present.ts")).toContain('secret: {"kind":"none"} as Rule');
+    expect(file("generated/db/schema.ts")).toContain("secret: bytea()");
+    expect(file("generated/resources/integrations.ts")).toContain('hooks.beforeCreate(atRest("integrations", {');
+    // No key in any generated file: the environment names it, and the compose file requires it
+    expect(file("docker-compose.yml")).toContain("OSL_SEAL_KEY: ${OSL_SEAL_KEY:?");
+    expect(file(".env.example")).toContain("OSL_SEAL_KEY=\n");
+    expect(file("generated/jobs.ts")).toContain("sealKey();");
   });
 
   it("leaves a table column out for a viewer who could never read its field", async () => {

@@ -15,6 +15,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import pg from "pg";
 import {
+  SEAL_KEY_ENV,
+  hasSealed,
   applyIntent,
   checkDrift,
   formatDrift,
@@ -249,7 +251,11 @@ export async function runFixture(
     ? withUser(withDatabase(adminUrl, dbName), ownerRole, ownerPassword)
     : withDatabase(adminUrl, dbName);
   const appDatabaseUrl = isolation ? withUser(withDatabase(adminUrl, dbName), webRole, webPassword) : undefined;
+  // Sealed fields: the key is made for this run and lives in this process's memory and the app's environment only
+  const sealKey = hasSealed((await loadProject(dir)).ir) ? randomBytes(32).toString("hex") : undefined;
   let server: ChildProcess | null = null;
+  // What the app has written to its output so far: the seal walk reads it for values that must never be logged
+  let serverLog = (): string => "";
   try {
     const created = await step("database", async () => {
       if (isolation) {
@@ -279,6 +285,66 @@ export async function runFixture(
       if (drift.length) throw new Error(formatDrift(drift));
     });
 
+    // Sealed fields: the app must not start without the key, nor with one of the wrong length
+    if (sealKey) {
+      const refused = await step("no key", async () => {
+        const said: string[] = [];
+        for (const [what, value, want] of [
+          ["without the key", undefined, `${SEAL_KEY_ENV} is not set`],
+          ["with a key of 32 characters", sealKey.slice(0, 32), `${SEAL_KEY_ENV} has 32 hexadecimal characters, not 64`]
+        ] as const) {
+          const probePort = await freePort();
+          const cmd = runtime.serve(probePort);
+          const env: NodeJS.ProcessEnv = {
+            ...process.env,
+            ...cmd.env,
+            DATABASE_URL: databaseUrl,
+            ...(appDatabaseUrl ? { DATABASE_APP_URL: appDatabaseUrl } : {}),
+            OSL_SESSION_SECRET: "conformance-secret",
+            PORT: String(probePort)
+          };
+          delete env[SEAL_KEY_ENV];
+          if (value !== undefined) env[SEAL_KEY_ENV] = value;
+          const child = spawn(cmd.command, cmd.args, {
+            cwd: dir,
+            env,
+            stdio: ["ignore", "pipe", "pipe"],
+            detached: true
+          });
+          let output = "";
+          child.stdout?.on("data", d => (output += d));
+          child.stderr?.on("data", d => (output += d));
+          let answered = false;
+          const deadline = Date.now() + 60_000;
+          while (child.exitCode === null && Date.now() < deadline && !answered) {
+            try {
+              answered = (await fetch(`http://localhost:${probePort}${runtime.readyPath}`)).status < 500;
+            } catch {
+              await sleep(250);
+            }
+          }
+          const exited = child.exitCode;
+          if (exited === null) {
+            try {
+              process.kill(-child.pid!, "SIGKILL");
+            } catch {
+              child.kill("SIGKILL");
+            }
+          }
+          if (answered) throw new Error(`the app started ${what} and answered ${runtime.readyPath}`);
+          if (exited === null)
+            throw new Error(`the app neither started nor stopped ${what} within 60s:\n${tail(output, 20)}`);
+          if (exited === 0 || !output.includes(want))
+            throw new Error(
+              `the app stopped ${what} with exit ${exited} and did not say "${want}":\n${tail(output, 20)}`
+            );
+          said.push(`${what}: exit ${exited}`);
+        }
+        return said.join("; ");
+      });
+      if (!refused) return finish(result, options);
+    }
+
     const port = await freePort();
     const started = await step("start", async () => {
       const cmd = runtime.serve(port);
@@ -289,6 +355,7 @@ export async function runFixture(
           ...cmd.env,
           DATABASE_URL: databaseUrl,
           ...(appDatabaseUrl ? { DATABASE_APP_URL: appDatabaseUrl } : {}),
+          ...(sealKey ? { [SEAL_KEY_ENV]: sealKey } : {}),
           OSL_SESSION_SECRET: "conformance-secret",
           OSL_TEST_HOOKS: "1",
           PORT: String(port)
@@ -298,6 +365,7 @@ export async function runFixture(
       let output = "";
       server.stdout?.on("data", d => (output += d));
       server.stderr?.on("data", d => (output += d));
+      serverLog = () => output;
       const deadline = Date.now() + 90_000;
       while (Date.now() < deadline) {
         if (server.exitCode !== null) throw new Error(`server exited early:\n${output}`);
@@ -317,7 +385,11 @@ export async function runFixture(
         // The tests reach the database too: actors that carry a role are provisioned there after registering
         const cmd = runtime.test(`http://localhost:${port}`);
         const out = await exec({ ...cmd, env: { ...cmd.env, DATABASE_URL: databaseUrl } }, dir);
-        return out.match(/Tests\s+(.+)/)?.[1]?.trim() ?? out.match(/^(ok|PASS).*$/m)?.[0]?.trim();
+        return (
+          out.match(/Tests\s+(.+)/)?.[1]?.trim() ??
+          out.match(/^ok\s+\S+\/tests\s.*$/m)?.[0]?.trim() ??
+          out.match(/^(ok|PASS).*$/m)?.[0]?.trim()
+        );
       });
 
     if (options.walks !== false) {
@@ -333,6 +405,8 @@ export async function runFixture(
             baseUrl: `http://localhost:${port}`,
             databaseUrl,
             projectDir: dir,
+            sealKey,
+            serverLog,
             seed: options.seed ?? fixture.seed ?? 1,
             log
           },

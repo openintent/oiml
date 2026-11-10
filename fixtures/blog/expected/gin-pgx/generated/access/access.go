@@ -236,7 +236,10 @@ func deref(value any) any {
 var fieldRules = map[string]Rule{
 	"User.banned_at":      {Kind: "any", Any: []Rule{{Kind: "owner", Field: "id"}, {Kind: "role", Value: "admin"}}},
 	"User.phone":          {Kind: "any", Any: []Rule{{Kind: "owner", Field: "id"}, {Kind: "role", Value: "admin"}}},
+	"User.recovery_code":  {Kind: "owner", Field: "id"},
 	"Article.editor_note": {Kind: "role", Value: "admin"},
+	"Integration.secret":  {Kind: "none"},
+	"Integration.token":   {Kind: "owner", Field: "owner_id"},
 }
 
 type viewer struct {
@@ -280,7 +283,8 @@ func could(rule Rule, session *auth.Session) bool {
 // has a read rule on some row. A row still leaves out what its own rule refuses.
 func VisibleFields(session *auth.Session) map[string]map[string]bool {
 	return map[string]map[string]bool{
-		"users": {"banned_at": could(fieldRules["User.banned_at"], session), "phone": could(fieldRules["User.phone"], session)},
-		"posts": {"editor_note": could(fieldRules["Article.editor_note"], session)},
+		"users":        {"banned_at": could(fieldRules["User.banned_at"], session), "phone": could(fieldRules["User.phone"], session), "recovery_code": could(fieldRules["User.recovery_code"], session)},
+		"posts":        {"editor_note": could(fieldRules["Article.editor_note"], session)},
+		"integrations": {"secret": could(fieldRules["Integration.secret"], session), "token": could(fieldRules["Integration.token"], session)},
 	}
 }

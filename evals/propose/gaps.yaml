@@ -125,12 +125,19 @@ gaps:
       an admin write owner today (WS-1, update member:team_id:admin). The general write rule stays for 1.1."
   - key: conditional validation
     kind: not_delivered
-    status: open
+    status: built
     first_seen: run
     last_seen: r4
     cases: 1
-    note: "Notion (docs/exercises/notion.md): a block's content depends on its type, a shape per enum value
-      (shape_by: { type: { heading: {...}, code: {...} } }) beside the typed-JSON design's single shape."
+    construct: "shape_by: { <enum field>: { <value>: <shape>, ... } } on a json field (a shape per value of a
+      required enum field of the same entity, held on every write that touches either), beside shape: for a json
+      field with one shape"
+    version: unreleased
+    note: "Built 2026-11-10 (round B6, second half) with blog FEAT-16 (an integration's settings by its kind, a
+      user's preferences with one shape). Notion (docs/exercises/notion.md): a block's content depends on its type.
+      A write that misses its shape answers 400 naming the key; an update that changes the enum sends the value
+      with it. Declined: an array of shapes, a shape chosen by two fields or by a related row, a key required only
+      when another key has a value, shape_by on a transitions field. Design: docs/designs/field-kinds.md."
   - key: ordering and positions
     kind: not_delivered
     status: built
@@ -307,11 +314,19 @@ gaps:
       docs/designs/field-kinds.md."
   - key: sealed and encrypted fields
     kind: not_delivered
-    status: open
+    status: built
     first_seen: designs-2026-11-09
     last_seen: designs-2026-11-09
     cases: 0
-    note: "Encrypted at rest, never in events, webhooks, audit or logs. Design: docs/designs/field-kinds.md."
+    construct: "sealed: true on a string or text field (AES-256-GCM under OSL_SEAL_KEY in a bytea column, one stored
+      format on every backend; returned to the callers read: names and to nobody without it; a handler opens it by
+      name)"
+    version: unreleased
+    note: "Built 2026-11-10 (round B6, second half) with blog FEAT-16 (an integration's signing secret that only a
+      handler opens, a token for its owner, a recovery code on the identity). Never in an event payload, a filter,
+      a sort, a search or a rule; the app does not start without the key. Declined: key rotation, searching a
+      sealed value, a sealed number or JSON value, a key per tenant, renaming a sealed field. Webhooks and audit
+      diffs are milestone C's and carry no sealed value. Design: docs/designs/field-kinds.md."
   - key: soft delete and archiving
     kind: not_delivered
     status: built

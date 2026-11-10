@@ -32,7 +32,8 @@ describe("blog fixture", () => {
       "FEAT-12",
       "FEAT-13",
       "FEAT-14",
-      "FEAT-15"
+      "FEAT-15",
+      "FEAT-16"
     ]);
 
     for (const id of ids) {
@@ -43,7 +44,7 @@ describe("blog fixture", () => {
     expect(again.status).toBe("noop");
 
     const project = await loadProject(root);
-    expect(project.lock.revisions).toHaveLength(15);
+    expect(project.lock.revisions).toHaveLength(16);
     const ir = project.ir;
 
     const article = ir.entities.find(e => e.name === "Article")!;
@@ -94,10 +95,19 @@ describe("blog fixture", () => {
         target: "Bulletin",
         column: "author_id",
         targetColumn: "id"
+      },
+      {
+        name: "integrations",
+        kind: "many",
+        direction: "reverse",
+        target: "Integration",
+        column: "owner_id",
+        targetColumn: "id"
       }
     ]);
     expect(user.columns.find(c => c.name === "password_hash")).toMatchObject({ hidden: true, nullable: true });
-    expect(ir.auth?.registerFields).toEqual(["name", "phone"]);
+    // A sealed field (recovery_code) is not taken at register; a JSON field with a shape is
+    expect(ir.auth?.registerFields).toEqual(["name", "phone", "preferences"]);
 
     const posts = ir.resources.find(r => r.name === "posts")!;
     const create = posts.operations.find(o => o.kind === "create")!;
@@ -125,7 +135,8 @@ describe("blog fixture", () => {
       "followers read bulletins",
       "comment counts and archived articles",
       "editorial review",
-      "contact details and editor notes"
+      "contact details and editor notes",
+      "integrations and sealed secrets"
     ]);
     expect(ir.examples.seed.map(s => s.op)).toEqual(["posts.create", "posts.create"]);
     expect(ir.actions.map(a => `${a.resource ?? "actions"}.${a.name}:${a.scope}`)).toEqual([
@@ -141,6 +152,7 @@ describe("blog fixture", () => {
       "posts.reject:row",
       "posts.retire:row",
       "announcements.publish:row",
+      "integrations.sign:row",
       "actions.send_digest:global"
     ]);
     const publish = ir.actions.find(a => a.handler === "posts_publish");

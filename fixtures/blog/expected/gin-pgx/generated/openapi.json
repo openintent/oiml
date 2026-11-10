@@ -25,6 +25,9 @@
       "name": "bulletins"
     },
     {
+      "name": "integrations"
+    },
+    {
       "name": "actions",
       "description": "Actions not tied to a resource"
     },
@@ -886,20 +889,25 @@
                       "description": "For each resource with a field that has a read rule: whether this caller could read the field on some row. A row still leaves out what its own rule refuses.",
                       "required": [
                         "users",
-                        "posts"
+                        "posts",
+                        "integrations"
                       ],
                       "properties": {
                         "users": {
                           "type": "object",
                           "required": [
                             "banned_at",
-                            "phone"
+                            "phone",
+                            "recovery_code"
                           ],
                           "properties": {
                             "banned_at": {
                               "type": "boolean"
                             },
                             "phone": {
+                              "type": "boolean"
+                            },
+                            "recovery_code": {
                               "type": "boolean"
                             }
                           }
@@ -911,6 +919,21 @@
                           ],
                           "properties": {
                             "editor_note": {
+                              "type": "boolean"
+                            }
+                          }
+                        },
+                        "integrations": {
+                          "type": "object",
+                          "required": [
+                            "secret",
+                            "token"
+                          ],
+                          "properties": {
+                            "secret": {
+                              "type": "boolean"
+                            },
+                            "token": {
                               "type": "boolean"
                             }
                           }
@@ -1040,6 +1063,51 @@
                       {
                         "type": "string",
                         "maxLength": 40
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "preferences": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "theme": {
+                            "type": "string",
+                            "enum": [
+                              "light",
+                              "dark"
+                            ],
+                            "default": "light"
+                          },
+                          "digest": {
+                            "type": "boolean",
+                            "default": true
+                          },
+                          "quiet_hours": {
+                            "type": "object",
+                            "properties": {
+                              "from": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 23
+                              },
+                              "to": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 23
+                              }
+                            },
+                            "additionalProperties": false,
+                            "required": [
+                              "from",
+                              "to"
+                            ]
+                          }
+                        },
+                        "additionalProperties": false
                       },
                       {
                         "type": "null"
@@ -2550,6 +2618,939 @@
         "responses": {
           "204": {
             "description": "Deleted"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/integrations": {
+      "get": {
+        "tags": [
+          "integrations"
+        ],
+        "operationId": "integrations_list",
+        "description": "Any of: Only the row's owner (owner_id); Only users with role admin.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "summary": "List integrations",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 20
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "webhook",
+                "slack",
+                "email"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "page"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "owner_id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "name": {
+                            "type": "string",
+                            "maxLength": 80
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "webhook",
+                              "slack",
+                              "email"
+                            ]
+                          },
+                          "config": {
+                            "description": "The value's keys follow kind: one shape per value, and a write is held to the shape of the row's kind",
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "url": {
+                                    "type": "string",
+                                    "format": "uri",
+                                    "maxLength": 255
+                                  },
+                                  "retries": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 10,
+                                    "default": 3
+                                  }
+                                },
+                                "additionalProperties": false,
+                                "required": [
+                                  "url"
+                                ],
+                                "title": "kind = webhook"
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "channel": {
+                                    "type": "string",
+                                    "maxLength": 80
+                                  },
+                                  "mention": {
+                                    "type": "boolean",
+                                    "default": false
+                                  }
+                                },
+                                "additionalProperties": false,
+                                "required": [
+                                  "channel"
+                                ],
+                                "title": "kind = slack"
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "to": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 255
+                                    }
+                                  },
+                                  "digest": {
+                                    "type": "string",
+                                    "enum": [
+                                      "instant",
+                                      "daily"
+                                    ],
+                                    "default": "instant"
+                                  }
+                                },
+                                "additionalProperties": false,
+                                "required": [
+                                  "to"
+                                ],
+                                "title": "kind = email"
+                              }
+                            ]
+                          },
+                          "secret": {
+                            "oneOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 200,
+                                "description": "Signs what the integration sends. Encrypted at rest; never in an event, a filter, a sort or a search"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "description": "Signs what the integration sends. Never in a response: the field is written and kept sealed, and no caller reads it back."
+                          },
+                          "token": {
+                            "oneOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 200,
+                                "description": "Encrypted at rest; never in an event, a filter, a sort or a search"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "description": "Present only for a caller this rule allows on the row: owner:owner_id."
+                          },
+                          "created_at": {
+                            "oneOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "owner_id",
+                          "name",
+                          "kind",
+                          "config",
+                          "created_at"
+                        ]
+                      }
+                    },
+                    "page": {
+                      "type": "object",
+                      "required": [
+                        "page",
+                        "page_size",
+                        "total"
+                      ],
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "page_size": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "integrations"
+        ],
+        "operationId": "integrations_create",
+        "description": "Only the row's owner (owner_id).",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "summary": "Create one of integrations",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 80
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "webhook",
+                      "slack",
+                      "email"
+                    ]
+                  },
+                  "config": {
+                    "description": "The value's keys follow kind: one shape per value, and a write is held to the shape of the row's kind",
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "url": {
+                            "type": "string",
+                            "format": "uri",
+                            "maxLength": 255
+                          },
+                          "retries": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 10,
+                            "default": 3
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": [
+                          "url"
+                        ],
+                        "title": "kind = webhook"
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "channel": {
+                            "type": "string",
+                            "maxLength": 80
+                          },
+                          "mention": {
+                            "type": "boolean",
+                            "default": false
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": [
+                          "channel"
+                        ],
+                        "title": "kind = slack"
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "to": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "maxLength": 255
+                            }
+                          },
+                          "digest": {
+                            "type": "string",
+                            "enum": [
+                              "instant",
+                              "daily"
+                            ],
+                            "default": "instant"
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": [
+                          "to"
+                        ],
+                        "title": "kind = email"
+                      }
+                    ]
+                  },
+                  "secret": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 200,
+                        "description": "Signs what the integration sends. Encrypted at rest; never in an event, a filter, a sort or a search"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "token": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 200,
+                        "description": "Encrypted at rest; never in an event, a filter, a sort or a search"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "kind",
+                  "config"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Integration"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/integrations/{id}": {
+      "get": {
+        "tags": [
+          "integrations"
+        ],
+        "operationId": "integrations_get",
+        "description": "Any of: Only the row's owner (owner_id); Only users with role admin.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "summary": "Get one of integrations",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "owner_id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "name": {
+                          "type": "string",
+                          "maxLength": 80
+                        },
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "webhook",
+                            "slack",
+                            "email"
+                          ]
+                        },
+                        "config": {
+                          "description": "The value's keys follow kind: one shape per value, and a write is held to the shape of the row's kind",
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "url": {
+                                  "type": "string",
+                                  "format": "uri",
+                                  "maxLength": 255
+                                },
+                                "retries": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 10,
+                                  "default": 3
+                                }
+                              },
+                              "additionalProperties": false,
+                              "required": [
+                                "url"
+                              ],
+                              "title": "kind = webhook"
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "channel": {
+                                  "type": "string",
+                                  "maxLength": 80
+                                },
+                                "mention": {
+                                  "type": "boolean",
+                                  "default": false
+                                }
+                              },
+                              "additionalProperties": false,
+                              "required": [
+                                "channel"
+                              ],
+                              "title": "kind = slack"
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "to": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "maxLength": 255
+                                  }
+                                },
+                                "digest": {
+                                  "type": "string",
+                                  "enum": [
+                                    "instant",
+                                    "daily"
+                                  ],
+                                  "default": "instant"
+                                }
+                              },
+                              "additionalProperties": false,
+                              "required": [
+                                "to"
+                              ],
+                              "title": "kind = email"
+                            }
+                          ]
+                        },
+                        "secret": {
+                          "oneOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 200,
+                              "description": "Signs what the integration sends. Encrypted at rest; never in an event, a filter, a sort or a search"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "description": "Signs what the integration sends. Never in a response: the field is written and kept sealed, and no caller reads it back."
+                        },
+                        "token": {
+                          "oneOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 200,
+                              "description": "Encrypted at rest; never in an event, a filter, a sort or a search"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "description": "Present only for a caller this rule allows on the row: owner:owner_id."
+                        },
+                        "created_at": {
+                          "oneOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "owner": {
+                          "oneOf": [
+                            {
+                              "$ref": "#/components/schemas/User"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "owner_id",
+                        "name",
+                        "kind",
+                        "config",
+                        "created_at",
+                        "owner"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "integrations"
+        ],
+        "operationId": "integrations_update",
+        "description": "Only the row's owner (owner_id).",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "summary": "Update one of integrations",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 80
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "webhook",
+                      "slack",
+                      "email"
+                    ]
+                  },
+                  "config": {
+                    "description": "The value's keys follow kind: one shape per value, and a write is held to the shape of the row's kind",
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "url": {
+                            "type": "string",
+                            "format": "uri",
+                            "maxLength": 255
+                          },
+                          "retries": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 10,
+                            "default": 3
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": [
+                          "url"
+                        ],
+                        "title": "kind = webhook"
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "channel": {
+                            "type": "string",
+                            "maxLength": 80
+                          },
+                          "mention": {
+                            "type": "boolean",
+                            "default": false
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": [
+                          "channel"
+                        ],
+                        "title": "kind = slack"
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "to": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "maxLength": 255
+                            }
+                          },
+                          "digest": {
+                            "type": "string",
+                            "enum": [
+                              "instant",
+                              "daily"
+                            ],
+                            "default": "instant"
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": [
+                          "to"
+                        ],
+                        "title": "kind = email"
+                      }
+                    ]
+                  },
+                  "secret": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 200,
+                        "description": "Signs what the integration sends. Encrypted at rest; never in an event, a filter, a sort or a search"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "token": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 200,
+                        "description": "Encrypted at rest; never in an event, a filter, a sort or a search"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Integration"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "integrations"
+        ],
+        "operationId": "integrations_delete",
+        "description": "Any of: Only the row's owner (owner_id); Only users with role admin.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "summary": "Delete one of integrations",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/integrations/{id}/sign": {
+      "post": {
+        "tags": [
+          "integrations"
+        ],
+        "operationId": "integrations_sign",
+        "summary": "Sign a payload with the integration's secret (HMAC-SHA256, in hexadecimal)",
+        "description": "Only the row's owner (owner_id).",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "payload": {
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "payload"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "signature": {
+                          "type": "string",
+                          "maxLength": 255
+                        }
+                      },
+                      "additionalProperties": false,
+                      "required": [
+                        "signature"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
@@ -4118,6 +5119,64 @@
                               }
                             ],
                             "description": "Present only for a caller this rule allows on the row: owner:id or role:admin."
+                          },
+                          "preferences": {
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "theme": {
+                                    "type": "string",
+                                    "enum": [
+                                      "light",
+                                      "dark"
+                                    ],
+                                    "default": "light"
+                                  },
+                                  "digest": {
+                                    "type": "boolean",
+                                    "default": true
+                                  },
+                                  "quiet_hours": {
+                                    "type": "object",
+                                    "properties": {
+                                      "from": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "maximum": 23
+                                      },
+                                      "to": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "maximum": 23
+                                      }
+                                    },
+                                    "additionalProperties": false,
+                                    "required": [
+                                      "from",
+                                      "to"
+                                    ]
+                                  }
+                                },
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "recovery_code": {
+                            "oneOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 120,
+                                "description": "Encrypted at rest; never in an event, a filter, a sort or a search"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "description": "Present only for a caller this rule allows on the row: owner:id."
                           }
                         },
                         "required": [
@@ -4129,7 +5188,8 @@
                           "banned",
                           "ban_reason",
                           "post_count",
-                          "approved_count"
+                          "approved_count",
+                          "preferences"
                         ]
                       }
                     },
@@ -4288,6 +5348,64 @@
                           ],
                           "description": "Present only for a caller this rule allows on the row: owner:id or role:admin."
                         },
+                        "preferences": {
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "theme": {
+                                  "type": "string",
+                                  "enum": [
+                                    "light",
+                                    "dark"
+                                  ],
+                                  "default": "light"
+                                },
+                                "digest": {
+                                  "type": "boolean",
+                                  "default": true
+                                },
+                                "quiet_hours": {
+                                  "type": "object",
+                                  "properties": {
+                                    "from": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 23
+                                    },
+                                    "to": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 23
+                                    }
+                                  },
+                                  "additionalProperties": false,
+                                  "required": [
+                                    "from",
+                                    "to"
+                                  ]
+                                }
+                              },
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "recovery_code": {
+                          "oneOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 120,
+                              "description": "Encrypted at rest; never in an event, a filter, a sort or a search"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "description": "Present only for a caller this rule allows on the row: owner:id."
+                        },
                         "posts": {
                           "type": "array",
                           "items": {
@@ -4305,6 +5423,7 @@
                         "ban_reason",
                         "post_count",
                         "approved_count",
+                        "preferences",
                         "posts"
                       ]
                     }
@@ -4370,6 +5489,63 @@
                       {
                         "type": "string",
                         "maxLength": 40
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "preferences": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "theme": {
+                            "type": "string",
+                            "enum": [
+                              "light",
+                              "dark"
+                            ],
+                            "default": "light"
+                          },
+                          "digest": {
+                            "type": "boolean",
+                            "default": true
+                          },
+                          "quiet_hours": {
+                            "type": "object",
+                            "properties": {
+                              "from": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 23
+                              },
+                              "to": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 23
+                              }
+                            },
+                            "additionalProperties": false,
+                            "required": [
+                              "from",
+                              "to"
+                            ]
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "recovery_code": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 120,
+                        "description": "Encrypted at rest; never in an event, a filter, a sort or a search"
                       },
                       {
                         "type": "null"
@@ -4828,6 +6004,145 @@
           "created_at"
         ]
       },
+      "Integration": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "owner_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "webhook",
+              "slack",
+              "email"
+            ]
+          },
+          "config": {
+            "description": "The value's keys follow kind: one shape per value, and a write is held to the shape of the row's kind",
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "maxLength": 255
+                  },
+                  "retries": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 10,
+                    "default": 3
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "url"
+                ],
+                "title": "kind = webhook"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "channel": {
+                    "type": "string",
+                    "maxLength": 80
+                  },
+                  "mention": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "channel"
+                ],
+                "title": "kind = slack"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "to": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 255
+                    }
+                  },
+                  "digest": {
+                    "type": "string",
+                    "enum": [
+                      "instant",
+                      "daily"
+                    ],
+                    "default": "instant"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "to"
+                ],
+                "title": "kind = email"
+              }
+            ]
+          },
+          "secret": {
+            "oneOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "description": "Signs what the integration sends. Encrypted at rest; never in an event, a filter, a sort or a search"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Signs what the integration sends. Never in a response: the field is written and kept sealed, and no caller reads it back."
+          },
+          "token": {
+            "oneOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "description": "Encrypted at rest; never in an event, a filter, a sort or a search"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Present only for a caller this rule allows on the row: owner:owner_id."
+          },
+          "created_at": {
+            "oneOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "owner_id",
+          "name",
+          "kind",
+          "config",
+          "created_at"
+        ]
+      },
       "User": {
         "type": "object",
         "properties": {
@@ -4905,6 +6220,64 @@
               }
             ],
             "description": "Present only for a caller this rule allows on the row: owner:id or role:admin."
+          },
+          "preferences": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "theme": {
+                    "type": "string",
+                    "enum": [
+                      "light",
+                      "dark"
+                    ],
+                    "default": "light"
+                  },
+                  "digest": {
+                    "type": "boolean",
+                    "default": true
+                  },
+                  "quiet_hours": {
+                    "type": "object",
+                    "properties": {
+                      "from": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 23
+                      },
+                      "to": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 23
+                      }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                      "from",
+                      "to"
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "recovery_code": {
+            "oneOf": [
+              {
+                "type": "string",
+                "maxLength": 120,
+                "description": "Encrypted at rest; never in an event, a filter, a sort or a search"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Present only for a caller this rule allows on the row: owner:id."
           }
         },
         "required": [
@@ -4916,7 +6289,8 @@
           "banned",
           "ban_reason",
           "post_count",
-          "approved_count"
+          "approved_count",
+          "preferences"
         ]
       }
     },

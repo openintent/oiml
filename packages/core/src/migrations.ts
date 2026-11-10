@@ -419,6 +419,8 @@ export function planMigration(prev: IR | null, next: IR, renames: Renames = EMPT
 }
 
 export function sqlType(column: ColumnIR): string {
+  // A sealed column holds ciphertext, whatever its declared type
+  if (column.sealed) return "bytea";
   return typeSql(column.type, column.maxLength);
 }
 

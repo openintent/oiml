@@ -1,5 +1,5 @@
 import type { Backend, GeneratedFile, GenerateInput } from "@osl/core";
-import { globalActions, hasFieldRules, migrationFiles, openapiDocument, userActions } from "@osl/core";
+import { globalActions, hasFieldRules, hasSealed, migrationFiles, openapiDocument, userActions } from "@osl/core";
 import { actionHandlersFile, actionScaffolds, actionsFile } from "./actions.js";
 import { appFile, mainScaffold, openapiFile, workerScaffold } from "./app.js";
 import { authFile, authProvidersFile, hasProviders } from "./auth.js";
@@ -13,6 +13,8 @@ import { entitiesFile, formatFile, modelFilesFile, valuesFile, viewerFile } from
 import { globalActionsFile, hooksScaffold, resourceFile } from "./resources.js";
 import { accessFile, dbFile, hooksFile, httpxFile } from "./runtime.js";
 import { scaffoldFiles } from "./scaffold.js";
+import { sealFile, sealTestFile } from "./seal.js";
+import { hasShapes, shapeModelsFile, shapeRuntimeFile } from "./shapes.js";
 import { storageFile } from "./storage.js";
 import { clientFile, clientModelFile, scenarioTestFiles, seedFile, testSupportFile } from "./tests.js";
 import { modulePath } from "./util.js";
@@ -40,6 +42,14 @@ export function generate(input: GenerateInput): GeneratedFile[] {
   files.push({ path: `${gen}/httpx/httpx.go`, content: httpxFile(mod, ir) });
   files.push({ path: `${gen}/validation/types.go`, content: validationRuntimeFile(mod) });
   files.push({ path: `${gen}/validation/resources.go`, content: validationResourcesFile(ir, mod) });
+  if (hasShapes(ir)) {
+    files.push({ path: `${gen}/validation/shape.go`, content: shapeRuntimeFile(mod) });
+    files.push({ path: `${gen}/models/shapes.go`, content: shapeModelsFile(ir, mod) });
+  }
+  if (hasSealed(ir)) {
+    files.push({ path: `${gen}/seal/seal.go`, content: sealFile(ir, mod) });
+    files.push({ path: `${gen}/seal/seal_test.go`, content: sealTestFile(mod) });
+  }
   files.push({ path: `${gen}/auth/auth.go`, content: authFile(ir, mod) });
   if (hasProviders(ir)) {
     files.push({ path: `${gen}/auth/providers.go`, content: authProvidersFile(ir, mod) });
@@ -126,7 +136,8 @@ export const ginPgxBackend: Backend = {
       "ctx.DB is the database, a *pgxpool.Pool (under isolation: database a *db.Scope with the same Query, QueryRow, Exec and Begin, which binds each statement to the caller's tenants: always pass ctx.Context()), and ctx.Context() the request's context (or the job's when a schedule or timer runs the action; ctx.Gin is nil then). ctx.Now is when the action runs; a timer or schedule passes the time it was due, so compare against ctx.Now rather than time.Now(). models.<Entity>Table is the quoted table name, models.<Entity>Columns the column list for SELECT and RETURNING, and models.Scan<Entity>(row) scans one row selected with those columns (ctx.DB.QueryRow).",
       "Return httpx.NewError(status, code, message) to answer with that status (the httpx package lives next to the generated/actions package the stub imports); return the plain error for anything unexpected.",
       "ctx.Session is nil for anonymous callers; ctx.Session.User.ID is the caller's id. Nullable columns are pointers, time columns are time.Time; stamp with time.Now().UTC(). Keep the file gofmt-formatted and every import used.",
-      "To send mail, call email.Send(ctx.Context(), email.Email{...}) from the generated email package; it logs or captures the message outside production, so sending is safe in tests."
+      "To send mail, call email.Send(ctx.Context(), email.Email{...}) from the generated email package; it logs or captures the message outside production, so sending is safe in tests.",
+      "A sealed field (sealed: true in the model) is []byte in a row you load: read it with seal.Open(seal.<TableColumn>, row.<Column>) and write it with seal.Seal(seal.<TableColumn>, value), from the generated seal package next to the generated/actions package; never return, log or compare the stored bytes or the opened value."
     ].join("\n")
   }),
   runtime: () => ({

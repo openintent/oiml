@@ -1,0 +1,288 @@
+osl: "1.0"
+summary: "Integration with a config whose shape follows kind (shape_by), a sealed secret nobody reads back and a sealed token for its owner; User.preferences with a shape and a sealed User.recovery_code; a sign action whose handler opens the secret, and an event that would fail on a sealed value"
+ops:
+  - op: add_field
+    entity: User
+    name: preferences
+    field:
+      type: json
+      shape:
+        theme: { type: enum, enum_values: [light, dark], default: light }
+        digest: { type: boolean, default: true }
+        quiet_hours:
+          type: json
+          shape:
+            from: { type: integer, required: true, validate: { min: 0, max: 23 } }
+            to: { type: integer, required: true, validate: { min: 0, max: 23 } }
+  - op: add_field
+    entity: User
+    name: recovery_code
+    field: { type: string, sealed: true, read: "owner:id", max_length: 120 }
+  - op: add_entity
+    name: Integration
+    entity:
+      fields:
+        id: { type: uuid, primary: true }
+        owner_id: { type: uuid, required: true, relation: { entity: User, reverse: integrations, on_delete: cascade } }
+        name: { type: string, required: true, max_length: 80 }
+        kind: { type: enum, enum_values: [webhook, slack, email], required: true }
+        config:
+          type: json
+          required: true
+          shape_by:
+            kind:
+              webhook:
+                url: { type: string, required: true, validate: { format: url } }
+                retries: { type: integer, default: 3, validate: { min: 0, max: 10 } }
+              slack:
+                channel: { type: string, required: true, max_length: 80 }
+                mention: { type: boolean, default: false }
+              email:
+                to: { type: array, array_type: string, required: true }
+                digest: { type: enum, enum_values: [instant, daily], default: instant }
+        secret: { type: string, sealed: true, max_length: 200, description: Signs what the integration sends }
+        token: { type: string, sealed: true, read: "owner:owner_id", max_length: 200 }
+        created_at: { type: datetime, default: now }
+      rules:
+        read: "owner:owner_id or role:admin"
+        create: "owner:owner_id"
+        update: "owner:owner_id"
+        delete: "owner:owner_id or role:admin"
+  - op: add_resource
+    name: integrations
+    resource:
+      entity: Integration
+      operations: [list, get, create, update, delete]
+      list: { filters: [kind] }
+      get: { include: [owner] }
+      create: { fields: [name, kind, config, secret, token] }
+      update: { fields: [name, kind, config, secret, token] }
+      actions:
+        sign:
+          description: Sign a payload with the integration's secret (HMAC-SHA256, in hexadecimal)
+          input:
+            payload: { type: string, required: true, max_length: 2000 }
+          rule: "owner:owner_id"
+          returns: { signature: { type: string, required: true } }
+  - op: update_resource
+    name: users
+    resource:
+      entity: User
+      operations: [list, get, update]
+      get: { include: [posts] }
+      update: { fields: [name, phone, preferences, recovery_code] }
+      actions:
+        ban:
+          description: Ban the user, recording when and why
+          input:
+            reason: { type: string, required: true, max_length: 200, validate: { min_length: 1 } }
+          rule: "role:admin"
+  - op: add_event
+    event: { on: Integration.created, handler: integration_created }
+  - op: add_page
+    name: integrations
+    page:
+      resource: integrations
+      layout: table
+      title: Integrations
+      access: authenticated
+      columns: [name, kind, created_at]
+      fields: [name, kind, config, secret, token, created_at]
+  - op: set_sidebar
+    sidebar:
+      items:
+        - { page: overview, icon: house }
+        - { page: my_posts, icon: pen-line }
+        - { page: posts, icon: file-text }
+        - { page: desk, icon: kanban }
+        - { page: announcements, icon: megaphone }
+        - { page: archive, icon: archive }
+        - { page: moderation, icon: shield }
+        - { page: users, icon: users }
+        - { page: integrations, icon: plug }
+        - { page: about, icon: info }
+      footer: { user: true, settings: true }
+  - op: add_scenario
+    scenario:
+      name: integrations and sealed secrets
+      steps:
+        - as: alice
+          op: auth.me
+          expect: { status: 200, body: { data: { preferences: null, recovery_code: null } } }
+          capture: { alice_id: data.id }
+        - as: alice
+          op: users.update
+          path: { id: "{alice_id}" }
+          body: { preferences: { theme: dark } }
+          expect: { status: 200, body: { data: { preferences: { theme: dark, digest: true } } } }
+        - as: alice
+          op: users.update
+          path: { id: "{alice_id}" }
+          body: { preferences: { theme: blue } }
+          expect: { status: 400 }
+        - as: alice
+          op: users.update
+          path: { id: "{alice_id}" }
+          body: { preferences: { theme: dark, quiet_hours: { from: 22, to: seven } } }
+          expect: { status: 400 }
+        - as: alice
+          op: users.update
+          path: { id: "{alice_id}" }
+          body: { preferences: { theme: light, volume: 11 } }
+          expect: { status: 400 }
+        - as: alice
+          op: users.update
+          path: { id: "{alice_id}" }
+          body: { preferences: { digest: false, quiet_hours: { from: 22, to: 7 } } }
+          expect:
+            status: 200
+            body: { data: { preferences: { theme: light, digest: false, quiet_hours: { from: 22, to: 7 } } } }
+        - as: alice
+          op: users.update
+          path: { id: "{alice_id}" }
+          body: { recovery_code: correct horse battery staple }
+          expect: { status: 200, body: { data: { recovery_code: correct horse battery staple } } }
+        - as: alice
+          op: auth.me
+          expect:
+            status: 200
+            body: { data: { recovery_code: correct horse battery staple, preferences: { digest: false } } }
+        - as: bob
+          op: users.get
+          path: { id: "{alice_id}" }
+          expect: { status: 200, body: { data: { email: alice@example.com } }, absent: [data.recovery_code] }
+        - as: admin
+          op: users.get
+          path: { id: "{alice_id}" }
+          expect: { status: 200, absent: [data.recovery_code] }
+        - op: users.list
+          expect: { status: 200, absent: [data.recovery_code] }
+        - as: alice
+          op: integrations.create
+          body:
+            name: Deploy hook
+            kind: webhook
+            config: { url: "https://example.com/hook" }
+            secret: whsec_test_123
+            token: tok_live_4f9a2c
+          expect:
+            status: 201
+            body:
+              data:
+                name: Deploy hook
+                kind: webhook
+                config: { url: "https://example.com/hook", retries: 3 }
+                token: tok_live_4f9a2c
+            absent: [data.secret]
+          capture: { hook: data.id }
+        - as: alice
+          op: integrations.get
+          path: { id: "{hook}" }
+          expect:
+            status: 200
+            body: { data: { token: tok_live_4f9a2c, owner: { recovery_code: correct horse battery staple } } }
+            absent: [data.secret]
+        - as: admin
+          op: integrations.get
+          path: { id: "{hook}" }
+          expect:
+            status: 200
+            body: { data: { name: Deploy hook, owner: { email: alice@example.com } } }
+            absent: [data.token, data.secret, data.owner.recovery_code]
+        - as: bob
+          op: integrations.get
+          path: { id: "{hook}" }
+          expect: { status: 403 }
+        - as: alice
+          op: integrations.sign
+          path: { id: "{hook}" }
+          body: { payload: hello }
+          expect:
+            status: 200
+            body: { data: { signature: 6ea1f73d686b6c038d9b9df0656f437f4c2ae73b6647d62b2470731dcccf49ec } }
+        - as: bob
+          op: integrations.sign
+          path: { id: "{hook}" }
+          body: { payload: hello }
+          expect: { status: 403 }
+        - as: alice
+          op: integrations.create
+          body: { name: No address, kind: webhook, config: { retries: 2 } }
+          expect: { status: 400 }
+        - as: alice
+          op: integrations.create
+          body: { name: Wrong settings, kind: slack, config: { url: "https://example.com/hook" } }
+          expect: { status: 400 }
+        - as: alice
+          op: integrations.create
+          body: { name: Team channel, kind: slack, config: { channel: "#deploys" } }
+          expect:
+            status: 201
+            body: { data: { kind: slack, config: { channel: "#deploys", mention: false }, token: null } }
+            absent: [data.secret]
+        - as: alice
+          op: integrations.create
+          body: { name: Editors, kind: email, config: { to: [editors@example.com, desk@example.com] } }
+          expect:
+            status: 201
+            body: { data: { config: { to: [editors@example.com, desk@example.com], digest: instant } } }
+        - as: alice
+          op: integrations.update
+          path: { id: "{hook}" }
+          body: { kind: slack }
+          expect: { status: 400 }
+        - as: alice
+          op: integrations.update
+          path: { id: "{hook}" }
+          body: { kind: slack, config: { channel: "#ops", mention: true } }
+          expect:
+            status: 200
+            body: { data: { kind: slack, config: { channel: "#ops", mention: true }, token: tok_live_4f9a2c } }
+        - as: alice
+          op: integrations.update
+          path: { id: "{hook}" }
+          body: { config: { url: "https://example.com/hook" } }
+          expect: { status: 400 }
+        - as: alice
+          op: integrations.update
+          path: { id: "{hook}" }
+          body: { name: Ops channel }
+          expect:
+            status: 200
+            body: { data: { name: Ops channel, token: tok_live_4f9a2c, config: { channel: "#ops" } } }
+            absent: [data.secret]
+        - as: alice
+          op: integrations.update
+          path: { id: "{hook}" }
+          body: { secret: whsec_rotated_456 }
+          expect: { status: 200, absent: [data.secret] }
+        - as: alice
+          op: integrations.sign
+          path: { id: "{hook}" }
+          body: { payload: hello }
+          expect:
+            status: 200
+            body: { data: { signature: 487b677aa30f91ac8d0353af1e75713827d4c37beb02db0973b22f2accbcb979 } }
+        - as: alice
+          op: integrations.update
+          path: { id: "{hook}" }
+          body: { token: "" }
+          expect: { status: 200, body: { data: { token: "" } } }
+        - as: alice
+          op: integrations.update
+          path: { id: "{hook}" }
+          body: { token: null }
+          expect: { status: 200, body: { data: { token: null } } }
+        - as: admin
+          op: integrations.list
+          query: { kind: slack }
+          expect: { status: 200, body: { data: [{ kind: slack }] }, absent: [data.token, data.secret] }
+        - as: alice
+          op: integrations.update
+          path: { id: "{hook}" }
+          body: { token: tok_live_second }
+          expect: { status: 200, body: { data: { token: tok_live_second } } }
+        - as: alice
+          op: integrations.list
+          query: { kind: slack }
+          expect: { status: 200, absent: [data.secret] }

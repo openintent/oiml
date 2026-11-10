@@ -43,6 +43,11 @@ const COERCE: Record<string, Record<string, "int" | "number" | "boolean" | "stri
     "page": "int",
     "page_size": "int",
     "author_id": "string"
+  },
+  "integrations.list": {
+    "page": "int",
+    "page_size": "int",
+    "kind": "string"
   }
 };
 

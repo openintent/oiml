@@ -49,6 +49,9 @@ describe("openapi document", () => {
       "/api/files/{id}/content",
       "/api/follows",
       "/api/follows/{id}",
+      "/api/integrations",
+      "/api/integrations/{id}",
+      "/api/integrations/{id}/sign",
       "/api/posts",
       "/api/posts/{id}",
       "/api/posts/{id}/approve",
@@ -88,6 +91,7 @@ describe("openapi document", () => {
       "Error",
       "File",
       "Follow",
+      "Integration",
       "User"
     ]);
     expect(doc.components.securitySchemes).toBeDefined();
