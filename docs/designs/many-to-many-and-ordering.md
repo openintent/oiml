@@ -15,7 +15,9 @@ walk applies only where the resource lists in the entity's own order; a position
 takes its parent field out of update, which the contract walk reports as a breaking change (workspace WS-12,
 `milestones.update` loses `project_id`). Proof: a fourth fixture, `music` (MU-1 to MU-4, 74 scenario steps), and
 workspace WS-12 under `isolation: database` (31 steps), conformance 12/12 with six walks, 160 unit tests with the
-database (156 and 4 skipped without), the oracle gate 32/32.
+database (156 and 4 skipped without), the oracle gate 32/32. Since then: the hardening pass of 2026-11-10 made
+the `lock_not_available` of a move or a remove that gives up a 503 `busy` with `Retry-After: 1` on every backend,
+where "What it leaves open" below says 500.
 
 Two gaps, one proof. A list could not include a row reached through a junction, so a track's genres and a course's
 instructors showed as ids where names were wanted; and a position within a parent was a plain integer that a
@@ -257,7 +259,8 @@ web generator 430, Go 150, the walk 150, the tests 900.
 
 - The pages are type-checked and built by both web backends; no browser drove a drag in this round.
 - `lock_not_available` after ten seconds of a held row is a 500 on every backend. It needs a row of the parent
-  held that long by something else.
+  held that long by something else. (A 503 `busy` since the hardening pass of 2026-11-10; the server still does
+  not send the statement again itself.)
 - A transaction of the user's own that writes two parents takes their locks in the order it writes them; two such
   transactions in opposite orders can deadlock, as any two-lock code can.
 - A move costs the size of its parent (every row is locked, and the ones whose place changes are written).

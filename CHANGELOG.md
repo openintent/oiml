@@ -5,6 +5,22 @@ fixture intent on all three backends before it is listed here.
 
 ## Unreleased
 
+- Hardening after milestone B (2026-11-10; no construct, one diagnostic). A lock another request holds is no
+  longer a server error: `lock_not_available` (55P03, a move or a remove on an ordered table that gave up after
+  about ten seconds of a held row), `deadlock_detected` (40P01, as a delete of a counting row against a write of
+  one of its counted rows can end) and `serialization_failure` (40001) answer 503 with `Retry-After: 1` and the
+  code `busy` ("Another request is changing the same rows. Try again.") on drizzle-next and gin-pgx, where they
+  answered 500 `internal`; under tRPC the error is `SERVICE_UNAVAILABLE`, which tRPC 11 answers with 503, and the
+  app adds the header, also to a batch. The OpenAPI document names the 503 on every write beside its other error
+  answers. The server does not send the statement again itself: a handler has hooks and events around it, and
+  replaying one is left to a later round. Proven on a running music app of each backend with a second database
+  connection holding the lock, for all three codes, and by a unit test that runs the two TypeScript mappers. And a
+  model nobody could sign up to is refused: a field of the identity that must hold a value and that no sign-up
+  fills is M189, where it was accepted and every `auth.register` then answered 400 on the column's NOT NULL. That
+  is a `required` field without a default that is `sealed`, has `shape_by`, is `hidden`, bytes, a file or `role`,
+  a `read_only` one that `rules.create` would have set from a session, and a key that is neither a single uuid or
+  integer nor the email field; the message says what to do instead (make it optional, give it a default where it
+  may have one, or keep it on an entity of its own with a relation to the identity).
 - Field kinds, second half: sealed fields and typed JSON, with a shape per enum value (round B6 of the road to
   1.0.0, which this completes). `sealed: true` on a string or text field encrypts it at rest: `secret: { type:
 string, sealed: true }` is written through the API and returned to nobody, and `token: { type: string, sealed:

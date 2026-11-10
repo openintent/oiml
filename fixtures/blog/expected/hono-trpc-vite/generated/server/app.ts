@@ -14,6 +14,7 @@ import { sessionCookie } from "./auth";
 import { startWorker } from "../jobs";
 import { emailsSent, schedulesRun, testHooksEnabled, timersRun } from "../test-hooks";
 import { createContext } from "./context";
+import { isBusy } from "./errors";
 import { appRouter } from "./router";
 import { sealKey } from "../seal";
 
@@ -24,6 +25,7 @@ sealKey();
 function restError(c: HonoContext, err: unknown): Response {
   if (err instanceof TRPCError) {
     const code = (err.cause as { code?: string } | undefined)?.code ?? err.code.toLowerCase();
+    if (isBusy(err)) c.header("Retry-After", "1");
     return c.json({ error: { code, message: err.message } }, getHTTPStatusCodeFromError(err) as 400);
   }
   console.error(err);
@@ -34,7 +36,10 @@ export function createApp(): Hono {
   const app = new Hono();
   app.get("/healthz", c => c.json({ ok: true }));
   app.get("/health", c => c.json({ ok: true }));
-  app.use("/trpc/*", trpcServer({ router: appRouter, createContext }));
+  // A busy answer (503) tells the caller when to send the request again
+  const responseMeta = ({ errors }: { errors: unknown[] }) =>
+    errors.some(isBusy) ? { headers: new Headers({ "Retry-After": "1" }) } : {};
+  app.use("/trpc/*", trpcServer({ router: appRouter, createContext, responseMeta }));
   // Files: bytes in and out. Local storage streams them; S3 redirects to a signed URL.
   app.get("/api/files/:id/content", async c => {
     try {

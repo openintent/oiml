@@ -21,6 +21,24 @@ export function notFound(): TRPCError {
   return new TRPCError({ code: "NOT_FOUND", message: "Not found" });
 }
 
+/**
+ * 503 busy: the statement lost to a lock another request holds and did nothing. The same request can be sent again;
+ * the server does not run the procedure a second time itself. The app answers it with Retry-After.
+ */
+export function busy(): TRPCError {
+  return new TRPCError({
+    code: "SERVICE_UNAVAILABLE",
+    message: "Another request is changing the same rows. Try again.",
+    cause: { code: "busy" }
+  });
+}
+
+/** Whether an error is that answer, and not a 503 of a hook's own */
+export function isBusy(err: unknown): boolean {
+  if (!(err instanceof TRPCError) || err.code !== "SERVICE_UNAVAILABLE") return false;
+  return (err.cause as { code?: string } | undefined)?.code === "busy";
+}
+
 /** A malformed id can never match a row, so it is reported as not found. */
 export function parseId<S extends ZodTypeAny>(schema: S, raw: unknown): z.infer<S> {
   const result = schema.safeParse(raw);
@@ -50,6 +68,9 @@ export function toTRPCError(err: unknown, operation: "read" | "write" | "delete"
   if (code === "22P02") {
     return operation === "read" ? notFound() : new TRPCError({ code: "BAD_REQUEST", message: "A value has the wrong format" });
   }
+  // 55P03 is a lock another request held for too long, 40P01 a deadlock PostgreSQL ended by failing this statement,
+  // 40001 a serialization failure: neither the caller's fault nor the server's
+  if (code === "55P03" || code === "40P01" || code === "40001") return busy();
   console.error(err);
   return new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Something went wrong", cause: err });
 }

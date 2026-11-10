@@ -14,7 +14,9 @@ parent the way a move does, which a test against a real database showed to be ne
 FEAT-13. Proof: workspace WS-13 under `isolation: database` (45 scenario steps) and blog FEAT-13 (32 steps),
 conformance 12/12 with six walks, the rule walk and the order walk now comparing every count with the rows it
 counts, 195 unit tests with the database (182 and 13 skipped without), the order's own load of round B2 run with a
-count in place at 400 writes per connection, the oracle gate 34/34.
+count in place at 400 writes per connection, the oracle gate 34/34. Since then: the hardening pass of 2026-11-10
+made `deadlock_detected` and `lock_not_available` a 503 `busy` with `Retry-After: 1` on every backend, where
+decision 3 and "What it leaves open" below say 500; the deadlock itself is as decision 3 leaves it.
 
 Soft delete is the most repeated hand-written pattern in applications of OSL's shape. One of the two surveyed for
 these notes carries an `is_active` flag on 182 tables; the other carries `archived_at` or `deleted_at` on every
@@ -294,7 +296,8 @@ larger part.
 
 - A delete of a counting row against a write of one of its counted rows ends in PostgreSQL's deadlock detection
   (decision 3); the generated delete could take the counting rows first.
-- `deadlock_detected` and `lock_not_available` answer 500 on every backend.
+- `deadlock_detected` and `lock_not_available` answer 500 on every backend. (503 `busy` since the hardening pass
+  of 2026-11-10.)
 - No browser drove the switch and the two buttons; both web apps type-check and build with them.
 - A timer on `archived_at` is scheduled by archive on all three backends (the blog fixture's Article has a timer,
   so the call is generated and runs), but no scenario waits on one.

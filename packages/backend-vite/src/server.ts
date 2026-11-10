@@ -140,6 +140,24 @@ export function notFound(): TRPCError {
   return new TRPCError({ code: "NOT_FOUND", message: "Not found" });
 }
 
+/**
+ * 503 busy: the statement lost to a lock another request holds and did nothing. The same request can be sent again;
+ * the server does not run the procedure a second time itself. The app answers it with Retry-After.
+ */
+export function busy(): TRPCError {
+  return new TRPCError({
+    code: "SERVICE_UNAVAILABLE",
+    message: "Another request is changing the same rows. Try again.",
+    cause: { code: "busy" }
+  });
+}
+
+/** Whether an error is that answer, and not a 503 of a hook's own */
+export function isBusy(err: unknown): boolean {
+  if (!(err instanceof TRPCError) || err.code !== "SERVICE_UNAVAILABLE") return false;
+  return (err.cause as { code?: string } | undefined)?.code === "busy";
+}
+
 /** A malformed id can never match a row, so it is reported as not found. */
 export function parseId<S extends ZodTypeAny>(schema: S, raw: unknown): z.infer<S> {
   const result = schema.safeParse(raw);
@@ -169,6 +187,9 @@ export function toTRPCError(err: unknown, operation: "read" | "write" | "delete"
   if (code === "22P02") {
     return operation === "read" ? notFound() : new TRPCError({ code: "BAD_REQUEST", message: "A value has the wrong format" });
   }
+  // 55P03 is a lock another request held for too long, 40P01 a deadlock PostgreSQL ended by failing this statement,
+  // 40001 a serialization failure: neither the caller's fault nor the server's
+  if (code === "55P03" || code === "40P01" || code === "40001") return busy();
   console.error(err);
   return new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Something went wrong", cause: err });
 }
@@ -582,12 +603,14 @@ import { getHTTPStatusCodeFromError } from "@trpc/server/http";
 import { Hono, type Context as HonoContext } from "hono";
 ${ir.files ? `import { fileContent, receiveContent } from "../files";\n` : ""}${oauth ? `import { APP_URL, oauthCallback, oauthStart } from "../auth-providers";\nimport { sessionCookie } from "./auth";\n` : ""}${ir.jobs ? `import { startWorker } from "../jobs";\n` : ""}${isolated ? `import { withTenants } from "../db/client";\n` : ""}import { emailsSent, ${isolated ? "rulesSwitch, " : ""}schedulesRun, ${isolated ? "tenancyUnbound, " : ""}testHooksEnabled, timersRun } from "../test-hooks";
 ${isolated ? `import { getSession } from "./auth";\n` : ""}import { createContext } from "./context";
+import { isBusy } from "./errors";
 import { appRouter } from "./router";
 ${hasSealed(ir) ? `import { sealKey } from "../seal";\n\n// Sealed fields: the server does not start without OSL_SEAL_KEY, or with one that is not a key\nsealKey();\n` : ""}
 /** Errors from the shared modules are tRPC errors; REST routes answer them in the contract's shape. */
 function restError(c: HonoContext, err: unknown): Response {
   if (err instanceof TRPCError) {
     const code = (err.cause as { code?: string } | undefined)?.code ?? err.code.toLowerCase();
+    if (isBusy(err)) c.header("Retry-After", "1");
     return c.json({ error: { code, message: err.message } }, getHTTPStatusCodeFromError(err) as 400);
   }
   console.error(err);
@@ -598,7 +621,10 @@ export function createApp(): Hono {
   const app = new Hono();
   app.get("/healthz", c => c.json({ ok: true }));
   app.get("/health", c => c.json({ ok: true }));
-  app.use("/trpc/*", trpcServer({ router: appRouter, createContext }));
+  // A busy answer (503) tells the caller when to send the request again
+  const responseMeta = ({ errors }: { errors: unknown[] }) =>
+    errors.some(isBusy) ? { headers: new Headers({ "Retry-After": "1" }) } : {};
+  app.use("/trpc/*", trpcServer({ router: appRouter, createContext, responseMeta }));
 ${restRoutes.join("\n")}
   // After \`vite build\`, the API also serves the web app, with the SPA fallback for its routes.
   // In development Vite serves it instead and proxies /trpc and /api here.

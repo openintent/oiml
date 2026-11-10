@@ -1418,6 +1418,43 @@ function registerFields(model: Model): string[] {
 }
 
 /**
+ * Why nobody could sign up while the identity has this field: it must hold a value, nothing fills it, and no way of
+ * signing up takes it. Undefined when the field is no obstacle, or when M065 refuses it already.
+ */
+function signUpObstacle(model: Model, name: string): { what: string; remedy: string } | undefined {
+  const identity = model.entities[model.auth!.identity];
+  const field = identity.fields[name];
+  if (name === (model.auth!.email_field ?? "email") || field.default !== undefined) return undefined;
+  const elsewhere = `keep it on an entity of its own with a relation to ${model.auth!.identity}`;
+  const key = primaryKeyFields(identity);
+  if (key.includes(name)) {
+    // A single uuid or integer key is generated; any other key would have to come from the client
+    if (key.length === 1 && ["uuid", "integer", "bigint"].includes(field.type)) return undefined;
+    return {
+      what: "a key the database does not generate",
+      remedy: "use a single uuid or integer key, which the database generates, and keep this value in a field beside it"
+    };
+  }
+  // A sequence, a position and a count are filled by the database whatever required says
+  if (!field.required || field.type === "sequence" || field.position || field.count_of) return undefined;
+  if (registerFields(model).includes(name)) return undefined;
+  const optional = `make the field optional, or ${elsewhere}`;
+  const defaulted = `give it a default, make it optional, or ${elsewhere}`;
+  if (field.sealed) return { what: "a sealed field", remedy: optional };
+  if (field.shape_by) return { what: "a field with shape_by", remedy: optional };
+  if (field.type === "file") return { what: "a file field (an upload needs a session)", remedy: optional };
+  if (field.type === "bytes") return { what: "a bytes field", remedy: defaulted };
+  if (field.hidden) return { what: "a hidden field", remedy: defaulted };
+  if (field.read_only) {
+    // M065 says so already, unless the create rule sets the field from the session: at sign-up there is none
+    if (directOwnerField(identity.rules?.create) !== name) return undefined;
+    return { what: "a read_only field (rules.create sets nothing: there is no session yet)", remedy: defaulted };
+  }
+  if (name === "role") return { what: "role", remedy: "give it a default, the role a new user starts with" };
+  return { what: "this field", remedy: defaulted };
+}
+
+/**
  * Identity fields an example actor may set although register refuses them: role and read_only fields. The test
  * harness and `osl seed` register the actor through the API, then write these straight into the database.
  */
@@ -2306,6 +2343,15 @@ export function validateModel(model: Model): Diagnostic[] {
           `magic links and OAuth cannot register new users while ${model.auth.identity} requires ${blocking.map(([n]) => n).join(", ")}; those users must register through credentials first`,
           "auth.providers"
         );
+      for (const fieldName of Object.keys(identity.fields)) {
+        const obstacle = signUpObstacle(model, fieldName);
+        if (obstacle)
+          error(
+            "M189",
+            `${model.auth.identity}.${fieldName} must hold a value and nothing fills it at sign-up: auth.register does not take ${obstacle.what}, and a magic link or OAuth creates a user from the email and the name alone, so every sign-up would fail on the missing value and nobody could register; ${obstacle.remedy}`,
+            `entities.${model.auth.identity}.fields.${fieldName}`
+          );
+      }
     }
     const names = (model.auth.providers ?? []).map(p =>
       typeof p === "string" ? p : p.oauth === "oidc" ? (p.name ?? "oidc") : p.oauth

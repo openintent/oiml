@@ -98,4 +98,39 @@ describe("openapi document", () => {
     // Stable: the same IR gives the same document
     expect(JSON.stringify(doc)).toBe(JSON.stringify(openapiDocument(await irFor("blog"))));
   });
+
+  it("names 503 busy on every write beside its other error answers, and on no read", async () => {
+    const doc = openapiDocument(await irFor("blog")) as {
+      paths: Record<string, Record<string, { responses: Record<string, { $ref?: string }> }>>;
+      components: { responses: Record<string, { headers?: Record<string, unknown> }> };
+    };
+    expect(doc.components.responses.Busy.headers).toEqual({
+      "Retry-After": { description: "Seconds to wait before sending it again", schema: { type: "integer" } }
+    });
+    const seen = { writes: 0, reads: 0 };
+    for (const [route, methods] of Object.entries(doc.paths))
+      for (const [method, operation] of Object.entries(methods)) {
+        const where = `${method.toUpperCase()} ${route}`;
+        // An operation that lists the error answers at all lists the conflict
+        if (!operation.responses["409"]) continue;
+        if (method === "get") {
+          expect(operation.responses["503"], where).toBeUndefined();
+          seen.reads++;
+        } else {
+          expect(operation.responses["503"], where).toEqual({ $ref: "#/components/responses/Busy" });
+          seen.writes++;
+        }
+      }
+    // Every write of the blog: creates, updates, deletes, actions, register and sign-in, uploads
+    expect(doc.paths["/api/posts"].post.responses["503"]).toBeDefined();
+    expect(doc.paths["/api/posts/{id}"].patch.responses["503"]).toBeDefined();
+    expect(doc.paths["/api/posts/{id}"].delete.responses["503"]).toBeDefined();
+    expect(doc.paths["/api/posts/{id}/publish"].post.responses["503"]).toBeDefined();
+    expect(doc.paths["/api/auth/register"].post.responses["503"]).toBeDefined();
+    expect(doc.paths["/api/files/{id}/content"].put.responses["503"]).toBeDefined();
+    expect(doc.paths["/api/posts"].get.responses["503"]).toBeUndefined();
+    expect(doc.paths["/api/posts/{id}"].get.responses["503"]).toBeUndefined();
+    expect(seen.writes).toBeGreaterThan(20);
+    expect(seen.reads).toBeGreaterThan(10);
+  });
 });

@@ -376,8 +376,9 @@ field's name. With \`hidden: true\` as well the API neither accepts nor returns 
 sealed value is never in an event's payload and never in the row a rule reads, so nothing may compare it: not a
 list filter, \`sortable\`, \`search\` or \`order\`, not \`unique\` or an index (M185), not a rule's, a count's or a
 timer's condition, not a sequence's scope; it has no \`default\`, is not a relation, is not taken by auth.register
-and is not an action's field. To look one up, keep a second field beside it that may be compared (the last four
-characters, a fingerprint a handler computes). A field cannot become sealed or stop being sealed, and a sealed
+(so a required one on the identity is refused, M189) and is not an action's field. To look one up, keep a second
+field beside it that may be compared (the last four characters, a fingerprint a handler computes). A field cannot
+become sealed or stop being sealed, and a sealed
 field or its entity cannot be renamed (the stored values are bound to the table's and the column's name): add a
 new field, move the values in a handler, remove the old one. Not expressible, say so in not_delivered: searching
 or filtering by a sealed value, a sealed number, date or JSON value, sealing with a key per tenant or per row,
@@ -408,7 +409,8 @@ that every reader of the row reads, and a shape for every one of its values (\`{
 hold; M187). Every write is held to the pair: a create and an update check the value against the shape of the kind
 the row will have, and an update that changes the kind must send the value with it or answers 400 (M188 warns
 when an update can write the kind and not the value). The enum cannot be the field of \`transitions\` (a
-transition writes the state alone), and such a field is not taken by auth.register. Put both fields in
+transition writes the state alone), and such a field is not taken by auth.register (a required one on the
+identity is M189). Put both fields in
 \`create.fields\` and \`update.fields\`. A handler of yours that writes either field keeps the pair itself. Not
 expressible, say so in not_delivered: a shape chosen by two fields or by a field of a related row, a key required
 only when another key has some value, a list of typed objects inside the value, a rule per key, filtering,
@@ -437,7 +439,8 @@ List returns \`{ data: [...], page: { page, page_size, total } }\`; get, create 
 Errors are \`{ error: { code, message } }\` with 400 validation, 401 no session, 403 the rule refuses (also a get of a row
 the read rule hides from this user, unless the entity sets \`hidden: not_found\`), 404 no such row, an id with the wrong
 format or, with \`hidden: not_found\`, a row the read rule hides, 409 conflict (a unique value already taken, or a delete
-another row still references).
+another row still references). A write that loses to a lock another request holds answers 503 \`busy\` with
+\`Retry-After: 1\`, and the same request can be sent again; no scenario expects it.
 The identity entity cannot have a create operation; users register through \`POST /api/auth/register\`.
 
 ## Actions
@@ -489,6 +492,10 @@ has \`POST /api/auth/logout\`, \`GET /api/auth/me\` and \`GET /api/auth/provider
 \`POST /api/auth/magic-link\` { email } (always ok) and \`POST /api/auth/magic-link/verify\` { token }; the email goes
 through the app's email adapter. \`oauth\` adds \`GET /api/auth/oauth/<name>\` and its callback. Magic links and OAuth
 create a user when the identity needs nothing but email (and name); otherwise the user registers first.
+A field of the identity that must hold a value and that no sign-up fills is refused (M189), since nobody could
+register: a \`required\` field without a default that is \`sealed\`, has \`shape_by\`, is \`hidden\`, a file, bytes
+or \`role\`, and a key that is neither a single uuid or integer nor the email field. Make it optional, give it a
+default where it may have one, or keep it on an entity of its own with a relation to the identity.
 
 \`isolation: database\` puts a backstop in the database behind the rules: every tenant table gets row-level security,
 the web process connects as a role the policies bind, and a request reaches only the rows of the tenants its caller

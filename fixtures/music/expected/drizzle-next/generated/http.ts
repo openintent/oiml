@@ -71,6 +71,17 @@ export function notFound(): Response {
   return error(404, "not_found", "Not found");
 }
 
+/**
+ * 503 busy, with Retry-After: the statement lost to a lock another request holds and did nothing. The same request
+ * can be sent again; the server does not run the handler a second time itself.
+ */
+export function busy(): Response {
+  return Response.json(
+    { error: { code: "busy", message: "Another request is changing the same rows. Try again." } },
+    { status: 503, headers: { "Retry-After": "1" } }
+  );
+}
+
 function issues(err: { issues: { path: PropertyKey[]; message: string }[] }) {
   return err.issues.map(i => ({ path: i.path.map(String).join("."), message: i.message }));
 }
@@ -99,6 +110,9 @@ export function handleError(err: unknown, operation: "read" | "write" | "delete"
   }
   if (code === "23502") return error(400, "validation", "A required value is missing");
   if (code === "22P02") return operation === "read" ? notFound() : error(400, "validation", "A value has the wrong format");
+  // 55P03 is a lock another request held for too long, 40P01 a deadlock PostgreSQL ended by failing this statement,
+  // 40001 a serialization failure: neither the caller's fault nor the server's
+  if (code === "55P03" || code === "40P01" || code === "40001") return busy();
   console.error(err);
   return error(500, "internal", "Something went wrong");
 }

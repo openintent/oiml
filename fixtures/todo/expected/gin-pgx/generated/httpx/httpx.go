@@ -104,6 +104,13 @@ func Fail(c *gin.Context, err *Error) {
 	write(c, err.Status, errorEnvelope{Error: errorBody{Code: err.Code, Message: err.Message, Details: err.Details}})
 }
 
+// Busy writes 503 busy with Retry-After: the statement lost to a lock another request holds and did nothing.
+// The same request can be sent again; the server does not run the handler a second time itself.
+func Busy(c *gin.Context) {
+	c.Header("Retry-After", "1")
+	Fail(c, NewError(http.StatusServiceUnavailable, "busy", "Another request is changing the same rows. Try again."))
+}
+
 // ParseBody reads a JSON object body. Invalid JSON is 400 invalid_json; a non-object is 400 validation.
 func ParseBody(c *gin.Context) (map[string]json.RawMessage, *Error) {
 	data, err := io.ReadAll(c.Request.Body)
@@ -158,6 +165,11 @@ func HandleError(c *gin.Context, err error, operation string) {
 			} else {
 				Fail(c, NewError(http.StatusBadRequest, "validation", "A value has the wrong format"))
 			}
+			return
+		case "55P03", "40P01", "40001":
+			// A lock another request held for too long, a deadlock PostgreSQL ended by failing this statement, or a
+			// serialization failure: neither the caller's fault nor the server's
+			Busy(c)
 			return
 		}
 	}

@@ -515,3 +515,159 @@ describe("a json field with a shape per enum value", () => {
     expect(integration.properties.config.description).toContain("follow kind");
   });
 });
+
+describe("an identity nobody could sign up to (M189)", () => {
+  /** The M189 diagnostics of the model after a change to the identity, as `path: message` */
+  const refused = (change: (user: Record<string, any>, raw: Record<string, any>) => void) =>
+    validateModel(model(raw => change(fields(raw, "User"), raw)))
+      .filter(d => d.code === "M189")
+      .map(d => `${d.level} ${d.path}: ${d.message}`);
+
+  it("refuses a required sealed field on the identity, which auth.register does not take", () => {
+    const said = refused(user => (user.recovery_code.required = true));
+    expect(said).toHaveLength(1);
+    expect(said[0]).toMatch(/^error entities\.User\.fields\.recovery_code: User\.recovery_code must hold a value/);
+    expect(said[0]).toContain("auth.register does not take a sealed field");
+    expect(said[0]).toContain("nobody could register");
+    expect(said[0]).toContain("make the field optional, or keep it on an entity of its own with a relation to User");
+    // A sealed field has no default to give
+    expect(said[0]).not.toContain("give it a default");
+    // Hidden as well: still the sealed field's sentence
+    expect(refused(user => (user.pin = { type: "string", sealed: true, hidden: true, required: true }))[0]).toContain(
+      "a sealed field"
+    );
+  });
+
+  it("refuses a required field with shape_by on the identity", () => {
+    const said = refused(user => {
+      user.plan = { type: "enum", enum_values: ["free", "paid"], required: true, default: "free" };
+      user.limits = {
+        type: "json",
+        required: true,
+        shape_by: { plan: { free: {}, paid: { seats: { type: "integer", required: true } } } }
+      };
+    });
+    expect(said).toHaveLength(1);
+    expect(said[0]).toContain("entities.User.fields.limits");
+    expect(said[0]).toContain("auth.register does not take a field with shape_by");
+    expect(said[0]).toContain("make the field optional, or keep it on an entity of its own");
+  });
+
+  it("refuses every other required field no sign-up fills: hidden, bytes, a file, role", () => {
+    const hidden = refused(user => (user.api_secret = { type: "string", hidden: true, required: true }));
+    expect(hidden).toHaveLength(1);
+    expect(hidden[0]).toContain("auth.register does not take a hidden field");
+    expect(hidden[0]).toContain("give it a default, make it optional, or keep it on an entity of its own");
+    const bytes = refused(user => (user.fingerprint = { type: "bytes", required: true }));
+    expect(bytes).toHaveLength(1);
+    expect(bytes[0]).toContain("auth.register does not take a bytes field");
+    const file = refused(user => (user.avatar = { type: "file", required: true }));
+    expect(file).toHaveLength(1);
+    expect(file[0]).toContain("auth.register does not take a file field (an upload needs a session)");
+    expect(file[0]).not.toContain("give it a default");
+    const role = refused(user => delete user.role.default);
+    expect(role).toHaveLength(1);
+    expect(role[0]).toContain("entities.User.fields.role");
+    expect(role[0]).toContain("auth.register does not take role");
+    expect(role[0]).toMatch(/nobody could register; give it a default, the role a new user starts with$/);
+  });
+
+  it("refuses a key the database does not generate, and takes the ones it does", () => {
+    const text = refused(user => (user.id = { type: "string", primary: true }));
+    expect(text).toHaveLength(1);
+    expect(text[0]).toContain("entities.User.fields.id");
+    expect(text[0]).toContain("auth.register does not take a key the database does not generate");
+    expect(text[0]).toContain("use a single uuid or integer key");
+    // A composite key is not generated either: both halves are named
+    const composite = refused(user => (user.org = { type: "string", primary: true }));
+    expect(composite.map(line => line.split(":")[0])).toEqual([
+      "error entities.User.fields.id",
+      "error entities.User.fields.org"
+    ]);
+    for (const type of ["uuid", "integer", "bigint"])
+      expect(
+        refused((user, raw) => {
+          user.id = { type, primary: true };
+          // The relations to the identity follow its key's type
+          fields(raw).owner_id.type = type;
+        }),
+        type
+      ).toEqual([]);
+    // The email as the key is what register takes
+    expect(
+      refused((user, raw) => {
+        delete user.id;
+        user.email.primary = true;
+        fields(raw).owner_id.type = "string";
+        raw.entities.User.rules = { read: "public", update: "owner:email", delete: "none" };
+        user.recovery_code.read = "owner:email";
+      })
+    ).toEqual([]);
+  });
+
+  it("leaves a read_only field to M065, except where the create rule would have set it from a session", () => {
+    const plain = validateModel(
+      model(raw => (fields(raw, "User").level = { type: "integer", read_only: true, required: true }))
+    );
+    expect(plain.filter(d => d.path === "entities.User.fields.level").map(d => d.code)).toEqual(["M065"]);
+    // M065 lets a required read_only field through when rules.create sets it from the session; at sign-up there is none
+    const owned = validateModel(
+      model(raw => {
+        fields(raw, "User").invited_by = {
+          type: "uuid",
+          read_only: true,
+          required: true,
+          relation: { entity: "User", on_delete: "restrict" }
+        };
+        raw.entities.User.rules.create = "owner:invited_by";
+      })
+    );
+    const said = owned.filter(d => d.path === "entities.User.fields.invited_by");
+    expect(said.map(d => d.code)).toEqual(["M189"]);
+    expect(said[0].message).toContain("auth.register does not take a read_only field");
+  });
+
+  it("holds whatever the providers are: a magic link or OAuth fills nothing but the email and the name", () => {
+    for (const providers of [["credentials"], ["magic_link"], ["credentials", { oauth: "github" }]])
+      expect(
+        refused((user, raw) => {
+          user.recovery_code.required = true;
+          raw.auth = { identity: "User", providers };
+        }),
+        JSON.stringify(providers)
+      ).toHaveLength(1);
+  });
+
+  it("says nothing of what a sign-up fills, the database fills, or may stay empty", () => {
+    // The model as it is: an optional sealed field on the identity, a required one with shape_by on another entity
+    expect(refused(() => {})).toEqual([]);
+    expect(fields(model() as Record<string, any>).config.required).toBe(true);
+    const fine: Record<string, (user: Record<string, any>) => void> = {
+      "a required field register takes": user => (user.nickname = { type: "string", required: true }),
+      "a required field with read:": user => (user.phone = { type: "string", required: true, read: "owner:id" }),
+      "a required relation": user =>
+        (user.sponsor_id = { type: "uuid", required: true, relation: { entity: "User", on_delete: "restrict" } }),
+      "required typed JSON": user =>
+        (user.settings = { type: "json", required: true, shape: { theme: { type: "string" } } }),
+      "a sequence": user => (user.number = { type: "sequence", prefix: "U-" }),
+      "a position": user => {
+        user.sponsor_id = { type: "uuid", required: true, relation: { entity: "User", on_delete: "restrict" } };
+        user.place = { type: "integer", position: { within: "sponsor_id" } };
+      },
+      "a hidden field with a default": user =>
+        (user.api_secret = { type: "string", hidden: true, required: true, default: "" }),
+      "an optional hidden field": user => (user.api_secret = { type: "string", hidden: true }),
+      "an optional file": user => (user.avatar = { type: "file" }),
+      "a stamp the database sets": user => (user.created_at = { type: "datetime", required: true, default: "now" })
+    };
+    for (const [what, change] of Object.entries(fine)) expect(refused(change), what).toEqual([]);
+  });
+
+  it("is the identity's alone: the same fields on another entity are a handler's or a create's to fill", () => {
+    const m = model(raw => {
+      fields(raw).secret.required = true;
+      fields(raw).api_key = { type: "string", hidden: true, required: true };
+    });
+    expect(codes(m)).not.toContain("M189");
+  });
+});

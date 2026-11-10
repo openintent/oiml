@@ -20,7 +20,10 @@ a shape takes neither money nor an array of shapes, which the design allowed ("a
 read does not check a stored value against its shape, and the Go row keeps the JSON as it is stored, with a struct
 per shape beside it for handlers, where the design said "typed on read (a Go struct)"; the roadmap's shape per
 enum value is `shape_by`, held on every write by the handlers on the loaded row; the fixture is one blog intent,
-FEAT-16, around a new `Integration` entity, where the design named FEAT-14 and `User.webhook_secret`.
+FEAT-16, around a new `Integration` entity, where the design named FEAT-14 and `User.webhook_secret`. Since then:
+the hardening pass of 2026-11-10 refuses, with M189, a required sealed field and a required field with `shape_by`
+on the identity (and every other field of the identity that must hold a value and that no sign-up fills):
+`auth.register` takes neither, so nobody could have registered.
 
 Four field constructs, each small, each with one mapping on the three backends.
 
@@ -402,7 +405,8 @@ A shape per enum value:
 Both:
 
 23. **Diagnostics M185 to M188**; M189 is free. Where an existing check already refuses, its code stands (M033,
-    M090, M154, M170, M180).
+    M090, M154, M170, M180). (M189 was taken by the hardening pass of 2026-11-10, for an identity nobody could
+    sign up to.)
 24. **The harness.** The field watch compares a sealed value an allowed caller is answered with what its column
     holds once opened by the reference. The leak walk's sealed part and the fuzz walk's shape probes are in the
     proof above; negative controls (the rule ignored, the server reading, the value stored in the clear, another

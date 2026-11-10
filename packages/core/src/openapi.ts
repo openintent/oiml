@@ -281,8 +281,18 @@ const ERROR_RESPONSES: Record<string, Schema> = {
   "409": { $ref: "#/components/responses/Conflict" }
 };
 
+/** A write may also lose to a lock another request holds: 503 busy with Retry-After, and the request sent again */
+const WRITE_ERROR_RESPONSES: Record<string, Schema> = {
+  ...ERROR_RESPONSES,
+  "503": { $ref: "#/components/responses/Busy" }
+};
+
 function responses(ok: Schema, status = "200", description = "OK"): Record<string, Schema> {
   return { [status]: { description, content: ok }, ...ERROR_RESPONSES };
+}
+
+function writeResponses(ok: Schema, status = "200", description = "OK"): Record<string, Schema> {
+  return { [status]: { description, content: ok }, ...WRITE_ERROR_RESPONSES };
 }
 
 function openapiPath(path: string): string {
@@ -429,7 +439,7 @@ export function openapiDocument(ir: IR): Record<string, unknown> {
               required: true,
               content: { "application/json": { schema: inputSchema(entity, op.fields, ir, "create") } }
             },
-            responses: responses(data({ $ref: `#/components/schemas/${entity.name}` }), "201", "Created")
+            responses: writeResponses(data({ $ref: `#/components/schemas/${entity.name}` }), "201", "Created")
           };
           break;
         case "update":
@@ -441,7 +451,7 @@ export function openapiDocument(ir: IR): Record<string, unknown> {
               required: true,
               content: { "application/json": { schema: inputSchema(entity, op.fields, ir, "update") } }
             },
-            responses: responses(data({ $ref: `#/components/schemas/${entity.name}` }))
+            responses: writeResponses(data({ $ref: `#/components/schemas/${entity.name}` }))
           };
           break;
         case "delete":
@@ -449,7 +459,7 @@ export function openapiDocument(ir: IR): Record<string, unknown> {
             ...base,
             summary: `Delete one of ${resource.name}`,
             parameters: [idParam(entity)],
-            responses: { "204": { description: "Deleted" }, ...ERROR_RESPONSES }
+            responses: { "204": { description: "Deleted" }, ...WRITE_ERROR_RESPONSES }
           };
           break;
       }
@@ -488,7 +498,7 @@ export function openapiDocument(ir: IR): Record<string, unknown> {
             requestBody: { required: true, content: { "application/json": { schema: fieldsSchema(action.input, ir) } } }
           }
         : {}),
-      responses: { ...ok, ...ERROR_RESPONSES }
+      responses: { ...ok, ...WRITE_ERROR_RESPONSES }
     };
   }
 
@@ -503,7 +513,7 @@ export function openapiDocument(ir: IR): Record<string, unknown> {
           operationId: `auth_${op}`,
           summary,
           ...(body ? { requestBody: { required: true, content: { "application/json": { schema: body } } } } : {}),
-          responses: responses(data(ok), status)
+          responses: writeResponses(data(ok), status)
         }
       };
     };
@@ -626,7 +636,7 @@ export function openapiDocument(ir: IR): Record<string, unknown> {
             }
           }
         },
-        responses: responses(
+        responses: writeResponses(
           data({
             allOf: [
               file,
@@ -660,7 +670,7 @@ export function openapiDocument(ir: IR): Record<string, unknown> {
         summary: "Mark an upload finished",
         security: session,
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
-        responses: responses(data(file))
+        responses: writeResponses(data(file))
       }
     };
     paths["/api/files/{id}"] = {
@@ -691,7 +701,7 @@ export function openapiDocument(ir: IR): Record<string, unknown> {
         summary: "Upload the bytes (local storage only)",
         security: session,
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
-        responses: responses(data(file))
+        responses: writeResponses(data(file))
       }
     };
   }
@@ -717,6 +727,13 @@ export function openapiDocument(ir: IR): Record<string, unknown> {
       },
       Conflict: {
         description: "Conflicts with an existing row",
+        content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } }
+      },
+      Busy: {
+        description: "Another request is changing the same rows; send the same request again",
+        headers: {
+          "Retry-After": { description: "Seconds to wait before sending it again", schema: { type: "integer" } }
+        },
         content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } }
       }
     }
