@@ -1,0 +1,30 @@
+id: empty-org-public-roadmap
+tags: [app, tenancy, auth, entity, rules, generated-origin]
+base: { empty: roadmaps }
+intent:
+  title: Public roadmaps for small teams
+  ask: >-
+    We want a simple product where a small team keeps a public roadmap. Someone signs up, creates their organisation
+    and adds colleagues as owner, editor or viewer. Editors and owners add roadmap items with a title, description
+    and stage (planned, in progress, shipped) and move them between stages. Viewers can see drafts inside the
+    organisation but cannot change anything. Each organisation's roadmap has a public page at an address of its own
+    that anyone on the internet can read without an account, showing only items that are not marked as drafts. Only
+    the owner can remove members or delete the organisation.
+  acceptance:
+    - A signed-out visitor can open an organisation's public roadmap and sees its non-draft items
+    - A viewer trying to edit a roadmap item gets a 403
+    - An editor from one organisation cannot see or change another organisation's draft items
+    - An editor trying to remove a member is refused; the owner can do it
+expect:
+  entities: [User, "Organisation|Organization|Org|Team", "RoadmapItem|Item|RoadmapEntry"]
+  auth: { tenancy: { entity: "Organisation|Organization|Org|Team" } }
+  pages:
+    "roadmap|public_roadmap|organisation_roadmap|organization_roadmap|org_roadmap|organisation|organization|public_organisation|public_organization":
+      { kind: detail, access: public, sections: ["roadmap_items|items|roadmap_entries"] }
+  scenarios: { min: 1, rejections: 2, statuses: [403] }
+notes: >-
+  Promoted from generated round 5 (gen-r5-02), with "invites" reworded to "adds" since invitations are their own
+  backlog entry. The public address per organisation is a public detail page over the tenancy entity with a section
+  of its items filtered by `{row.id}` and the draft flag; the items open to the public by a row condition (public
+  when draft = false) beside the membership rule. A single public list of every organisation's items fails on
+  purpose.

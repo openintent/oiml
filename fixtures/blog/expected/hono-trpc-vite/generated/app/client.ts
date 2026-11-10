@@ -6,10 +6,16 @@ import { createTRPCClient, httpBatchLink } from "@trpc/client";
 import type { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "../server/router";
 
+/** The HTTP status the API answered a failed call with, when it answered */
+export function errorStatus(error: unknown): number | undefined {
+  const status = (error as { data?: { httpStatus?: unknown } } | null)?.data?.httpStatus;
+  return typeof status === "number" ? status : undefined;
+}
+
 /** A request the server refused as asked: the same request would fail again, so it is not retried. */
 function isRefused(error: unknown): boolean {
-  const status = (error as { data?: { httpStatus?: unknown } } | null)?.data?.httpStatus;
-  return typeof status === "number" && status >= 400 && status < 500 && status !== 408 && status !== 429;
+  const status = errorStatus(error);
+  return status !== undefined && status >= 400 && status < 500 && status !== 408 && status !== 429;
 }
 
 export const queryClient = new QueryClient({
@@ -36,7 +42,9 @@ export const client = {
     login: (input: Inputs["auth"]["login"]) => trpc.auth.login.mutate(input),
     register: (input: Inputs["auth"]["register"]) => trpc.auth.register.mutate(input),
     magic_link: (input: Inputs["auth"]["magic_link"]) => trpc.auth.magic_link.mutate(input),
-    magic_link_verify: (input: Inputs["auth"]["magic_link_verify"]) => trpc.auth.magic_link_verify.mutate(input)
+    magic_link_verify: (input: Inputs["auth"]["magic_link_verify"]) => trpc.auth.magic_link_verify.mutate(input),
+    invite: (input: Inputs["auth"]["invite"]) => trpc.auth.invite.query(input),
+    invite_accept: (input: Inputs["auth"]["invite_accept"]) => trpc.auth.invite_accept.mutate(input)
   },
   files: {
     begin: (input: Inputs["files"]["begin"]) => trpc.files.begin.mutate(input),
@@ -90,6 +98,18 @@ export const client = {
     create: (input: Inputs["bulletins"]["create"]) => trpc.bulletins.create.mutate(input),
     update: (input: Inputs["bulletins"]["update"]) => trpc.bulletins.update.mutate(input),
     delete: (input: Inputs["bulletins"]["delete"]) => trpc.bulletins.delete.mutate(input)
+  },
+  article_editors: {
+    list: (input: Inputs["article_editors"]["list"]) => trpc.article_editors.list.query(input),
+    get: (input: Inputs["article_editors"]["get"]) => trpc.article_editors.get.query(input),
+    create: (input: Inputs["article_editors"]["create"]) => trpc.article_editors.create.mutate(input),
+    delete: (input: Inputs["article_editors"]["delete"]) => trpc.article_editors.delete.mutate(input)
+  },
+  article_invites: {
+    list: (input: Inputs["article_invites"]["list"]) => trpc.article_invites.list.query(input),
+    get: (input: Inputs["article_invites"]["get"]) => trpc.article_invites.get.query(input),
+    create: (input: Inputs["article_invites"]["create"]) => trpc.article_invites.create.mutate(input).then(reply => reply.data),
+    delete: (input: Inputs["article_invites"]["delete"]) => trpc.article_invites.delete.mutate(input)
   }
 };
 

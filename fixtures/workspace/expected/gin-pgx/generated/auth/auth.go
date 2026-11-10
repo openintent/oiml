@@ -89,12 +89,14 @@ func (a *Auth) Routes(r gin.IRouter) {
 	r.POST("/api/auth/login", a.Login)
 	r.POST("/api/auth/magic-link", a.MagicLink)
 	r.POST("/api/auth/magic-link/verify", a.MagicLinkVerify)
+	r.GET("/api/auth/invites/:token", a.Invite)
+	r.POST("/api/auth/invites/:token/accept", a.InviteAccept)
 	r.POST("/api/auth/logout", a.Logout)
 	r.GET("/api/auth/me", a.Me)
 	r.GET("/api/auth/providers", a.Providers)
 }
 
-// AppURL is where the web app lives (OSL_APP_URL, default http://localhost:3000): magic links point there and OAuth returns there.
+// AppURL is where the web app lives (OSL_APP_URL, default http://localhost:3000): the links in emails point there and OAuth returns there.
 func AppURL() string {
 	if v := os.Getenv("OSL_APP_URL"); v != "" {
 		return strings.TrimSuffix(v, "/")
@@ -246,6 +248,7 @@ var registerInput = validation.Object{Fields: []validation.Field{
 var loginInput = validation.Object{Fields: []validation.Field{
 	{Name: "email", Required: true, Type: validation.String{}},
 	{Name: "password", Required: true, Type: validation.String{}},
+	{Name: "invite", Type: validation.String{}},
 }}
 
 // Register creates a User and signs it in.
@@ -277,7 +280,7 @@ func (a *Auth) Register(c *gin.Context) {
 	httpx.Created(c, models.PresentUser(user))
 }
 
-// Login checks the credentials and signs the User in.
+// Login checks the credentials and signs the User in. With an invite's token for the account's own address, it accepts the invites to it.
 func (a *Auth) Login(c *gin.Context) {
 	body, perr := httpx.ParseBody(c)
 	if perr != nil {
@@ -297,6 +300,18 @@ func (a *Auth) Login(c *gin.Context) {
 	if user == nil || !VerifyPassword(values["password"].(string), user.PasswordHash) {
 		httpx.Fail(c, httpx.NewError(http.StatusUnauthorized, "invalid_credentials", "Email or password is wrong"))
 		return
+	}
+	if token, ok := values["invite"].(string); ok && token != "" {
+		accepted, err := a.acceptWithToken(c.Request.Context(), user, token)
+		if err != nil {
+			httpx.HandleError(c, err, "read")
+			return
+		}
+		if len(accepted) > 0 {
+			signIn(c, user)
+			httpx.JSON(c, http.StatusOK, signedIn{Data: models.PresentUser(user), Accepted: accepted})
+			return
+		}
 	}
 	signIn(c, user)
 	httpx.OK(c, models.PresentUser(user))

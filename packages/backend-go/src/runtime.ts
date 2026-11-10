@@ -90,6 +90,11 @@ func Created(c *gin.Context, data any) {
 	write(c, http.StatusCreated, envelope{Data: data})
 }
 
+// JSON writes a reply whose envelope the handler builds itself: data with something beside it.
+func JSON(c *gin.Context, status int, body any) {
+	write(c, status, body)
+}
+
 // List writes 200 { "data": [...], "page": {...} }.
 func List(c *gin.Context, data any, page Page) {
 	write(c, http.StatusOK, pageEnvelope{Data: data, Page: page})

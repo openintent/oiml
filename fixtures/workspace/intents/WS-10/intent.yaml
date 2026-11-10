@@ -1,0 +1,13 @@
+osl: "1.0"
+title: A channel page and a home for the current team
+ask: >-
+  Opening a channel should show the channel with its conversation underneath, newest message first, and a box to
+  post into it, followed by who is in the channel. People are often in several teams, so the app needs a team
+  switcher: the projects, channels and members pages show the team that is switched to, and the home page shows
+  that team's numbers and its latest projects.
+acceptance:
+  - A channel has its own page at its own address with its messages newest first and its members
+  - Posting from the channel page puts the message in that channel without asking which channel
+  - A person in two teams sees one team's projects, channels and members at a time and switches between them
+  - The home page counts the current team's active projects, channels and members and lists its latest projects
+  - Someone who is not in a private channel finds nothing at its address

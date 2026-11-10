@@ -16,6 +16,9 @@ calls and 600 fuzz probes per backend, workspace 317 and 676 with ten home-team 
 todo 15 and 79), the blog's eleven revisions show one breaking change (the Post to Article rename) explained by
 its op, and the oracle eval corpus runs through the walks. The first run's only findings were the harness's own:
 an update probe that left a required field out, which a partial body may, and the conflicting membership above.
+Round A3 (2026-11-09) gave the cross-tenant walk one exception: a row the read rule opens to a caller with no
+session may be read and listed by the outsider, since the model says so, and is still checked for every write;
+the step's detail counts those rows (`pages-with-parameters.md`, a public page over the tenancy entity).
 Not a construct: five checks the harness runs over every fixture and every backend without a scenario naming
 them; nothing here changes the grammar.
 

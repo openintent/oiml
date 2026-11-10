@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** pnpm conformance [fixture ...] [--backend <name>] [--package-manager pnpm|bun|npm] [--update] [--snapshot-only] [--keep] [--walks [rule,tenant,leak,fuzz,contract]] [--no-walks] [--seed <n>] */
+/** pnpm conformance [fixture ...] [--backend <name>] [--package-manager pnpm|bun|npm] [--update] [--snapshot-only] [--keep] [--walks [rule,tenant,leak,fuzz,contract,invite]] [--no-walks] [--seed <n>] */
 import path from "node:path";
 import { formatResult, listFixtures, runFixture } from "./index.js";
 

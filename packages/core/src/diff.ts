@@ -12,11 +12,14 @@ import {
   DashboardTile,
   Entity,
   Event,
+  expandInvites,
   Field,
   Files,
   Index,
+  invitePlans,
   Model,
   Page,
+  PageSection,
   predicateParts,
   Resource,
   ruleAlternativeTexts,
@@ -160,6 +163,8 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
       case "rename_entity": {
         const entity = entityOf(op.from);
         if (model.entities[op.to]) fail(`entity ${op.to} already exists`);
+        // An invite entity is written from its membership's parent, so it is renamed with the parent
+        const invitesOfParent = invitePlans(expandInvites(model)).filter(plan => plan.parent === op.from);
         const rebuilt: Record<string, Entity> = {};
         for (const [name, value] of Object.entries(model.entities)) rebuilt[name === op.from ? op.to : name] = value;
         model.entities = rebuilt;
@@ -175,14 +180,23 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
           if (entityName === op.from) event.on = `${op.to}.${action}`;
         }
         if (model.auth?.identity === op.from) model.auth.identity = op.to;
-        const previous = Object.entries(renames.entities).find(([, to]) => to === op.from);
-        if (previous) {
-          renames.entities[previous[0]] = op.to;
-        } else renames.entities[op.from] = op.to;
-        if (renames.fields[op.from]) {
-          renames.fields[op.to] = renames.fields[op.from];
-          delete renames.fields[op.from];
-        }
+        if (model.auth?.tenancy?.entity === op.from) model.auth.tenancy.entity = op.to;
+        if (model.auth?.tenancy?.membership === op.from) model.auth.tenancy.membership = op.to;
+        if (model.auth?.invites?.[op.from])
+          model.auth.invites = Object.fromEntries(
+            Object.entries(model.auth.invites).map(([name, invite]) => [name === op.from ? op.to : name, invite])
+          );
+        const record = (from: string, to: string) => {
+          const previous = Object.entries(renames.entities).find(([, renamed]) => renamed === from);
+          if (previous) renames.entities[previous[0]] = to;
+          else renames.entities[from] = to;
+          if (renames.fields[from]) {
+            renames.fields[to] = renames.fields[from];
+            delete renames.fields[from];
+          }
+        };
+        record(op.from, op.to);
+        for (const plan of invitesOfParent) record(plan.entity, `${op.to}Invite`);
         break;
       }
 
@@ -242,6 +256,12 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
           if (tile.filter) delete tile.filter[op.name];
           if (tile.group_by === op.name) delete tile.group_by;
         }
+        for (const section of sectionsOver(model, op.entity)) {
+          if (section.columns) section.columns = section.columns.filter(f => f !== op.name);
+          delete section.filter[op.name];
+          if (section.order?.some(([f]) => f === op.name)) delete section.order;
+        }
+        for (const recent of recentOver(model, op.entity)) if (recent.filter) delete recent.filter[op.name];
         break;
       }
 
@@ -253,6 +273,25 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
         forEachRule(model, (rule, from) =>
           mapRuleFields(model, from, rule, (e, f) => (e === op.entity && f === op.from ? op.to : f))
         );
+        // An invite entity carries its membership's parent relation and role under their own names, so a rename
+        // of either is a rename on the invite, and an invite's own rule is read on the invite
+        const withInvites = expandInvites(model);
+        for (const plan of invitePlans(withInvites)) {
+          const mirrored =
+            plan.membership === op.entity && (op.from === plan.parentField || op.from === plan.roleField);
+          const invite = model.auth?.invites?.[plan.membership];
+          if (invite?.rule)
+            invite.rule = mapRuleFields(withInvites, plan.entity, invite.rule, (e, f) =>
+              (e === op.entity || (mirrored && e === plan.entity)) && f === op.from ? op.to : f
+            );
+          if (!mirrored) continue;
+          const forInvite = (renames.fields[plan.entity] ??= {});
+          const earlier = Object.entries(forInvite).find(([, to]) => to === op.from);
+          if (earlier) forInvite[earlier[0]] = op.to;
+          else forInvite[op.from] = op.to;
+        }
+        if (model.auth?.tenancy?.membership === op.entity && model.auth.tenancy.role_field === op.from)
+          model.auth.tenancy.role_field = op.to;
         const rebuilt: Record<string, Field> = {};
         for (const [name, value] of Object.entries(entity.fields)) rebuilt[name === op.from ? op.to : name] = value;
         entity.fields = rebuilt;
@@ -277,6 +316,12 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
           if (tile.filter) tile.filter = swapKeys(tile.filter);
           if (tile.group_by) tile.group_by = swap(tile.group_by);
         }
+        for (const section of sectionsOver(model, op.entity)) {
+          if (section.columns) section.columns = section.columns.map(swap);
+          section.filter = swapKeys(section.filter);
+          if (section.order) section.order = section.order.map(([f, d]) => [swap(f), d]);
+        }
+        for (const recent of recentOver(model, op.entity)) if (recent.filter) recent.filter = swapKeys(recent.filter);
         for (const t of model.timers) {
           if (t.on === op.entity) t.at = swap(t.at);
           if (t.when)
@@ -315,6 +360,8 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
         if (!model.resources[op.name]) fail(`resource ${op.name} does not exist`);
         for (const [pageName, page] of Object.entries(model.app?.pages ?? {})) {
           if (page.resource === op.name) fail(`page ${pageName} still shows ${op.name}; remove the page first`);
+          if (page.sections?.some(section => section.resource === op.name))
+            fail(`page ${pageName} still lists ${op.name} in a section; change the page first`);
         }
         if (
           model.schedules.some(sch => sch.run.startsWith(`${op.name}.`)) ||
@@ -544,6 +591,20 @@ function mapConditionFields(
 function tilesOver(model: ModelType, entityName: string): DashboardTile[] {
   return Object.values(model.app?.pages ?? {}).flatMap(page =>
     (page.tiles ?? []).filter(tile => model.resources[tile.resource]?.entity === entityName)
+  );
+}
+
+/** Sections of detail pages whose resource is over the entity */
+function sectionsOver(model: ModelType, entityName: string): PageSection[] {
+  return Object.values(model.app?.pages ?? {}).flatMap(page =>
+    (page.sections ?? []).filter(section => model.resources[section.resource]?.entity === entityName)
+  );
+}
+
+/** Recent lists of dashboards whose resource is over the entity */
+function recentOver(model: ModelType, entityName: string): NonNullable<Page["recent"]> {
+  return Object.values(model.app?.pages ?? {}).flatMap(page =>
+    (page.recent ?? []).filter(recent => model.resources[recent.resource]?.entity === entityName)
   );
 }
 

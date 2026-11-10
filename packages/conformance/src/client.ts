@@ -33,6 +33,10 @@ export interface HarnessClient {
   resource(call: ResourceCall): Promise<Reply>;
   action(call: ActionCall): Promise<Reply>;
   auth(kind: AuthKind, body?: unknown): Promise<Reply>;
+  /** What an invite offers, by its token: it never accepts */
+  invite(token: string): Promise<Reply>;
+  /** Accept an invite by its token; the body creates the account where there is no session and no account */
+  inviteAccept(token: string, body?: unknown): Promise<Reply>;
   /** A request as the transport spells it, for probes the typed calls cannot express */
   raw(method: string, path: string, body?: unknown, query?: Record<string, string>): Promise<Reply>;
   /** A client with its own cookie jar */
@@ -67,6 +71,8 @@ abstract class BaseClient implements HarnessClient {
   abstract resource(call: ResourceCall): Promise<Reply>;
   abstract action(call: ActionCall): Promise<Reply>;
   abstract auth(kind: AuthKind, body?: unknown): Promise<Reply>;
+  abstract invite(token: string): Promise<Reply>;
+  abstract inviteAccept(token: string, body?: unknown): Promise<Reply>;
   abstract fresh(): HarnessClient;
 
   async raw(method: string, path: string, body?: unknown, query: Record<string, string> = {}): Promise<Reply> {
@@ -133,6 +139,15 @@ class RestClient extends BaseClient {
     const url = new URL(`/api/auth/${kind}`, this.baseUrl);
     return this.send(`auth.${kind}`, url, kind === "me" ? "GET" : "POST", kind === "me" ? undefined : (body ?? {}));
   }
+
+  async invite(token: string): Promise<Reply> {
+    return this.send("auth.invite", new URL(`/api/auth/invites/${encodeURIComponent(token)}`, this.baseUrl), "GET");
+  }
+
+  async inviteAccept(token: string, body?: unknown): Promise<Reply> {
+    const url = new URL(`/api/auth/invites/${encodeURIComponent(token)}/accept`, this.baseUrl);
+    return this.send("auth.invite_accept", url, "POST", body ?? {});
+  }
 }
 
 /** hono-trpc-vite: procedures over tRPC's HTTP transport, answered in the REST contract's terms */
@@ -149,7 +164,8 @@ class TrpcClient extends BaseClient {
       case "get":
         return this.call(procedure, { id: call.id }, "query", "data");
       case "create":
-        return this.call(procedure, call.body ?? {}, "mutation", "data");
+        // An invite's create answers `{ data, debug? }` itself: the token rides beside the row while emails are captured
+        return this.call(procedure, call.body ?? {}, "mutation", call.op.invite ? "body" : "data");
       case "update":
         return this.call(procedure, { id: call.id, data: call.body ?? {} }, "mutation", "data");
       case "delete":
@@ -168,7 +184,17 @@ class TrpcClient extends BaseClient {
   async auth(kind: AuthKind, body?: unknown): Promise<Reply> {
     if (kind === "me") return this.call("auth.me", undefined, "query", "data");
     if (kind === "logout") return this.call("auth.logout", undefined, "mutation", "none");
-    return this.call(`auth.${kind}`, body ?? {}, "mutation", "data");
+    // With invites a sign-in answers `{ data, accepted? }` itself, so what it joined rides beside the user
+    const joins = kind === "login" && (this.ir.auth?.invites?.length ?? 0) > 0;
+    return this.call(`auth.${kind}`, body ?? {}, "mutation", joins ? "body" : "data");
+  }
+
+  async invite(token: string): Promise<Reply> {
+    return this.call("auth.invite", { token }, "query", "data");
+  }
+
+  async inviteAccept(token: string, body?: unknown): Promise<Reply> {
+    return this.call("auth.invite_accept", { token, data: body ?? {} }, "mutation", "body");
   }
 
   /** A scenario's query-string values as the typed input the list expects, as the generated client coerces them */
@@ -189,7 +215,7 @@ class TrpcClient extends BaseClient {
     procedure: string,
     input: unknown,
     kind: "query" | "mutation",
-    shape: "list" | "data" | "none"
+    shape: "list" | "data" | "none" | "body"
   ): Promise<Reply> {
     const url = new URL(`/trpc/${procedure}`, this.baseUrl);
     const headers: Record<string, string> = {};
@@ -230,7 +256,9 @@ class TrpcClient extends BaseClient {
       };
     } else {
       const data = (json as { result?: { data?: unknown } } | null)?.result?.data;
-      reply = { status: response.status, body: shape === "list" ? data : shape === "data" ? { data } : null };
+      // "body" is a result that is the contract's body already
+      const body = shape === "list" || shape === "body" ? data : shape === "data" ? { data } : null;
+      reply = { status: response.status, body };
     }
     this.listen(procedure, reply);
     return reply;

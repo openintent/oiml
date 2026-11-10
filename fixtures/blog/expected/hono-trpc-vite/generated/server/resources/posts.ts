@@ -5,7 +5,7 @@ import { and, asc, count, desc, eq, ilike, or, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../../db/client";
 import * as schema from "../../db/schema";
-import { articles as articlesTable } from "../../db/schema";
+import { articles as articlesTable, articleEditors as articleEditorsTable } from "../../db/schema";
 import { emit } from "../../events";
 import { scheduleTimers } from "../../scheduling";
 import { resolveFileRefs } from "../../files";
@@ -23,7 +23,7 @@ export type HookContext = { session: Session | null; req: Request };
 const RULES = {
   read: {"kind":"public"} as Rule,
   create: {"kind":"owner","field":"author_id"} as Rule,
-  update: {"kind":"any","rules":[{"kind":"owner","field":"author_id"},{"kind":"role","value":"admin"}]} as Rule,
+  update: {"kind":"any","rules":[{"kind":"owner","field":"author_id"},{"kind":"member","field":"editors","through":true},{"kind":"role","value":"admin"}]} as Rule,
   delete: {"kind":"any","rules":[{"kind":"owner","field":"author_id"},{"kind":"role","value":"admin"}]} as Rule
 };
 
@@ -39,6 +39,27 @@ const ID = z.string();
 
 /** File fields and what they accept */
 const FILE_FIELDS = [{ column: "cover", accept: ["image/*"], maxSize: 2097152 }] as const;
+
+/** The row (or create body) with the values its rules reach through relations, under their dotted keys, and the caller's memberships */
+async function withRuleValues(row: Record<string, unknown>, session: { user: Record<string, unknown> } | null): Promise<Record<string, unknown>> {
+  const out: Record<string, unknown> = { ...row };
+  {
+    let value: unknown = row.id;
+
+    const me = session?.user.id ?? null;
+    const held =
+      value == null || me == null
+        ? undefined
+        : (
+            await db
+              .select({ v: articleEditorsTable.user_id })
+              .from(articleEditorsTable)
+              .where(and(eq(articleEditorsTable.article_id, value as schema.ArticleEditor["article_id"]), eq(articleEditorsTable.user_id, me as schema.ArticleEditor["user_id"]))!)
+          )[0];
+    out["editors"] = held ? true : null;
+  }
+  return out;
+}
 
 const SORTABLE = {
   title: articlesTable.title,
@@ -120,7 +141,7 @@ export const postsRouter = router({
         throw toTRPCError(err, "read");
       });
       if (!existing) throw notFound();
-      checkRule(RULES.update, ctx.session, existing);
+      checkRule(RULES.update, ctx.session, await withRuleValues(existing, ctx.session));
       const hookContext: HookContext = { session: ctx.session, req: ctx.req };
       try {
         const patch = await hooks.beforeUpdate(existing, await resolveFileRefs(input.data, FILE_FIELDS), hookContext);

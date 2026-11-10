@@ -17,6 +17,7 @@ import (
 // Hidden lists the columns that must never appear in any response.
 var Hidden = map[string]bool{
 	"password_hash": true,
+	"token_hash":    true,
 }
 
 // Actors are the model's example actors.
@@ -25,6 +26,7 @@ var Actors = map[string]Actor{
 	"alice": {Email: "alice@example.com", Password: "alice-pass-1", Fields: MustJSON("{\"name\":\"Alice\"}").(map[string]any), Provisioned: nil},
 	"bob":   {Email: "bob@example.com", Password: "bob-pass-1", Fields: MustJSON("{\"name\":\"Bob\"}").(map[string]any), Provisioned: nil},
 	"dave":  {Email: "dave@example.com", Password: "dave-pass-1", Fields: MustJSON("{\"name\":\"Dave\"}").(map[string]any), Provisioned: nil},
+	"erin":  {Email: "erin@example.com", Password: "erin-pass-1", Fields: MustJSON("{\"name\":\"Erin\"}").(map[string]any), Provisioned: nil},
 }
 
 // provision writes the actor's identity columns that register refuses (its role) straight into the database

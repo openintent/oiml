@@ -1,0 +1,31 @@
+id: fx-ws-12-channel-invites
+tags: [fixture, auth, tenancy, junction, app, scenario]
+base: { fixture: workspace, through: WS-11 }
+oracle: fixtures/workspace/intents/WS-12/diff.yaml
+intent:
+  title: Invite a teammate to a private channel
+  ask: >-
+    The admins of a channel should be able to invite someone into it by email address, the same way a team invites a
+    colleague. A private channel stays invisible to the people who are not in it, and so do the invites sent for it.
+    Someone invited to the team and to one of its channels at once should join both from either link. The channel's
+    page needs a section with the invites still waiting, where one can be sent.
+  acceptance:
+    - A channel's admin invites an email address to the channel, and the address gets a mail with a link
+    - A teammate outside a private channel can neither see its invites nor send one
+    - A plain member of the channel cannot invite
+    - The invited teammate joins by accepting the link and can then read the channel and post in it
+    - Someone invited to the team and to the channel joins both with one accept
+expect:
+  auth: { invites: [TeamMember, "ChannelMember|ChannelMembership"] }
+  absent_entities: ["ChannelInvite|ChannelInvitation"]
+  pages:
+    "channel|channel_page|channel_detail|conversation":
+      { kind: detail, resource: channels, sections: [messages, channel_members, channel_invites] }
+  scenarios: { min: 1, rejections: 3, statuses: [201, 403, 404, 409] }
+  touches: [channel_invites.create, auth.invite_accept, team_invites.create]
+notes: >-
+  A second membership beside the tenancy's: a ranked junction takes invites with one more key, and the entry for
+  TeamMember has to survive the `set_auth` that adds it. The invite's rule is ChannelMember's create rule read on the
+  invite, so the channel's hidden rows hide its invites too (the 404). The section is a section like any other over
+  the compiler's resource. The last acceptance line is the proof rule at work: one accept answers every invite waiting
+  for the address, so the scenario invites one person to the team and to the channel and accepts once.

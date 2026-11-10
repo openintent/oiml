@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * pnpm evals [--proposer live|oracle|null] [--model id] [--only a,b] [--tag t] [--limit n]
+ * pnpm evals [--proposer live|oracle|null] [--model id] [--max-tokens n] [--only a,b] [--tag t] [--limit n]
  *            [--no-full] [--implement] [--backend name] [--jobs n] [--full-jobs n] [--cases dir] [--out dir]
  *            [--compare <run dir>] [--resume <run dir>]
  *
@@ -30,6 +30,11 @@ if (!["live", "oracle", "null"].includes(proposer)) {
   process.exit(2);
 }
 const model = valueOf("--model") ?? DEFAULT_MODEL;
+const maxTokens = valueOf("--max-tokens") ? Number(valueOf("--max-tokens")) : undefined;
+if (maxTokens !== undefined && (!Number.isInteger(maxTokens) || maxTokens < 1)) {
+  console.error(`--max-tokens must be a whole number above zero, not ${valueOf("--max-tokens")}`);
+  process.exit(2);
+}
 const full = !has("--no-full");
 const implement = has("--implement");
 const resumeFrom = valueOf("--resume") ? path.resolve(valueOf("--resume")!) : undefined;
@@ -75,6 +80,7 @@ const run = await runAll(cases, {
   outDir,
   proposer,
   model,
+  maxTokens,
   jobs,
   fullJobs,
   full,

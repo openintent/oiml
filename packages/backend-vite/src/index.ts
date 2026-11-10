@@ -14,6 +14,7 @@ import {
   schedulingFile,
   testHooksFile,
   filesFile,
+  hasInvites,
   hasProviders,
   installCommand,
   jobsFile,
@@ -26,7 +27,12 @@ import {
   customPageScaffold,
   dashboardPageFile,
   dashboardRouteFile,
+  detailPageFile,
+  detailRouteFile,
+  inviteAppFile,
+  inviteRouteFiles,
   navFile,
+  tenantFile,
   resourcePageFile,
   resourceRouteFiles,
   shellScaffolds,
@@ -96,7 +102,7 @@ export function generate(input: GenerateInput): GeneratedFile[] {
     files.push({ path: `${gen}/files.ts`, content: filesFile(ir, VITE_SERVER) });
   }
   if (hasProviders(ir)) {
-    files.push({ path: `${gen}/email.ts`, content: emailFile(VITE_SERVER) });
+    files.push({ path: `${gen}/email.ts`, content: emailFile(VITE_SERVER, { invite: hasInvites(ir) }) });
     files.push({ path: `${gen}/auth-providers.ts`, content: authProvidersFile(ir, VITE_SERVER) });
   }
   if (ir.actions.length) {
@@ -124,6 +130,11 @@ export function generate(input: GenerateInput): GeneratedFile[] {
   files.push({ path: `${gen}/app/client.ts`, content: trpcClientFile(ir, VITE) });
   files.push({ path: `${gen}/app/nav.ts`, content: navFile(ir, TANSTACK, VITE) });
   files.push({ path: `${gen}/app/ui.tsx`, content: uiFile(ir, VITE) });
+  if (ir.app?.tenant) files.push({ path: `${gen}/app/tenant.tsx`, content: tenantFile(ir, TANSTACK, VITE) });
+  if (hasInvites(ir)) {
+    files.push({ path: `${gen}/app/invite.tsx`, content: inviteAppFile(ir, TANSTACK, VITE) });
+    files.push(...inviteRouteFiles(TANSTACK, VITE));
+  }
   for (const page of ir.app?.pages ?? []) {
     if (page.kind === "resource") {
       files.push({ path: `${gen}/app/pages/${page.name}.tsx`, content: resourcePageFile(ir, page, TANSTACK, VITE) });
@@ -131,6 +142,10 @@ export function generate(input: GenerateInput): GeneratedFile[] {
     } else if (page.kind === "dashboard") {
       files.push({ path: `${gen}/app/pages/${page.name}.tsx`, content: dashboardPageFile(ir, page, TANSTACK, VITE) });
       files.push(dashboardRouteFile(page, TANSTACK, VITE));
+    } else if (page.kind === "detail") {
+      files.push({ path: `${gen}/app/pages/${page.name}.tsx`, content: detailPageFile(ir, page, TANSTACK, VITE) });
+      const route = detailRouteFile(ir, page, TANSTACK, VITE);
+      if (route) files.push(route);
     } else files.push(customPageScaffold(page, TANSTACK, VITE));
   }
   files.push(...shellScaffolds(ir, TANSTACK, VITE));

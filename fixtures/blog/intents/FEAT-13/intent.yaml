@@ -1,0 +1,10 @@
+osl: "1.0"
+title: Author and article pages
+ask: >-
+  Every author gets a public page at an address of their own that shows their name and their published articles,
+  newest first. An article opens on a page of its own with its comments under it and a form to add one. A published
+  announcement has a public address anyone can open as a share link; a draft's address answers not found.
+acceptance:
+  - An author's page lists that author's published articles and no one else's, newest first
+  - An article's page lists its comments, and a comment added there lands on that article
+  - A visitor who is not signed in opens a published announcement at its address; a draft answers not found

@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { client, sessionUser, type Inputs, type Outputs, type SessionUser } from "../client";
-import { EmptyPane, ErrorNote, FieldRow, FileInput, FilePreview, FormRow, ListSkeleton, Pagination, Pane, PaneHeader, PaneSkeleton, formatDateTime, formatList, selectClass, splitList, text, toDateTimeInput, yesNo } from "../ui";
+import { EmptyPane, ErrorNote, FieldRow, FileInput, FilePreview, FormRow, ListSkeleton, Pagination, Pane, PaneHeader, PaneSkeleton, RowError, formatDateTime, formatList, selectClass, splitList, text, toDateTimeInput, yesNo } from "../ui";
 
 type Row = Outputs["posts"]["list"]["data"][number];
 type Detail = Outputs["posts"]["get"];
@@ -33,7 +33,7 @@ function canCreate(user: SessionUser | null): boolean {
 }
 
 function canUpdate(user: SessionUser | null, row: Detail): boolean {
-  return (user !== null && row.author_id === user.id || user !== null && (user as { role?: unknown }).role === "admin");
+  return (user !== null && row.author_id === user.id || user !== null || user !== null && (user as { role?: unknown }).role === "admin");
 }
 
 function canDelete(user: SessionUser | null, row: Detail): boolean {
@@ -433,7 +433,7 @@ function MyPostsDetailInner() {
     }
   });
   if (query.isPending) return <PaneSkeleton />;
-  if (query.error) return <ErrorNote error={query.error} className="m-6" />;
+  if (query.error) return <RowError error={query.error} signIn={<Link to="/login" className={buttonVariants()}>Sign in</Link>} />;
   const row: Detail = query.data;
   return (
     <Pane

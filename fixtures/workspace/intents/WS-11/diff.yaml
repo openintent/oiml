@@ -1,0 +1,226 @@
+osl: "1.0"
+summary: "Invites into a team's membership: the TeamInvite entity and its team_invites resource written by the compiler, the token routes, and a page of the current team's pending invites"
+ops:
+  - op: set_auth
+    auth:
+      identity: User
+      providers: [credentials, magic_link]
+      tenancy: { entity: Team, membership: TeamMember, role_field: role, creator_role: owner }
+      invites:
+        TeamMember: {}
+  - op: add_page
+    name: invites
+    page:
+      resource: team_invites
+      layout: table
+      columns: [email, role, invited_by, expires_at]
+      filter: { team_id: "{tenant.id}" }
+  - op: set_sidebar
+    sidebar:
+      items:
+        - { page: home, icon: house }
+        - { page: teams, icon: building }
+        - { page: projects, icon: folder-kanban }
+        - { page: tasks, icon: list-checks }
+        - { page: milestones, icon: flag }
+        - { page: notes, icon: sticky-note }
+        - { page: members, icon: users }
+        - { page: invites, icon: mail-plus }
+        - { page: channels, icon: hash }
+        - { page: messages, icon: message-square }
+      footer: { user: true, settings: true }
+  - op: add_scenario
+    scenario:
+      name: invite a colleague by email
+      steps:
+        - as: bob
+          op: auth.me
+          expect: { status: 200 }
+          capture: { bob_id: data.id }
+        - as: alice
+          op: teams.create
+          body: { name: Harbor }
+          expect: { status: 201 }
+          capture: { team: data.id }
+        # Sending: the row comes back without its token; under captured mail the token rides beside it
+        - as: alice
+          op: team_invites.create
+          body: { team_id: "{team}", email: bob@example.com, role: admin }
+          expect: { status: 201, body: { data: { team_id: "{team}", email: bob@example.com, role: admin } } }
+          capture: { bob_token: debug.token }
+        - op: emails.sent
+          query: { to: bob@example.com, subject: Harbor }
+          expect: { status: 200, body: { data: [{ to: bob@example.com, subject: You are invited to Harbor }] } }
+        - as: dana
+          op: team_invites.create
+          body: { team_id: "{team}", email: stranger@example.com }
+          expect: { status: 403 }
+        - as: dana
+          op: team_invites.list
+          query: { team_id: "{team}" }
+          expect: { status: 200, body: { page: { total: 0 } } }
+        # The token routes: looking never accepts, and the token alone signs nobody in
+        - op: auth.invite
+          path: { token: "{bob_token}" }
+          expect:
+            status: 200
+            body:
+              data: { entity: Team, name: Harbor, role: admin, inviter: Alice, email: b•••@example.com, account: true }
+        - op: auth.invite
+          path: { token: no-such-token }
+          expect: { status: 404 }
+        - op: auth.invite_accept
+          path: { token: "{bob_token}" }
+          expect: { status: 401 }
+        - as: carol
+          op: auth.invite_accept
+          path: { token: "{bob_token}" }
+          expect: { status: 403 }
+        - as: bob
+          op: teams.get
+          path: { id: "{team}" }
+          expect: { status: 403 }
+        - as: bob
+          op: auth.invite_accept
+          path: { token: "{bob_token}" }
+          expect:
+            status: 200
+            body:
+              data: { email: bob@example.com }
+              accepted: [{ entity: Team, id: "{team}", role: admin, tenant: "{team}" }]
+        - as: bob
+          op: teams.get
+          path: { id: "{team}" }
+          expect: { status: 200, body: { data: { name: Harbor } } }
+        - as: alice
+          op: members.list
+          query: { team_id: "{team}" }
+          expect: { status: 200, body: { data: [{ user_id: "{bob_id}", role: admin }], page: { total: 2 } } }
+        - as: alice
+          op: team_invites.list
+          query: { team_id: "{team}" }
+          expect: { status: 200, body: { page: { total: 0 } } }
+        - op: auth.invite
+          path: { token: "{bob_token}" }
+          expect: { status: 404 }
+        - as: bob
+          op: auth.invite_accept
+          path: { token: "{bob_token}" }
+          expect: { status: 404 }
+        # The ceiling: an admin grants admin or less, and one address holds one place
+        - as: bob
+          op: team_invites.create
+          body: { team_id: "{team}", email: frank@example.com, role: owner }
+          expect: { status: 403 }
+        - as: bob
+          op: team_invites.create
+          body: { team_id: "{team}", email: Frank@Example.com }
+          expect: { status: 201, body: { data: { email: frank@example.com, role: member } } }
+          capture: { frank_token: debug.token }
+        - as: bob
+          op: team_invites.create
+          body: { team_id: "{team}", email: frank@example.com }
+          expect: { status: 409 }
+        - as: alice
+          op: team_invites.create
+          body: { team_id: "{team}", email: bob@example.com }
+          expect: { status: 409 }
+        # A magic link proves the address, so signing in with one joins without the invite's link
+        - as: alice
+          op: team_invites.create
+          body: { team_id: "{team}", email: carol@example.com }
+          expect: { status: 201 }
+        - as: carol
+          op: team_invites.create
+          body: { team_id: "{team}", email: stranger@example.com }
+          expect: { status: 403 }
+        - op: auth.magic_link
+          body: { email: carol@example.com }
+          expect: { status: 200 }
+          capture: { carol_link: data.debug.token }
+        - op: auth.magic_link_verify
+          body: { token: "{carol_link}" }
+          expect:
+            status: 200
+            body:
+              data: { email: carol@example.com }
+              accepted: [{ entity: Team, id: "{team}", role: member, tenant: "{team}" }]
+        - as: carol
+          op: teams.get
+          path: { id: "{team}" }
+          expect: { status: 200 }
+        - as: carol
+          op: team_invites.list
+          query: { team_id: "{team}" }
+          expect: { status: 200, body: { page: { total: 0 } } }
+        - as: carol
+          op: team_invites.create
+          body: { team_id: "{team}", email: stranger@example.com }
+          expect: { status: 403 }
+        # An address without an account makes one from the link
+        - op: auth.invite
+          path: { token: "{frank_token}" }
+          expect: { status: 200, body: { data: { entity: Team, role: member, inviter: Bob, account: false } } }
+        - op: auth.invite_accept
+          path: { token: "{frank_token}" }
+          body: { name: Frank, password: short }
+          expect: { status: 400 }
+        - op: auth.invite_accept
+          path: { token: "{frank_token}" }
+          body: { name: Frank, password: frank-pass-1 }
+          expect:
+            status: 201
+            body:
+              data: { email: frank@example.com, name: Frank }
+              accepted: [{ entity: Team, id: "{team}", role: member }]
+        - op: auth.login
+          body: { email: frank@example.com, password: frank-pass-1 }
+          expect: { status: 200 }
+        - as: alice
+          op: members.list
+          query: { team_id: "{team}" }
+          expect: { status: 200, body: { page: { total: 4 } } }
+        # A password alone proves nothing about the address; with the invite's token it does
+        - as: alice
+          op: team_invites.create
+          body: { team_id: "{team}", email: heidi@example.com }
+          expect: { status: 201 }
+          capture: { heidi_token: debug.token, heidi_invite: data.id }
+        - as: alice
+          op: team_invites.create
+          body: { team_id: "{team}", email: grace@example.com }
+          expect: { status: 201 }
+          capture: { grace_token: debug.token }
+        - op: auth.register
+          body: { email: grace@example.com, password: grace-pass-1, name: Grace }
+          expect: { status: 201 }
+        - op: auth.login
+          body: { email: grace@example.com, password: grace-pass-1, invite: "{heidi_token}" }
+          expect: { status: 200, body: { data: { email: grace@example.com } } }
+        - as: alice
+          op: members.list
+          query: { team_id: "{team}" }
+          expect: { status: 200, body: { page: { total: 4 } } }
+        - op: auth.login
+          body: { email: grace@example.com, password: grace-pass-1, invite: "{grace_token}" }
+          expect:
+            status: 200
+            body:
+              data: { email: grace@example.com }
+              accepted: [{ entity: Team, id: "{team}", role: member }]
+        - as: alice
+          op: members.list
+          query: { team_id: "{team}" }
+          expect: { status: 200, body: { page: { total: 5 } } }
+        # Revoking is the delete
+        - as: alice
+          op: team_invites.list
+          query: { team_id: "{team}" }
+          expect: { status: 200, body: { data: [{ email: heidi@example.com }], page: { total: 1 } } }
+        - as: alice
+          op: team_invites.delete
+          path: { id: "{heidi_invite}" }
+          expect: { status: 204 }
+        - op: auth.invite
+          path: { token: "{heidi_token}" }
+          expect: { status: 404 }

@@ -6,9 +6,9 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "./db/client";
 import { users as usersTable, teamMembers as teamMembersTable } from "./db/schema";
-import { created, error, handleError, noContent, ok, parseBody } from "./http";
+import { HttpError, created, error, handleError, noContent, ok, parseBody } from "./http";
 import { presentUser, type PublicUser } from "./present";
-import { PROVIDERS, issueMagicLink, verifyMagicLink } from "./auth-providers";
+import { PROVIDERS, acceptInvite, acceptWithToken, issueMagicLink, lookupInvite, verifyMagicLink } from "./auth-providers";
 
 export type Membership = { tenant: string | number; role: string };
 export type Session = { user: PublicUser; memberships: { tenant: string | number; role: string }[] };
@@ -90,7 +90,14 @@ const registerInput = z
   })
   .strict();
 
-const loginInput = z.object({ email: z.string(), password: z.string() }).strict();
+const loginInput = z.object({ email: z.string(), password: z.string(), invite: z.string().optional() }).strict();
+
+const inviteAcceptInput = z
+  .object({
+  password: z.string().min(8).max(200).optional(),
+  name: z.string().min(1).max(100)
+  })
+  .strict();
 
 const magicLinkInput = z.object({ email: z.string().email() }).strict();
 const magicLinkVerifyInput = z.object({ token: z.string().min(1) }).strict();
@@ -125,7 +132,9 @@ export const auth = {
       if (!user || !verifyPassword(body.data.password, user.password_hash)) {
         return error(401, "invalid_credentials", "Email or password is wrong");
       }
-      return withCookie(ok(presentUser(user)), sessionCookie(user.id));
+      // A password proves the address only together with an invite's token for it; anything else joins nothing
+      const accepted = body.data.invite ? await acceptWithToken(user, body.data.invite) : [];
+      return withCookie(ok(presentUser(user), accepted.length ? { accepted } : {}), sessionCookie(user.id));
     } catch (err) {
       return handleError(err, "read");
     }
@@ -147,8 +156,48 @@ export const auth = {
     try {
       const body = await parseBody(magicLinkVerifyInput, request);
       if (!body.ok) return body.response;
-      const user = await verifyMagicLink(body.data.token);
-      return withCookie(ok(presentUser(user)), sessionCookie(user.id));
+      const { user, accepted } = await verifyMagicLink(body.data.token);
+      return withCookie(ok(presentUser(user), accepted.length ? { accepted } : {}), sessionCookie(user.id));
+    } catch (err) {
+      return handleError(err, "write");
+    }
+  },
+
+  /** What an invite offers, for its landing page. It never accepts: mail scanners open links. */
+  async invite(_request: Request, token: string): Promise<Response> {
+    try {
+      return ok(await lookupInvite(token));
+    } catch (err) {
+      return handleError(err, "read");
+    }
+  },
+
+  /**
+   * Accept an invite. A session under the invited address joins. Without a session and without an account for the
+   * address, the body creates the account, and the reply signs it in.
+   */
+  async inviteAccept(request: Request, token: string): Promise<Response> {
+    try {
+      const session = await getSession(request);
+      const result = await acceptInvite(token, session?.user.id ?? null, async email => {
+        const raw: unknown = await request.json().catch(() => ({}));
+        const input = inviteAcceptInput.safeParse(raw ?? {});
+        if (!input.success) {
+          const issues = input.error.issues.map(i => ({ path: i.path.map(String).join("."), message: i.message }));
+          throw new HttpError(400, "validation", "Request body is invalid", issues);
+        }
+        const { password, ...fields } = input.data;
+        const [user] = await db
+          .insert(usersTable)
+          .values({ ...fields, email: email, ...(password ? { password_hash: hashPassword(password) } : {}) })
+          .returning();
+        return user;
+      });
+      const { accepted } = result;
+      if (result.created) {
+        return withCookie(created(presentUser(result.created), { accepted }), sessionCookie(result.created.id));
+      }
+      return ok(session!.user, { accepted });
     } catch (err) {
       return handleError(err, "write");
     }

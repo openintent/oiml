@@ -10,6 +10,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { client } from "@/generated/app/client";
+import { inviteTokenOf, useLandInvitee, type Accepted } from "@/generated/app/invite";
+import { nextPath } from "@/generated/app/nav";
 import { ErrorNote } from "@/generated/app/ui";
 
 export default function LoginPage() {
@@ -17,21 +19,26 @@ export default function LoginPage() {
   const queryClient = useQueryClient();
   const providers = useQuery({ queryKey: ["auth", "providers"], queryFn: () => client.auth.providers() });
   void providers;
-  const done = async () => {
+  // After signing in: back to the page that asked for it, when `next` names one; else home
+  const land = useLandInvitee();
+  const done = async (accepted?: readonly Accepted[]) => {
+    if (accepted?.length) return land(accepted);
     await queryClient.invalidateQueries();
-    await router.push("/");
+    const next = nextPath();
+    if (next) window.location.assign(next);
+    else await router.push("/");
   };
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fields, setFields] = useState({ name: "" });
-  const login = useMutation({ mutationFn: (input: Parameters<typeof client.auth.login>[0]) => client.auth.login(input), onSuccess: done });
-  const register = useMutation({ mutationFn: (input: Parameters<typeof client.auth.register>[0]) => client.auth.register(input), onSuccess: done });
+  const login = useMutation({ mutationFn: (input: Parameters<typeof client.auth.login>[0]) => client.auth.login(input), onSuccess: reply => done(reply.accepted) });
+  const register = useMutation({ mutationFn: (input: Parameters<typeof client.auth.register>[0]) => client.auth.register(input), onSuccess: () => done() });
   const pending = login.isPending || register.isPending;
   const error = mode === "login" ? login.error : register.error;
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (mode === "login") login.mutate({ email, password });
+    if (mode === "login") login.mutate({ email, password, invite: inviteTokenOf(nextPath()) });
     else register.mutate({ email, password, ...fields });
   };
   const [linkEmail, setLinkEmail] = useState("");

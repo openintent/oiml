@@ -1,0 +1,35 @@
+id: fx-ws-11-invites
+tags: [fixture, auth, tenancy, app, scenario]
+base: { fixture: workspace, through: WS-10 }
+oracle: fixtures/workspace/intents/WS-11/diff.yaml
+intent:
+  title: Invite a colleague by email
+  ask: >-
+    A team's owners and admins should be able to bring someone in by email address, whether or not that person has an
+    account yet. The person gets a mail with a link, and joining through the link, or simply signing in with that
+    address, puts them in the team with the role they were given. An admin cannot hand out a role above their own. The
+    team needs a page that lists the invites still waiting, where one can be sent or withdrawn.
+  acceptance:
+    - An owner or admin invites an email address to their team with a role, and the address gets a mail with a link
+    - Someone outside the team, or a plain member of it, can neither invite nor see who was invited
+    - An admin cannot invite someone as owner
+    - The invited person joins by accepting the link while signed in under that address, and nobody else can use it
+    - Someone without an account creates one from the link and lands in the team
+    - Signing in by magic link with the invited address joins the team without the invite's link
+    - An address that is already in the team, or already has an invite waiting, cannot be invited again
+    - A withdrawn invite stops working
+expect:
+  auth: { invites: [TeamMember] }
+  absent_entities: ["Invite|Invitation|TeamInvite|TeamInvitation|PendingInvite"]
+  pages:
+    "invites|team_invites|invitations|pending_invites|pending":
+      { kind: resource, resource: team_invites, tenant: true, filter: [team_id] }
+  sidebar: ["invites|team_invites|invitations|pending_invites|pending"]
+  scenarios: { min: 1, rejections: 4, statuses: [201, 403, 404, 409] }
+  touches: [team_invites.create, team_invites.delete, auth.invite_accept, auth.magic_link_verify]
+notes: >-
+  The first use of `auth.invites`. One key on the tenancy's membership is the whole declaration: the compiler writes
+  TeamInvite and team_invites, the two token routes and the mail, and the default rule is the membership's own create
+  rule. A diff that declares an invite entity of its own, or answers with an action and a handler, fails on purpose.
+  The page is an ordinary resource page over the compiler's resource, filtered by `{tenant.id}`. The scenario has to
+  show the refusals (an outsider, the ceiling, a second invite for one address) and two of the ways in.

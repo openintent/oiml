@@ -1,0 +1,11 @@
+osl: "1.0"
+title: Co-authors by invite
+ask: >-
+  An article's author should be able to bring in co-authors by email address. The person gets a mail with a link,
+  and accepting it, or signing in with that address by magic link or GitHub, makes them an editor of that one
+  article. An editor can change the article and cannot delete it. Only the author invites to an article.
+acceptance:
+  - The author invites an email address to an article, and the address gets a mail with a link
+  - Nobody but the author can invite to an article or see who was invited
+  - The invited person accepts the link and can then edit the article, and still cannot delete it
+  - Signing in by magic link with the invited address makes the person an editor without the invite's link

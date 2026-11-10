@@ -12,6 +12,7 @@ pnpm evals --implement                       # also let Claude write the action 
 pnpm evals --only blog2-comments,empty-notes # a few cases
 pnpm evals --tag tenancy                     # one slice
 pnpm evals --model claude-sonnet-5-5         # another model
+pnpm evals --max-tokens 32000                # another cap on one proposal's output tokens (default 64000)
 pnpm evals --proposer oracle                 # the fixtures' own diffs instead of Claude: the grader must pass them all
 pnpm evals --proposer null                   # an empty diff: the grader must fail everything that expects a result
 pnpm evals --compare evals/propose/runs/<earlier run>   # per-case differences after a change
@@ -25,7 +26,8 @@ pnpm evals:next                              # the brief for the top open gap in
 `ANTHROPIC_API_KEY` and `OSL_TEST_DATABASE_URL` are read from the environment, `.env.local` and `.env`.
 A run writes `evals/propose/runs/<timestamp>-<proposer>/` with `summary.md`, `results.json` and, per case,
 the diff, every attempt with its validation problems, the fixture the harness ran, and the harness log.
-Runs are not committed.
+A live run records its cap on one proposal's output tokens in `results.json`, as `max_tokens`. Runs are not
+committed.
 
 ## The corpus
 
@@ -56,10 +58,10 @@ to choose. The checks read the model after the diff is applied (and its IR, for 
 defaults), so they judge the result, not the spelling of the ops. The full list of checks is the `Expect`
 schema in `packages/evals/src/cases.ts`: entities and fields present or absent, types, field properties,
 relations with their `on_delete`, unique constraints, junction entities, rules, resources and operations,
-list options, actions by name or by shape, auth providers and tenancy, events, pages and the sidebar, file
-rules and accept lists, seed steps, scenario counts and rejection statuses, what the scenarios call, an actor
-carrying given fields (`actor_fields: { role: admin }`), and the ops a diff must use, may not use, or how
-many it may have.
+list options, actions by name or by shape, auth providers, tenancy and the memberships people are invited to
+(`auth: { invites: [TeamMember] }`), events, pages and the sidebar, file rules and accept lists, seed steps,
+scenario counts and rejection statuses, what the scenarios call, an actor carrying given fields
+(`actor_fields: { role: admin }`), and the ops a diff must use, may not use, or how many it may have.
 
 `outcome` says what should happen: `ok` (the default) needs a valid diff, `invalid` expects none to exist,
 `declined` expects the agent to answer that nothing in the ask is expressible, and `any` accepts whatever
@@ -68,19 +70,19 @@ in `not_delivered` (the agent's own channel for that) or the agent must decline.
 something the model cannot express, and cases tagged `trap` for something the reference forbids or caps;
 both exist to show what the agent does there, and their diffs are for reading, not only counting.
 
-Eleven cases are the fixtures' own intents and carry `oracle:` pointing at the fixture's diff; the rest are
+Thirty-two cases are the fixtures' own intents and carry `oracle:` pointing at the fixture's diff; the rest are
 new asks over the fixtures' models at different points, or over an empty model.
 
 ## What a case measures
 
-| Column   | Meaning                                                                                                                                                                                      |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Status   | `ok`: a valid diff within the attempts. `invalid`: none after the retry. `declined`: the agent said nothing is expressible, with reasons. `error`: the API or the runner failed; not graded. |
-| Attempts | 1 means the first diff validated; 2 means the retry with the problems was needed.                                                                                                            |
-| Checks   | The expectations above, on the applied model.                                                                                                                                                |
-| Generate | Every backend generated the project (a pure function of the IR, so this catches compiler gaps).                                                                                              |
-| Full     | The conformance harness on one backend: install, typecheck, migrate a throwaway database, drift, start, and run every scenario in the model, including the ones the diff added.              |
-| Pass     | Outcome as expected and every check, generate and full step passed.                                                                                                                          |
+| Column   | Meaning                                                                                                                                                                                                                                                                                   |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Status   | `ok`: a valid diff within the attempts. `invalid`: none after the retry. `declined`: the agent said nothing is expressible, with reasons. `error`: the API or the runner failed, or the answer was cut off at `--max-tokens`; not graded, and a cut-off still counts the tokens it spent. |
+| Attempts | 1 means the first diff validated; 2 means the retry with the problems was needed.                                                                                                                                                                                                         |
+| Checks   | The expectations above, on the applied model.                                                                                                                                                                                                                                             |
+| Generate | Every backend generated the project (a pure function of the IR, so this catches compiler gaps).                                                                                                                                                                                           |
+| Full     | The conformance harness on one backend: install, typecheck, migrate a throwaway database, drift, start, and run every scenario in the model, including the ones the diff added.                                                                                                           |
+| Pass     | Outcome as expected and every check, generate and full step passed.                                                                                                                                                                                                                       |
 
 Full runs of diffs that add actions are reported separately. Without `--implement` the generated handler
 stubs return the row unchanged, so a scenario that expects the action's effect fails until someone writes the
@@ -100,7 +102,9 @@ the text the agent reads; fixing it there improves `osl propose`, the MCP server
 The hand-written corpus is the spec; generated rounds are the sample. `pnpm evals:generate --round r1 --count 10`
 asks Claude for ten feature requests written the way a product person writes them, one per brief, where a brief is
 a domain (or one of the fixtures to extend), two constraints drawn from a list (tenancy, no sign-in, uploads, an
-admin, a server-owned value, a schedule, a running total...) and a seed that reproduces it. The cases land in
+admin, a server-owned value, a schedule, a running total, a page per row, two memberships at once, joining by an
+emailed invitation...) and a seed that reproduces it. The list grows with the constructs, so a seed draws the same
+briefs only until the next entry is added; a round keeps the briefs it drew in its `round.yaml`. The cases land in
 `evals/propose/generated/<round>/cases` with `outcome: any` and a scenario minimum, so they grade whether the
 agent produces something valid that generates and runs, not a known answer. `pnpm evals --cases <that folder>
 --implement` runs them through the same runner.
@@ -129,17 +133,18 @@ at thirteen cases, so that is the next construct. One line in the round named a 
 case: a create rule cannot require membership and bind the author to the session at once, because rules have
 alternatives but no conjunction.
 
-The second round (r2, seed 7, five intents, `pnpm evals:round --no-full`) cost $0.79 and took seven minutes:
-four valid diffs and one case not graded, because the SDK could not parse the model's structured output (an
-unterminated string), which the proposer now treats as a failed attempt and retries. The comparison with round
-1 showed computed and aggregate fields as the new cluster (a running total per company, a counter a handler must
-decrement) and the value-rule cluster at zero on this sample, while two of its lines were filed as one-offs until
-their wordings ("not public", "deactivated") joined the topic. The recurring validation shape across both rounds
-was M083 on page `fields` naming a read-only field: three agents wanted a status, a stamp or a flag shown on the
-detail pane, which is legitimate, so that check was wrong and is gone; read-only fields show in the pane and stay
-out of the form.
+The second round (r2, seed 7, five intents, `pnpm evals:round --no-full`) cost $0.79 and took seven minutes: four
+valid diffs and one case not graded, because the SDK could not parse the model's structured output (an
+unterminated string), which the proposer now treats as a failed attempt and retries; the seventh turn, below,
+reads such an answer as one cut off at the output limit. The comparison with round 1 showed computed and
+aggregate fields as the new cluster (a running total per company, a counter a handler must decrement) and the
+value-rule cluster at zero on this sample, while two of its lines were filed as one-offs until their wordings
+("not public", "deactivated") joined the topic. The recurring validation shape across both rounds was M083 on
+page `fields` naming a read-only field: three agents wanted a status, a stamp or a flag shown on the detail pane,
+which is legitimate, so that check was wrong and is gone; read-only fields show in the pane and stay out of the
+form.
 
-The third round (r3, seed 11, ten intents, `--no-full`) ran after row conditions on rules landed (a7b0817,
+The third round (r3, seed 11, ten intents, `--no-full`) ran after row conditions on rules landed (d052e95,
 `update: "owner:submitter_id when status = pending"`): ten valid diffs on the first attempt for $1.36, and the
 agents wrote conditions nine times across them, unprompted by any example in their asks. The value-rule
 cluster, six cases in each earlier report, fell to one line, and that line was about publishing at a scheduled
@@ -198,6 +203,84 @@ one honest decline (an edit code sent with every request, which no rule can chec
 words and became topics: shared secrets and access codes, timers on date fields (a timer wants a `date` field),
 dashboard panels beyond counts (a featured article as a banner). Top of the backlog now: computed and aggregate
 fields, invites, realtime and live updates, sequences and reference numbers.
+
+The sixth turn built pages with parameters (`docs/designs/pages-with-parameters.md`), round A3 of the road to
+1.0.0: `kind: detail` pages at a path ending `/:id`, taking over a resource page's detail when the path is that
+page's plus `/:id` and standing alone with their own `access` otherwise, with sections that list other resources
+filtered by `{row.id}`; and `{tenant.id}` in page, tile, section and recent filters, with a switcher in the shell.
+Workspace WS-10 (a channel page with its messages and members, a home dashboard for the chosen team) and blog
+FEAT-13 (a public author page, an article page whose comments section creates, a share link per announcement) prove
+it on every backend. Rounds 1 to 7 re-graded without loss: 59 of 65 recorded proposals keep their grade, five no
+longer apply on the commit before the build either, because generated cases pin no `through` and the fixtures have
+grown, and one recorded as an error was proposed again and is valid. Round 8 (seed 73, ten intents, `--no-full`,
+$1.99) was the first to draw the page-per-row briefs the generator gained with this turn: all ten diffs were valid,
+the three briefs were each answered with detail pages and sections, and the cluster is gone. Its two regression
+flags were again other gaps in borrowed words and became topics: sections beyond lists (counts beside the lists, an
+image shown inline), list filters through a relation (tasks of the projects I follow), field-level visibility (a
+public profile over `users` would return every email), conditions against now (overdue rows, today's rows) and
+schedules per tenant. Three more themes two or more of its cases shared became topics too: provider sign-in in
+scenarios, write checks on related rows (only team members can be added to a project) and ignoring input to
+read-only fields. The round's own `round.yaml` and `compare-gaps.md` keep its first clustering; `gaps.md` and the
+backlog hold the second. Top of the backlog now: invites, provider sign-in in scenarios, then at two cases each
+computed and aggregate fields, role changes, field-level visibility, conditions against now and sections beyond
+lists.
+
+The seventh turn built invites (`docs/designs/invites.md`), round A4 of the road to 1.0.0: `auth.invites` names a
+membership, the tenancy's or any junction between the identity and what people join, and the compiler writes the
+invite entity and its resource, a create that mails a link, and one function that turns an invite into a membership
+when its email is proven (the accept route, a magic link, a provider's verified email, a password login carrying
+the token). Workspace WS-11 (team invites with a role, a page of the pending ones) and WS-12 (invites to a private
+channel from its page) and blog FEAT-14 (co-authors by invite) prove it on every backend, with a sixth walk,
+`walk:invite`, over every invited membership. Rounds 1 to 8 re-graded without loss where the fixtures are pinned as
+the turn before left them: all 75 recorded proposals keep their grade. Unpinned, twelve no longer apply, five as
+before and seven because each carries a whole `set_auth` block written before invites existed, which would drop the
+fixtures' `invites` and is refused. Round 9 (seed 58, ten intents, `--no-full`, $1.96) drew four invitation briefs
+from the constraints the generator gained with this turn. Nine diffs were valid on the first attempt, and three of
+the invitation briefs each declared `auth.invites` and drove a create and an accept, one of them for a third
+invited membership beside the workspace fixture's two. The fourth, a reviewer invited to one draft, was cut off at
+the proposer's limit of 16,000 output tokens, in the round and on one retry. The limit is 64,000 now,
+`--max-tokens` sets it and the request streams, and the brief was graded on a second retry (run `a4-r9-cap`, the
+other nine proposals reused, $0.61): valid on the first attempt at 23,828 output tokens, it kept the blog's invite
+entry, opened its rule to admins and gave the co-author junction a ranked role, so a reviewer reads and comments
+where an editor edits. The cluster was reported once more in the round, by a line that asks for a reminder mail on
+an invite nobody accepted and not for invites; it is a topic of its own now, invite reminders and resending, which
+the design declines with resend. The retried brief's one line is a topic of its own too, invite list filters: the
+generated list filters by its parent alone, so a page of the reviewers' invitations lists the editors' as well. The
+other two regression flags were lines misfiled under built topics: a collaborator who must already be a member of
+the studio (write checks on related rows) and a draft's attachment readable by its URL (files and media). The
+round's own `round.yaml`, `compare-gaps.md` and `run/` keep its first clustering and its nine graded results;
+`gaps.md` and the backlog hold all ten, with nine clusters and no built one. Top of the backlog now: provider
+sign-in in scenarios, then at two cases each computed and aggregate fields, role changes, sections beyond lists,
+write checks on related rows, ignoring input to read-only fields, list filters through a relation, field-level
+visibility and conditions against now.
+
+Until the limit was raised, an answer cut off part-way reached the runner as one the SDK could not parse, because
+the parser threw before the stop reason was read. It was retried at full price, and the tokens of the attempt that
+was cut off were not counted. The recorded runs log five such attempts, each ending in an unterminated string: the
+first attempts of two cases that passed on their second (`gen-r6-03-team-dashboard-files`,
+`gen-r8-06-team-projects-watchers`), the first retry of round 9's brief, and both attempts of
+`gen-r6-05-blog-publications`, the one case round 6 recorded as `invalid`. That grade is a cut-off twice over and
+not a brief the model could not express. A cut-off is an `error` now, reported once with its attempts and its
+tokens, and it is not retried: the same request would stop at the same limit.
+
+That brief was run again under the new limit (run `a4-r6-05-cap`, the one case, `--no-full`, $0.42) and was valid
+on the first attempt: fourteen ops that add publications with ranked memberships, invites to a publication, a
+publish action kept to a publication's editors and a timer that locks comments fourteen days after `published_at`,
+generating on all three backends. The answer took 14,666 output tokens, so the old limit would have held this one.
+Answers to the publication briefs sit close to that limit (11,968 and 15,129 tokens for round 2's, in later runs),
+and the retry shows that the brief can be expressed, not that it never fitted. It also ran on the blog fixture as
+it stands today, with invites and membership through a relation, which round 6 did not have. Round 6's own files
+stay as the round ran, with nine valid diffs and the one `invalid`.
+
+The retry named two things it left out, and both come from the blog's `published` being a field that anyone who may
+update the row may set. A writer can publish their own article through a plain update, because which fields a
+client may write cannot depend on their role. Round 2's publication teams brief had reported the same in two later
+runs, and the clusterer had left one wording a one-off and filed the other under the built rules on a field's
+value, for the word "draft". It is the write side of the backlog's `role changes`, on a field that is not a role,
+and that topic now takes the three lines. The second: only the publish action stamps `published_at`, so an article
+written as published never locks. The clusterer took that line for scheduling, which is built and which the diff
+used; it now goes to `state machines and transitions`, whose design stamps a field on a transition. No other
+recorded line moved.
 
 ### One command per round
 

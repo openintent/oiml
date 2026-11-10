@@ -25,6 +25,7 @@ import type { AlternativeIR, PredicateIR, RowRuleIR, RuleConditionIR, RuleHopIR 
 import { actionParseFunc } from "./actions.js";
 import { fileSpecsLiteral } from "./auth.js";
 import { eventFunc } from "./events.js";
+import { issueFunc } from "./invites.js";
 import {
   columnsConst,
   presentFunc,
@@ -656,7 +657,8 @@ export function resourceFile(ir: IR, resource: ResourceIR, modulePath: string): 
     `${modulePath}/generated/models`,
     `${modulePath}/generated/validation`
   ]);
-  if (list || create || update) imports.add(`${modulePath}/generated/db`);
+  if (list || (create && !create.invite) || update) imports.add(`${modulePath}/generated/db`);
+  if (create?.invite) imports.add("net/http");
   if (create || update || remove) {
     imports.add(`${modulePath}/generated/hooks`);
     imports.add(`${hooksPkg} ${modulePath}/src/extensions/${resource.name}`);
@@ -846,22 +848,37 @@ ${fail("write")}
         : `	sql, args := db.Insert(${tableC}, values, ${columnsC})
 	row, err := ${scan}(h.db.QueryRow(ctx, sql, args...))
 ${fail("write")}`;
-    sections.push(`// Create handles ${create.method} ${create.path}.
+    // An invite is stored and mailed by the auth package, which stamps the columns no body may set
+    const store = create.invite
+      ? `	if session == nil {
+		access.Deny(c, &access.Verdict{Status: http.StatusUnauthorized})
+		return
+	}
+	hookCtx := &hooks.Context{Gin: c, Session: session}
+	row, debug, err := h.auth.${issueFunc(entity)}(ctx, session, values, func(input models.Values) (models.Values, error) {
+		return ${hooksPkg}.BeforeCreate(hookCtx, input)
+	})
+${fail("write")}`
+      : `	hookCtx := &hooks.Context{Gin: c, Session: session}
+	values, err = ${hooksPkg}.BeforeCreate(hookCtx, values)
+${fail("write")}
+${insert}`;
+    const reply = create.invite
+      ? `httpx.JSON(c, http.StatusCreated, auth.Issued{Data: ${present}(row), Debug: debug})`
+      : `httpx.Created(c, ${present}(row))`;
+    sections.push(`// Create handles ${create.method} ${create.path}.${create.invite ? " It sends an invite: the token is answered only when emails are captured." : ""}
 func (h *${handler}) Create(c *gin.Context) {
 	ctx := c.Request.Context()
 	session, err := h.auth.Session(c)
 ${fail("write")}
 ${DENY(ruleVar("create"))}
 ${PARSE_BODY(`validation.${inputVar(resource, "create")}`, "values")}
-${bodyCheck}${resolveFiles("values")}${create.ownerField ? `\tvalues[${q(create.ownerField)}] = session.User.${identityPk}\n` : ""}	hookCtx := &hooks.Context{Gin: c, Session: session}
-	values, err = ${hooksPkg}.BeforeCreate(hookCtx, values)
-${fail("write")}
-${insert}
+${bodyCheck}${resolveFiles("values")}${create.ownerField ? `\tvalues[${q(create.ownerField)}] = session.User.${identityPk}\n` : ""}${store}
 ${emits.length ? emits.join("\n") + "\n" : ""}${timerLines}	if err := ${hooksPkg}.AfterCreate(hookCtx, row); err != nil {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	httpx.Created(c, ${present}(row))
+	${reply}
 }`);
   }
 

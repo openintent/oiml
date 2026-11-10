@@ -1,13 +1,16 @@
 /**
- * The conformance walks: five checks the harness runs over a fixture on a running app without a scenario naming
+ * The conformance walks: six checks the harness runs over a fixture on a running app without a scenario naming
  * them, each a function of the IR, the app's base URL and the actors' sessions.
  *
  * - rule: for every operation and action, every actor and an anonymous caller, what the IR's rule predicts
  *   against the answer, on rows the walk created (one per actor allowed to create) or found.
- * - tenant: with tenancy, a member of another team reaches nothing of the first team's rows.
+ * - tenant: with tenancy, a member of another team reaches nothing of the first team's rows, except to read a
+ *   row the read rule opens to everyone.
  * - leak: no response body of the walks carries a hidden column, a hash column or a raw key.
  * - fuzz: wrong shapes, types, lengths, extra keys and bad ids answer 4xx, never 5xx or 2xx.
  * - contract: every breaking change between consecutive revisions' OpenAPI documents is explained by a diff op.
+ * - invite: with invites, what a scenario cannot reach: a token nobody issued, a row aged through the database, a
+ *   session under another address, a second accept, and a password sign-in that carries no token.
  */
 import pg from "pg";
 import {
@@ -32,7 +35,7 @@ import { callLabel, makeClient, WalkTimeout, type HarnessClient, type Reply } fr
 import { badIds, invalidProbes, Rng, validBody, validValue, wrongValue, type BodyContext } from "./bodies.js";
 import { createOp, precheck, Resolver, rowOp, same, verdict, type Expect, type Row, type Session } from "./rules.js";
 
-export const WALKS = ["rule", "tenant", "leak", "fuzz", "contract"] as const;
+export const WALKS = ["rule", "tenant", "leak", "fuzz", "contract", "invite"] as const;
 export type WalkName = (typeof WALKS)[number];
 
 export interface WalkContext {
@@ -143,25 +146,30 @@ export async function runWalks(ctx: WalkContext, which: ReadonlySet<string> = ne
       calls: 0,
       predicted: new Map()
     };
-    const needsWalks = which.has("rule") || which.has("tenant") || which.has("fuzz") || which.has("leak");
-    if (needsWalks) {
+    const makesRows = which.has("rule") || which.has("tenant") || which.has("fuzz") || which.has("invite");
+    if (makesRows || which.has("leak")) {
       state.actors = await signIn(ctx, listen, resolver, state.notes);
       state.callers = [...state.actors, anonymous];
     }
     const ruleFindings: string[] = [];
     const ruleStarted = Date.now();
-    if (which.has("rule") || which.has("tenant") || which.has("fuzz")) {
+    if (makesRows) {
       // The rule walk's first phase makes the rows every other walk uses, so it runs even when only they were asked
       await createRows(ctx, state, resolver, roles, bodies, which.has("rule") ? ruleFindings : []);
     }
     if (which.has("rule")) await readWalk(ctx, state, resolver, roles, bodies, ruleFindings);
     if (which.has("tenant")) {
       const findings: string[] = [];
-      await timed("tenant", () => tenantWalk(ctx, state, resolver, db, listen, bodies, findings), findings);
+      await timed("tenant", () => tenantWalk(ctx, state, resolver, roles, db, listen, bodies, findings), findings);
     }
     if (which.has("fuzz")) {
       const findings: string[] = [];
       await timed("fuzz", () => fuzzWalk(ctx, state, resolver, bodies, findings), findings);
+    }
+    if (which.has("invite")) {
+      // Before the deletes, while the rows an invite names are still there, and before the leak walk reads the replies
+      const findings: string[] = [];
+      await timed("invite", () => inviteWalk(ctx, state, resolver, roles, db, listen, bodies, findings), findings);
     }
     if (which.has("rule")) {
       await deleteWalk(ctx, state, resolver, roles, ruleFindings);
@@ -415,7 +423,47 @@ function buildCreateBody(
       return (own ?? candidates[0])?.id;
     }
   };
-  return validBody(entity, create.fields, ctx, exclude);
+  const built = validBody(entity, create.fields, ctx, exclude);
+  return { ...built, body: inviteBody(ir, create, built.body) };
+}
+
+/**
+ * An invite's create with the lowest role of its membership, so the rule decides the answer and the role ceiling
+ * never does. Its address is fresh on every call already: the email column draws a new one each time.
+ */
+function inviteBody(
+  ir: IR,
+  create: Extract<OperationIR, { kind: "create" }>,
+  body: Record<string, unknown>
+): Record<string, unknown> {
+  const plan = create.invite ? ir.auth?.invites?.find(p => p.membership === create.invite) : undefined;
+  if (!plan?.roleColumn || !plan.roles?.length || !create.fields.includes(plan.roleColumn)) return body;
+  return { ...body, [plan.roleColumn]: plan.roles[plan.roles.length - 1] };
+}
+
+/** A user the walk registers and signs in: nobody's member, the required registration fields filled */
+async function registerCaller(
+  ctx: WalkContext,
+  listen: (label: string, reply: Reply) => void,
+  bodies: BodyContext,
+  name: string,
+  email: string,
+  password: string
+): Promise<Caller> {
+  const { ir } = ctx;
+  const client = makeClient(ir, ctx.backend, ctx.baseUrl, listen);
+  const fields: Record<string, unknown> = {};
+  for (const field of ir.auth!.registerFields) {
+    const column = ir.entities.find(e => e.name === ir.auth!.identity)!.columns.find(c => c.name === field)!;
+    if (!column.nullable && column.default === undefined) fields[field] = validValue(column, bodies);
+  }
+  const registered = await client.auth("register", { email, password, ...fields });
+  if (![200, 201, 409].includes(registered.status))
+    throw new Error(`could not register the ${name}: ${registered.status} ${JSON.stringify(registered.body)}`);
+  const login = await client.auth("login", { email, password });
+  if (login.status !== 200) throw new Error(`could not sign in the ${name}: ${login.status}`);
+  const user = (login.body as { data: Row }).data;
+  return { name, client, session: { id: user[identityPk(ir)], user, memberships: [] } };
 }
 
 /** The second phase: get, list and update on every row as every caller, then every action */
@@ -632,6 +680,7 @@ async function tenantWalk(
   ctx: WalkContext,
   state: State,
   resolver: Resolver,
+  roles: string[],
   db: pg.Client,
   listen: (label: string, reply: Reply) => void,
   bodies: BodyContext,
@@ -655,20 +704,8 @@ async function tenantWalk(
   if (!outsider) {
     if (!ir.auth!.providers.some(p => p.kind === "credentials"))
       return "every actor is a member of the home team and no outsider can register: nothing to walk";
-    const client = makeClient(ir, ctx.backend, ctx.baseUrl, listen);
     const email = `walk-outsider-${ctx.seed}@example.com`;
-    const fields: Record<string, unknown> = {};
-    for (const name of ir.auth!.registerFields) {
-      const column = ir.entities.find(e => e.name === ir.auth!.identity)!.columns.find(c => c.name === name)!;
-      if (!column.nullable && column.default === undefined) fields[name] = validValue(column, bodies);
-    }
-    const registered = await client.auth("register", { email, password: "walk-outsider-1", ...fields });
-    if (![200, 201, 409].includes(registered.status))
-      throw new Error(`could not register an outsider: ${registered.status} ${JSON.stringify(registered.body)}`);
-    const login = await client.auth("login", { email, password: "walk-outsider-1" });
-    if (login.status !== 200) throw new Error(`could not sign in the outsider: ${login.status}`);
-    const user = (login.body as { data: Row }).data;
-    outsider = { name: "outsider", client, session: { id: user[identityPk(ir)], user, memberships: [] } };
+    outsider = await registerCaller(ctx, listen, bodies, "outsider", email, "walk-outsider-1");
   }
   // Give the outsider a team of their own when they may make one, so their creates are refused by the rule, not for want of any team
   const tenantEntity = ir.entities.find(e => e.name === tenancy.entity)!;
@@ -688,6 +725,7 @@ async function tenantWalk(
   }
   await refresh(outsider, resolver);
   let checked = 0;
+  let open = 0;
   const lookup = async (table: string, column: string, value: unknown): Promise<Row | null> => {
     const { rows } = await db.query(`select * from "${table}" where "${column}" = $1`, [value]);
     return (rows[0] as Row | undefined) ?? null;
@@ -714,8 +752,13 @@ async function tenantWalk(
       checked++;
       const before = JSON.stringify(fresh);
       const who = `outsider on the home team's ${entity.name}`;
+      // A row the read rule opens to a caller with no session is public by the model's own word: reading it is no leak
+      const resolved = await resolver.resolve(entity, fresh, [entity.rules.read], null);
+      const readable = verdict(entity.rules.read, null, resolved, roles).ok;
+      if (readable) open++;
       for (const op of resource.operations) {
         if (op.rule.kind === "none") continue;
+        if (readable && (op.kind === "list" || op.kind === "get")) continue;
         if (op.kind === "list") {
           const reply = await outsider.client.resource({ resource, op, query: { page_size: "200" } });
           const body = reply.body as { data?: Row[] } | null;
@@ -759,7 +802,8 @@ async function tenantWalk(
           new Set(create.ownerField ? [create.ownerField] : [])
         );
         if (!built.missing.length) {
-          const reply = await outsider.client.resource({ resource, op: create, body: built.body });
+          const body = inviteBody(ir, create, built.body);
+          const reply = await outsider.client.resource({ resource, op: create, body });
           if (![401, 403, 404].includes(reply.status))
             findings.push(
               `${resource.name}.create as outsider naming the home team's ${parent.targetEntity}: ${reply.status} ${message(reply)}`
@@ -768,7 +812,8 @@ async function tenantWalk(
       }
     }
   }
-  return `${checked} rows of the home team checked against ${outsider.name}`;
+  const opened = open ? `; ${open} the read rule opens to everyone, checked for writes only` : "";
+  return `${checked} rows of the home team checked against ${outsider.name}${opened}`;
 }
 
 async function fuzzWalk(
@@ -907,7 +952,203 @@ async function fuzzWalk(
         await attempt(`${callLabel({ action })} as ${caller.name} with ${probe.name}`, true, () =>
           caller.client.action({ action, body: probe.body })
         );
+  if (ir.auth?.invites?.length) {
+    // The two token routes: any string as the token is a missing invite, whoever asks
+    const unknown = async (what: string, call: () => Promise<Reply>): Promise<void> => {
+      probes++;
+      try {
+        const reply = await call();
+        if (reply.status !== 404) findings.push(`${what}: expected 404, got ${reply.status} ${message(reply)}`);
+      } catch (error) {
+        if (error instanceof WalkTimeout) findings.push(`${what}: ${error.message}`);
+        else throw error;
+      }
+    };
+    for (const caller of state.callers)
+      for (const bad of badTokens(bodies)) {
+        await unknown(`auth.invite as ${caller.name} with ${bad.name}`, () => caller.client.invite(bad.token));
+        await unknown(`auth.invite_accept as ${caller.name} with ${bad.name}`, () =>
+          caller.client.inviteAccept(bad.token, {})
+        );
+      }
+  }
   return `${probes} probes with seed ${ctx.seed}, none answered 5xx or accepted an invalid input`;
+}
+
+/** A string shaped like an invite's token (43 characters of base64url) that nobody issued */
+function strayToken(bodies: BodyContext): string {
+  return (bodies.rng.uuid() + bodies.rng.uuid()).replace(/-/g, "").slice(0, 43);
+}
+
+/** Strings no invite was issued under: the shape of a real token, and shapes a careless lookup would trip on */
+function badTokens(bodies: BodyContext): { name: string; token: string }[] {
+  return [
+    { name: "a token nobody issued", token: strayToken(bodies) },
+    { name: "a one-character token", token: "x" },
+    { name: "a 300-character token", token: "a".repeat(300) },
+    { name: "a token with quotes and spaces", token: "' or 1=1 --" },
+    { name: "a token with a percent sign", token: "100%" },
+    { name: "a token outside ASCII", token: "h\u00e9llo-w\u00f6rld-\u2713" }
+  ];
+}
+
+/**
+ * What a scenario cannot reach on an invite. Per membership that can be invited to: a token nobody issued is a 404;
+ * a session under another address is a 403 that changes nothing; a password sign-in without the token joins
+ * nothing; the invited account's accept is a 200 and the membership is there; a second accept is a 404; and a row
+ * aged through the database is a 410 on the lookup and on the accept.
+ */
+async function inviteWalk(
+  ctx: WalkContext,
+  state: State,
+  resolver: Resolver,
+  roles: string[],
+  db: pg.Client,
+  listen: (label: string, reply: Reply) => void,
+  bodies: BodyContext,
+  findings: string[]
+): Promise<string> {
+  const { ir } = ctx;
+  const plans = ir.auth?.invites ?? [];
+  if (!plans.length) return "no invites: nothing to walk";
+  if (!state.actors.length) return "no actor signs in with a password: nothing to walk";
+  let checks = 0;
+  let walked = 0;
+  const notes: string[] = [];
+  const answers = (what: string, reply: Reply, status: number): boolean => {
+    checks++;
+    if (reply.status === status) return true;
+    findings.push(`${what}: expected ${status}, got ${reply.status} ${message(reply)}`);
+    return false;
+  };
+  const succeeds = (what: string, reply: Reply): boolean => {
+    checks++;
+    if (reply.status < 300) return true;
+    findings.push(`${what}: expected a success, got ${reply.status} ${message(reply)}`);
+    return false;
+  };
+  const anonymous = state.anonymous.client;
+  const stray = strayToken(bodies);
+  answers("auth.invite with a token nobody issued", await anonymous.invite(stray), 404);
+  answers("auth.invite_accept with a token nobody issued", await anonymous.inviteAccept(stray, {}), 404);
+  answers(
+    `auth.invite_accept as ${state.actors[0].name} with a token nobody issued`,
+    await state.actors[0].client.inviteAccept(stray),
+    404
+  );
+  for (const [index, plan] of plans.entries()) {
+    const resource = ir.resources.find(r => r.name === plan.resource);
+    const entity = ir.entities.find(e => e.name === plan.entity);
+    const create = resource?.operations.find((o): o is Extract<OperationIR, { kind: "create" }> => o.kind === "create");
+    if (!resource || !entity || !create) {
+      findings.push(`${plan.membership}: its invites have no create operation`);
+      continue;
+    }
+    const pk = entity.primaryKey[0];
+    // Who may invite, and to which parent: the first actor the rule allows on a body the walk can build
+    let inviter: Caller | undefined;
+    let base: Record<string, unknown> = {};
+    for (const caller of state.actors) {
+      await refresh(caller, resolver);
+      const built = buildCreateBody(ir, entity, create, caller, state, bodies);
+      if (built.missing.length || built.body[plan.parentColumn] == null) continue;
+      const resolved = await resolver.resolve(entity, built.body, [create.rule], caller.session);
+      if (!createOp(create.rule, caller.session, resolved, roles).allow) continue;
+      inviter = caller;
+      base = built.body;
+      break;
+    }
+    if (!inviter) {
+      notes.push(`no actor may invite to a ${plan.parent}`);
+      continue;
+    }
+    const parentId = base[plan.parentColumn];
+    const from = inviter;
+    const issue = async (email: string): Promise<{ id: unknown; token: string } | null> => {
+      const what = `${resource.name}.create as ${from.name}`;
+      const reply = await from.client.resource({ resource, op: create, body: { ...base, email } });
+      if (!succeeds(what, reply)) return null;
+      const body = reply.body as { data?: Row; debug?: { token?: string } } | null;
+      const token = body?.debug?.token;
+      if (!token) {
+        findings.push(`${what}: no debug.token in the reply although the app captures its emails`);
+        return null;
+      }
+      return { id: body?.data?.[pk], token };
+    };
+    const members = async (): Promise<number> => {
+      const { rows } = await db.query(
+        `select count(*)::int as n from "${plan.membershipTable}" where "${plan.parentColumn}" = $1`,
+        [parentId]
+      );
+      return (rows[0] as { n: number }).n;
+    };
+    const waiting = async (id: unknown): Promise<boolean> => {
+      const { rowCount } = await db.query(`select 1 from "${plan.table}" where "${pk}" = $1`, [id]);
+      return Boolean(rowCount);
+    };
+    // The invited account exists before the invite, so the lookup says so and a session can accept
+    const address = `walk-invitee-${ctx.seed}-${index}@example.com`;
+    const password = "walk-invitee-1";
+    const invitee = await registerCaller(ctx, listen, bodies, "invitee", address, password);
+    const issued = await issue(address);
+    if (!issued) continue;
+    walked++;
+    const before = await members();
+    // The lookup offers and never accepts
+    const offer = await anonymous.invite(issued.token);
+    if (answers("auth.invite on a waiting invite", offer, 200)) {
+      const data = (offer.body as { data?: Row } | null)?.data;
+      if (data?.account !== true)
+        findings.push("auth.invite on a waiting invite: account is not true for an address that has one");
+      if (typeof data?.email !== "string" || data.email === address || !data.email.includes("\u2022"))
+        findings.push("auth.invite on a waiting invite: the address is not masked");
+      if (data?.entity !== plan.parent) findings.push(`auth.invite on a waiting invite: entity is not ${plan.parent}`);
+    }
+    // A session under another address is refused and changes nothing
+    const other = `auth.invite_accept as ${from.name}, whom the invite does not name`;
+    answers(other, await from.client.inviteAccept(issued.token), 403);
+    if ((await members()) !== before) findings.push(`${other}: the ${plan.membership} rows changed`);
+    if (!(await waiting(issued.id))) findings.push(`${other}: the invite is gone`);
+    // A password proves the address only together with the token
+    const login = await invitee.client.auth("login", { email: address, password });
+    if (answers("auth.login as the invitee without the token", login, 200)) {
+      if ((login.body as { accepted?: unknown[] } | null)?.accepted?.length || (await members()) !== before)
+        findings.push("auth.login as the invitee without the token: it joined");
+    }
+    // The invited account's own accept
+    const accept = await invitee.client.inviteAccept(issued.token);
+    if (answers("auth.invite_accept as the invitee", accept, 200)) {
+      const accepted = (accept.body as { accepted?: { entity?: string; id?: unknown }[] } | null)?.accepted ?? [];
+      if (!accepted.some(a => a.entity === plan.parent && same(a.id, parentId)))
+        findings.push(`auth.invite_accept as the invitee: the reply does not name the ${plan.parent} it joined`);
+      const { rowCount } = await db.query(
+        `select 1 from "${plan.membershipTable}" where "${plan.parentColumn}" = $1 and "${plan.userColumn}" = $2`,
+        [parentId, invitee.session!.id]
+      );
+      if (!rowCount) findings.push(`auth.invite_accept as the invitee: no ${plan.membership} row was written`);
+      if (await waiting(issued.id)) findings.push("auth.invite_accept as the invitee: the invite is still waiting");
+    }
+    // An invite works once
+    answers("a second auth.invite_accept as the invitee", await invitee.client.inviteAccept(issued.token), 404);
+    answers("auth.invite after the accept", await anonymous.invite(issued.token), 404);
+    // A row aged through the database: gone for the lookup and for the accept, with or without a session
+    const aged = await issue(`walk-aged-${ctx.seed}-${index}@example.com`);
+    if (aged) {
+      await db.query(`update "${plan.table}" set "expires_at" = now() - interval '1 hour' where "${pk}" = $1`, [
+        aged.id
+      ]);
+      answers("auth.invite on an expired invite", await anonymous.invite(aged.token), 410);
+      answers("auth.invite_accept on an expired invite", await anonymous.inviteAccept(aged.token, {}), 410);
+      answers(
+        "auth.invite_accept on an expired invite as the invitee",
+        await invitee.client.inviteAccept(aged.token),
+        410
+      );
+    }
+  }
+  const noted = notes.length ? `; ${notes.join("; ")}` : "";
+  return `${walked} of ${plans.length} invited memberships walked with ${checks} checks${noted}`;
 }
 
 /** Keys no response may carry, and the shape of a raw key */
@@ -933,6 +1174,25 @@ function leakWalk(ir: IR, captured: { label: string; body: unknown }[], findings
     }
   };
   for (const { label, body } of captured) scan(body, "", label);
+  // An invite's token leaves the app once, beside its create while emails are captured: no read carries one, and
+  // the lookup shows the invited address masked
+  const reads = new Set((ir.auth?.invites ?? []).flatMap(p => [`${p.resource}.get`, `${p.resource}.list`]));
+  const carriesToken = (value: unknown): boolean => {
+    if (Array.isArray(value)) return value.some(carriesToken);
+    if (!value || typeof value !== "object") return false;
+    return Object.entries(value as Record<string, unknown>).some(
+      ([key, child]) => key === "token" || key === "debug" || carriesToken(child)
+    );
+  };
+  for (const { label, body } of captured) {
+    if (findings.length >= MAX_FINDINGS) break;
+    if (reads.has(label) && carriesToken(body)) findings.push(`${label}: a read of an invite carries a token`);
+    if (label === "auth.invite") {
+      const email = (body as { data?: { email?: unknown } } | null)?.data?.email;
+      if (typeof email === "string" && !email.includes("\u2022"))
+        findings.push("auth.invite: the invited address is not masked");
+    }
+  }
   return `${captured.length} bodies scanned for ${forbidden.size} forbidden keys`;
 }
 

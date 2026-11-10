@@ -22,7 +22,7 @@ describe("eval corpus", () => {
     const cases = await loadCases(CASES);
     expect(cases.length).toBeGreaterThan(40);
     const oracles = cases.filter(c => c.oracle);
-    expect(oracles.length).toBe(27);
+    expect(oracles.length).toBe(32);
     for (const c of oracles) {
       const yaml = await readFile(path.join(REPO, c.oracle!), "utf8");
       const checked = await checkedWith(c, yaml);
@@ -80,6 +80,75 @@ describe("eval corpus", () => {
     expect(checkExpectations({ outcome: "ok", actor_fields: { role: "admin|superuser" } }, checked)).toEqual([]);
     expect(checkExpectations({ outcome: "ok", actor_fields: { role: "owner" } }, checked)).toEqual([
       "no actor sets role: owner"
+    ]);
+  });
+
+  it("holds an ask for invites to the construct, not to an entity declared by hand", async () => {
+    const cases = await loadCases(CASES);
+    const c = cases.find(x => x.id === "ws1-invites-gap")!;
+    const declared = await checkedWith(
+      c,
+      [
+        'osl: "1.0"',
+        "ops:",
+        "  - op: set_auth",
+        "    auth:",
+        "      identity: User",
+        "      providers: [credentials]",
+        "      tenancy: { entity: Team, membership: TeamMember, role_field: role, creator_role: owner }",
+        "      invites: { TeamMember: {} }",
+        "  - op: add_scenario",
+        "    scenario:",
+        "      name: invite by email",
+        "      steps:",
+        "        - as: alice",
+        "          op: teams.create",
+        "          body: { name: Harbor }",
+        "          expect: { status: 201 }",
+        "          capture: { team: data.id }",
+        "        - as: bob",
+        "          op: team_invites.create",
+        '          body: { team_id: "{team}", email: stranger@example.com }',
+        "          expect: { status: 403 }",
+        "        - as: alice",
+        "          op: team_invites.create",
+        '          body: { team_id: "{team}", email: bob@example.com }',
+        "          expect: { status: 201 }",
+        "          capture: { token: debug.token }",
+        "        - as: bob",
+        "          op: auth.invite_accept",
+        '          path: { token: "{token}" }',
+        "          expect: { status: 200 }"
+      ].join("\n")
+    );
+    // The stored model keeps the one key; the invite entity is the compiler's and is not in it
+    expect(Object.keys(declared.model.entities)).not.toContain("TeamInvite");
+    expect(declared.ir.entities.map(e => e.name)).toContain("TeamInvite");
+    expect(checkExpectations(c.expect, declared)).toEqual([]);
+
+    const byHand = await checkedWith(
+      c,
+      [
+        'osl: "1.0"',
+        "ops:",
+        "  - op: add_entity",
+        "    name: Invitation",
+        "    entity:",
+        "      fields:",
+        "        id: { type: uuid, primary: true }",
+        "        team_id: { type: uuid, required: true, relation: { entity: Team, on_delete: cascade } }",
+        "        email: { type: string, required: true, validate: { format: email } }",
+        '      rules: { read: "member:team_id:admin", create: "member:team_id:admin", delete: "member:team_id:admin" }',
+        "  - op: add_resource",
+        "    name: invitations",
+        "    resource: { entity: Invitation, operations: [list, create, delete], list: { filters: [team_id] } }"
+      ].join("\n")
+    );
+    const failures = checkExpectations(c.expect, byHand);
+    expect(failures).toContain("auth.invites has no entry for TeamMember");
+    expect(failures.some(f => f.startsWith("entity ") && f.endsWith("should be gone"))).toBe(true);
+    expect(checkExpectations({ outcome: "ok", auth: { invites: ["ProjectMember"] } }, declared)).toEqual([
+      "auth.invites has no entry for ProjectMember (it has TeamMember)"
     ]);
   });
 

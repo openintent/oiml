@@ -4,7 +4,7 @@
 import { and, asc, count, desc, eq, ilike, or, type SQL } from "drizzle-orm";
 import { db } from "../db/client";
 import * as schema from "../db/schema";
-import { articles as articlesTable } from "../db/schema";
+import { articles as articlesTable, articleEditors as articleEditorsTable } from "../db/schema";
 import { checkRule, denied, type Rule } from "../access";
 import { handlers } from "../actions";
 import { getSession, type Session } from "../auth";
@@ -22,7 +22,7 @@ export type HookContext = { request: Request; session: Session | null };
 const RULES = {
   read: {"kind":"public"} as Rule,
   create: {"kind":"owner","field":"author_id"} as Rule,
-  update: {"kind":"any","rules":[{"kind":"owner","field":"author_id"},{"kind":"role","value":"admin"}]} as Rule,
+  update: {"kind":"any","rules":[{"kind":"owner","field":"author_id"},{"kind":"member","field":"editors","through":true},{"kind":"role","value":"admin"}]} as Rule,
   delete: {"kind":"any","rules":[{"kind":"owner","field":"author_id"},{"kind":"role","value":"admin"}]} as Rule
 };
 
@@ -35,6 +35,27 @@ const ACTION_RULES = {
 
 /** File fields and what they accept */
 const FILE_FIELDS = [{ column: "cover", accept: ["image/*"], maxSize: 2097152 }] as const;
+
+/** The row (or create body) with the values its rules reach through relations, under their dotted keys, and the caller's memberships */
+async function withRuleValues(row: Record<string, unknown>, session: { user: Record<string, unknown> } | null): Promise<Record<string, unknown>> {
+  const out: Record<string, unknown> = { ...row };
+  {
+    let value: unknown = row.id;
+
+    const me = session?.user.id ?? null;
+    const held =
+      value == null || me == null
+        ? undefined
+        : (
+            await db
+              .select({ v: articleEditorsTable.user_id })
+              .from(articleEditorsTable)
+              .where(and(eq(articleEditorsTable.article_id, value as schema.ArticleEditor["article_id"]), eq(articleEditorsTable.user_id, me as schema.ArticleEditor["user_id"]))!)
+          )[0];
+    out["editors"] = held ? true : null;
+  }
+  return out;
+}
 
 const SORTABLE = {
   title: articlesTable.title,
@@ -129,7 +150,7 @@ export const posts = {
       if (!id.ok) return id.response;
       const existing = await db.query.articles.findFirst({ where: eq(articlesTable.id, id.data) });
       if (!existing) return notFound();
-      const rowVerdict = checkRule(RULES.update, session, existing);
+      const rowVerdict = checkRule(RULES.update, session, await withRuleValues(existing, session));
       if (!rowVerdict.ok) return denied(rowVerdict);
       const body = await parseBody(postsUpdateInput, request);
       if (!body.ok) return body.response;

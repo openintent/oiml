@@ -9,18 +9,19 @@ import { TRPCError } from "@trpc/server";
 import { getHTTPStatusCodeFromError } from "@trpc/server/http";
 import { Hono, type Context as HonoContext } from "hono";
 import { fileContent, receiveContent } from "../files";
-import { APP_URL, oauthCallback, oauthStart } from "../auth-providers";
-import { sessionCookie } from "./auth";
+import { APP_URL, oauthCallback, oauthStart, lookupInvite } from "../auth-providers";
+import { acceptInviteAs, getSession, sessionCookie } from "./auth";
 import { startWorker } from "../jobs";
 import { emailsSent, schedulesRun, testHooksEnabled, timersRun } from "../test-hooks";
 import { createContext } from "./context";
+import { statusOf } from "./errors";
 import { appRouter } from "./router";
 
 /** Errors from the shared modules are tRPC errors; REST routes answer them in the contract's shape. */
 function restError(c: HonoContext, err: unknown): Response {
   if (err instanceof TRPCError) {
     const code = (err.cause as { code?: string } | undefined)?.code ?? err.code.toLowerCase();
-    return c.json({ error: { code, message: err.message } }, getHTTPStatusCodeFromError(err) as 400);
+    return c.json({ error: { code, message: err.message } }, (statusOf(err) ?? getHTTPStatusCodeFromError(err)) as 400);
   }
   console.error(err);
   return c.json({ error: { code: "internal", message: "Something went wrong" } }, 500);
@@ -30,7 +31,18 @@ export function createApp(): Hono {
   const app = new Hono();
   app.get("/healthz", c => c.json({ ok: true }));
   app.get("/health", c => c.json({ ok: true }));
-  app.use("/trpc/*", trpcServer({ router: appRouter, createContext }));
+  app.use(
+    "/trpc/*",
+    trpcServer({
+      router: appRouter,
+      createContext,
+      // A single call answers with the status its refusal carries; a batch keeps tRPC's own
+      responseMeta: ({ errors, paths }) => {
+        const status = errors.length === 1 && paths?.length === 1 ? statusOf(errors[0]) : undefined;
+        return status === undefined ? {} : { status };
+      }
+    })
+  );
   // Files: bytes in and out. Local storage streams them; S3 redirects to a signed URL.
   app.get("/api/files/:id/content", async c => {
     try {
@@ -77,6 +89,24 @@ export function createApp(): Hono {
       const { user, redirectTo } = await oauthCallback(c.req.param("name"), c.req.query());
       c.header("set-cookie", sessionCookie(user.id));
       return c.redirect(APP_URL + redirectTo, 302);
+    } catch (err) {
+      return restError(c, err);
+    }
+  });
+  // Invites: what a token offers and its acceptance, the same two calls the auth router has
+  app.get("/api/auth/invites/:token", async c => {
+    try {
+      return c.json({ data: await lookupInvite(c.req.param("token")) });
+    } catch (err) {
+      return restError(c, err);
+    }
+  });
+  app.post("/api/auth/invites/:token/accept", async c => {
+    try {
+      const raw: unknown = await c.req.json().catch(() => ({}));
+      const { cookie, ...reply } = await acceptInviteAs(await getSession(c.req.raw), c.req.param("token"), raw);
+      if (cookie) c.header("set-cookie", cookie);
+      return c.json(reply, cookie ? 201 : 200);
     } catch (err) {
       return restError(c, err);
     }

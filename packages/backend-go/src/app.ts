@@ -1,5 +1,6 @@
 import type { GeneratedFile, IR } from "@osl/core";
 import { globalActions } from "@osl/core";
+import { inviteEventWiring } from "./invites.js";
 import { hasScheduling } from "./scheduling.js";
 import { HEADER, SCAFFOLD_HEADER, exported, goFile } from "./util.js";
 
@@ -35,7 +36,10 @@ export function appFile(ir: IR, modulePath: string): string {
   const scheduling = hasScheduling(ir);
   if (scheduling) imports.push(`${modulePath}/generated/scheduling`);
   imports.push("os", `${modulePath}/generated/testhooks`);
-  const registrations: string[] = [];
+  // An accepted invite makes a membership inside the auth package, which cannot import the events it then owes
+  const inviteEvents = inviteEventWiring(ir);
+  if (inviteEvents.length) imports.push(`${modulePath}/generated/events`, `${modulePath}/generated/models`);
+  const registrations: string[] = [...inviteEvents];
   if (scheduling) registrations.push(`\tscheduling.Use(pool)`);
   if (ir.files) registrations.push(`\tfilesapi.New(pool, a).Routes(r)`);
   for (const resource of ir.resources)

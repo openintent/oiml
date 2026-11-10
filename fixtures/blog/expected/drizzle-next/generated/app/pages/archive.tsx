@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { client, sessionUser, type Inputs, type Outputs, type SessionUser } from "../client";
-import { EmptyPane, ErrorNote, FieldRow, FileInput, FilePreview, FormRow, ListSkeleton, Pagination, Pane, PaneHeader, PaneSkeleton, SortHeader, formatDateTime, formatList, selectClass, splitList, text, toDateTimeInput, useDebounced, yesNo } from "../ui";
+import { EmptyPane, ErrorNote, FieldRow, FileInput, FilePreview, FormRow, ListSkeleton, Pagination, Pane, PaneHeader, PaneSkeleton, RowError, SortHeader, formatDateTime, formatList, selectClass, splitList, text, toDateTimeInput, useDebounced, yesNo } from "../ui";
 
 type Row = Outputs["posts"]["list"]["data"][number];
 type Detail = Outputs["posts"]["get"];
@@ -34,7 +34,7 @@ function canCreate(user: SessionUser | null): boolean {
 }
 
 function canUpdate(user: SessionUser | null, row: Detail): boolean {
-  return (user !== null && row.author_id === user.id || user !== null && (user as { role?: unknown }).role === "admin");
+  return (user !== null && row.author_id === user.id || user !== null || user !== null && (user as { role?: unknown }).role === "admin");
 }
 
 function canDelete(user: SessionUser | null, row: Detail): boolean {
@@ -463,7 +463,7 @@ function ArchiveDetailInner() {
     }
   });
   if (query.isPending) return <PaneSkeleton />;
-  if (query.error) return <ErrorNote error={query.error} className="m-6" />;
+  if (query.error) return <RowError error={query.error} signIn={<Link href="/login" className={buttonVariants()}>Sign in</Link>} />;
   const row: Detail = query.data;
   return (
     <Pane
@@ -531,7 +531,7 @@ function ArchiveDetailInner() {
           <p className="whitespace-pre-wrap">{text(row.content) || "—"}</p>
         </FieldRow>
         <FieldRow label="Published">{row.published == null ? "—" : <Badge variant={row.published ? "default" : "outline"}>{yesNo(row.published)}</Badge>}</FieldRow>
-        <FieldRow label="Author">{(row.author ? text(row.author.name) : text(row.author_id)) || "—"}</FieldRow>
+        <FieldRow label="Author">{<Link href={`/authors/${text(row.author_id)}`} className="hover:underline">{(row.author ? text(row.author.name) : text(row.author_id)) || "—"}</Link>}</FieldRow>
         <FieldRow label="Posted At">{formatDateTime(row.posted_at) || "—"}</FieldRow>
         <FieldRow label="Tags">
           <span className="flex flex-wrap gap-1">

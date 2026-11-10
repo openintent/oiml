@@ -1,14 +1,18 @@
 import type { IR, ProviderIR } from "@osl/core";
 import { entityByName, q, tableExport, typeName } from "./conventions.js";
+import { hasInvites, inviteImports, invitesSource } from "./invites.js";
 import type { ServerConventions } from "./server-conventions.js";
 
-/** Whether the model signs users in with magic links or OAuth */
+/**
+ * Whether the model needs generated/auth-providers.ts and generated/email.ts: it signs users in with magic links
+ * or OAuth, or it sends invites
+ */
 export function hasProviders(ir: IR): boolean {
-  return Boolean(ir.auth?.providers.some(p => p.kind !== "credentials"));
+  return Boolean(ir.auth?.providers.some(p => p.kind !== "credentials")) || hasInvites(ir);
 }
 
 /**
- * generated/auth-providers.ts: magic links and OAuth, transport-neutral. The backend's auth routes call
+ * generated/auth-providers.ts: magic links, OAuth and invites, transport-neutral. The backend's auth routes call
  * these and set the session cookie on the user they answer.
  */
 export function authProvidersFile(ir: IR, conv: ServerConventions): string {
@@ -29,14 +33,20 @@ export function authProvidersFile(ir: IR, conv: ServerConventions): string {
     : `  void name;
   fail(403, "registration_closed", "No account for " + email + "; register first");`;
 
+  const invites = hasInvites(ir);
+  const invite = invites ? inviteImports(ir, conv) : { schema: [], lines: [] };
   const imports = [
     `import { createHash, randomBytes } from "node:crypto";`,
     `import { and, eq, gt } from "drizzle-orm";`,
     `import { db } from "./db/client";`,
-    `import { ${table} as identityTable${magic ? ", oslAuthTokens" : ""}${oauth.length ? ", oslAuthStates, oslAuthAccounts" : ""}, type ${T} } from "./db/schema";`,
+    `import { ${table} as identityTable${magic ? ", oslAuthTokens" : ""}${oauth.length ? ", oslAuthStates, oslAuthAccounts" : ""}${invite.schema.map(name => `, ${name}`).join("")}, type ${T} } from "./db/schema";`,
     `import { fail } from "${conv.errorsModule}";`,
-    ...(magic ? [`import { emailMode, sendEmail } from "./email";`] : [])
+    ...(magic || invites ? [`import { emailMode, ${invites ? "inviteEmail, " : ""}sendEmail } from "./email";`] : []),
+    ...invite.lines
   ];
+  const what = invites
+    ? "Sign-in providers beyond passwords (magic links, OAuth) and invites. Transport-neutral; the auth routes set the cookie."
+    : "Sign-in providers beyond passwords: magic links and OAuth. Transport-neutral; the auth routes set the cookie.";
 
   const presets = oauth
     .map(p => {
@@ -52,10 +62,10 @@ export function authProvidersFile(ir: IR, conv: ServerConventions): string {
     })
     .join(",\n");
 
-  return `${conv.header("Sign-in providers beyond passwords: magic links and OAuth. Transport-neutral; the auth routes set the cookie.")}
+  return `${conv.header(what)}
 ${imports.join("\n")}
 
-/** Where the web app lives: magic links point here and OAuth returns here (OSL_APP_URL) */
+/** Where the web app lives: magic links${invites ? " and invites" : ""} point here and OAuth returns here (OSL_APP_URL) */
 export const APP_URL = (process.env.OSL_APP_URL ?? "http://localhost:3000").replace(/\\/$/, "");
 
 const MAGIC_LINK_MINUTES = 10;
@@ -103,11 +113,24 @@ export async function issueMagicLink(rawEmail: string): Promise<{ token: string;
   return emailMode() === "capture" ? { token, url } : null;
 }
 
-/** Take the token (once) and answer its user, creating the user when the model allows. */
+${
+  invites
+    ? `/**
+ * Take the token (once) and answer its user, creating the user when the model allows. The link has proven the
+ * address, so the invites waiting for it are accepted.
+ */
+export async function verifyMagicLink(token: string): Promise<{ user: ${T}; accepted: Accepted[] }> {
+  const [row] = await db.delete(oslAuthTokens).where(eq(oslAuthTokens.token_hash, hash(token))).returning();
+  if (!row || row.purpose !== "magic_link" || row.expires_at.getTime() < Date.now()) fail(400, "invalid_token", "This link is invalid or has expired");
+  const user = await findOrCreateByEmail(row.email);
+  return { user, accepted: await acceptPending(user, row.email) };
+}`
+    : `/** Take the token (once) and answer its user, creating the user when the model allows. */
 export async function verifyMagicLink(token: string): Promise<${T}> {
   const [row] = await db.delete(oslAuthTokens).where(eq(oslAuthTokens.token_hash, hash(token))).returning();
   if (!row || row.purpose !== "magic_link" || row.expires_at.getTime() < Date.now()) fail(400, "invalid_token", "This link is invalid or has expired");
   return findOrCreateByEmail(row.email);
+}`
 }
 `
     : ""
@@ -171,7 +194,15 @@ export async function oauthStart(name: string, redirectTo = "/"): Promise<string
   return endpoint + "?" + params.toString();
 }
 
-/** Finish the authorisation: check the state, exchange the code, read the profile, find or create the user. */
+${
+  invites
+    ? `/**
+ * Finish the authorisation: check the state, exchange the code, read the profile, find or create the user. The
+ * provider has proven the address it answers, so the invites waiting for it are accepted, and the browser goes to
+ * what was joined.
+ */`
+    : `/** Finish the authorisation: check the state, exchange the code, read the profile, find or create the user. */`
+}
 export async function oauthCallback(name: string, params: Record<string, string | undefined>): Promise<{ user: ${T}; redirectTo: string }> {
   const provider = providerOrFail(name);
   if (params.error) fail(400, "oauth_denied", params.error_description ?? params.error);
@@ -205,7 +236,12 @@ export async function oauthCallback(name: string, params: Record<string, string 
     user = await findOrCreateByEmail(profile.email, profile.name);
     await db.insert(oslAuthAccounts).values({ provider: name, provider_account_id: profile.id, user_id: user.${pk} });
   }
-  return { user, redirectTo: pending.redirect_to ?? "/" };
+${
+  invites
+    ? `  const accepted = await acceptPending(user, profile.email);
+  return { user, redirectTo: accepted.length ? acceptedPath(accepted[0]) : (pending.redirect_to ?? "/") };`
+    : `  return { user, redirectTo: pending.redirect_to ?? "/" };`
+}
 }
 
 async function fetchProfile(provider: ProviderConfig, tokens: { access_token?: string; id_token?: string }, nonce: string | null): Promise<{ id: string; email: string | null; name?: string }> {
@@ -231,5 +267,5 @@ async function fetchProfile(provider: ProviderConfig, tokens: { access_token?: s
 }
 `
       : ""
-  }`;
+  }${invites ? invitesSource(ir) : ""}`;
 }

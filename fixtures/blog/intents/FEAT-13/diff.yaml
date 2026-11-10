@@ -1,0 +1,102 @@
+osl: "1.0"
+summary: A public page per author with their published articles, an article page with its comments, and a public share link per announcement
+ops:
+  - op: add_page
+    name: author
+    page:
+      kind: detail
+      resource: users
+      path: /authors/:id
+      access: public
+      fields: [name]
+      sections:
+        - resource: posts
+          title: Articles
+          filter: { author_id: "{row.id}", published: true }
+          columns: [title, posted_at]
+          order: [[posted_at, desc]]
+  - op: add_page
+    name: post
+    page:
+      kind: detail
+      resource: posts
+      path: /posts/:id
+      title: Article
+      fields: [title, content, published, locked, cover, tags, posted_at, author_id]
+      sections:
+        - resource: comments
+          filter: { article_id: "{row.id}" }
+          columns: [body, author_id, created_at]
+          create: true
+  - op: add_page
+    name: announcement
+    page:
+      kind: detail
+      resource: announcements
+      path: /news/:id
+      access: public
+      fields: [title, body, author_id, created_at]
+  - op: set_actors
+    actors:
+      alice: { email: alice@example.com, password: alice-pass-1, name: Alice }
+      bob: { email: bob@example.com, password: bob-pass-1, name: Bob }
+      dave: { email: dave@example.com, password: dave-pass-1, name: Dave }
+      erin: { email: erin@example.com, password: erin-pass-1, name: Erin }
+      admin: { email: admin@example.com, password: admin-pass-1, name: Admin, role: admin }
+  - op: add_scenario
+    scenario:
+      name: author and article pages
+      steps:
+        - as: erin
+          op: auth.me
+          expect: { status: 200 }
+          capture: { erin_id: data.id }
+        - as: erin
+          op: posts.create
+          body: { title: First light, content: The first one, published: true }
+          expect: { status: 201 }
+          capture: { first: data.id }
+        - as: erin
+          op: posts.create
+          body: { title: Second wind, content: The second one, published: true }
+          expect: { status: 201 }
+          capture: { second: data.id }
+        - as: erin
+          op: posts.create
+          body: { title: Unfinished, content: Not yet }
+          expect: { status: 201, body: { data: { published: false } } }
+        - as: bob
+          op: posts.create
+          body: { title: Elsewhere, content: By someone else, published: true }
+          expect: { status: 201 }
+        - op: users.get
+          path: { id: "{erin_id}" }
+          expect: { status: 200, body: { data: { name: Erin } } }
+        - op: posts.list
+          query: { author_id: "{erin_id}", published: "true", sort: "posted_at:desc", page: "1", page_size: "10" }
+          expect: { status: 200, body: { data: [{ title: Second wind }, { title: First light }], page: { total: 2 } } }
+        - as: bob
+          op: comments.create
+          body: { article_id: "{first}", body: Lovely }
+          expect: { status: 201, body: { data: { article_id: "{first}", author_id: "{actor.id}" } } }
+        - op: comments.list
+          query: { article_id: "{first}", page: "1", page_size: "10" }
+          expect: { status: 200, body: { data: [{ body: Lovely, author: { name: Bob } }], page: { total: 1 } } }
+        - op: comments.list
+          query: { article_id: "{second}", page: "1", page_size: "10" }
+          expect: { status: 200, body: { data: [], page: { total: 0 } } }
+        - as: erin
+          op: announcements.create
+          body: { title: Launch day, body: We are live }
+          expect: { status: 201, body: { data: { published: false } } }
+          capture: { news: data.id }
+        - op: announcements.get
+          path: { id: "{news}" }
+          expect: { status: 404 }
+        - as: erin
+          op: announcements.publish
+          path: { id: "{news}" }
+          expect: { status: 200, body: { data: { published: true } } }
+        - op: announcements.get
+          path: { id: "{news}" }
+          expect: { status: 200, body: { data: { title: Launch day, published: true, author: { name: Erin } } } }

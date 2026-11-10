@@ -34,6 +34,16 @@ export function presentBulletin(row: schema.Bulletin): PublicBulletin {
   return { id: row.id, author_id: row.author_id, body: row.body, created_at: row.created_at };
 }
 
+export type PublicArticleEditor = Pick<schema.ArticleEditor, "id" | "article_id" | "user_id" | "created_at">;
+export function presentArticleEditor(row: schema.ArticleEditor): PublicArticleEditor {
+  return { id: row.id, article_id: row.article_id, user_id: row.user_id, created_at: row.created_at };
+}
+
+export type PublicArticleInvite = Pick<schema.ArticleInvite, "id" | "article_id" | "email" | "invited_by" | "expires_at" | "created_at">;
+export function presentArticleInvite(row: schema.ArticleInvite): PublicArticleInvite {
+  return { id: row.id, article_id: row.article_id, email: row.email, invited_by: row.invited_by, expires_at: row.expires_at, created_at: row.created_at };
+}
+
 export type PublicOslFile = Pick<schema.OslFile, "id" | "key" | "name" | "size" | "type" | "status" | "owner_id" | "created_at">;
 export function presentOslFile(row: schema.OslFile): PublicOslFile {
   return { id: row.id, key: row.key, name: row.name, size: row.size, type: row.type, status: row.status, owner_id: row.owner_id, created_at: row.created_at };

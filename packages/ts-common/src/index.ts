@@ -11,6 +11,7 @@ export * from "./storage.js";
 export * from "./files.js";
 export * from "./email.js";
 export * from "./auth-providers.js";
+export * from "./invites.js";
 export * from "./jobs.js";
 export * from "./scheduling.js";
 export * from "./actions.js";

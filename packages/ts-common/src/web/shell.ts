@@ -5,7 +5,8 @@
  */
 import type { GeneratedFile, IR, RuleIR } from "@osl/core";
 import { entityByName, q, type TsConventions } from "../conventions.js";
-import { iconExport } from "./pages.js";
+import { hasInvites } from "../invites.js";
+import { entityTitle, iconExport } from "./pages.js";
 import type { WebTarget } from "./target.js";
 
 /** generated/app/nav.ts */
@@ -14,10 +15,13 @@ export function navFile(ir: IR, target: WebTarget, conv: TsConventions): string 
   const icons = [...new Set((app?.sidebar?.items ?? []).map(i => i.icon).filter((i): i is string => Boolean(i)))]
     .map(iconExport)
     .sort();
-  const pages = (app?.pages ?? []).map(
-    p =>
-      `  { name: ${q(p.name)}, kind: ${q(p.kind)}, path: ${q(p.path)}, title: ${q(p.title)}${p.description ? `, description: ${q(p.description)}` : ""}, access: ${accessLiteral(p.access)} }`
-  );
+  // A detail page opens from a row, not from the shell: its address needs the row's key
+  const pages = (app?.pages ?? [])
+    .filter(p => p.kind !== "detail")
+    .map(
+      p =>
+        `  { name: ${q(p.name)}, kind: ${q(p.kind)}, path: ${q(p.path)}, title: ${q(p.title)}${p.description ? `, description: ${q(p.description)}` : ""}, access: ${accessLiteral(p.access)} }`
+    );
   const sidebar = app?.sidebar
     ? `{
   items: [
@@ -57,6 +61,12 @@ export function userInitials(user: SessionUser): string {
 
 function text(value: unknown): string {
   return value == null ? "" : String(value);
+}
+
+/** Where a sign-in goes when it is done: the page's \`next\` query when that is a path of this app, else nowhere */
+export function nextPath(): string | undefined {
+  const next = new URLSearchParams(window.location.search).get("next");
+  return next && /^\\/(?!\\/)/.test(next) && !next.includes("\\\\") ? next : undefined;
 }`;
   } else {
     userHelpers = `/** Auth is not configured, so nobody is ever signed in. */
@@ -133,6 +143,150 @@ function accessLiteral(rule: RuleIR): string {
   return `{ kind: "public" }`;
 }
 
+/**
+ * generated/app/tenant.tsx: the tenant context of pages that filter by `{tenant.id}`. The choice is kept in the
+ * browser (this tab's, else the last one made in any tab), never in the address, and it is a filter, not a
+ * permission: the API's rules decide what a user may read whichever tenant is chosen.
+ */
+export function tenantFile(ir: IR, target: WebTarget, conv: TsConventions): string {
+  const tenant = ir.app?.tenant;
+  if (!tenant) throw new Error("tenantFile needs app.tenant");
+  const entity = entityByName(ir, tenant.entity);
+  const pk = entity.primaryKey[0];
+  const one = entityTitle(entity);
+  const lower = one.toLowerCase();
+  const S = q(tenant.resource);
+  // The empty state points at the first page that lists the tenants, where a user can make or join one
+  const listPage = (ir.app?.pages ?? []).find(p => p.kind === "resource" && p.resource === tenant.resource);
+  const routerImports = listPage ? target.routerImports({ link: true }) : [];
+  return `${conv.header(`The tenant context: the ${lower} the sidebar's switcher chose, for the pages that filter by it.`)}
+"use client";
+import { useQuery } from "@tanstack/react-query";
+${routerImports.length ? routerImports.join("\n") + "\n" : ""}import { useSyncExternalStore } from "react";
+import { cn } from "@/lib/utils";
+import { client, sessionUser, type Outputs } from "./client";
+import { EmptyPane, selectClass, text } from "./ui";
+
+/** A ${lower} the signed-in user can work in: a row the ${tenant.resource} resource lists for them */
+export type Tenant = Outputs[${S}]["list"]["data"][number];
+
+const STORAGE_KEY = "osl.tenant";
+const LIST = { page_size: 200 };
+const NONE: readonly Tenant[] = [];
+
+/** The chosen key; undefined until the browser's storage has been read */
+let chosen: string | null | undefined;
+const listeners = new Set<() => void>();
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+/** The remembered choice: this tab's, else the last one made in any tab */
+function readChoice(): string | null {
+  if (chosen !== undefined) return chosen;
+  chosen = null;
+  try {
+    chosen = window.sessionStorage.getItem(STORAGE_KEY) ?? window.localStorage.getItem(STORAGE_KEY);
+    if (chosen !== null) window.sessionStorage.setItem(STORAGE_KEY, chosen);
+  } catch {
+    // Storage is blocked: the choice lasts until the page reloads
+  }
+  return chosen;
+}
+
+function writeChoice(key: string): void {
+  chosen = key;
+  try {
+    window.sessionStorage.setItem(STORAGE_KEY, key);
+    window.localStorage.setItem(STORAGE_KEY, key);
+  } catch {
+    // Storage is blocked: the choice lasts until the page reloads
+  }
+  for (const listener of listeners) listener();
+}
+
+/**
+ * The ${lower} in context, the ones the user can change to, and the setter. A remembered ${lower} the user is
+ * no longer in falls back to the first one listed; tenant is null while loading and for a user who is in none.
+ */
+export function useTenant(): {
+  tenant: Tenant | null;
+  tenants: readonly Tenant[];
+  setTenant: (key: string) => void;
+  loading: boolean;
+} {
+  const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
+  const user = sessionUser(session.data);
+  const list = useQuery({
+    queryKey: [${S}, "list", LIST],
+    queryFn: () => client.${tenant.resource}.list(LIST),
+    enabled: user !== null
+  });
+  const choice = useSyncExternalStore(subscribe, readChoice, () => null);
+  const tenants = user !== null ? (list.data?.data ?? NONE) : NONE;
+  const current = tenants.find(item => text(item.${pk}) === choice) ?? tenants[0] ?? null;
+  return {
+    tenant: current,
+    tenants,
+    setTenant: writeChoice,
+    loading: session.isPending || (user !== null && list.isPending)
+  };
+}
+
+${
+  hasInvites(ir)
+    ? `/** Makes a ${lower} the current one when the signed-in user is in it; otherwise the choice stays where it was */
+export async function chooseTenant(key: string): Promise<void> {
+  const list = await client.${tenant.resource}.list(LIST);
+  if (list.data.some(item => text(item.${pk}) === key)) writeChoice(key);
+}
+
+`
+    : ""
+}/** The switcher the sidebar shows in its header: the current ${lower}, and the ones the user can change to */
+export function TenantSwitcher({ className }: { className?: string }) {
+  const { tenant, tenants, setTenant } = useTenant();
+  if (tenant === null) return null;
+  return (
+    <select
+      aria-label=${q(one)}
+      className={cn(selectClass, "group-data-[collapsible=icon]:hidden", className)}
+      value={text(tenant.${pk})}
+      onChange={event => setTenant(event.target.value)}
+    >
+      {tenants.map(item => (
+        <option key={text(item.${pk})} value={text(item.${pk})}>
+          {text(item.${tenant.labelColumn}) || text(item.${pk})}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/** What a page filtered by the ${lower} shows to a user who is in none */
+export function NoTenant() {
+  return (
+    <EmptyPane>
+      <div className="space-y-2">
+        <p>You are not in any ${lower} yet.</p>${
+          listPage
+            ? `
+        <Link ${target.linkAttrs(listPage.path)} className="text-foreground underline underline-offset-4">
+          Open ${listPage.title}
+        </Link>`
+            : ""
+        }
+      </div>
+    </EmptyPane>
+  );
+}
+`;
+}
+
 /** The scaffolds every target shares: shell, sidebar, home, settings, sign-in. Paths depend on the target. */
 export function shellScaffolds(ir: IR, target: WebTarget, conv: TsConventions): GeneratedFile[] {
   const files: GeneratedFile[] = [];
@@ -140,6 +294,7 @@ export function shellScaffolds(ir: IR, target: WebTarget, conv: TsConventions): 
   const nav = conv.generated("app/nav");
   const ui = (name: string) => `@/components/ui/${name}`;
   const next = target.kind === "next";
+  const invites = hasInvites(ir);
   const componentsDir = next ? "components" : "src/components";
   const page = (
     routePath: string,
@@ -304,10 +459,20 @@ ${ir.auth ? `  const session = useQuery({ queryKey: ["auth", "session"], queryFn
           `function VerifyPage() {
   ${next ? `const params = useSearchParams();\n  const token = params.get("token") ?? "";` : `const { token } = Route.useSearch();`}
   ${target.navigateDecl}
-  const queryClient = useQueryClient();
+  const queryClient = useQueryClient();${
+    invites
+      ? `
+  const land = useLandInvitee();`
+      : ""
+  }
   const verify = useMutation({
     mutationFn: (input: { token: string }) => client.auth.magic_link_verify(input),
-    onSuccess: async () => {
+    onSuccess: async ${invites ? "reply" : "()"} => {${
+      invites
+        ? `
+      if (reply.accepted?.length) return land(reply.accepted);`
+        : ""
+    }
       await queryClient.invalidateQueries();
       await ${target.navigateTo("/")};
     }
@@ -334,7 +499,8 @@ ${ir.auth ? `  const session = useQuery({ queryKey: ["auth", "session"], queryFn
             ...(next ? [`import { useSearchParams } from "next/navigation";`] : []),
             `import { useEffect } from "react";`,
             `import { Card, CardDescription, CardHeader, CardTitle } from "${ui("card")}";`,
-            `import { client } from "${client}";`
+            `import { client } from "${client}";`,
+            ...(invites ? [`import { useLandInvitee } from "${conv.generated("app/invite")}";`] : [])
           ]
         )
       );
@@ -366,6 +532,10 @@ function loginImports(ir: IR, target: WebTarget, client: string, ui: (n: string)
     `import { Input } from "${ui("input")}";`,
     `import { Label } from "${ui("label")}";`,
     `import { client } from "${client}";`,
+    ...(hasInvites(ir)
+      ? [`import { inviteTokenOf, useLandInvitee, type Accepted } from "${client.replace(/client$/, "invite")}";`]
+      : []),
+    `import { nextPath } from "${client.replace(/client$/, "nav")}";`,
     `import { ErrorNote } from "${client.replace(/client$/, "ui")}";`
   ];
 }
@@ -382,6 +552,7 @@ function loginBody(ir: IR, target: WebTarget): string {
     const t = identity.columns.find(c => c.name === f)!.type;
     return t.kind === "scalar" && (t.scalar === "string" || t.scalar === "text");
   });
+  const invites = hasInvites(ir);
   const fieldState = textFields.map(f => `${f}: ""`).join(", ");
   const fieldInputs = textFields
     .map(
@@ -396,9 +567,19 @@ function loginBody(ir: IR, target: WebTarget): string {
   const queryClient = useQueryClient();
   const providers = useQuery({ queryKey: ["auth", "providers"], queryFn: () => client.auth.providers() });
   void providers;
-  const done = async () => {
+  // After signing in: back to the page that asked for it, when \`next\` names one; else home${
+    invites
+      ? `
+  const land = useLandInvitee();
+  const done = async (accepted?: readonly Accepted[]) => {
+    if (accepted?.length) return land(accepted);`
+      : `
+  const done = async () => {`
+  }
     await queryClient.invalidateQueries();
-    await ${target.navigateTo("/")};
+    const next = nextPath();
+    if (next) window.location.assign(next);
+    else await ${target.navigateTo("/")};
   };${
     credentials
       ? `
@@ -406,13 +587,13 @@ function loginBody(ir: IR, target: WebTarget): string {
   const [${email}, set${Email}] = useState("");
   const [password, setPassword] = useState("");
   const [fields, setFields] = useState({ ${fieldState} });
-  const login = useMutation({ mutationFn: (input: Parameters<typeof client.auth.login>[0]) => client.auth.login(input), onSuccess: done });
-  const register = useMutation({ mutationFn: (input: Parameters<typeof client.auth.register>[0]) => client.auth.register(input), onSuccess: done });
+  const login = useMutation({ mutationFn: (input: Parameters<typeof client.auth.login>[0]) => client.auth.login(input), onSuccess: ${invites ? "reply => done(reply.accepted)" : "done"} });
+  const register = useMutation({ mutationFn: (input: Parameters<typeof client.auth.register>[0]) => client.auth.register(input), onSuccess: ${invites ? "() => done()" : "done"} });
   const pending = login.isPending || register.isPending;
   const error = mode === "login" ? login.error : register.error;
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (mode === "login") login.mutate({ ${email}, password });
+    if (mode === "login") login.mutate({ ${email}, password${invites ? ", invite: inviteTokenOf(nextPath())" : ""} });
     else register.mutate({ ${email}, password, ...fields });
   };`
       : ""
@@ -564,7 +745,9 @@ import {
   SidebarRail,
   SidebarTrigger
 } from "${ui("sidebar")}";
-${ir.auth ? `import { client, sessionUser } from "${client}";\nimport { APP_TITLE, SIDEBAR, canOpen, userInitials, userName, userSubtitle } from "${nav}";` : `import { APP_TITLE, SIDEBAR, canOpen } from "${nav}";`}
+${ir.auth ? `import { client, sessionUser } from "${client}";\nimport { APP_TITLE, SIDEBAR, canOpen, userInitials, userName, userSubtitle } from "${nav}";` : `import { APP_TITLE, SIDEBAR, canOpen } from "${nav}";`}${
+    ir.app?.tenant ? `\nimport { TenantSwitcher } from "${conv.generated("app/tenant")}";` : ""
+  }
 
 export function AppSidebar() {
   ${activeDecl}${
@@ -587,7 +770,7 @@ export function AppSidebar() {
             {APP_TITLE}
           </Link>
           <SidebarTrigger />
-        </div>
+        </div>${ir.app?.tenant ? "\n        <TenantSwitcher />" : ""}
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>

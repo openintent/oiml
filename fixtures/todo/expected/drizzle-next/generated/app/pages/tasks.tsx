@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { client, sessionUser, type Inputs, type Outputs, type SessionUser } from "../client";
-import { EmptyPane, ErrorNote, FieldRow, FormRow, ListSkeleton, Pane, PaneHeader, PaneSkeleton, formatDateTime, selectClass, splitList, text } from "../ui";
+import { EmptyPane, ErrorNote, FieldRow, FormRow, ListSkeleton, Pane, PaneHeader, PaneSkeleton, RowError, formatDateTime, selectClass, splitList, text } from "../ui";
 
 type Row = Outputs["tasks"]["list"]["data"][number];
 type Detail = Outputs["tasks"]["get"];
@@ -396,7 +396,7 @@ export function TasksDetail() {
     }
   });
   if (query.isPending) return <PaneSkeleton />;
-  if (query.error) return <ErrorNote error={query.error} className="m-6" />;
+  if (query.error) return <RowError error={query.error} />;
   const row: Detail = query.data;
   return (
     <Pane
@@ -451,7 +451,7 @@ export function TasksDetail() {
         <FieldRow label="Estimate Hours">{text(row.estimate_hours) || "—"}</FieldRow>
         <FieldRow label="Due On">{text(row.due_on) || "—"}</FieldRow>
         <FieldRow label="Assignee">{text(row.assignee) || "—"}</FieldRow>
-        <FieldRow label="Project">{(row.project ? text(row.project.name) : text(row.project_id)) || "—"}</FieldRow>
+        <FieldRow label="Project">{row.project_id != null ? <Link href={`/projects/${text(row.project_id)}`} className="hover:underline">{(row.project ? text(row.project.name) : text(row.project_id)) || "—"}</Link> : (row.project ? text(row.project.name) : text(row.project_id)) || "—"}</FieldRow>
         <FieldRow label="Created At">{formatDateTime(row.created_at) || "—"}</FieldRow>
         <FieldRow label="Note">{row.note ? text(row.note.body) : "—"}</FieldRow>
         </dl>

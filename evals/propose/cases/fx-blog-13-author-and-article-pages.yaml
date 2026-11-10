@@ -1,0 +1,29 @@
+id: fx-blog-13-author-and-article-pages
+tags: [fixture, app, scenario]
+base: { fixture: blog, through: FEAT-12 }
+oracle: fixtures/blog/intents/FEAT-13/diff.yaml
+intent:
+  title: Author and article pages
+  ask: >-
+    Every author gets a public page at an address of their own that shows their name and their published articles,
+    newest first. An article opens on a page of its own with its comments under it and a form to add one. A published
+    announcement has a public address anyone can open as a share link; a draft's address answers not found.
+  acceptance:
+    - An author's page lists that author's published articles and no one else's, newest first
+    - An article's page lists its comments, and a comment added there lands on that article
+    - A visitor who is not signed in opens a published announcement at its address; a draft answers not found
+expect:
+  pages:
+    "author|author_page|author_profile|profile|writer":
+      { kind: detail, resource: users, access: public, sections: [posts] }
+    "post|article|post_page|article_page|post_detail|article_detail":
+      { kind: detail, resource: posts, sections: [comments] }
+    "announcement|news|announcement_page|announcement_share|share|news_item":
+      { kind: detail, resource: announcements, access: public }
+  scenarios: { min: 1, rejections: 1, statuses: [404] }
+  touches: [posts, comments, announcements]
+notes: >-
+  The detail page three ways: a standalone public page over the identity with a section of that author's published
+  articles (`{row.id}` beside a literal), a page that takes over the article list's own detail and adds a section
+  with a create form, and a share link whose draft answers 404 because the announcement's rules already hide it.
+  Nothing in the API changes; the scenario pins the calls the pages make.

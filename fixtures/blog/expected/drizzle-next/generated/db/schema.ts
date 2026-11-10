@@ -87,6 +87,31 @@ export const bulletins = pgTable(
   t => [index("bulletins_author_id_idx").on(t.author_id)]
 );
 
+export const articleEditors = pgTable(
+  "article_editors",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    article_id: uuid().notNull().references(() => articles.id, { onDelete: "cascade" }),
+    user_id: uuid().notNull().references(() => users.id, { onDelete: "cascade" }),
+    created_at: timestamp({ withTimezone: true }).notNull().defaultNow()
+  },
+  t => [unique("article_editors_article_id_user_id_key").on(t.article_id, t.user_id), index("article_editors_article_id_idx").on(t.article_id), index("article_editors_user_id_idx").on(t.user_id)]
+);
+
+export const articleInvites = pgTable(
+  "article_invites",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    article_id: uuid().notNull().references(() => articles.id, { onDelete: "cascade" }),
+    email: varchar({ length: 255 }).notNull(),
+    invited_by: uuid().notNull().references(() => users.id, { onDelete: "cascade" }),
+    token_hash: varchar({ length: 255 }).notNull().unique(),
+    expires_at: timestamp({ withTimezone: true }).notNull(),
+    created_at: timestamp({ withTimezone: true }).notNull().defaultNow()
+  },
+  t => [unique("article_invites_article_id_email_key").on(t.article_id, t.email), index("article_invites_article_id_idx").on(t.article_id), index("article_invites_invited_by_idx").on(t.invited_by)]
+);
+
 export const oslFiles = pgTable(
   "osl_files",
   {
@@ -138,12 +163,14 @@ export const usersRelations = relations(users, ({ many }) => ({
   posts: many(articles, { relationName: "author" }),
   following: many(follows, { relationName: "follower" }),
   followers: many(follows, { relationName: "followee" }),
-  bulletins: many(bulletins, { relationName: "author" })
+  bulletins: many(bulletins, { relationName: "author" }),
+  editing: many(articleEditors, { relationName: "user" })
 }));
 
 export const articlesRelations = relations(articles, ({ one, many }) => ({
   author: one(users, { fields: [articles.author_id], references: [users.id], relationName: "author" }),
-  comments: many(comments, { relationName: "article" })
+  comments: many(comments, { relationName: "article" }),
+  editors: many(articleEditors, { relationName: "article" })
 }));
 
 export const commentsRelations = relations(comments, ({ one }) => ({
@@ -162,6 +189,16 @@ export const followsRelations = relations(follows, ({ one }) => ({
 
 export const bulletinsRelations = relations(bulletins, ({ one }) => ({
   author: one(users, { fields: [bulletins.author_id], references: [users.id], relationName: "author" })
+}));
+
+export const articleEditorsRelations = relations(articleEditors, ({ one }) => ({
+  article: one(articles, { fields: [articleEditors.article_id], references: [articles.id], relationName: "article" }),
+  user: one(users, { fields: [articleEditors.user_id], references: [users.id], relationName: "user" })
+}));
+
+export const articleInvitesRelations = relations(articleInvites, ({ one }) => ({
+  article: one(articles, { fields: [articleInvites.article_id], references: [articles.id], relationName: "article" }),
+  inviter: one(users, { fields: [articleInvites.invited_by], references: [users.id], relationName: "inviter" })
 }));
 
 export const oslFilesRelations = relations(oslFiles, ({ one }) => ({
@@ -184,6 +221,10 @@ export type Follow = typeof follows.$inferSelect;
 export type NewFollow = typeof follows.$inferInsert;
 export type Bulletin = typeof bulletins.$inferSelect;
 export type NewBulletin = typeof bulletins.$inferInsert;
+export type ArticleEditor = typeof articleEditors.$inferSelect;
+export type NewArticleEditor = typeof articleEditors.$inferInsert;
+export type ArticleInvite = typeof articleInvites.$inferSelect;
+export type NewArticleInvite = typeof articleInvites.$inferInsert;
 export type OslFile = typeof oslFiles.$inferSelect;
 export type NewOslFile = typeof oslFiles.$inferInsert;
 export type OslAuthToken = typeof oslAuthTokens.$inferSelect;

@@ -77,7 +77,7 @@ The two TypeScript backends share their generators through `@osl/ts-common` (`pa
 
 The `hono-trpc-vite` contract tests speak tRPC's HTTP transport but assert the same scenarios: a successful call is the contract's 200 (201 and 204 fold into it), tRPC error codes carry the contract's statuses, and query-string filters are coerced to the typed input. Generated route files under `src/routes` are rewritten on every generate; the shell (`src/components/app-sidebar.tsx`, `app-shell.tsx`), the root route, home, sign-in and settings pages are scaffolds written once, and they read the sidebar's data from `generated/app/nav.ts`, so a later intent that adds a page needs no edits.
 
-## What the alpha.2 and alpha.3 constructs become
+## What the constructs since alpha.2 become
 
 | Construct                                                                  | drizzle-next (REST)                                                                                                                                                                             | hono-trpc-vite (tRPC)                                                                          | gin-pgx (REST)                                                                                                                          |
 | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ----------------------------------------------- |
@@ -94,12 +94,57 @@ The `hono-trpc-vite` contract tests speak tRPC's HTTP transport but assert the s
 | App pages                                                                  | `app/(app)/…` with the sidebar shell, React Query over the REST client; page access gates, fixed filters, refresh intervals and grouped tiles                                                   | `src/routes/…` with TanStack Router over the tRPC client; the same                             | none                                                                                                                                    |
 | Rules with conditions, paths and conjunctions; hidden rows                 | checks from the generated access module shared with the Vite backend; lists filter by the row condition and through relations with subqueries; a hidden row answers `notFound()`                | the same                                                                                       | `access.CheckRow` over the values `ruleRow` resolves, `where.Raw` subqueries, `httpx.NotFound()`                                        |
 | Read-only fields, `osl implement`                                          | strict input schemas answer 400 when a client sends the field; handlers written from the action, its scenarios and the files `handlerGuide` names, checked with `tsc`                           | the same                                                                                       | the same, with `gofmt` first                                                                                                            |
+| Invites (`auth.invites`)                                                   | `POST /api/<parent>_invites` through `issue<Parent>Invite`, `GET /api/auth/invites/{token}`, `POST …/accept`; `acceptPending` in `generated/auth-providers.ts`; the page at `/invite/<token>`   | `<parent>_invites.create`, `auth.invite`, `auth.invite_accept`; the token routes as REST too   | the same routes; `Issue<Parent>Invite`, `AcceptPending` in `generated/auth/providers.go`; the mail is `email.Invite`; no page           |
 
-Every one of these is proven by the fixtures: `blog` (actions, files, search and sort, magic link and GitHub providers, table and dashboard pages, a queued event, seed), `todo` (actions, board and table pages, a dashboard, seed) and `workspace` (teams, memberships with ranked roles, member rules, auto-membership, magic link). A fixture may ship the user-owned code its scenarios depend on under `fixtures/<name>/overlay/<backend>/`; the harness copies it over the generated project before installing. Snapshots cover generated files only.
+Every one of these is proven by the fixtures: `blog` (actions, files, search and sort, magic link and GitHub providers, table and dashboard pages, a queued event, seed, invites to co-author an article), `todo` (actions, board and table pages, a dashboard, seed) and `workspace` (teams, memberships with ranked roles, member rules, auto-membership, magic link, invites to the team and to a private channel). A fixture may ship the user-owned code its scenarios depend on under `fixtures/<name>/overlay/<backend>/`; the harness copies it over the generated project before installing. Snapshots cover generated files only.
 
 The generated `package.json` is a `merge` file: keys OSL adds later (a dependency a new feature needs, a script) land on the next generate, keys you changed or added are kept.
 
 Environment the features read: `OSL_STORAGE` (`local` default, `s3` with `S3_BUCKET`, `S3_REGION`, `S3_ENDPOINT` for R2, MinIO or Supabase, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_FORCE_PATH_STYLE`), `OSL_STORAGE_DIR`, `OSL_MAX_UPLOAD_BYTES`; `OSL_EMAIL` (`log`, `resend` with `RESEND_API_KEY` and `EMAIL_FROM`, `capture` for tests, where sign-in responses carry the token); `OSL_APP_URL` (where magic links and OAuth return); `OAUTH_<NAME>_CLIENT_ID` and `_CLIENT_SECRET`; `OSL_ROLE`. The harness runs with `OSL_EMAIL=capture` and local storage.
+
+## Invites
+
+`auth.invites` reaches a backend as ordinary IR and three additions. Core writes the invite entity and resource
+into the IR, so the table, the validation, the presenter, the list, get and delete handlers, the OpenAPI paths and
+the pages over the resource come from the generators a backend already has. `ir.auth.invites` lists each invited
+membership with its parent, its role column and ranks, the relations from the parent to the tenant and the link's
+lifetime in seconds, and the invite resource's create operation carries `invite: <Membership>`. From those a
+backend writes three things.
+
+- **The create.** Where an operation carries `invite`, the create handler checks the rule as any create does and
+  hands the body and the resource's before-create hook to one function per membership (`issue<Parent>Invite`,
+  `Issue<Parent>Invite` in Go). In order it applies the role ceiling (403 when the inviter holds a membership of
+  the parent and asks for a role above it), answers 409 for a live invite to the address and for a member's
+  address, lets a lapsed invite give way, stores the token's hash and never the token, and mails the link
+  `OSL_APP_URL/invite/<token>`. The row is kept only if the mail was handed to the adapter. The answer is a
+  create's 201 and, under `OSL_EMAIL=capture`, `debug: { token, url }` beside `data`, which is how a scenario and
+  the walks come by a token.
+- **`acceptPending(user, provenEmail)`.** Written once per language, in `generated/auth-providers.ts` and
+  `generated/auth/providers.go`. It does nothing unless the proven address is the account's own. Then every live
+  invite to the address becomes a membership, each in a transaction that deletes the invite first, so two proofs
+  that race accept once, and a membership that exists already is left as it is. A membership it makes dispatches
+  the membership's created events, as a create through the resource does. Four places call it and nothing else
+  makes a membership from an invite: the magic-link verify, the provider callback when the provider calls the
+  email verified, the password login when its body carries `invite` (a live token to the account's own address),
+  and the accept route.
+- **The token routes.** `GET /api/auth/invites/{token}` says what the link is for (the parent's name, the role,
+  the inviter's name, the address masked, whether it has an account) and accepts nothing, since mail scanners open
+  links. `POST /api/auth/invites/{token}/accept` answers as the reference says: 200, 403, 401, or 201 with an
+  account made from the body and signed in. Both answer 404 for a token that is unknown, used or revoked and 410
+  for a lapsed one, and a body the new account cannot be made from is a 400. They carry no rule, so they sit with
+  the auth routes; OpenAPI lists them as `auth_invite` and `auth_invite_accept`.
+
+The two TypeScript backends take all of it from `@osl/ts-common` (`invites.ts`, the mail in `email.ts`) and render
+the link's page from `generated/app/invite.tsx`. `/invite/<token>` shows the lookup and offers the way in that
+fits: Accept to a session under the address, the account form where the address has no account, and a sign-in
+that returns to the link (`/login?next=`) where it has one. `/invite/accepted` is where a provider sign-in that
+accepted returns to, and every reply with `accepted` lands the invitee the same way: the first entry's tenant
+becomes the current one and its row opens where the app shows it. `hono-trpc-vite` serves the same functions as
+procedures (`<parent>_invites.create`, `auth.invite`, `auth.invite_accept`) with the two token routes as REST
+beside them. Its sign-in procedures answer `{ data, accepted }` and its invite create `{ data, debug }`, where
+REST puts those keys beside `data`, and a single call answers with the status its refusal carries, so a lapsed
+invite is a 410 on both transports. `gin-pgx` has the API and no page. The mail is the email adapter's plain text
+on all three.
 
 ## Writing a backend
 
@@ -113,9 +158,10 @@ Environment the features read: `OSL_STORAGE` (`local` default, `s3` with `S3_BUC
 
 ## The conformance walks
 
-After the scenarios, the harness runs five checks over every fixture that no scenario names, each a function of
+After the scenarios, the harness runs six checks over every fixture that no scenario names, each a function of
 the IR, the running app and the actors' sessions, reported as steps `walk:rule`, `walk:tenant`, `walk:leak`,
-`walk:fuzz` and `walk:contract` (`--walks` runs them alone, `--walks rule,fuzz` a few, `--no-walks` skips them).
+`walk:fuzz`, `walk:contract` and `walk:invite` (`--walks` runs them alone, `--walks rule,fuzz` a few, `--no-walks`
+skips them).
 
 - **rule**: for every resource operation and action, every actor and an anonymous caller, the harness computes what
   the IR's rule predicts (allowed, 401, 403, or 404 under `hidden: not_found`) and compares it with the answer. It
@@ -124,7 +170,9 @@ the IR, the running app and the actors' sessions, reported as steps `walk:rule`,
   straight from the database. The step's detail counts what the predictions said, so the coverage is visible.
 - **tenant**: with tenancy, a member of another team (an actor outside the home team, or a user the walk registers)
   gets, updates, deletes and runs actions on the home team's rows and must be refused with the rows unchanged, lists
-  nothing of theirs, and cannot create a row under one of their parents.
+  nothing of theirs, and cannot create a row under one of their parents. A row the read rule opens to a caller
+  with no session (`public`, or `public when` a condition the row meets) may be read and listed, since the model
+  says so, and is still checked for every write; the step's detail counts those rows.
 - **leak**: every response body of the walks is scanned for hidden columns, the password, key and token hash
   columns, and the shape of a raw key.
 - **fuzz**: from the IR, wrong types, boundary lengths, extra keys, missing and null required fields, server-owned
@@ -136,6 +184,22 @@ the IR, the running app and the actors' sessions, reported as steps `walk:rule`,
   new required fields) must each be explained by an op of that revision's diff (`explainedBy`); one no op explains
   is a compiler regression. Migration steps that rewrite a table (`MigrationPlan.rewrites`) are listed in the
   detail.
+- **invite**: with `auth.invites`, what a scenario cannot reach, per invited membership. A token nobody issued is a
+  404 on the lookup and on the accept. The first actor the invite's rule allows invites an account the walk
+  registers: the lookup answers the parent, the address masked and `account: true`; the inviter's own accept is a
+  403 and the invite still waits; the invitee's password login without the token joins nothing; the invitee's
+  accept is a 200 that names the parent, the membership row is in the database and the invite is gone; a second
+  accept and a second lookup are 404. A second invite is aged through the database handle, since no scenario can
+  wait a week, and answers 410 to the lookup and to the accept, with and without a session. A model without
+  invites has nothing to walk and says so.
+
+The five earlier walks learned the construct as well. The rule and fuzz walks send an invite's create with the
+lowest role of its membership, so the rule decides the answer and the role ceiling never does. The fuzz walk
+sends the two token routes strings no invite was issued under, as every caller, and takes only a 404. The leak
+walk fails a read of an invite that carries a token and a lookup whose address is not masked. The contract walk
+counts a change to the auth block, the membership or its parent as what explains a change to an invite's entity
+or resource. The invite walk runs before the rule walk's deletes and before the leak walk, so the rows it names
+are still there and its replies are scanned too.
 
 The eval runner's full runs inherit the walks through the harness, so a proposal that generates fine but breaks a
 rule somewhere fails its case. The harness's own client speaks each transport (REST, tRPC) the way the generated

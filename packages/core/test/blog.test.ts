@@ -29,7 +29,9 @@ describe("blog fixture", () => {
       "FEAT-9",
       "FEAT-10",
       "FEAT-11",
-      "FEAT-12"
+      "FEAT-12",
+      "FEAT-13",
+      "FEAT-14"
     ]);
 
     for (const id of ids) {
@@ -40,7 +42,7 @@ describe("blog fixture", () => {
     expect(again.status).toBe("noop");
 
     const project = await loadProject(root);
-    expect(project.lock.revisions).toHaveLength(12);
+    expect(project.lock.revisions).toHaveLength(14);
     const ir = project.ir;
 
     const article = ir.entities.find(e => e.name === "Article")!;
@@ -58,7 +60,7 @@ describe("blog fixture", () => {
       "locked"
     ]);
     expect(article.foreignKeys[0]).toMatchObject({ column: "author_id", targetTable: "users", onDelete: "cascade" });
-    expect(article.relations.map(r => r.name)).toEqual(["author", "comments"]);
+    expect(article.relations.map(r => r.name)).toEqual(["author", "comments", "editors"]);
     const user = ir.entities.find(e => e.name === "User")!;
     expect(user.relations).toEqual([
       { name: "posts", kind: "many", direction: "reverse", target: "Article", column: "author_id", targetColumn: "id" },
@@ -84,6 +86,14 @@ describe("blog fixture", () => {
         direction: "reverse",
         target: "Bulletin",
         column: "author_id",
+        targetColumn: "id"
+      },
+      {
+        name: "editing",
+        kind: "many",
+        direction: "reverse",
+        target: "ArticleEditor",
+        column: "user_id",
         targetColumn: "id"
       }
     ]);
@@ -113,7 +123,9 @@ describe("blog fixture", () => {
       "scheduled publishing",
       "locked articles",
       "private drafts",
-      "followers read bulletins"
+      "followers read bulletins",
+      "author and article pages",
+      "co-authors by invite"
     ]);
     expect(ir.examples.seed.map(s => s.op)).toEqual(["posts.create", "posts.create"]);
     expect(ir.actions.map(a => `${a.resource ?? "actions"}.${a.name}:${a.scope}`)).toEqual([

@@ -1,0 +1,28 @@
+id: ws2-team-dashboard-files
+tags: [app, tenancy, files, rules, generated-origin]
+base: { fixture: workspace, through: WS-9 }
+intent:
+  title: Team dashboard and project files
+  ask: >-
+    Team leads want one screen that tells them where their team stands: how many of its projects are active and how
+    many are archived, how many channels it has and how many members, with its latest projects listed underneath.
+    People who are in more than one team pick the team they are looking at, and the screen shows that team's numbers
+    only. We also want team members to upload files to a project, such as specs, mockups and contracts, which anyone
+    on the team can download. Only the uploader or a team admin can remove a file. The counts should tick over on
+    their own while the screen is open, without anyone refreshing.
+  acceptance:
+    - Someone in two teams sees one team's counts at a time, and a team's active count leaves out the other team's
+    - A team member can download a file uploaded to their team's project; someone outside the team gets a 403
+    - A member who did not upload a file and is not an admin cannot delete it
+expect:
+  entities: ["ProjectFile|File|Attachment|ProjectAttachment|Document|ProjectDocument|Upload"]
+  relations: ["ProjectFile|File|Attachment|ProjectAttachment|Document|ProjectDocument|Upload.* -> Project"]
+  pages:
+    "dashboard|team_dashboard|home|overview|team_home|team_overview|team":
+      { kind: dashboard, tenant: true, tiles_min: 3, refresh: true }
+  scenarios: { min: 1, rejections: 2, statuses: [403] }
+notes: >-
+  Promoted from generated round 6 (gen-r6-03). The dashboard filters its tiles and its recent list by `{tenant.id}`,
+  which turns the team switcher on, and refreshes on its own. The task counts and the board of the original ask are
+  left out: tasks reach the team through the project and a tile cannot filter through a relation yet, and the board
+  is ws2-project-board's subject. Starts before WS-10, which adds a home dashboard of this kind.

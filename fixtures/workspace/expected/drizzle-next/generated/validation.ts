@@ -205,7 +205,8 @@ export const messagesListQuery = z
   .object({
     page: z.coerce.number().int().min(1).default(1),
     page_size: z.coerce.number().int().min(1).max(200).default(20),
-    channel_id: z.string().uuid().optional()
+    channel_id: z.string().uuid().optional(),
+    sort: z.enum(["created_at:asc", "created_at:desc"]).optional()
   })
   .strict();
 export const messagesCreateInput = z
@@ -218,6 +219,38 @@ export const messagesUpdateInput = z
   .object({
     channel_id: z.string().uuid().optional(),
     body: z.string().optional()
+  })
+  .strict();
+
+export const team_invitesId = z.string().uuid();
+export const team_invitesListQuery = z
+  .object({
+    page: z.coerce.number().int().min(1).default(1),
+    page_size: z.coerce.number().int().min(1).max(200).default(20),
+    team_id: z.string().uuid().optional()
+  })
+  .strict();
+export const team_invitesCreateInput = z
+  .object({
+    team_id: z.string().uuid(),
+    email: z.string().email().max(255),
+    role: z.enum(["owner", "admin", "member"]).optional()
+  })
+  .strict();
+
+export const channel_invitesId = z.string().uuid();
+export const channel_invitesListQuery = z
+  .object({
+    page: z.coerce.number().int().min(1).default(1),
+    page_size: z.coerce.number().int().min(1).max(200).default(20),
+    channel_id: z.string().uuid().optional()
+  })
+  .strict();
+export const channel_invitesCreateInput = z
+  .object({
+    channel_id: z.string().uuid(),
+    email: z.string().email().max(255),
+    role: z.enum(["admin", "member"]).optional()
   })
   .strict();
 

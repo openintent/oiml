@@ -30,6 +30,12 @@ describe("openapi document", () => {
       "/api/announcements",
       "/api/announcements/{id}",
       "/api/announcements/{id}/publish",
+      "/api/article_editors",
+      "/api/article_editors/{id}",
+      "/api/article_invites",
+      "/api/article_invites/{id}",
+      "/api/auth/invites/{token}",
+      "/api/auth/invites/{token}/accept",
       "/api/auth/login",
       "/api/auth/logout",
       "/api/auth/magic-link",
@@ -66,8 +72,11 @@ describe("openapi document", () => {
     expect(Object.keys(doc.paths["/api/posts/{id}/publish"].post.responses)).toContain("200");
     expect(Object.keys(doc.paths["/api/posts/{id}"].delete.responses)).toContain("204");
     expect(Object.keys(doc.components.schemas)).toEqual([
+      "AcceptedInvite",
       "Announcement",
       "Article",
+      "ArticleEditor",
+      "ArticleInvite",
       "Bulletin",
       "Comment",
       "Error",

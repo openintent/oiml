@@ -41,8 +41,38 @@ const TOPICS: [topic: string, pattern: RegExp][] = [
     /\b(from the (url|link)|url for each|a (separate|dedicated|public) (url|page|form) (for|per) each|per-(organisation|organization|team|project) (url|page)|path parameter|parameteri[sz]ed page|page cannot take .{0,30} from|picks? .{0,30} from the (link|url)|(one|a) (dashboard|page|board|view) per (team|organi[sz]ation|project|school|user|tenant|club)|scoped to a (single )?(team|project|organi[sz]ation|tenant|school|club))/i
   ],
   [
+    "field-level visibility",
+    /\b(would (also )?(return|expose|reveal|show|leak|publish) .{0,40}\b(e-?mail|phone)|expos(e|es|ed|ing) .{0,40}\b(e-?mails?|phone numbers?)\b|(e-?mail|phone)( address(es)?)? (would be|is|are|stays?) (public|visible|exposed|readable)|field[- ]level (visibility|read)|a read rule (on|per) (a |one |each )?field|hide (a|one|some|the) fields? from)/i
+  ],
+  [
+    "sections beyond lists",
+    /\b(sections? (are|is) (plain |only )?(lists?|tables?)|sections? (cannot|can only|only)|a detail page cannot|detail pages? (cannot|can only|only)|file fields? (cannot|can't) be (a |an )?(section|list|table)( or (section|list|table))? columns?|inline gallery)/i
+  ],
+  [
+    "list filters through a relation",
+    /\b((list |page )?filters? (are|is) equality[- ]only on|filter(s|ed|ing)? (a list |lists? )?(through|across) (a|the) (relation|junction|related|parent)|reach(es)? .{0,40}\bonly through\b|page lists its \w+ and each \w+ page lists)/i
+  ],
+  [
+    "schedules per tenant",
+    /\b((job|schedule|timer)s? .{0,40}\bnot scoped to\b|(system|scheduled|nightly|recurring) job .{0,40}\b(every|all|one) (team|tenant|organi[sz]ation|workspace|company)|a schedule (per|for each) (team|tenant|organi[sz]ation|workspace))/i
+  ],
+  [
+    "provider sign-in in scenarios",
+    /\b(scenarios? (step )?(can|cannot|can't|could)? ?(not )?(drive|drives|exercise|cover|run)s? .{0,30}\b(oauth|google|github|provider)|no scenario step (can |could )?(drive|simulate|exercise|perform|complete)s?|simulate (an? |the )?(oauth|google|github|provider)|(oauth|google|github|provider)( sign-?in)? .{0,80}\b(cannot|can't|not) be (exercised|driven|covered|tested) by (contract )?(scenarios|tests))/i
+  ],
+  [
+    "ignoring input to read-only fields",
+    /\b((instead of|rather than) (the value |it )?being (silently |quietly )?ignored|asked for (the value|it) to be (silently |quietly )?ignored|a read[-_]only field always refuses)/i
+  ],
+  // The same topic as the entry further down: what a line says of who may read an uploaded file, matched before
+  // the broad rule topics take it for the word "draft" or "public"
+  [
+    "files and media",
+    /\b((uploaded )?files? (are|is|stay|stays|remain|remains) (publicly |public and )?(readable|reachable|downloadable|public)\b.{0,40}\b(url|link|id)\b|(file|attachment|upload|image|cover|avatar)s? (is|are) not protected by|one (read )?rule for every file|a read rule (per|for each) file|files\.read (is|applies))/i
+  ],
+  [
     "handlers left to implement",
-    /\b(handler stubs?|stubs? to fill in|handler (stub )?(you|to) (implement|write|fill)|written with osl implement|osl implement writes|the (field )?handler (must|sets|decides|computes|assigns))/i
+    /\b(handler stubs?|stubs? to fill in|handler (stub )?(you|to) (implement|write|fill)|written with osl implement|osl implement writes|the (field )?handler (must|sets|decides|computes|assigns)|handler must (set|stamp|compute|assign)|stub you fill in)/i
   ],
   [
     "hidden rows as not found",
@@ -55,6 +85,10 @@ const TOPICS: [topic: string, pattern: RegExp][] = [
   [
     "timers on date fields",
     /\b(must be a datetime, not date|because it is a date, not a datetime|is a date, not a datetime|timer .{0,40}\bdate field|run off .{0,20}\bdate\b)/i
+  ],
+  [
+    "conditions against now",
+    /\b(against (today|now|the (current|present) (date|time|day))|compares? .{0,40}\b(with|to) (today|now)\b|(before|after|earlier than|later than|older than|newer than) (today|now)\b|in the (last|past|next) \d+ (minutes?|hours?|days?|weeks?)|within \d+ (minutes?|hours?|days?) of)/i
   ],
   [
     "dashboard panels beyond counts",
@@ -72,14 +106,25 @@ const TOPICS: [topic: string, pattern: RegExp][] = [
     "conditions through relations",
     /\b(rule can only check .{0,40} own fields|not whether its \w+ is|(related|parent|owning) (row|record|project|team|post|thread)'?s? (field|status|flag|state|value)|whether (its|the) (project|team|parent|thread|post) is|through (the|a) relation|depends? on the (project|team|parent|thread|post)'?s)/i
   ],
+  // A stamp only one action sets, which a plain write of the state goes around: the transitions design's `stamp`.
+  // Matched before the rule topics and before "scheduled", which such a line often says of the timer that waits
+  ["state machines and transitions", /\b(state machines?|only the \w+ action\b.{0,80}\bstamps?\b|gets no \w+_at\b)/i],
   [
     "server-owned fields",
     /\b(read[- ]?only|server[- ]owned|only the (server|system) (may|can|sets?)|set by the (system|server)|not (editable|settable) by (the )?client|clients? (cannot|can't|may not) (set|write|change|edit)|never accepted from)/i
   ],
+  [
+    "invite reminders and resending",
+    /\b(remind(er|ers|ing)? .{0,60}\b(invit\w*|pending members?)|invit\w* .{0,80}\b(remind(er|ers|ed)?|re-?sen[dt]|sent again|send (it|one|them) again)|re-?send(ing)? (an? |the )?invit|invite rows? .{0,60}\bcannot carry)/i
+  ],
+  [
+    "invite list filters",
+    /\b(invit\w* lists? .{0,60}\b(cannot be (limited|filtered|narrowed|restricted)|filters? only by|has no filter)|(filter|limit|narrow)(ing|ed)? (the )?(pending )?invit\w* (list )?by)\b/i
+  ],
   ["invites and onboarding", /\b(invit|onboard|join link|accept(ing)? (an? )?invitation|pending member)/i],
   [
     "role changes",
-    /\b(promot|demot|(change|changing|set|setting|assign|assigning|grant|granting) .{0,24}\brole\b|role .{0,16}(must|can only) be (set|changed)|become an? (admin|editor|owner|staff))/i
+    /\b(promot|demot|(change|changing|set|setting|assign|assigning|grant|granting) .{0,24}\brole\b|role .{0,16}(must|can only) be (set|changed)|become an? (admin|editor|owner|staff)|(what|which fields?|the (role|value)) a client may write\b.{0,30}\bdepend)/i
   ],
   [
     "conditional validation",
@@ -103,7 +148,7 @@ const TOPICS: [topic: string, pattern: RegExp][] = [
   ],
   [
     "payments and billing",
-    /\b(payment|billing|stripe|invoice|subscription plan|checkout|price|paid|credit card|charge)/i
+    /\b(payment|billing|stripe|invoice|subscription plan|checkout|price|paid|payouts?|credit card|charge)/i
   ],
   [
     "scheduled and recurring work",
@@ -146,6 +191,10 @@ const TOPICS: [topic: string, pattern: RegExp][] = [
   [
     "relations beyond many-to-one",
     /\b(many[- ]to[- ]many|self[- ]referen|polymorphic|tree|hierarch|nested|parent.{0,20}child|ancestor)/i
+  ],
+  [
+    "write checks on related rows",
+    /\b(cannot check the (user|person|member|row|record) being (added|assigned|invited|named)|only (team|workspace|studio|organi[sz]ation|project|company) (members|staff) can be (added|assigned|invited)|people who are already (members|staff)|is not limited to (projects|teams|rows|\w+) the (editor|caller|user|author|writer) (is a member of|belongs to|can (read|see))|is already a member of (that|the|this|its|their) (team|workspace|studio|organi[sz]ation|project|company)|cannot constrain the written value|no rule can compare two relations|does not check that the (chosen|named|selected|given|assigned) )/i
   ],
   [
     "membership through any relation",

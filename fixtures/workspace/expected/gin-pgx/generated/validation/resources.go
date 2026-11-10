@@ -212,7 +212,7 @@ func MessagesID(raw string) (string, bool) {
 // MessagesListQuery validates the GET /api/messages query string.
 var MessagesListQuery = Query{PageSize: 20, Filters: []Filter{
 	{Name: "channel_id", Type: UUID{}},
-}}
+}, Sortable: []string{"created_at"}}
 
 // MessagesCreateInput validates POST /api/messages bodies.
 var MessagesCreateInput = Object{Fields: []Field{
@@ -224,6 +224,40 @@ var MessagesCreateInput = Object{Fields: []Field{
 var MessagesUpdateInput = Object{Fields: []Field{
 	{Name: "channel_id", Type: UUID{}},
 	{Name: "body", Type: String{}},
+}}
+
+// TeamInvitesID parses a team_invites id from the path.
+func TeamInvitesID(raw string) (string, bool) {
+	return ParseUUIDID(raw)
+}
+
+// TeamInvitesListQuery validates the GET /api/team_invites query string.
+var TeamInvitesListQuery = Query{PageSize: 20, Filters: []Filter{
+	{Name: "team_id", Type: UUID{}},
+}}
+
+// TeamInvitesCreateInput validates POST /api/team_invites bodies.
+var TeamInvitesCreateInput = Object{Fields: []Field{
+	{Name: "team_id", Required: true, Type: UUID{}},
+	{Name: "email", Required: true, Type: String{MaxLength: 255, Format: "email"}},
+	{Name: "role", Type: Enum{Values: []string{"owner", "admin", "member"}}},
+}}
+
+// ChannelInvitesID parses a channel_invites id from the path.
+func ChannelInvitesID(raw string) (string, bool) {
+	return ParseUUIDID(raw)
+}
+
+// ChannelInvitesListQuery validates the GET /api/channel_invites query string.
+var ChannelInvitesListQuery = Query{PageSize: 20, Filters: []Filter{
+	{Name: "channel_id", Type: UUID{}},
+}}
+
+// ChannelInvitesCreateInput validates POST /api/channel_invites bodies.
+var ChannelInvitesCreateInput = Object{Fields: []Field{
+	{Name: "channel_id", Required: true, Type: UUID{}},
+	{Name: "email", Required: true, Type: String{MaxLength: 255, Format: "email"}},
+	{Name: "role", Type: Enum{Values: []string{"admin", "member"}}},
 }}
 
 // TasksRemindInput validates POST /api/tasks/{id}/remind bodies.

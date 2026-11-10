@@ -12,6 +12,8 @@ import { milestonesRouter } from "./resources/milestones";
 import { channelsRouter } from "./resources/channels";
 import { channel_membersRouter } from "./resources/channel_members";
 import { messagesRouter } from "./resources/messages";
+import { team_invitesRouter } from "./resources/team_invites";
+import { channel_invitesRouter } from "./resources/channel_invites";
 import { router } from "./trpc";
 
 export const appRouter = router({
@@ -25,7 +27,9 @@ export const appRouter = router({
   milestones: milestonesRouter,
   channels: channelsRouter,
   channel_members: channel_membersRouter,
-  messages: messagesRouter
+  messages: messagesRouter,
+  team_invites: team_invitesRouter,
+  channel_invites: channel_invitesRouter
 });
 
 export type AppRouter = typeof appRouter;

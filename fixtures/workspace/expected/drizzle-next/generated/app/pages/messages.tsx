@@ -12,7 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { client, sessionUser, type Inputs, type Outputs, type SessionUser } from "../client";
-import { EmptyPane, ErrorNote, FieldRow, FormRow, ListSkeleton, Pagination, Pane, PaneHeader, PaneSkeleton, formatDateTime, selectClass, splitList, text } from "../ui";
+import { EmptyPane, ErrorNote, FieldRow, FormRow, ListSkeleton, Pagination, Pane, PaneHeader, PaneSkeleton, RowError, formatDateTime, selectClass, splitList, text } from "../ui";
 
 type Row = Outputs["messages"]["list"]["data"][number];
 type Detail = Outputs["messages"]["get"];
@@ -318,7 +318,7 @@ function MessagesDetailInner() {
   });
 
   if (query.isPending) return <PaneSkeleton />;
-  if (query.error) return <ErrorNote error={query.error} className="m-6" />;
+  if (query.error) return <RowError error={query.error} signIn={<Link href="/login" className={buttonVariants()}>Sign in</Link>} />;
   const row: Detail = query.data;
   return (
     <Pane
@@ -360,7 +360,7 @@ function MessagesDetailInner() {
       ) : (
         <dl className="grid gap-3">
         <FieldRow label="Id">{text(row.id) || "—"}</FieldRow>
-        <FieldRow label="Channel">{text(row.channel_id) || "—"}</FieldRow>
+        <FieldRow label="Channel">{user !== null ? <Link href={`/channels/${text(row.channel_id)}`} className="hover:underline">{text(row.channel_id) || "—"}</Link> : text(row.channel_id) || "—"}</FieldRow>
         <FieldRow label="Author">{text(row.author_id) || "—"}</FieldRow>
         <FieldRow label="Body">
           <p className="whitespace-pre-wrap">{text(row.body) || "—"}</p>

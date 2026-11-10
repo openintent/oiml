@@ -13,7 +13,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { client, sessionUser, type Inputs, type Outputs, type SessionUser } from "../client";
-import { EmptyPane, ErrorNote, FieldRow, FormRow, ListSkeleton, Pagination, Pane, PaneHeader, PaneSkeleton, formatDateTime, selectClass, splitList, text } from "../ui";
+import { NoTenant, useTenant, type Tenant } from "../tenant";
+import { EmptyPane, ErrorNote, FieldRow, FormRow, ListSkeleton, Pagination, Pane, PaneHeader, PaneSkeleton, RowError, formatDateTime, selectClass, splitList, text } from "../ui";
 
 type Row = Outputs["members"]["list"]["data"][number];
 type Detail = Outputs["members"]["get"];
@@ -36,6 +37,12 @@ function canUpdate(user: SessionUser | null, row: Detail): boolean {
 
 function canDelete(user: SessionUser | null, row: Detail): boolean {
   return user !== null;
+}
+
+/** Filters this page always applies */
+function fixedFilter(user: SessionUser | null, tenant: Tenant | null) {
+  void user;
+  return { team_id: tenant?.id ?? "" };
 }
 
 /** Who may open this page */
@@ -89,11 +96,10 @@ const EMPTY_MEMBERS: MembersValues = {
   role: "member"
 };
 
-const MEMBERS_CREATE: readonly MembersField[] = ["team_id", "user_id", "role"];
+const MEMBERS_CREATE: readonly MembersField[] = ["user_id", "role"];
 
-function toMembersCreateInput(v: MembersValues): Input<"create"> {
+function toMembersCreateInput(v: MembersValues): Omit<Input<"create">, "team_id"> {
   return {
-    team_id: v.team_id,
     user_id: v.user_id,
     role: (v.role || undefined)
   };
@@ -254,7 +260,7 @@ function MembersIndexInner() {
   const [sort, setSort] = useState<string | undefined>(undefined);
   void setSort;
 
-  const [filters, setFilters] = useState<{ team_id?: string; user_id?: string }>({});
+  const [filters, setFilters] = useState<{ user_id?: string }>({});
   const [openAction, setOpenAction] = useState<string | null>(null);
   void openAction;
   void setOpenAction;
@@ -265,12 +271,14 @@ function MembersIndexInner() {
   const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
   const user = sessionUser(session.data);
   void user;
+  const { tenant, loading: tenantLoading } = useTenant();
   const input = {
     page,
     page_size: PAGE_SIZE,
-    team_id: filters.team_id || undefined, user_id: filters.user_id || undefined
+    user_id: filters.user_id || undefined,
+    ...fixedFilter(user, tenant)
   } as Inputs["members"]["list"];
-  const list = useQuery({ queryKey: [...KEY, "list", input], queryFn: () => client.members.list(input) });
+  const list = useQuery({ queryKey: [...KEY, "list", input], queryFn: () => client.members.list(input), enabled: tenant !== null });
   const router = useRouter();
   const queryClient = useQueryClient();
 
@@ -287,11 +295,12 @@ function MembersIndexInner() {
 
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2">
 
-          <Input aria-label="Team" type="text" placeholder="Team" className="w-40" value={filters.team_id ?? ""} onChange={e => setFilter("team_id", e.target.value)} />
           <Input aria-label="User" type="text" placeholder="User" className="w-40" value={filters.user_id ?? ""} onChange={e => setFilter("user_id", e.target.value)} />
       </div>
       <div className="min-h-0 flex-1 overflow-auto px-4">
-        {list.isPending ? (
+        {!tenantLoading && tenant === null ? (
+          <NoTenant />
+        ) : list.isPending ? (
           <ListSkeleton />
         ) : list.error ? (
           <ErrorNote error={list.error} className="m-4" />
@@ -302,7 +311,6 @@ function MembersIndexInner() {
             <TableHeader>
               <TableRow>
                 <TableHead>User</TableHead>
-                <TableHead>Team</TableHead>
                 <TableHead>Role</TableHead>
               </TableRow>
             </TableHeader>
@@ -310,7 +318,6 @@ function MembersIndexInner() {
               {list.data.data.map((row: Row) => (
                 <TableRow key={text(row.id)} className="cursor-pointer" onClick={() => router.push(`/members/${text(row.id)}`)}>
                   <TableCell>{(row.user ? text(row.user.name) : text(row.user_id))}</TableCell>
-                  <TableCell>{text(row.team_id)}</TableCell>
                   <TableCell>{text(row.role)}</TableCell>
                 </TableRow>
               ))}
@@ -326,6 +333,7 @@ function MembersIndexInner() {
 function MembersNewInner() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { tenant, loading: tenantLoading } = useTenant();
   const createRow = useMutation({
     mutationFn: (input: Input<"create">) => client.members.create(input),
     onSuccess: async row => {
@@ -333,6 +341,8 @@ function MembersNewInner() {
       await router.push(`/members/${text(row.id)}`);
     }
   });
+  if (tenantLoading) return <PaneSkeleton />;
+  if (tenant === null) return <NoTenant />;
   return (
     <Pane title="New team member" actions={<Link href="/members" className={buttonVariants({ variant: "ghost", size: "icon-sm" })} aria-label="Back">
             <ArrowLeft />
@@ -343,7 +353,7 @@ function MembersNewInner() {
         submitLabel="Create"
         pending={createRow.isPending}
         error={createRow.error}
-        onSubmit={values => createRow.mutate(toMembersCreateInput(values))}
+        onSubmit={values => createRow.mutate({ ...toMembersCreateInput(values), team_id: tenant?.id } as Input<"create">)}
       />
     </Pane>
   );
@@ -378,7 +388,7 @@ function MembersDetailInner() {
   });
 
   if (query.isPending) return <PaneSkeleton />;
-  if (query.error) return <ErrorNote error={query.error} className="m-6" />;
+  if (query.error) return <RowError error={query.error} signIn={<Link href="/login" className={buttonVariants()}>Sign in</Link>} />;
   const row: Detail = query.data;
   void row;
   return (
@@ -424,7 +434,7 @@ function MembersDetailInner() {
       ) : (
         <dl className="grid gap-3">
         <FieldRow label="Id">{text(row.id) || "—"}</FieldRow>
-        <FieldRow label="Team">{text(row.team_id) || "—"}</FieldRow>
+        <FieldRow label="Team">{user !== null ? <Link href={`/teams/${text(row.team_id)}`} className="hover:underline">{text(row.team_id) || "—"}</Link> : text(row.team_id) || "—"}</FieldRow>
         <FieldRow label="User">{text(row.user_id) || "—"}</FieldRow>
         <FieldRow label="Role">{row.role == null ? "—" : <Badge variant="secondary">{text(row.role)}</Badge>}</FieldRow>
         <FieldRow label="Created At">{formatDateTime(row.created_at) || "—"}</FieldRow>

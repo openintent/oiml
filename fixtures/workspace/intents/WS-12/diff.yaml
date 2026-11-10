@@ -1,0 +1,175 @@
+osl: "1.0"
+summary: "Invites into a channel's membership beside the team's: the ChannelInvite entity and its channel_invites resource written by the compiler, and an Invites section on the channel page"
+ops:
+  - op: set_auth
+    auth:
+      identity: User
+      providers: [credentials, magic_link]
+      tenancy: { entity: Team, membership: TeamMember, role_field: role, creator_role: owner }
+      invites:
+        TeamMember: {}
+        ChannelMember: {}
+  - op: update_page
+    name: channel
+    page:
+      kind: detail
+      resource: channels
+      path: /channels/:id
+      fields: [name, private, team_id, created_by, created_at]
+      sections:
+        - resource: messages
+          filter: { channel_id: "{row.id}" }
+          columns: [body, author_id, created_at]
+          order: [[created_at, desc]]
+          limit: 50
+          create: true
+        - resource: channel_members
+          title: Members
+          filter: { channel_id: "{row.id}" }
+          columns: [user_id, role]
+        - resource: channel_invites
+          title: Invites
+          filter: { channel_id: "{row.id}" }
+          columns: [email, role, expires_at]
+          create: true
+  - op: add_scenario
+    scenario:
+      name: invite a teammate to a private channel
+      steps:
+        - as: alice
+          op: auth.me
+          expect: { status: 200 }
+          capture: { alice_id: data.id }
+        - as: bob
+          op: auth.me
+          expect: { status: 200 }
+          capture: { bob_id: data.id }
+        - as: alice
+          op: teams.create
+          body: { name: Quay }
+          expect: { status: 201 }
+          capture: { team: data.id }
+        - as: alice
+          op: members.create
+          body: { team_id: "{team}", user_id: "{bob_id}" }
+          expect: { status: 201 }
+        - as: alice
+          op: channels.create
+          body: { team_id: "{team}", name: plans, private: true }
+          expect: { status: 201 }
+          capture: { channel: data.id }
+        - as: alice
+          op: channel_members.create
+          body: { channel_id: "{channel}", user_id: "{alice_id}", role: admin }
+          expect: { status: 201 }
+        # A teammate outside the private channel sees neither it nor its invites
+        - as: bob
+          op: channels.get
+          path: { id: "{channel}" }
+          expect: { status: 404 }
+        - as: bob
+          op: channel_invites.create
+          body: { channel_id: "{channel}", email: stranger@example.com }
+          expect: { status: 403 }
+        - as: alice
+          op: channel_invites.create
+          body: { channel_id: "{channel}", email: bob@example.com, role: member }
+          expect: { status: 201, body: { data: { channel_id: "{channel}", email: bob@example.com, role: member } } }
+          capture: { bob_token: debug.token, bob_invite: data.id }
+        - op: emails.sent
+          query: { to: bob@example.com, subject: plans }
+          expect: { status: 200, body: { data: [{ to: bob@example.com, subject: You are invited to plans }] } }
+        - as: alice
+          op: channel_invites.get
+          path: { id: "{bob_invite}" }
+          expect: { status: 200, body: { data: { email: bob@example.com } } }
+        - as: bob
+          op: channel_invites.get
+          path: { id: "{bob_invite}" }
+          expect: { status: 404 }
+        - as: bob
+          op: channel_invites.list
+          query: { channel_id: "{channel}" }
+          expect: { status: 200, body: { page: { total: 0 } } }
+        - op: auth.invite
+          path: { token: "{bob_token}" }
+          expect:
+            status: 200
+            body:
+              data:
+                { entity: Channel, name: plans, role: member, inviter: Alice, email: b•••@example.com, account: true }
+        # Accepting joins the channel; the team it sits in is the tenant the invitee lands in
+        - as: bob
+          op: auth.invite_accept
+          path: { token: "{bob_token}" }
+          expect:
+            status: 200
+            body:
+              data: { email: bob@example.com }
+              accepted: [{ entity: Channel, id: "{channel}", role: member, tenant: "{team}" }]
+        - as: bob
+          op: channels.get
+          path: { id: "{channel}" }
+          expect: { status: 200, body: { data: { name: plans, private: true } } }
+        - as: bob
+          op: messages.create
+          body: { channel_id: "{channel}", body: Hello }
+          expect: { status: 201 }
+        # A member of the channel who is not its admin cannot invite
+        - as: bob
+          op: channel_invites.create
+          body: { channel_id: "{channel}", email: stranger@example.com }
+          expect: { status: 403 }
+        - as: alice
+          op: channel_invites.create
+          body: { channel_id: "{channel}", email: bob@example.com }
+          expect: { status: 409 }
+        # One accept answers every invite waiting for the address, the one whose link was used first
+        - as: dana
+          op: teams.get
+          path: { id: "{team}" }
+          expect: { status: 403 }
+        - as: alice
+          op: team_invites.create
+          body: { team_id: "{team}", email: dana@example.com, role: member }
+          expect: { status: 201 }
+        - as: alice
+          op: channel_invites.create
+          body: { channel_id: "{channel}", email: dana@example.com }
+          expect: { status: 201, body: { data: { role: member } } }
+          capture: { dana_token: debug.token }
+        - as: alice
+          op: channel_invites.list
+          query: { channel_id: "{channel}" }
+          expect: { status: 200, body: { data: [{ email: dana@example.com }], page: { total: 1 } } }
+        - as: dana
+          op: auth.invite_accept
+          path: { token: "{dana_token}" }
+          expect:
+            status: 200
+            body:
+              data: { email: dana@example.com }
+              accepted:
+                - { entity: Channel, id: "{channel}", role: member, tenant: "{team}" }
+                - { entity: Team, id: "{team}", role: member, tenant: "{team}" }
+          capture: { first: accepted.0.id }
+        - as: dana
+          op: teams.get
+          path: { id: "{team}" }
+          expect: { status: 200, body: { data: { name: Quay } } }
+        - as: dana
+          op: channels.get
+          path: { id: "{first}" }
+          expect: { status: 200, body: { data: { name: plans } } }
+        - as: alice
+          op: team_invites.list
+          query: { team_id: "{team}" }
+          expect: { status: 200, body: { page: { total: 0 } } }
+        - as: alice
+          op: channel_invites.list
+          query: { channel_id: "{channel}" }
+          expect: { status: 200, body: { page: { total: 0 } } }
+        - as: alice
+          op: channel_members.list
+          query: { channel_id: "{channel}" }
+          expect: { status: 200, body: { page: { total: 3 } } }

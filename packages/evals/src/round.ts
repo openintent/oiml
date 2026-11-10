@@ -39,6 +39,8 @@ export interface RoundOptions {
   count: number;
   seed: number;
   model: string;
+  /** The cap on one proposal's output tokens, thinking included; default: the proposer's own */
+  maxTokens?: number;
   /** Run the generated apps and their scenarios (default true) */
   full: boolean;
   /** Write the action handlers with the model before the full runs (default true) */
@@ -121,6 +123,7 @@ export async function runRound(options: RoundOptions): Promise<RoundSummary> {
     runId: options.round,
     proposer: "live",
     model: options.model,
+    maxTokens: options.maxTokens,
     jobs: options.jobs,
     fullJobs: options.fullJobs,
     full: options.full,

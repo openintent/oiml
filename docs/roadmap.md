@@ -21,8 +21,9 @@ What alpha.2 proved is that OSL generates a working application of one shape: on
 CRUD with actions, auth with providers, files, jobs. What the research says, in one line each:
 
 - **The rounds** ask for the next construct one at a time, and the five built on 2026-11-09 each emptied its
-  cluster within a round. What remains in the backlog by cases: invites (3), pages with parameters (2), computed
-  fields (2), role changes (2), then one-offs.
+  cluster within a round. What remained in the backlog by cases when the plan was made: invites (3, built since
+  in round A4), pages with parameters (2, built since in round A3), computed fields (2), role changes (2), then
+  one-offs.
 - **The survey** found what hand-written applications build for themselves and police with lint: tenant
   isolation in the database, field-level visibility, state machines, money and sequences, archive and counts,
   audit and webhooks, API keys and an MCP surface, and five structural walks. No round asks for them, because a
@@ -46,18 +47,22 @@ and scheduling rounds the largest).
 
 ### Milestone A: access (`1.0.0-alpha.4`)
 
-| #   | Round                                                                                                                                                                                    | Design                                                 | Evidence                                               | Size                                |
-| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------ | ----------------------------------- |
-| A1  | Conformance walks: the rule, cross-tenant, leak, fuzz and contract-diff walks over every fixture                                                                                         | `designs/conformance-walks.md`                         | the survey; raises every later proof                   | smaller than any construct          |
-| A2  | Membership through any relation: `member:` ending in a membership relation, `ranked: true`                                                                                               | `designs/membership-through-any-relation.md`, approved | three exercises (Slack in four intents)                | the relations round                 |
-| A3  | Pages with parameters and sections, with a tenant context: a page over one row at its own address, sections from other resources filtered by the parameter, `{tenant.id}` and a switcher | to write                                               | three exercises, 2 cases, the top open page gap        | the pages round                     |
-| A4  | Invites: email invites with a role, acceptance that creates the account, auto-accept on every sign-in path                                                                               | `designs/invites.md`                                   | 3 cases, the top of the backlog; the SaaS kit needs it | the hidden-rows round plus web work |
-| A5  | Rules and time: `when actor.<field> = <value>`, `when created_at > now-15m` on predicates and as range filters, timers before a date and on date fields                                  | to write                                               | two exercises, three one-off cases                     | smaller than the relations round    |
+| #   | Round                                                                                                                                                                                    | Design                                              | Evidence                                                                     | Size                                |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------- | ----------------------------------- |
+| A1  | Conformance walks: the rule, cross-tenant, leak, fuzz and contract-diff walks over every fixture                                                                                         | `designs/conformance-walks.md`                      | the survey; raises every later proof                                         | smaller than any construct          |
+| A2  | Membership through any relation: `member:` ending in a membership relation, `ranked: true`                                                                                               | `designs/membership-through-any-relation.md`, built | three exercises (Slack in four intents)                                      | the relations round                 |
+| A3  | Pages with parameters and sections, with a tenant context: a page over one row at its own address, sections from other resources filtered by the parameter, `{tenant.id}` and a switcher | `designs/pages-with-parameters.md`, built           | three exercises, 2 cases, the top open page gap                              | the pages round                     |
+| A4  | Invites: email invites with a role, acceptance that creates the account, auto-accept on every sign-in path                                                                               | `designs/invites.md`, built                         | 3 cases, the top of the backlog; the SaaS kit needs it                       | the hidden-rows round plus web work |
+| A5  | Rules and time: `when actor.<field> = <value>`, `when created_at > now-15m` on predicates and as range filters, timers before a date and on date fields                                  | to write                                            | two exercises, three one-off cases                                           | smaller than the relations round    |
+| A6  | Verified registration: registering with a password proves the email, so no account is held ahead of the address's owner                                                                  | to write                                            | `designs/invites.md`, choice 12; invites raise what such an account is worth | to size in its note                 |
 
-Why this order: the walks first, so A2 onward are proven against the leak and cross-tenant walks without
-writing those scenarios; membership before pages, because the channel page is the proof of both; invites after
-membership, because an invite to a channel is the same construct a second time and the design can say so; the
-small rules round last, when the three before it have settled what a predicate can reference.
+Why this order: the walks first, so A2 onward are proven against the leak and cross-tenant walks without writing
+those scenarios; membership before pages, because the channel page is the proof of both; invites after membership,
+because an invite to a channel is the same construct a second time and the design can say so; the small rules round
+after them, when the three before it have settled what a predicate can reference. A6 joined on 2026-11-09 with the
+approval of the invites design (its choice 12): an invite raises what an account registered ahead of its owner is
+worth, and the proof rule of A4 does not close that, so verified registration leaves the 1.1 table for this
+milestone and lands before the kits.
 
 ### Milestone B: data (`1.0.0-alpha.5`)
 
@@ -103,23 +108,24 @@ alternatives on tenant tables, which is a diagnostic worth adding only once the 
 A1 walks ──► every later proof
 A2 membership ──► A3 pages (channel page) ──► C2 cursor (the page loads older rows)
 A2 membership ──► A4 invites (an invite to a channel)
+A4 invites ──► A6 verified registration (the open end of the proof rule)
 A2 membership ──► C5 isolation (policies know junction rules)
 B1 many-to-many ──► B2 counts (reverse relations)
 B2 archive, B3 transitions ──► C3 audit (records them) ──► C4 MCP (tools cover them)
 B4 visibility ──► C3 audit and webhooks (their exclusions)
-A4 invites, C3 audit, C4 keys ──► D1 saas kit
+A4 invites, A6 verified registration, C3 audit, C4 keys ──► D1 saas kit
 ```
 
 ## What 1.0.0 leaves for 1.1, with the evidence that would pull it forward
 
-| Gap                                                                                | Why it waits                                                              | Pulls it forward                                   |
-| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | -------------------------------------------------- |
-| Rules inherited through a tree, tree queries, navigation from data                 | the largest construct an exercise named, with one app behind it; needs A3 | a round asking twice, or a wiki or folder exercise |
-| Role changes (what a client may write depends on who they are)                     | a second grammar for before-and-after values                              | two more cases                                     |
-| Search across resources                                                            | a custom page composes the per-resource searches                          | two cases                                          |
-| Dashboard panels beyond counts, sums and averages                                  | a trigger per numeric type and a null policy                              | two cases each                                     |
-| Shared secrets and access codes, sign-in flow settings, uniqueness beyond `unique` | one case each                                                             | a second case                                      |
-| Cascading archive, incoming webhooks, rate limits, import and export               | declined in their design notes with a sentence                            | a round that asks twice                            |
+| Gap                                                                                                                    | Why it waits                                                              | Pulls it forward                                   |
+| ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | -------------------------------------------------- |
+| Rules inherited through a tree, tree queries, navigation from data                                                     | the largest construct an exercise named, with one app behind it; needs A3 | a round asking twice, or a wiki or folder exercise |
+| Role changes (what a client may write depends on who they are)                                                         | a second grammar for before-and-after values                              | two more cases                                     |
+| Search across resources                                                                                                | a custom page composes the per-resource searches                          | two cases                                          |
+| Dashboard panels beyond counts, sums and averages                                                                      | a trigger per numeric type and a null policy                              | two cases each                                     |
+| Shared secrets and access codes, sign-in flow settings (verified registration is round A6), uniqueness beyond `unique` | one case each                                                             | a second case                                      |
+| Cascading archive, incoming webhooks, rate limits, import and export                                                   | declined in their design notes with a sentence                            | a round that asks twice                            |
 
 Declined and staying declined: realtime and live updates, payments and billing, user-defined schemas (the
 boundary the Notion exercise wrote down), handlers left to implement.
@@ -130,7 +136,9 @@ boundary the Notion exercise wrote down), handlers left to implement.
   round, as today. The nightly round keeps running against `main`.
 - The generator gains two briefs it does not write today: intents whose caller is a program or an assistant
   (for C4) and intents with two membership shapes or a page per row (for A2 and A3), so that the rounds test the
-  constructs the exercises found rather than only the ones they asked for.
+  constructs the exercises found rather than only the ones they asked for. The second was added with round A3 as
+  two constraints of the generator (`packages/evals/src/generate.ts`) and first drawn in round r8; the first waits
+  for C4.
 - One exercise per milestone, before its design notes are finalized: a Shopify admin for B and C (money,
   sequences, transitions, audit, webhooks), GitHub for C4, Airbnb for A5 and B5. Each adds its intents to a fixture
   or starts a sibling, and its gaps enter the backlog as the first three did.
@@ -139,18 +147,20 @@ boundary the Notion exercise wrote down), handlers left to implement.
 
 ## Size and pace
 
-Fifteen rounds and three release pieces. The five construct rounds of 2026-11-09 each took one session from
-design to backlog flip, with the harness as the judge; at that pace the version is about fifteen sessions of
-construct work plus the exercises and the release, with the design reviews between them as the human checkpoints
-the loop requires. Each round's full eval regrade costs about five dollars; a milestone with its exercise and the
-Sonnet comparison about twenty.
+Sixteen rounds and three release pieces. The five construct rounds of 2026-11-09 each took one session from design
+to backlog flip, with the harness as the judge; at that pace the version is about sixteen sessions of construct
+work plus the exercises and the release, with the design reviews between them as the human checkpoints the loop
+requires. Each round's full eval regrade costs about five dollars; a milestone with its exercise and the Sonnet
+comparison about twenty.
 
 ## Progress
 
-| Round                              | Status                                                                                                                                                                                                                 |
-| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A1 conformance walks               | built 2026-11-09: five walks as harness steps, all fixtures on all backends passing them unchanged; the first run's only findings were the harness's own (`designs/conformance-walks.md`)                              |
-| A2 membership through any relation | built 2026-11-09: `member:` paths ending in a membership relation with `ranked: true`, workspace WS-9 channels and blog FEAT-12 followers, 9/9 with walks, oracle 27/27 (`designs/membership-through-any-relation.md`) |
+| Round                              | Status                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A1 conformance walks               | built 2026-11-09: five walks as harness steps, all fixtures on all backends passing them unchanged; the first run's only findings were the harness's own (`designs/conformance-walks.md`)                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| A2 membership through any relation | built 2026-11-09: `member:` paths ending in a membership relation with `ranked: true`, workspace WS-9 channels and blog FEAT-12 followers, 9/9 with walks, oracle 27/27 (`designs/membership-through-any-relation.md`)                                                                                                                                                                                                                                                                                                                                                                                                            |
+| A3 pages with parameters           | built 2026-11-09: `kind: detail` pages with sections filtered by `{row.id}`, `{tenant.id}` with a switcher in the shell, workspace WS-10 channel page and team home and blog FEAT-13 author and article pages, 9/9 with walks, oracle 29/29, rounds r1 to r7 graded again without loss, round r8 no longer reporting the gap (`designs/pages-with-parameters.md`)                                                                                                                                                                                                                                                                 |
+| A4 invites                         | built 2026-11-09: `auth.invites` for any membership, the invite entity and resource the compiler writes, acceptance on proof of the email in one function, the landing page at `/invite/<token>`, workspace WS-11 team invites and WS-12 channel invites and blog FEAT-14 co-authors, 9/9 with six walks, oracle 32/32, rounds r1 to r8 graded again without loss, round r9 using invites in its four invitation briefs (the fourth graded on a retry once the proposer's token limit went from 16,000 to 64,000) and reporting a reminder on pending invites and a filter on the invite list, not the gap (`designs/invites.md`) |
 
 ## Decisions, as made on 2026-11-09
 
@@ -163,3 +173,6 @@ Sonnet comparison about twenty.
    the external identifiers (org, registry, domain) stay as they are. Publishing is release work that touches
    accounts outside the repo and needs its own go-ahead at `1.0.0`.
 5. **The legacy tree stays.** `legacy/` (the 0.1 Studio and VS Code extension) is untouched through the alphas.
+6. **Verified registration is a round.** Decided with the invites design (its choice 12): A4 does not close the
+   account registered ahead of its owner, and the reference says so plainly. A6 closes it, in milestone A and
+   before the kits.

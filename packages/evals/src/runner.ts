@@ -19,8 +19,10 @@ import {
   type Model as ModelType
 } from "@osl/core";
 import {
+  DEFAULT_MAX_TOKENS,
   DEFAULT_MODEL,
   MAX_ATTEMPTS,
+  ProposeCutOffError,
   ProposeDeclinedError,
   ProposeInvalidError,
   propose,
@@ -40,6 +42,8 @@ export interface RunOptions {
   outDir: string;
   proposer: Proposer;
   model: string;
+  /** The cap on one proposal's output tokens, thinking included; default: the proposer's own */
+  maxTokens?: number;
   /** Concurrent proposals */
   jobs: number;
   /** Concurrent full runs (each installs and starts an app) */
@@ -108,6 +112,8 @@ export interface RunResult {
   finished: string;
   model: string;
   proposer: Proposer;
+  /** The cap on one proposal's output tokens, when the proposer was live */
+  max_tokens?: number;
   backend: string;
   full: boolean;
   /** Whether handlers were written by the model before the full runs */
@@ -237,6 +243,7 @@ async function runProposer(c: Case, intent: Intent, base: ModelType, options: Ru
     try {
       const result = await propose(c.id, intent, base, {
         model: options.model,
+        maxTokens: options.maxTokens,
         onAttempt: (attempt, yaml, problems) => log.push({ attempt, yaml, problems })
       });
       return {
@@ -253,6 +260,9 @@ async function runProposer(c: Case, intent: Intent, base: ModelType, options: Ru
         return { status: "invalid", attempts: error.attempts, usage: error.usage, log, problems: error.problems };
       if (error instanceof ProposeDeclinedError)
         return { status: "declined", attempts: error.attempts, usage: error.usage, log, reasons: error.reasons };
+      // A cut-off answer was paid for like any other
+      if (error instanceof ProposeCutOffError)
+        return { status: "error", error: error.message, attempts: error.attempts, usage: error.usage, log };
       return {
         status: "error",
         error: error instanceof Error ? error.message : String(error),
@@ -472,6 +482,7 @@ export async function runAll(cases: Case[], options: RunOptions): Promise<RunRes
       finished: new Date().toISOString(),
       model: options.model,
       proposer: options.proposer,
+      ...(options.proposer === "live" ? { max_tokens: options.maxTokens ?? DEFAULT_MAX_TOKENS } : {}),
       backend: options.backend,
       full: options.full,
       implement: Boolean(options.implement),

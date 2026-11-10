@@ -1,6 +1,6 @@
 /**
  * osl propose: turn an intent's prose into a model diff for review.
- * One Claude call with structured output, validated locally, one retry on validation errors.
+ * One streamed Claude call with structured output, validated locally, one retry on validation errors.
  */
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
@@ -19,6 +19,11 @@ import {
 } from "@osl/core";
 
 export const DEFAULT_MODEL = "claude-opus-5-5";
+/**
+ * The cap on one answer's output tokens, thinking included. A long diff after long thinking passed the 16,000 this
+ * began at. The request streams, which the SDK requires of a cap this size.
+ */
+export const DEFAULT_MAX_TOKENS = 64000;
 /** One retry with the validation problems is usually enough; more hides a reference-text gap. */
 export const MAX_ATTEMPTS = 2;
 
@@ -37,6 +42,10 @@ const Proposal = z.object({
 
 export interface ProposeOptions {
   model?: string;
+  /** The cap on one answer's output tokens, thinking included; default DEFAULT_MAX_TOKENS */
+  maxTokens?: number;
+  /** The client to ask, for tests; default: one made from the environment */
+  client?: Anthropic;
   /** Called with each attempt's raw YAML, for logs */
   onAttempt?: (attempt: number, yaml: string, problems: string[]) => void;
 }
@@ -80,6 +89,20 @@ export class ProposeInvalidError extends Error {
   ) {
     super(message);
     this.name = "ProposeInvalidError";
+  }
+}
+
+/** The answer reached the output token cap before it ended; carries the cap and what was spent, for logs and evals. */
+export class ProposeCutOffError extends Error {
+  constructor(
+    readonly maxTokens: number,
+    readonly attempts: number,
+    readonly usage: ProposeUsage
+  ) {
+    super(
+      `the proposal was cut off at max_tokens (${maxTokens}); raise the cap with --max-tokens or split the intent into smaller ones`
+    );
+    this.name = "ProposeCutOffError";
   }
 }
 
@@ -178,26 +201,41 @@ export async function propose(
   model: Model,
   options: ProposeOptions = {}
 ): Promise<ProposeResult> {
-  const client = new Anthropic({ maxRetries: 4 });
+  const client = options.client ?? new Anthropic({ maxRetries: 4 });
   const modelId = options.model ?? DEFAULT_MODEL;
+  const maxTokens = options.maxTokens ?? DEFAULT_MAX_TOKENS;
+  const format = zodOutputFormat(Proposal);
   const usage = emptyUsage();
   let previousYaml: string | undefined;
   let previousProblems: string[] | undefined;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const ask = () =>
-      client.messages.parse({
+    // The format goes out without its parser, so the stop reason is read before the text is parsed: an answer cut
+    // off in the middle of a string is a cut-off, not a broken answer worth a second attempt, and its tokens are
+    // counted either way.
+    const response = await client.messages
+      .stream({
         model: modelId,
-        max_tokens: 16000,
-        output_config: { effort: "high", format: zodOutputFormat(Proposal) },
+        max_tokens: maxTokens,
+        output_config: { effort: "high", format: { type: format.type, schema: format.schema } },
         system: [{ type: "text", text: systemPrompt(), cache_control: { type: "ephemeral" } }],
         messages: [{ role: "user", content: userPrompt(intentId, intent, model, previousProblems, previousYaml) }]
-      });
-    let response: Awaited<ReturnType<typeof ask>>;
+      })
+      .finalMessage();
+    addUsage(usage, response.usage);
+    if (response.stop_reason === "refusal") {
+      throw new Error(
+        `Claude declined the request${response.stop_details?.explanation ? `: ${response.stop_details.explanation}` : ""}`
+      );
+    }
+    if (response.stop_reason === "max_tokens") throw new ProposeCutOffError(maxTokens, attempt, usage);
+    const text = response.content.flatMap(block => (block.type === "text" ? [block.text] : []))[0];
+    if (text === undefined) throw new Error("Claude returned no structured proposal");
+    let proposal: z.infer<typeof Proposal>;
     try {
-      response = await ask();
+      proposal = format.parse(text);
     } catch (error) {
-      // The SDK could not parse the structured output (a broken escape, a cut-off string): one more attempt
+      // The answer was not the JSON the format asks for (a broken escape): one more attempt
       if (!isParseFailure(error)) throw error;
       const problem = `the answer was not valid structured output: ${error instanceof Error ? error.message : String(error)}`;
       options.onAttempt?.(attempt, "", [problem]);
@@ -206,16 +244,6 @@ export async function propose(
       previousYaml = previousYaml ?? "";
       continue;
     }
-    addUsage(usage, response.usage);
-    if (response.stop_reason === "refusal") {
-      throw new Error(
-        `Claude declined the request${response.stop_details?.explanation ? `: ${response.stop_details.explanation}` : ""}`
-      );
-    }
-    if (response.stop_reason === "max_tokens")
-      throw new Error("the proposal was cut off at max_tokens; split the intent into smaller ones");
-    const proposal = response.parsed_output;
-    if (!proposal) throw new Error("Claude returned no structured proposal");
     if (proposal.diff_yaml === null) {
       const reasons = proposal.not_delivered.length ? proposal.not_delivered : [proposal.summary];
       throw new ProposeDeclinedError(reasons, attempt, usage);

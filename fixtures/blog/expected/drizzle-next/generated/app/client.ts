@@ -3,9 +3,10 @@
 
 import { QueryClient } from "@tanstack/react-query";
 import type { z } from "zod";
+import type { Accepted, InviteLookup } from "../auth-providers";
 import type { FileRecord } from "../files";
-import type { PublicAnnouncement, PublicArticle, PublicBulletin, PublicComment, PublicFollow, PublicUser } from "../present";
-import type { announcementsCreateInput, announcementsListQuery, announcementsPublishInput, announcementsUpdateInput, bulletinsCreateInput, bulletinsListQuery, bulletinsUpdateInput, commentsCreateInput, commentsListQuery, commentsUpdateInput, followsCreateInput, followsListQuery, postsCreateInput, postsListQuery, postsLockInput, postsPublishInput, postsUnlockInput, postsUnpublishAllInput, postsUpdateInput, sendDigestInput, usersBanInput, usersListQuery, usersUpdateInput } from "../validation";
+import type { PublicAnnouncement, PublicArticle, PublicArticleEditor, PublicArticleInvite, PublicBulletin, PublicComment, PublicFollow, PublicUser } from "../present";
+import type { announcementsCreateInput, announcementsListQuery, announcementsPublishInput, announcementsUpdateInput, article_editorsCreateInput, article_editorsListQuery, article_invitesCreateInput, article_invitesListQuery, bulletinsCreateInput, bulletinsListQuery, bulletinsUpdateInput, commentsCreateInput, commentsListQuery, commentsUpdateInput, followsCreateInput, followsListQuery, postsCreateInput, postsListQuery, postsLockInput, postsPublishInput, postsUnlockInput, postsUnpublishAllInput, postsUpdateInput, sendDigestInput, usersBanInput, usersListQuery, usersUpdateInput } from "../validation";
 
 export class ApiError extends Error {
   constructor(
@@ -18,9 +19,15 @@ export class ApiError extends Error {
   }
 }
 
+/** The HTTP status the API answered a failed call with, when it answered */
+export function errorStatus(error: unknown): number | undefined {
+  return error instanceof ApiError ? error.status : undefined;
+}
+
 /** A request the server refused as asked: the same request would fail again, so it is not retried. */
 function isRefused(error: unknown): boolean {
-  return error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 408 && error.status !== 429;
+  const status = errorStatus(error);
+  return status !== undefined && status >= 400 && status < 500 && status !== 408 && status !== 429;
 }
 
 export const queryClient = new QueryClient({
@@ -52,10 +59,12 @@ async function call<T>(method: string, path: string, options: { query?: Record<s
 
 export type Inputs = {
   auth: {
-    login: { email: string; password: string };
+    login: { email: string; password: string; invite?: string };
     register: { email: string; password: string; name?: unknown };
     magic_link: { email: string };
     magic_link_verify: { token: string };
+    invite: { token: string };
+    invite_accept: { token: string; data?: Record<string, unknown> };
   };
   files: {
     begin: { name: string; type: string; size: number };
@@ -110,18 +119,32 @@ export type Inputs = {
     update: { id: string; data: z.input<typeof bulletinsUpdateInput> };
     delete: { id: string };
   };
+  article_editors: {
+    list: z.input<typeof article_editorsListQuery>;
+    get: { id: string };
+    create: z.input<typeof article_editorsCreateInput>;
+    delete: { id: string };
+  };
+  article_invites: {
+    list: z.input<typeof article_invitesListQuery>;
+    get: { id: string };
+    create: z.input<typeof article_invitesCreateInput>;
+    delete: { id: string };
+  };
 };
 
 export type Outputs = {
   auth: {
     session: { user: PublicUser } | null;
     me: PublicUser;
-    login: PublicUser;
+    login: { data: PublicUser; accepted?: Accepted[] };
     register: PublicUser;
     logout: null;
     magic_link: { sent: boolean; debug?: { token: string; url: string } };
-    magic_link_verify: PublicUser;
+    magic_link_verify: { data: PublicUser; accepted?: Accepted[] };
     providers: { kind: string; name: string }[];
+    invite: InviteLookup;
+    invite_accept: { data: PublicUser; accepted: Accepted[] };
   };
   files: {
     begin: FileRecord & { upload: { url: string; method: string; headers: Record<string, string> } };
@@ -176,6 +199,18 @@ export type Outputs = {
     update: PublicBulletin;
     delete: null;
   };
+  article_editors: {
+    list: { data: (PublicArticleEditor & { user: PublicUser | null })[]; page: Page };
+    get: PublicArticleEditor;
+    create: PublicArticleEditor;
+    delete: null;
+  };
+  article_invites: {
+    list: { data: (PublicArticleInvite & { inviter: PublicUser | null })[]; page: Page };
+    get: PublicArticleInvite;
+    create: PublicArticleInvite;
+    delete: null;
+  };
 };
 
 export const client = {
@@ -191,10 +226,13 @@ export const client = {
     providers: () => call<Outputs["auth"]["providers"]>("GET", "/api/auth/providers"),
     me: () => call<Outputs["auth"]["me"]>("GET", "/api/auth/me"),
     logout: () => call<null>("POST", "/api/auth/logout"),
-    login: (input: Inputs["auth"]["login"]) => call<Outputs["auth"]["login"]>("POST", "/api/auth/login", { body: input }),
+    login: (input: Inputs["auth"]["login"]) => call<Outputs["auth"]["login"]>("POST", "/api/auth/login", { body: input, whole: true }),
     register: (input: Inputs["auth"]["register"]) => call<Outputs["auth"]["register"]>("POST", "/api/auth/register", { body: input }),
     magic_link: (input: Inputs["auth"]["magic_link"]) => call<Outputs["auth"]["magic_link"]>("POST", "/api/auth/magic-link", { body: input }),
-    magic_link_verify: (input: Inputs["auth"]["magic_link_verify"]) => call<Outputs["auth"]["magic_link_verify"]>("POST", "/api/auth/magic-link/verify", { body: input })
+    magic_link_verify: (input: Inputs["auth"]["magic_link_verify"]) => call<Outputs["auth"]["magic_link_verify"]>("POST", "/api/auth/magic-link/verify", { body: input, whole: true }),
+    invite: ({ token }: Inputs["auth"]["invite"]) => call<Outputs["auth"]["invite"]>("GET", "/api/auth/invites/" + encodeURIComponent(token)),
+    invite_accept: ({ token, data }: Inputs["auth"]["invite_accept"]) =>
+      call<Outputs["auth"]["invite_accept"]>("POST", "/api/auth/invites/" + encodeURIComponent(token) + "/accept", { body: data ?? {}, whole: true })
   },
   files: {
     begin: (input: Inputs["files"]["begin"]) => call<Outputs["files"]["begin"]>("POST", "/api/files", { body: input }),
@@ -248,6 +286,18 @@ export const client = {
     create: (input: Inputs["bulletins"]["create"]) => call<PublicBulletin>("POST", "/api/bulletins", { body: input }),
     update: ({ id, data }: Inputs["bulletins"]["update"]) => call<PublicBulletin>("PATCH", "/api/bulletins" + "/" + id, { body: data }),
     delete: ({ id }: Inputs["bulletins"]["delete"]) => call<null>("DELETE", "/api/bulletins" + "/" + id)
+  },
+  article_editors: {
+    list: (input: Inputs["article_editors"]["list"]) => call<Outputs["article_editors"]["list"]>("GET", "/api/article_editors", { query: input as Record<string, unknown>, whole: true }),
+    get: ({ id }: Inputs["article_editors"]["get"]) => call<Outputs["article_editors"]["get"]>("GET", "/api/article_editors" + "/" + id),
+    create: (input: Inputs["article_editors"]["create"]) => call<PublicArticleEditor>("POST", "/api/article_editors", { body: input }),
+    delete: ({ id }: Inputs["article_editors"]["delete"]) => call<null>("DELETE", "/api/article_editors" + "/" + id)
+  },
+  article_invites: {
+    list: (input: Inputs["article_invites"]["list"]) => call<Outputs["article_invites"]["list"]>("GET", "/api/article_invites", { query: input as Record<string, unknown>, whole: true }),
+    get: ({ id }: Inputs["article_invites"]["get"]) => call<Outputs["article_invites"]["get"]>("GET", "/api/article_invites" + "/" + id),
+    create: (input: Inputs["article_invites"]["create"]) => call<PublicArticleInvite>("POST", "/api/article_invites", { body: input }),
+    delete: ({ id }: Inputs["article_invites"]["delete"]) => call<null>("DELETE", "/api/article_invites" + "/" + id)
   }
 };
 

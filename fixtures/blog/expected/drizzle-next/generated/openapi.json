@@ -25,6 +25,13 @@
       "name": "bulletins"
     },
     {
+      "name": "article_editors"
+    },
+    {
+      "name": "article_invites",
+      "description": "Invites to a Article: create sends one, delete revokes one, list shows the ones waiting"
+    },
+    {
       "name": "actions",
       "description": "Actions not tied to a resource"
     },
@@ -644,6 +651,935 @@
         }
       }
     },
+    "/api/article_editors": {
+      "get": {
+        "tags": [
+          "article_editors"
+        ],
+        "operationId": "article_editors_list",
+        "description": "Open to everyone.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "summary": "List article_editors",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 20
+            }
+          },
+          {
+            "name": "article_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "page"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "article_id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "user_id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "created_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "user": {
+                            "oneOf": [
+                              {
+                                "$ref": "#/components/schemas/User"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "article_id",
+                          "user_id",
+                          "created_at",
+                          "user"
+                        ]
+                      }
+                    },
+                    "page": {
+                      "type": "object",
+                      "required": [
+                        "page",
+                        "page_size",
+                        "total"
+                      ],
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "page_size": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "article_editors"
+        ],
+        "operationId": "article_editors_create",
+        "description": "Only the owner of the row reached through article_id.author_id.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "summary": "Create one of article_editors",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "article_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "user_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "article_id",
+                  "user_id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ArticleEditor"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/article_editors/{id}": {
+      "get": {
+        "tags": [
+          "article_editors"
+        ],
+        "operationId": "article_editors_get",
+        "description": "Open to everyone.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "summary": "Get one of article_editors",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "article_id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "user_id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "created_at": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "article_id",
+                        "user_id",
+                        "created_at"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "article_editors"
+        ],
+        "operationId": "article_editors_delete",
+        "description": "Any of: Only the owner of the row reached through article_id.author_id; Only the row's owner (user_id).",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "summary": "Delete one of article_editors",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/article_invites": {
+      "get": {
+        "tags": [
+          "article_invites"
+        ],
+        "operationId": "article_invites_list",
+        "description": "Only the owner of the row reached through article_id.author_id.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "summary": "List article_invites",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 20
+            }
+          },
+          {
+            "name": "article_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "page"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "article_id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "email": {
+                            "type": "string",
+                            "maxLength": 255,
+                            "format": "email",
+                            "description": "The address invited; whoever proves it becomes the member"
+                          },
+                          "invited_by": {
+                            "type": "string",
+                            "format": "uuid",
+                            "readOnly": true
+                          },
+                          "expires_at": {
+                            "type": "string",
+                            "format": "date-time",
+                            "readOnly": true
+                          },
+                          "created_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "inviter": {
+                            "oneOf": [
+                              {
+                                "$ref": "#/components/schemas/User"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "article_id",
+                          "email",
+                          "invited_by",
+                          "expires_at",
+                          "created_at",
+                          "inviter"
+                        ]
+                      }
+                    },
+                    "page": {
+                      "type": "object",
+                      "required": [
+                        "page",
+                        "page_size",
+                        "total"
+                      ],
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "page_size": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "article_invites"
+        ],
+        "operationId": "article_invites_create",
+        "description": "Only the owner of the row reached through article_id.author_id. Mails the address a link; proving the address makes the ArticleEditor. A live invite to the address answers 409 invite_exists, a member's address 409 already_member.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "summary": "Invite an address (article_invites)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "article_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "email": {
+                    "type": "string",
+                    "maxLength": 255,
+                    "format": "email",
+                    "description": "The address invited; whoever proves it becomes the member"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "article_id",
+                  "email"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ArticleInvite"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/article_invites/{id}": {
+      "get": {
+        "tags": [
+          "article_invites"
+        ],
+        "operationId": "article_invites_get",
+        "description": "Only the owner of the row reached through article_id.author_id.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "summary": "Get one of article_invites",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "article_id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "email": {
+                          "type": "string",
+                          "maxLength": 255,
+                          "format": "email",
+                          "description": "The address invited; whoever proves it becomes the member"
+                        },
+                        "invited_by": {
+                          "type": "string",
+                          "format": "uuid",
+                          "readOnly": true
+                        },
+                        "expires_at": {
+                          "type": "string",
+                          "format": "date-time",
+                          "readOnly": true
+                        },
+                        "created_at": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "article_id",
+                        "email",
+                        "invited_by",
+                        "expires_at",
+                        "created_at"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "article_invites"
+        ],
+        "operationId": "article_invites_delete",
+        "description": "Only the owner of the row reached through article_id.author_id.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "summary": "Delete one of article_invites",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/auth/invites/{token}": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "operationId": "auth_invite",
+        "summary": "What an invite's link is for",
+        "description": "Never accepts. A token that is unknown, used or revoked answers 404, a lapsed one 410.",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "entity",
+                        "name",
+                        "inviter",
+                        "email",
+                        "expires_at",
+                        "account"
+                      ],
+                      "properties": {
+                        "entity": {
+                          "type": "string",
+                          "enum": [
+                            "Article"
+                          ]
+                        },
+                        "name": {
+                          "type": "string",
+                          "description": "The display value of the row the invite is to"
+                        },
+                        "inviter": {
+                          "type": "string",
+                          "description": "The display value of who invited"
+                        },
+                        "email": {
+                          "type": "string",
+                          "description": "The address invited, masked"
+                        },
+                        "expires_at": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "account": {
+                          "type": "boolean",
+                          "description": "Whether the address already has an account"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          }
+        }
+      }
+    },
+    "/api/auth/invites/{token}/accept": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "operationId": "auth_invite_accept",
+        "summary": "Accept an invite",
+        "description": "A session under the invite's email accepts, 200. A session under another email answers 403 invite_email_mismatch. Without a session, an address that has an account answers 401 sign_in_required, and one that has none gets an account made from the body, signed in, 201. One proof accepts every live invite to the address.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "description": "Only read when the account is made here",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 1
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 8
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "accepted"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/User"
+                    },
+                    "accepted": {
+                      "type": "array",
+                      "description": "The invites this sign-in accepted, the one whose token was used first",
+                      "items": {
+                        "$ref": "#/components/schemas/AcceptedInvite"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Account made, signed in and accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "accepted"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/User"
+                    },
+                    "accepted": {
+                      "type": "array",
+                      "description": "The invites this sign-in accepted, the one whose token was used first",
+                      "items": {
+                        "$ref": "#/components/schemas/AcceptedInvite"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          }
+        }
+      }
+    },
     "/api/auth/login": {
       "post": {
         "tags": [
@@ -663,6 +1599,10 @@
                   },
                   "password": {
                     "type": "string"
+                  },
+                  "invite": {
+                    "type": "string",
+                    "description": "An invite's token: the sign-in accepts it"
                   }
                 },
                 "required": [
@@ -686,6 +1626,13 @@
                   "properties": {
                     "data": {
                       "$ref": "#/components/schemas/User"
+                    },
+                    "accepted": {
+                      "type": "array",
+                      "description": "The invites this sign-in accepted, the one whose token was used first",
+                      "items": {
+                        "$ref": "#/components/schemas/AcceptedInvite"
+                      }
                     }
                   }
                 }
@@ -830,6 +1777,13 @@
                   "properties": {
                     "data": {
                       "$ref": "#/components/schemas/User"
+                    },
+                    "accepted": {
+                      "type": "array",
+                      "description": "The invites this sign-in accepted, the one whose token was used first",
+                      "items": {
+                        "$ref": "#/components/schemas/AcceptedInvite"
+                      }
                     }
                   }
                 }
@@ -3000,7 +3954,7 @@
           "posts"
         ],
         "operationId": "posts_update",
-        "description": "Any of: Only the row's owner (author_id); Only users with role admin.",
+        "description": "Any of: Only the row's owner (author_id); Only the row's editors (ArticleEditor); Only users with role admin.",
         "security": [
           {
             "cookieAuth": []
@@ -3856,6 +4810,30 @@
   },
   "components": {
     "schemas": {
+      "AcceptedInvite": {
+        "type": "object",
+        "description": "A membership an invite made: the row joined, the role given and the tenant it belongs to",
+        "required": [
+          "entity",
+          "id",
+          "tenant"
+        ],
+        "properties": {
+          "entity": {
+            "type": "string",
+            "enum": [
+              "Article"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tenant": {
+            "type": "null"
+          }
+        }
+      },
       "Announcement": {
         "type": "object",
         "properties": {
@@ -3973,6 +4951,74 @@
           "cover",
           "publish_at",
           "locked"
+        ]
+      },
+      "ArticleEditor": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "article_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "article_id",
+          "user_id",
+          "created_at"
+        ]
+      },
+      "ArticleInvite": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "article_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "email": {
+            "type": "string",
+            "maxLength": 255,
+            "format": "email",
+            "description": "The address invited; whoever proves it becomes the member"
+          },
+          "invited_by": {
+            "type": "string",
+            "format": "uuid",
+            "readOnly": true
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "article_id",
+          "email",
+          "invited_by",
+          "expires_at",
+          "created_at"
         ]
       },
       "Bulletin": {
@@ -4226,6 +5272,16 @@
       },
       "Conflict": {
         "description": "Conflicts with an existing row",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Gone": {
+        "description": "The invite has lapsed",
         "content": {
           "application/json": {
             "schema": {

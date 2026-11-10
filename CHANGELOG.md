@@ -5,6 +5,36 @@ fixture intent on all three backends before it is listed here.
 
 ## Unreleased
 
+- The proposer's output cap: `osl propose` streams its request and caps one answer at 64,000 output tokens,
+  thinking included, where it stopped at 16,000. `--max-tokens` sets the cap on `osl propose`, `pnpm evals` and
+  `pnpm evals:round`, and a live run records it in `results.json`. An answer that reaches the cap is reported as
+  cut off, once, with the tokens it spent; it used to be retried as a broken answer and recorded at no cost. Round
+  6's brief that had been recorded `invalid` was graded under it; the clusterer files a write that depends on the
+  caller under role changes whatever the field, and a stamp only one action sets under state machines and
+  transitions.
+- Invites (round A4 of the road to 1.0.0): `auth.invites` names a membership (the tenancy's, or a junction with a
+  relation to the identity and one to the entity people join) and the compiler writes the `<Parent>Invite` entity
+  and the `<parent>_invites` resource for it: list, get, delete and a create that mails a link, with `rule` and
+  `expires` per entry. An invite becomes a membership only when its email is proven, in one function every proof
+  calls: the accept route, a magic-link sign-in, a provider sign-in with a verified email, and a password login
+  that carries the invite's token. `GET /api/auth/invites/{token}` says what a link is for and
+  `POST /api/auth/invites/{token}/accept` accepts, making the account where the address has none; a role may not
+  rank above the inviter's own. The two TypeScript backends serve the link at `/invite/<token>`, and `/login` takes
+  `next`. Scenario steps `auth.invite` and `auth.invite_accept`, `invite` on `auth.login`, and `debug.token` on the
+  create while emails are captured. Diagnostics M115 to M118, with M072, M084, M121 and M123 grown; `set_auth`
+  carries `invites`, and `rename_entity` and `rename_field` follow them. Workspace WS-11 (team invites and a page
+  of the pending ones) and WS-12 (invites to a private channel from its page) and blog FEAT-14 (co-authors by
+  invite); a sixth conformance walk, `walk:invite`; eval cases `fx-ws-11-invites`, `fx-ws-12-channel-invites`,
+  `fx-feat-14-coauthor-invites` and `ws11-join-link-trap`, and `ws1-invites-gap` promoted from a gap to a case with
+  expectations; the clusterer's topics for reminders on pending invites and filters on the invite list.
+- Pages with parameters (round A3 of the road to 1.0.0): `kind: detail` pages at a path ending `/:id`, which take
+  over a resource page's detail when the path is that page's plus `/:id` and stand alone with their own `access`
+  otherwise, with `sections` that list other resources filtered by `{row.id}`; and `{tenant.id}` in page, tile,
+  section and recent filters, with a switcher in the shell. Diagnostics M095 to M098; workspace WS-10 (a channel
+  page, a home dashboard for the chosen team) and blog FEAT-13 (a public author page, an article page whose
+  comments section creates); eval cases `fx-ws-10-channel-page-and-team-home`,
+  `fx-blog-13-author-and-article-pages`, `ws2-public-project-pages`, `ws2-team-dashboard-files` and
+  `empty-org-public-roadmap`.
 - Membership through any relation (round A2 of the road to 1.0.0): a `member:` path may end in a membership
   relation, a reverse relation to a junction whose entity has a relation to the identity (`member:members` on a
   channel, `member:channel_id.members` on a message, `member:author_id.followers` on a bulletin); `:role` ranks an

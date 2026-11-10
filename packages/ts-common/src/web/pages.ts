@@ -13,12 +13,13 @@ import type {
   RelationIR,
   ResourceIR,
   RuleIR,
+  SectionIR,
   TileGroupIR,
   TileIR
 } from "@osl/core";
 import { actionsOf, toPascalCase, toTitleCase } from "@osl/core";
 import { entityByName, q, singlePrimaryKey, type TsConventions } from "../conventions.js";
-import { pageComponent } from "./routes.js";
+import { detailBase, detailRouteId, pageComponent } from "./routes.js";
 import type { WebTarget } from "./target.js";
 
 type ListOp = Extract<OperationIR, { kind: "list" }>;
@@ -44,10 +45,12 @@ interface Ctx {
     ui: Set<string>;
     shadcn: Map<string, Set<string>>;
     client: Set<string>;
+    /** Names from generated/app/tenant.tsx, for pages that filter by the tenant context */
+    tenant: Set<string>;
   };
 }
 
-function use(ctx: Ctx, group: "query" | "react" | "lucide" | "ui" | "client", name: string): void {
+function use(ctx: Ctx, group: "query" | "react" | "lucide" | "ui" | "client" | "tenant", name: string): void {
   ctx.imports[group].add(name);
 }
 
@@ -69,7 +72,7 @@ export function humanize(name: string): string {
   return toTitleCase(name.replace(/_id$/, ""));
 }
 
-function entityTitle(entity: EntityIR): string {
+export function entityTitle(entity: EntityIR): string {
   return toTitleCase(entity.name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase());
 }
 
@@ -150,6 +153,60 @@ function showExpr(ctx: Ctx, col: ColumnIR, obj: string, includes: RelationIR[], 
   }
 }
 
+/** The key of the signed-in user's row, as the session carries it */
+function identityKey(ir: IR): string {
+  return ir.auth ? entityByName(ir, ir.auth.identity).primaryKey[0] : "id";
+}
+
+/** The key of the tenant the shell's switcher chooses */
+function tenantKey(ir: IR): string {
+  return ir.app?.tenant ? entityByName(ir, ir.app.tenant.entity).primaryKey[0] : "id";
+}
+
+/**
+ * Where a row opens when it is shown outside its own list (a section, a dashboard's recent list, a relation's
+ * value): the first detail page over it, else the detail of the first resource page over it, else nowhere.
+ */
+export function rowTarget(ir: IR, over: (page: PageIR) => boolean): { base: string; access: RuleIR } | null {
+  const pages = ir.app?.pages ?? [];
+  const detail = pages.find(p => p.kind === "detail" && over(p));
+  if (detail) return { base: detail.path.replace(/\/:id$/, ""), access: detail.access };
+  const list = pages.find(p => p.kind === "resource" && over(p));
+  return list ? { base: list.path, access: list.access } : null;
+}
+
+/**
+ * The expression showing a column of `obj`, as `showExpr` gives it; a relation's value links to where its row
+ * opens, when the viewer may open that page. `fallback` stands in for an empty value; `inRow` keeps a click on
+ * the link from also opening the row it sits in.
+ */
+function linkedExpr(
+  ctx: Ctx,
+  entity: EntityIR,
+  col: ColumnIR,
+  obj: string,
+  includes: RelationIR[],
+  mode: "list" | "detail",
+  options: { fallback?: string; inRow?: boolean } = {}
+): string {
+  const shown = showExpr(ctx, col, obj, includes, mode);
+  const label = options.fallback ? `${shown} || ${options.fallback}` : shown;
+  const fk = entity.foreignKeys.find(f => f.column === col.name);
+  if (!fk) return label;
+  const related = entityByName(ctx.ir, fk.targetEntity);
+  if (related.primaryKey.length !== 1 || related.primaryKey[0] !== fk.targetColumn) return label;
+  const to = rowTarget(ctx.ir, p => p.entity === related.name);
+  if (!to) return label;
+  const open = rulePredicate(to.access, "user", null, identityKey(ctx.ir));
+  if (open === "false") return label;
+  ctx.imports.router.link = true;
+  use(ctx, "ui", "text");
+  const stop = options.inRow ? " onClick={event => event.stopPropagation()}" : "";
+  const link = `<Link ${ctx.target.linkAttrs(to.base, `text(${obj}.${col.name})`)} className="hover:underline"${stop}>{${label}}</Link>`;
+  const when = [...(col.nullable ? [`${obj}.${col.name} != null`] : []), ...(open === "true" ? [] : [open])];
+  return when.length ? `${when.join(" && ")} ? ${link} : ${label}` : link;
+}
+
 /** JSX for one field of the detail pane */
 function detailRow(ctx: Ctx, col: ColumnIR, includes: RelationIR[]): string {
   const label = q(humanize(col.name));
@@ -195,7 +252,7 @@ function detailRow(ctx: Ctx, col: ColumnIR, includes: RelationIR[]): string {
         </FieldRow>`;
     }
   }
-  return `        <FieldRow label=${label}>{${showExpr(ctx, col, "row", includes, "detail")} || "—"}</FieldRow>`;
+  return `        <FieldRow label=${label}>{${linkedExpr(ctx, ctx.entity, col, "row", includes, "detail", { fallback: '"—"' })}}</FieldRow>`;
 }
 
 /** Rows for relations the get operation includes that are not a column of the entity (reverse sides) */
@@ -233,9 +290,11 @@ interface FormField {
   initial: string;
   /** A resource over the relation target, when the field picks a related row */
   picker?: { resource: ResourceIR; target: EntityIR };
+  /** Names the picker component and the input ids of a form that sits beside a page's main form in one module */
+  pickerPrefix: string;
 }
 
-function formFields(ctx: Ctx, columns: ColumnIR[], entity: EntityIR | null): FormField[] {
+function formFields(ctx: Ctx, columns: ColumnIR[], entity: EntityIR | null, pickerPrefix = ""): FormField[] {
   return columns.map(col => {
     const name = col.name;
     const kind = scalar(col);
@@ -261,7 +320,7 @@ function formFields(ctx: Ctx, columns: ColumnIR[], entity: EntityIR | null): For
       );
       if (resource) picker = { resource, target };
     }
-    return { col, valueType, initial, picker };
+    return { col, valueType, initial, picker, pickerPrefix };
   });
 }
 
@@ -329,21 +388,23 @@ function fromRowExpr(ctx: Ctx, field: FormField): string {
 function inputControl(ctx: Ctx, field: FormField, required: boolean, valuesType: string): string {
   const col = field.col;
   const name = col.name;
+  // The element id; two forms on one page must not share one
+  const id = q(field.pickerPrefix ? `${field.pickerPrefix.toLowerCase()}-${name}` : name);
   const label = q(humanize(name));
   const req = required ? " required" : "";
   const kind = scalar(col);
   if (field.picker) {
     use(ctx, "ui", "FormRow");
-    return `      <FormRow label=${label} htmlFor=${q(name)}>
-        <${pickerName(field)} id=${q(name)} value={values.${name}} onChange={value => set(${q(name)}, value)} allowEmpty={${!required}} />
+    return `      <FormRow label=${label} htmlFor=${id}>
+        <${pickerName(field)} id=${id} value={values.${name}} onChange={value => set(${q(name)}, value)} allowEmpty={${!required}} />
       </FormRow>`;
   }
   if (kind === "boolean") {
     shadcn(ctx, "checkbox", "Checkbox");
     shadcn(ctx, "label", "Label");
     return `      <div className="flex items-center gap-2">
-        <Checkbox id=${q(name)} checked={values.${name}} onCheckedChange={checked => set(${q(name)}, checked)} />
-        <Label htmlFor=${q(name)}>${humanize(name)}</Label>
+        <Checkbox id=${id} checked={values.${name}} onCheckedChange={checked => set(${q(name)}, checked)} />
+        <Label htmlFor=${id}>${humanize(name)}</Label>
       </div>`;
   }
   use(ctx, "ui", "FormRow");
@@ -351,16 +412,16 @@ function inputControl(ctx: Ctx, field: FormField, required: boolean, valuesType:
     use(ctx, "ui", "FileInput");
     const t = col.type as { kind: "file"; accept?: string[] };
     const accept = t.accept ? ` accept=${q(t.accept.join(","))}` : "";
-    return `      <FormRow label=${label} htmlFor=${q(name)}>
-        <FileInput id=${q(name)} value={values.${name}} current={current?.${name}}${accept} onChange={fileId => set(${q(name)}, fileId)} />
+    return `      <FormRow label=${label} htmlFor=${id}>
+        <FileInput id=${id} value={values.${name}} current={current?.${name}}${accept} onChange={fileId => set(${q(name)}, fileId)} />
       </FormRow>`;
   }
   if (kind === "enum") {
     use(ctx, "ui", "selectClass");
     const options = enumValues(ctx, col).map(v => `          <option value=${q(v)}>${v}</option>`);
     if (col.nullable) options.unshift(`          <option value="">—</option>`);
-    return `      <FormRow label=${label} htmlFor=${q(name)}>
-        <select id=${q(name)} className={selectClass} value={values.${name}} onChange={e => set(${q(name)}, e.target.value as ${valuesType}[${q(name)}])}>
+    return `      <FormRow label=${label} htmlFor=${id}>
+        <select id=${id} className={selectClass} value={values.${name}} onChange={e => set(${q(name)}, e.target.value as ${valuesType}[${q(name)}])}>
 ${options.join("\n")}
         </select>
       </FormRow>`;
@@ -368,8 +429,8 @@ ${options.join("\n")}
   if (kind === "text" || kind === "json") {
     shadcn(ctx, "textarea", "Textarea");
     const extra = kind === "json" ? ' className="font-mono text-xs" rows={6}' : " rows={4}";
-    return `      <FormRow label=${label} htmlFor=${q(name)}>
-        <Textarea id=${q(name)}${extra} value={values.${name}} onChange={e => set(${q(name)}, e.target.value)}${req} />
+    return `      <FormRow label=${label} htmlFor=${id}>
+        <Textarea id=${id}${extra} value={values.${name}} onChange={e => set(${q(name)}, e.target.value)}${req} />
       </FormRow>`;
   }
   shadcn(ctx, "input", "Input");
@@ -384,13 +445,13 @@ ${options.join("\n")}
   else if (col.validate?.format === "url") type = "url";
   if (kind === "array") extra = ' placeholder="comma, separated"';
   if (col.maxLength && kind === "string") extra += ` maxLength={${col.maxLength}}`;
-  return `      <FormRow label=${label} htmlFor=${q(name)}>
-        <Input id=${q(name)} type=${q(type)}${extra} value={values.${name}} onChange={e => set(${q(name)}, e.target.value)}${req} />
+  return `      <FormRow label=${label} htmlFor=${id}>
+        <Input id=${id} type=${q(type)}${extra} value={values.${name}} onChange={e => set(${q(name)}, e.target.value)}${req} />
       </FormRow>`;
 }
 
 function pickerName(field: FormField): string {
-  return `${field.col.name.replace(/(^|_)(\w)/g, (_, __, c: string) => c.toUpperCase())}Picker`;
+  return `${field.pickerPrefix}${field.col.name.replace(/(^|_)(\w)/g, (_, __, c: string) => c.toUpperCase())}Picker`;
 }
 
 function pickerComponent(ctx: Ctx, field: FormField): string {
@@ -440,6 +501,8 @@ function formCode(
     updateFields?: FormField[];
     fromRow?: boolean;
     currentType?: string;
+    /** Create fields the caller sends itself, from the context its list is filtered by; they are not in the form */
+    presets?: string[];
   }
 ): string {
   use(ctx, "react", "FormEvent");
@@ -474,7 +537,7 @@ ${empty}
   if (options.createType && options.createFields)
     parts.push(`const ${prefix.toUpperCase()}_CREATE: readonly ${prefix}Field[] = [${options.createFields.map(f => q(f.col.name)).join(", ")}];
 
-function to${prefix}CreateInput(v: ${ValuesT}): ${options.createType} {
+function to${prefix}CreateInput(v: ${ValuesT}): ${options.presets?.length ? `Omit<${options.createType}, ${options.presets.map(q).join(" | ")}>` : options.createType} {
   return {
 ${options.createFields.map(f => `    ${f.col.name}: ${convert(f, "create")}`).join(",\n")}
   };
@@ -556,7 +619,9 @@ function ${prefix}Form({
 
 /** The list query input and its React state for a table page's controls */
 function filterControls(ctx: Ctx, list: ListOp): { stateType: string; controls: string[]; toInput: string } {
-  const entries = list.filters.map(f => {
+  // A field the page's own filter fixes has no control: the fixed value would win over it
+  const offered = list.filters.filter(f => !(f in (ctx.page.filter ?? {})));
+  const entries = offered.map(f => {
     const col = ctx.entity.columns.find(c => c.name === f)!;
     const kind = scalar(col);
     let control: string;
@@ -606,7 +671,7 @@ ${enumValues(ctx, col)
     return { f, control, value };
   });
   return {
-    stateType: `{ ${list.filters.map(f => `${f}?: string`).join("; ")} }`,
+    stateType: `{ ${offered.map(f => `${f}?: string`).join("; ")} }`,
     controls: entries.map(e => e.control),
     toInput: entries.map(e => `${e.f}: ${e.value}`).join(", ")
   };
@@ -622,9 +687,12 @@ export function resourcePageFile(ir: IR, page: PageIR, target: WebTarget, conv: 
   if (!list || !get)
     throw new Error(`page ${page.name}: resource ${resource.name} must allow list and get (its read rule is none)`);
   const create = ops.find(o => o.kind === "create") as CreateOp | undefined;
-  const update = ops.find(o => o.kind === "update") as UpdateOp | undefined;
-  const remove = ops.find(o => o.kind === "delete") as DeleteOp | undefined;
-  const rowActions = actionsOf(ir, resource.name).filter(a => a.rule.kind !== "none" && a.scope === "row");
+  // A detail page that takes over this page's detail owns the edit form, delete and the row actions
+  const taken = Boolean(page.detailPage);
+  const updateOp = ops.find(o => o.kind === "update") as UpdateOp | undefined;
+  const update = taken ? undefined : updateOp;
+  const remove = taken ? undefined : (ops.find(o => o.kind === "delete") as DeleteOp | undefined);
+  const rowActions = taken ? [] : actionsOf(ir, resource.name).filter(a => a.rule.kind !== "none" && a.scope === "row");
   const collectionActions = actionsOf(ir, resource.name).filter(
     a => a.rule.kind !== "none" && a.scope === "collection"
   );
@@ -639,13 +707,14 @@ export function resourcePageFile(ir: IR, page: PageIR, target: WebTarget, conv: 
     pk: singlePrimaryKey(entity),
     intKey: isIntegerKey(singlePrimaryKey(entity)),
     imports: {
-      router: { link: true, params: true, outlet: target.kind === "tanstack" },
+      router: { link: true, params: !taken, outlet: target.kind === "tanstack" },
       query: new Set(["useQuery"]),
       react: new Set(["useState"]),
       lucide: new Set(),
       ui: new Set(),
       shadcn: new Map(),
-      client: new Set(["client", "sessionUser", "Inputs"])
+      client: new Set(["client", "sessionUser", "Inputs"]),
+      tenant: new Set()
     }
   };
   if (target.kind === "next") use(ctx, "react", "ReactNode");
@@ -656,7 +725,10 @@ export function resourcePageFile(ir: IR, page: PageIR, target: WebTarget, conv: 
   const one = entityTitle(entity);
   const listIncludes = list.include.map(name => entity.relations.find(r => r.name === name)!);
   const getIncludes = get.include.map(name => entity.relations.find(r => r.name === name)!);
-  const idPk = ir.auth ? entityByName(ir, ir.auth.identity).primaryKey[0] : "id";
+  const idPk = identityKey(ir);
+  // The context a filtered list sits in is sent with a create opened from it
+  const presets = presetsOf(ir, page.filter, create);
+  const preset = new Set(presets.map(p => p.field));
   const mutations = Boolean(create || update || remove || rowActions.length || collectionActions.length);
   if (mutations) {
     use(ctx, "query", "useMutation");
@@ -710,30 +782,19 @@ function idOf(raw: string) {
   if (perms.length) sections.push(perms.join("\n\n"));
   if (page.filter) {
     use(ctx, "client", "SessionUser");
-    sections.push(fixedFilterDecl(page.filter, target, idPk));
+    if (usesContext(page.filter, "tenant")) use(ctx, "tenant", "Tenant");
+    sections.push(fixedFilterDecl(page.filter, target, idPk, tenantKey(ir)));
   }
+  const scope = tenantScope(ctx, page.filter);
   const gated = page.access.kind !== "public";
-  if (gated) {
-    use(ctx, "client", "SessionUser");
-    use(ctx, "client", "client");
-    use(ctx, "client", "sessionUser");
-    use(ctx, "query", "useQuery");
-    use(ctx, "react", "ReactNode");
-    use(ctx, "ui", "PaneSkeleton");
-    ctx.imports.router.link = true;
-    shadcn(ctx, "card", "Card");
-    shadcn(ctx, "card", "CardContent");
-    shadcn(ctx, "card", "CardDescription");
-    shadcn(ctx, "card", "CardHeader");
-    shadcn(ctx, "card", "CardTitle");
-    shadcn(ctx, "button", "buttonVariants");
-    sections.push(accessGateDecl(page.access, target, idPk));
-  }
+  if (gated) sections.push(gate(ctx, page.access));
 
   // The row form
   if (create || update) {
     use(ctx, "client", "Inputs");
-    const names = entity.columns.map(c => c.name).filter(n => create?.fields.includes(n) || update?.fields.includes(n));
+    const names = entity.columns
+      .map(c => c.name)
+      .filter(n => (create?.fields.includes(n) && !preset.has(n)) || update?.fields.includes(n));
     const fields = formFields(
       ctx,
       names.map(n => entity.columns.find(c => c.name === n)!),
@@ -742,7 +803,10 @@ function idOf(raw: string) {
     sections.push(
       formCode(ctx, Comp, fields, {
         createType: create ? `Input<"create">` : undefined,
-        createFields: create ? fields.filter(f => create.fields.includes(f.col.name)) : undefined,
+        createFields: create
+          ? fields.filter(f => create.fields.includes(f.col.name) && !preset.has(f.col.name))
+          : undefined,
+        presets: [...preset],
         updateType: update ? `Input<"update">["data"]` : undefined,
         updateFields: update ? fields.filter(f => update.fields.includes(f.col.name)) : undefined,
         fromRow: Boolean(update)
@@ -820,7 +884,7 @@ function idOf(raw: string) {
   use(ctx, "ui", "PaneHeader");
   use(ctx, "ui", "ErrorNote");
   use(ctx, "ui", "EmptyPane");
-  const sessionQuery = `useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() })`;
+  const sessionQuery = SESSION_QUERY;
   const { queryOpts, fixedSpread } = listQueryOptions(page);
   const listQueryDecl = (inputExpr: string) =>
     `useQuery({ queryKey: [...KEY, "list", ${inputExpr}], queryFn: () => client.${R}.list(${inputExpr})${queryOpts} })`;
@@ -836,7 +900,7 @@ function idOf(raw: string) {
   void setOpenAction;
   const session = ${sessionQuery};
   const user = sessionUser(session.data);
-  void user;
+  void user;${scope.decl}
   const input = { page, page_size: PAGE_SIZE${fixedSpread} } as Inputs[${q(R)}]["list"];
   const list = ${listQueryDecl("input")};
   ${target.activeDecl}${mutations ? "\n  const queryClient = useQueryClient();" : ""}
@@ -850,7 +914,7 @@ ${collectionActionDecls.join("\n")}
 ${collectionActionForms.join("\n")}
 ${collectionErrors.join("\n")}
         <div className="min-h-0 flex-1 overflow-y-auto">
-          {list.isPending ? (
+          {${scope.none("          ")}list.isPending ? (
             <ListSkeleton />
           ) : list.error ? (
             <ErrorNote error={list.error} className="m-4" />
@@ -899,23 +963,42 @@ export function ${Comp}Index() {
       );
     else
       sections.push(
-        boardIndex(ctx, list, update!, headerExtras, collectionActionDecls, collectionActionForms, collectionErrors)
+        boardIndex(ctx, list, updateOp!, headerExtras, collectionActionDecls, collectionActionForms, collectionErrors)
       );
   }
 
   if (create) {
     use(ctx, "ui", "Pane");
+    const presetTenant = presets.some(p => p.context === "tenant");
+    const presetActor = presets.some(p => p.context === "actor");
+    if (presetTenant) {
+      use(ctx, "tenant", "useTenant");
+      use(ctx, "tenant", "NoTenant");
+      use(ctx, "ui", "PaneSkeleton");
+    }
     const back = layout === "split" ? "" : backLink(ctx);
     sections.push(`export function ${Comp}New() {
   ${target.navigateDecl}
-  const queryClient = useQueryClient();
+  const queryClient = useQueryClient();${presetTenant ? "\n  const { tenant, loading: tenantLoading } = useTenant();" : ""}${
+    presetActor
+      ? `
+  const session = ${sessionQuery};
+  const user = sessionUser(session.data);`
+      : ""
+  }
   const createRow = useMutation({
     mutationFn: (input: Input<"create">) => client.${R}.create(input),
     onSuccess: async row => {
       await queryClient.invalidateQueries({ queryKey: KEY });
       await ${target.navigateTo(page.path, `text(row.${pk})`)};
     }
-  });
+  });${
+    presetTenant
+      ? `
+  if (tenantLoading) return <PaneSkeleton />;
+  if (tenant === null) return <NoTenant />;`
+      : ""
+  }
   return (
     <Pane title=${q(`New ${one.toLowerCase()}`)}${back ? ` actions={${back}}` : ""}>
       <${Comp}Form
@@ -924,20 +1007,161 @@ export function ${Comp}Index() {
         submitLabel="Create"
         pending={createRow.isPending}
         error={createRow.error}
-        onSubmit={values => createRow.mutate(to${Comp}CreateInput(values))}
+        onSubmit={values => createRow.mutate(${presetInput(presets, `to${Comp}CreateInput(values)`, `Input<"create">`)})}
       />
     </Pane>
   );
 }`);
   }
 
-  // Detail
+  // Detail: the page's own, unless a detail page takes it over
+  if (!taken)
+    sections.push(
+      detailComponent(ctx, {
+        name: `${Comp}Detail`,
+        form: Comp,
+        base: page.path,
+        listPath: page.path,
+        back: layout !== "split",
+        fields: page.fields,
+        get,
+        update,
+        remove,
+        rowActions,
+        queryClient: mutations,
+        usesRow,
+        reverse: true,
+        sections: []
+      })
+    );
+
+  const body = sections.join("\n\n");
+  const shape = layout === "split" ? "a master list" : layout === "table" ? "a table" : "a board";
+  const detail = taken
+    ? `; the ${page.detailPage} page shows the selected one`
+    : " and a detail pane for the selected one";
+  const source = `${conv.header(`The ${title} page: ${shape} of ${entity.name} rows${detail}.`)}
+${pageImports(ctx).join("\n")}
+
+${body}
+`;
+  return gated ? guardExports(source, [`${Comp}Layout`, `${Comp}Index`, `${Comp}New`, `${Comp}Detail`]) : source;
+}
+
+function backLink(ctx: Ctx, path: string = ctx.page.path): string {
+  use(ctx, "lucide", "ArrowLeft");
+  shadcn(ctx, "button", "buttonVariants");
+  ctx.imports.router.link = true;
+  return `<Link ${ctx.target.linkAttrs(path)} className={buttonVariants({ variant: "ghost", size: "icon-sm" })} aria-label="Back">
+            <ArrowLeft />
+          </Link>`;
+}
+
+/** The session query every page component reads the signed-in user from */
+const SESSION_QUERY = `useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() })`;
+
+/** The access gate of a page that is not public, with what it imports */
+function gate(ctx: Ctx, access: RuleIR): string {
+  use(ctx, "client", "SessionUser");
+  use(ctx, "client", "client");
+  use(ctx, "client", "sessionUser");
+  use(ctx, "query", "useQuery");
+  use(ctx, "react", "ReactNode");
+  use(ctx, "ui", "PaneSkeleton");
+  ctx.imports.router.link = true;
+  shadcn(ctx, "card", "Card");
+  shadcn(ctx, "card", "CardContent");
+  shadcn(ctx, "card", "CardDescription");
+  shadcn(ctx, "card", "CardHeader");
+  shadcn(ctx, "card", "CardTitle");
+  shadcn(ctx, "button", "buttonVariants");
+  return accessGateDecl(access, ctx.target, identityKey(ctx.ir));
+}
+
+/** The import lines of a page module, from what its code used */
+function pageImports(ctx: Ctx): string[] {
+  const imports: string[] = ['"use client";'];
+  imports.push(`import { ${[...ctx.imports.query].sort().join(", ")} } from "@tanstack/react-query";`);
+  imports.push(...ctx.target.routerImports(ctx.imports.router));
+  if (ctx.imports.lucide.size)
+    imports.push(`import { ${[...ctx.imports.lucide].sort().join(", ")} } from "lucide-react";`);
+  const react = [...ctx.imports.react].sort();
+  const reactValues = react.filter(n => n !== "FormEvent" && n !== "ReactNode");
+  const reactTypes = react.filter(n => n === "FormEvent" || n === "ReactNode");
+  if (react.length)
+    imports.push(`import { ${[...reactValues, ...reactTypes.map(t => `type ${t}`)].join(", ")} } from "react";`);
+  for (const [file, names] of [...ctx.imports.shadcn.entries()].sort(([a], [b]) => a.localeCompare(b)))
+    imports.push(`import { ${[...names].sort().join(", ")} } from "@/components/ui/${file}";`);
+  const ui = new Set(ctx.imports.ui);
+  if (ui.delete("cn")) imports.push(`import { cn } from "@/lib/utils";`);
+  const clientNames = [...ctx.imports.client].sort();
+  const clientValues = clientNames.filter(n => !["Inputs", "Outputs", "SessionUser"].includes(n));
+  const clientTypes = ["Inputs", "Outputs", "SessionUser"].filter(n => clientNames.includes(n) || n === "Outputs");
+  imports.push(
+    `import { ${clientValues.join(", ")}, ${clientTypes.map(t => `type ${t}`).join(", ")} } from "../client";`
+  );
+  if (ctx.imports.tenant.size) {
+    const names = [...ctx.imports.tenant].sort();
+    const specifiers = [
+      ...names.filter(n => n !== "Tenant"),
+      ...names.filter(n => n === "Tenant").map(t => `type ${t}`)
+    ];
+    imports.push(`import { ${specifiers.join(", ")} } from "../tenant";`);
+  }
+  imports.push(`import { ${[...ui].sort().join(", ")} } from "../ui";`);
+  return imports;
+}
+
+/** What a detail component is built from: the generated detail of a resource page, or a detail page */
+interface DetailParts {
+  /** The exported component */
+  name: string;
+  /** The prefix of the row form and of the row action forms */
+  form: string;
+  /** The path the row's address hangs off: `<base>/:id` */
+  base: string;
+  /** The route the address is read from on TanStack, when it is not `<base>/$id` */
+  routeId?: string;
+  /** The list the row belongs to: where delete returns and the back link points. A page of its own has none. */
+  listPath: string | null;
+  back: boolean;
+  fields: string[];
+  get: GetOp;
+  update?: UpdateOp;
+  remove?: DeleteOp;
+  rowActions: ActionIR[];
+  /** Whether the component declares the query client */
+  queryClient: boolean;
+  /** Whether a permission reads the row */
+  usesRow: boolean;
+  /** Whether the reverse relations the get includes are listed; a detail page's sections replace them */
+  reverse: boolean;
+  /** The JSX of the sections under the row */
+  sections: string[];
+  /** Seconds between refetches of the row */
+  refresh?: number;
+}
+
+/** The component that shows one row: its title, fields, edit form, delete and row actions, then its sections */
+function detailComponent(ctx: Ctx, d: DetailParts): string {
+  const { ir, entity, target } = ctx;
+  const R = ctx.resource.name;
+  const pk = ctx.pk.name;
+  const one = entityTitle(entity);
+  const Form = d.form;
+  const { update, remove, rowActions } = d;
+  const includes = d.get.include.map(name => entity.relations.find(r => r.name === name)!);
   use(ctx, "ui", "Pane");
   use(ctx, "ui", "PaneSkeleton");
-  const detailFields = page.fields.map(name => entity.columns.find(c => c.name === name)!);
-  const rows = [...detailFields.map(c => detailRow(ctx, c, getIncludes)), ...reverseRows(ctx, getIncludes)];
+  use(ctx, "ui", "RowError");
+  use(ctx, "ui", "text");
+  const detailFields = d.fields.map(name => entity.columns.find(c => c.name === name)!);
+  const rows = [
+    ...detailFields.map(c => detailRow(ctx, c, includes)),
+    ...(d.reverse ? reverseRows(ctx, includes) : [])
+  ];
   const actions: string[] = [];
-  if (layout !== "split") actions.push(`          ${backLink(ctx)}`);
+  if (d.back && d.listPath !== null) actions.push(`          ${backLink(ctx, d.listPath)}`);
   for (const a of rowActions) {
     shadcn(ctx, "button", "Button");
     const Pascal = toPascalCase(a.name);
@@ -965,6 +1189,7 @@ export function ${Comp}Index() {
   }
   if (remove) {
     shadcn(ctx, "button", "Button");
+    ctx.imports.router.navigate = true;
     actions.push(`          {canDelete(user, row) ? (
             <Button
               variant="destructive"
@@ -978,7 +1203,15 @@ export function ${Comp}Index() {
             </Button>
           ) : null}`);
   }
-  if (update || rowActions.length) use(ctx, "react", "useEffect");
+  if (update || rowActions.length) {
+    use(ctx, "react", "useEffect");
+    use(ctx, "react", "useState");
+  }
+  if (update || remove || rowActions.length) {
+    use(ctx, "client", "Inputs");
+    use(ctx, "query", "useMutation");
+  }
+  if (d.queryClient) use(ctx, "query", "useQueryClient");
   const rowActionDecls = rowActions.map(
     a => `  const ${a.name}Action = useMutation({
     mutationFn: (input: Inputs[${q(R)}][${q(a.name)}]) => client.${R}.${a.name}(input),
@@ -988,11 +1221,10 @@ export function ${Comp}Index() {
     }
   });`
   );
-  if (rowActions.length) use(ctx, "client", "Inputs");
   const rowActionForms = rowActions
     .filter(a => a.input.length)
     .map(a => {
-      const prefix = `${Comp}${toPascalCase(a.name)}`;
+      const prefix = `${Form}${toPascalCase(a.name)}`;
       return `      {openAction === ${q(a.name)} ? (
         <div className="mb-6 rounded-md border border-border p-4">
           <${prefix}Form fields={${prefix.toUpperCase()}_CREATE} initial={EMPTY_${prefix.toUpperCase()}} submitLabel=${q(toTitleCase(a.name))} pending={${a.name}Action.isPending} error={${a.name}Action.error} onCancel={() => setOpenAction(null)} onSubmit={values => ${a.name}Action.mutate({ id, ...to${prefix}CreateInput(values) })} />
@@ -1002,16 +1234,17 @@ export function ${Comp}Index() {
   const rowActionErrors = rowActions
     .filter(a => !a.input.length)
     .map(a => `      <ErrorNote error={${a.name}Action.error} className="mb-4" />`);
+  if (rowActionErrors.length) use(ctx, "ui", "ErrorNote");
   const detailBody = update
     ? `      {editing ? (
-        <${Comp}Form
-          fields={${Comp.toUpperCase()}_UPDATE}
-          initial={${Comp.charAt(0).toLowerCase()}${Comp.slice(1)}FromRow(row)}${entity.columns.some(c => c.type.kind === "file" && update.fields.includes(c.name)) ? "\n          current={row}" : ""}
+        <${Form}Form
+          fields={${Form.toUpperCase()}_UPDATE}
+          initial={${Form.charAt(0).toLowerCase()}${Form.slice(1)}FromRow(row)}${entity.columns.some(c => c.type.kind === "file" && update.fields.includes(c.name)) ? "\n          current={row}" : ""}
           submitLabel="Save"
           pending={updateRow.isPending}
           error={updateRow.error}
           onCancel={() => setEditing(false)}
-          onSubmit={values => updateRow.mutate({ id, data: to${Comp}UpdateInput(values) })}
+          onSubmit={values => updateRow.mutate({ id, data: to${Form}UpdateInput(values) })}
         />
       ) : (
         <dl className="grid gap-3">
@@ -1021,10 +1254,18 @@ ${rows.join("\n")}
     : `      <dl className="grid gap-3">
 ${rows.join("\n")}
       </dl>`;
-  sections.push(`export function ${Comp}Detail() {
-  ${target.useIdParam(page.path)}
+  // The API's answer decides what the address shows: a missing or hidden row, a refusal, or a sign-in
+  let signIn = "";
+  if (ir.auth) {
+    ctx.imports.router.link = true;
+    shadcn(ctx, "button", "buttonVariants");
+    signIn = ` signIn={<Link ${target.linkAttrs("/login")} className={buttonVariants()}>Sign in</Link>}`;
+  }
+  const refetch = d.refresh ? `, refetchInterval: ${d.refresh * 1000}` : "";
+  return `export function ${d.name}() {
+  ${target.useIdParam(d.base, d.routeId)}
   const id = idOf(rawId);${remove ? `\n  ${target.navigateDecl}` : ""}${
-    mutations
+    d.queryClient
       ? `
   const queryClient = useQueryClient();`
       : ""
@@ -1045,8 +1286,8 @@ ${rows.join("\n")}
   }, [id]);`
       : ""
   }
-  const query = useQuery({ queryKey: [...KEY, "get", id], queryFn: () => client.${R}.get({ id }) });
-  const session = ${sessionQuery};
+  const query = useQuery({ queryKey: [...KEY, "get", id], queryFn: () => client.${R}.get({ id })${refetch} });
+  const session = ${SESSION_QUERY};
   const user = sessionUser(session.data);
   void user;${
     update
@@ -1066,18 +1307,18 @@ ${rows.join("\n")}
     mutationFn: (input: Inputs[${q(R)}]["delete"]) => client.${R}.delete(input),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: KEY });
-      await ${target.navigateTo(page.path)};
+      await ${target.navigateTo(d.listPath ?? "/")};
     }
   });`
       : ""
   }
 ${rowActionDecls.join("\n")}
   if (query.isPending) return <PaneSkeleton />;
-  if (query.error) return <ErrorNote error={query.error} className="m-6" />;
-  const row: Detail = query.data;${usesRow ? "" : "\n  void row;"}
+  if (query.error) return <RowError error={query.error}${signIn} />;
+  const row: Detail = query.data;${d.usesRow ? "" : "\n  void row;"}
   return (
     <Pane
-      title={${showExpr(ctx, entity.columns.find(c => c.name === entity.display)!, "row", getIncludes, "detail")} || ${q(`${one} `)} + text(row.${pk})}${
+      title={${showExpr(ctx, entity.columns.find(c => c.name === entity.display)!, "row", includes, "detail")} || ${q(`${one} `)} + text(row.${pk})}${
         actions.length
           ? `
       actions={
@@ -1090,54 +1331,10 @@ ${actions.join("\n")}
     >
 ${rowActionForms.join("\n")}
 ${rowActionErrors.join("\n")}
-${detailBody}
+${detailBody}${d.sections.map(s => `\n${s}`).join("")}
     </Pane>
   );
-}`);
-  if (update || remove) use(ctx, "client", "Inputs");
-  if (!mutations) {
-    // nothing extra
-  }
-
-  // Imports
-  const imports: string[] = ['"use client";'];
-  imports.push(`import { ${[...ctx.imports.query].sort().join(", ")} } from "@tanstack/react-query";`);
-  imports.push(...target.routerImports(ctx.imports.router));
-  if (ctx.imports.lucide.size)
-    imports.push(`import { ${[...ctx.imports.lucide].sort().join(", ")} } from "lucide-react";`);
-  const react = [...ctx.imports.react].sort();
-  const reactValues = react.filter(n => n !== "FormEvent" && n !== "ReactNode");
-  const reactTypes = react.filter(n => n === "FormEvent" || n === "ReactNode");
-  imports.push(`import { ${[...reactValues, ...reactTypes.map(t => `type ${t}`)].join(", ")} } from "react";`);
-  for (const [file, names] of [...ctx.imports.shadcn.entries()].sort(([a], [b]) => a.localeCompare(b)))
-    imports.push(`import { ${[...names].sort().join(", ")} } from "@/components/ui/${file}";`);
-  if (ctx.imports.ui.has("cn")) {
-    ctx.imports.ui.delete("cn");
-    imports.push(`import { cn } from "@/lib/utils";`);
-  }
-  const clientNames = [...ctx.imports.client].sort();
-  const clientValues = clientNames.filter(n => !["Inputs", "Outputs", "SessionUser"].includes(n));
-  const clientTypes = ["Inputs", "Outputs", "SessionUser"].filter(n => clientNames.includes(n) || n === "Outputs");
-  imports.push(
-    `import { ${clientValues.join(", ")}, ${clientTypes.map(t => `type ${t}`).join(", ")} } from "../client";`
-  );
-  imports.push(`import { ${[...ctx.imports.ui].sort().join(", ")} } from "../ui";`);
-
-  const body = sections.join("\n\n");
-  const source = `${conv.header(`The ${title} page: ${layout === "split" ? "a master list" : layout === "table" ? "a table" : "a board"} of ${entity.name} rows and a detail pane for the selected one.`)}
-${imports.join("\n")}
-
-${body}
-`;
-  return gated ? guardExports(source, [`${Comp}Layout`, `${Comp}Index`, `${Comp}New`, `${Comp}Detail`]) : source;
-}
-
-function backLink(ctx: Ctx): string {
-  use(ctx, "lucide", "ArrowLeft");
-  shadcn(ctx, "button", "buttonVariants");
-  return `<Link ${ctx.target.linkAttrs(ctx.page.path)} className={buttonVariants({ variant: "ghost", size: "icon-sm" })} aria-label="Back">
-            <ArrowLeft />
-          </Link>`;
+}`;
 }
 
 /** The index of a table page: filters, search, sortable columns, paging, row click */
@@ -1157,7 +1354,8 @@ function tableIndex(
   const columns = page.columns.map(name => entity.columns.find(c => c.name === name)!);
   const listIncludes = list.include.map(name => entity.relations.find(r => r.name === name)!);
   const filters = filterControls(ctx, list);
-  const { queryOpts } = listQueryOptions(page);
+  const { queryOpts, fixedSpread } = listQueryOptions(page);
+  const scope = tenantScope(ctx, page.filter);
   shadcn(ctx, "table", "Table");
   shadcn(ctx, "table", "TableBody");
   shadcn(ctx, "table", "TableCell");
@@ -1203,10 +1401,10 @@ ${
   };
   const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
   const user = sessionUser(session.data);
-  void user;
+  void user;${scope.decl}
   const input = {
     page,
-    page_size: PAGE_SIZE${list.sortable.length ? ",\n    sort" : ""}${list.search.length ? ",\n    q: q || undefined" : ""}${filters.toInput ? `,\n    ${filters.toInput}` : ""}${page.filter ? ",\n    ...fixedFilter(user)" : ""}
+    page_size: PAGE_SIZE${list.sortable.length ? ",\n    sort" : ""}${list.search.length ? ",\n    q: q || undefined" : ""}${filters.toInput ? `,\n    ${filters.toInput}` : ""}${fixedSpread.replace(", ", ",\n    ")}
   } as Inputs[${q(R)}]["list"];
   const list = useQuery({ queryKey: [...KEY, "list", input], queryFn: () => client.${R}.list(input)${queryOpts} });
   ${target.navigateDecl}${mutations ? "\n  const queryClient = useQueryClient();" : ""}
@@ -1219,7 +1417,7 @@ ${actionDecls.join("\n")}
 ${actionForms.join("\n")}
 ${actionErrors.join("\n")}
       ${
-        list.search.length || list.filters.length
+        list.search.length || filters.controls.length
           ? `<div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2">
 ${list.search.length ? `          <Input type="search" placeholder="Search" className="w-56" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />` : ""}
 ${filters.controls.join("\n")}
@@ -1227,7 +1425,7 @@ ${filters.controls.join("\n")}
           : ""
       }
       <div className="min-h-0 flex-1 overflow-auto px-4">
-        {list.isPending ? (
+        {${scope.none("        ")}list.isPending ? (
           <ListSkeleton />
         ) : list.error ? (
           <ErrorNote error={list.error} className="m-4" />
@@ -1272,6 +1470,7 @@ function boardIndex(
   const pk = ctx.pk.name;
   const groupBy = page.groupBy!;
   const { queryOpts, fixedSpread } = listQueryOptions(page);
+  const scope = tenantScope(ctx, page.filter);
   const groupCol = entity.columns.find(c => c.name === groupBy)!;
   const values = enumValues(ctx, groupCol);
   const columns = page.columns.map(name => entity.columns.find(c => c.name === name)!).filter(c => c.name !== groupBy);
@@ -1293,7 +1492,7 @@ type Column = (typeof COLUMNS)[number];
 export function ${Comp}Index() {
   const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
   const user = sessionUser(session.data);
-  void user;
+  void user;${scope.decl}
   const boardInput = { ...BOARD_INPUT${fixedSpread} } as Inputs[${q(R)}]["list"];
   const boardKey = [...KEY, "list", boardInput] as const;
   const list = useQuery({ queryKey: boardKey, queryFn: () => client.${R}.list(boardInput)${queryOpts} });
@@ -1330,7 +1529,7 @@ ${actionDecls.join("\n")}
 ${actionForms.join("\n")}
 ${actionErrors.join("\n")}
       <ErrorNote error={move.error ?? list.error} className="m-4" />
-      {list.isPending ? (
+      {${scope.none("      ")}list.isPending ? (
         <ListSkeleton />
       ) : (
         <div className="flex min-h-0 flex-1 gap-4 overflow-x-auto p-4">
@@ -1382,6 +1581,307 @@ ${actionErrors.join("\n")}
 }`;
 }
 
+/**
+ * A section of a detail page: a list of another resource filtered by the row on the page, with the pager tables
+ * use and, when the section asks for it, the resource's create form. Null when nobody may list the resource.
+ */
+function sectionCode(ctx: Ctx, section: SectionIR, prefix: string): { decls: string; jsx: string } | null {
+  const { ir, target, page } = ctx;
+  const resource = ir.resources.find(r => r.name === section.resource)!;
+  const entity = entityByName(ir, resource.entity);
+  const ops = resource.operations.filter(o => o.rule.kind !== "none");
+  const list = ops.find(o => o.kind === "list") as ListOp | undefined;
+  if (!list) return null;
+  const create = section.create ? (ops.find(o => o.kind === "create") as CreateOp | undefined) : undefined;
+  const S = resource.name;
+  const idPk = identityKey(ir);
+  const includes = list.include.map(name => entity.relations.find(r => r.name === name)!);
+  const columns = section.columns.map(name => entity.columns.find(c => c.name === name)!);
+  const key = entity.primaryKey.length === 1 ? entity.primaryKey[0] : null;
+  const byTenant = usesContext(section.filter, "tenant");
+  // Who may call the list at all; the API has the last word, so a refusal hides the section too
+  const allowed = rulePredicate(list.rule, "user", null, idPk);
+  // Where a row opens: the first detail page over the resource, else the first resource page's detail
+  const to = key ? rowTarget(ir, p => p.resource === section.resource) : null;
+  const openWhen = to ? rulePredicate(to.access, "user", null, idPk) : "false";
+  const opens = to !== null && openWhen !== "false";
+  const presets = presetsOf(ir, section.filter, create);
+  const preset = new Set(presets.map(p => p.field));
+
+  use(ctx, "react", "useState");
+  use(ctx, "query", "useQuery");
+  use(ctx, "client", "Inputs");
+  use(ctx, "client", "SessionUser");
+  use(ctx, "client", "errorStatus");
+  use(ctx, "ui", "ListSkeleton");
+  use(ctx, "ui", "ErrorNote");
+  use(ctx, "ui", "Pagination");
+  use(ctx, "ui", "text");
+  for (const part of ["Table", "TableBody", "TableCell", "TableHead", "TableHeader", "TableRow"])
+    shadcn(ctx, "table", part);
+  if (opens) ctx.imports.router.navigate = true;
+  if (byTenant) use(ctx, "tenant", "useTenant");
+
+  const decls: string[] = [];
+  if (create) {
+    use(ctx, "query", "useMutation");
+    use(ctx, "query", "useQueryClient");
+    decls.push(
+      `function canCreate${prefix}(user: SessionUser | null): boolean {\n  return ${rulePredicate(create.rule, "user", null, idPk)};\n}`
+    );
+    const fields = formFields(
+      ctx,
+      entity.columns.filter(c => create.fields.includes(c.name) && !preset.has(c.name)),
+      entity,
+      prefix
+    );
+    decls.push(
+      formCode(ctx, prefix, fields, {
+        createType: `Inputs[${q(S)}]["create"]`,
+        createFields: fields,
+        presets: [...preset],
+        currentType: "never"
+      })
+    );
+  }
+
+  const input = [
+    "page",
+    `page_size: ${section.limit}`,
+    ...(section.order ? [`sort: ${q(`${section.order[0]}:${section.order[1]}`)}`] : []),
+    ...Object.entries(section.filter).map(([k, v]) => `${k}: ${fixedValue(v, target, "user", idPk, tenantKey(ir))}`)
+  ];
+  const queryOpts = `${enabledOpt(section.filter, allowed === "true" ? [] : ["allowed"])}${
+    page.refresh ? `, refetchInterval: ${page.refresh * 1000}` : ""
+  }`;
+  const go = to && key ? target.navigateTo(to.base, `text(row.${key})`) : "";
+  const rowAttrs = !opens
+    ? ""
+    : openWhen === "true"
+      ? ` className="cursor-pointer" onClick={() => ${go}}`
+      : ` className={opens ? "cursor-pointer" : undefined} onClick={opens ? () => ${go} : undefined}`;
+  const heads = columns.map(c => `              <TableHead>${humanize(c.name)}</TableHead>`);
+  const cells = columns.map(
+    c =>
+      `                <TableCell>{${linkedExpr(ctx, entity, c, "row", includes, "list", { inRow: opens })}}</TableCell>`
+  );
+  const P = prefix.toUpperCase();
+  const sent = presetInput(presets, `to${prefix}CreateInput(values)`, `Inputs[${q(S)}]["create"]`);
+  decls.push(`/** ${section.title}: the ${S} of the row on the page */
+function ${prefix}Section({ id, user }: { id: ReturnType<typeof idOf>; user: SessionUser | null }) {
+  const [page, setPage] = useState(1);${
+    create
+      ? `
+  const [formKey, setFormKey] = useState(0);
+  const queryClient = useQueryClient();`
+      : ""
+  }${opens ? `\n  ${target.navigateDecl}` : ""}${
+    byTenant ? "\n  const { tenant, loading: tenantLoading } = useTenant();" : ""
+  }${allowed === "true" ? "" : `\n  const allowed = ${allowed};`}${
+    opens && openWhen !== "true" ? `\n  const opens = ${openWhen};` : ""
+  }
+  const input = { ${input.join(", ")} } as Inputs[${q(S)}]["list"];
+  const list = useQuery({ queryKey: [${q(S)}, "list", input], queryFn: () => client.${S}.list(input)${queryOpts} });${
+    create
+      ? `
+  const createRow = useMutation({
+    mutationFn: (input: Inputs[${q(S)}]["create"]) => client.${S}.create(input),
+    onSuccess: async () => {
+      setFormKey(current => current + 1);
+      await queryClient.invalidateQueries({ queryKey: [${q(S)}] });
+    }
+  });`
+      : ""
+  }
+  const status = errorStatus(list.error);
+  if (${allowed === "true" ? "" : "!allowed || "}status === 401 || status === 403${byTenant ? " || (!tenantLoading && tenant === null)" : ""}) return null;
+  return (
+    <section className="mt-8 space-y-3">
+      <h2 className="text-sm font-semibold">
+        {${q(section.title)}}
+        {list.data ? <span className="ml-2 font-normal text-muted-foreground">{list.data.page.total}</span> : null}
+      </h2>
+      {list.isPending ? (
+        <ListSkeleton />
+      ) : list.error ? (
+        <ErrorNote error={list.error} />
+      ) : list.data.data.length === 0 ? (
+        <p className="text-sm text-muted-foreground">${`No ${section.title.toLowerCase()} yet.`}</p>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+${heads.join("\n")}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {list.data.data.map((row${key ? "" : ", index"}) => (
+              <TableRow key={${key ? `text(row.${key})` : "index"}}${rowAttrs}>
+${cells.join("\n")}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+      {list.data ? <Pagination page={page} pageSize={${section.limit}} total={list.data.page.total} onChange={setPage} /> : null}${
+        create
+          ? `
+      {canCreate${prefix}(user) ? (
+        <${prefix}Form
+          key={formKey}
+          fields={${P}_CREATE}
+          initial={EMPTY_${P}}
+          submitLabel="Add"
+          pending={createRow.isPending}
+          error={createRow.error}
+          onSubmit={values => createRow.mutate(${sent})}
+        />
+      ) : null}`
+          : ""
+      }
+    </section>
+  );
+}`);
+  return {
+    decls: decls.join("\n\n"),
+    jsx: `      <${prefix}Section key={text(row.${ctx.pk.name})} id={id} user={user} />`
+  };
+}
+
+/** generated/app/pages/<page>.tsx for a detail page: one row at an address of its own, and its sections */
+export function detailPageFile(ir: IR, page: PageIR, target: WebTarget, conv: TsConventions): string {
+  const resource = ir.resources.find(r => r.name === page.resource)!;
+  const entity = entityByName(ir, resource.entity);
+  const ops = resource.operations.filter(o => o.rule.kind !== "none");
+  const get = ops.find(o => o.kind === "get") as GetOp | undefined;
+  if (!get) throw new Error(`page ${page.name}: resource ${resource.name} must allow get (its read rule is none)`);
+  const update = ops.find(o => o.kind === "update") as UpdateOp | undefined;
+  const remove = ops.find(o => o.kind === "delete") as DeleteOp | undefined;
+  const rowActions = actionsOf(ir, resource.name).filter(a => a.rule.kind !== "none" && a.scope === "row");
+  // The resource page whose detail this page takes over, when its path is that page's path plus /:id
+  const listPage = page.listPage ? ir.app!.pages.find(p => p.name === page.listPage)! : null;
+  const ctx: Ctx = {
+    ir,
+    page,
+    resource,
+    entity,
+    target,
+    conv,
+    pk: singlePrimaryKey(entity),
+    intKey: isIntegerKey(singlePrimaryKey(entity)),
+    imports: {
+      router: { params: true },
+      query: new Set(["useQuery"]),
+      react: new Set(),
+      lucide: new Set(),
+      ui: new Set(),
+      shadcn: new Map(),
+      client: new Set(["client", "sessionUser"]),
+      tenant: new Set()
+    }
+  };
+  const Comp = pageComponent(page);
+  const R = resource.name;
+  const idPk = identityKey(ir);
+
+  const parts: string[] = [];
+  parts.push(`type Detail = Outputs[${q(R)}]["get"];
+${update ? `type Input<K extends keyof Inputs[${q(R)}]> = Inputs[${q(R)}][K];\n` : ""}
+const KEY = [${q(R)}] as const;
+
+function idOf(raw: string) {
+  return ${ctx.intKey ? "Number(raw)" : "raw"};
+}`);
+
+  // Permissions, evaluated client-side so the page only offers what the API will allow
+  const perms: string[] = [];
+  if (update)
+    perms.push(
+      `function canUpdate(user: SessionUser | null, row: Detail): boolean {\n  return ${rulePredicate(update.rule, "user", "row", idPk)};\n}`
+    );
+  if (remove)
+    perms.push(
+      `function canDelete(user: SessionUser | null, row: Detail): boolean {\n  return ${rulePredicate(remove.rule, "user", "row", idPk)};\n}`
+    );
+  for (const a of rowActions)
+    perms.push(
+      `function can${toPascalCase(a.name)}(user: SessionUser | null, row: Detail): boolean {\n  return ${rulePredicate(a.rule, "user", "row", idPk)};\n}`
+    );
+  if (perms.length) {
+    use(ctx, "client", "SessionUser");
+    parts.push(perms.join("\n\n"));
+  }
+  const usesRow = perms.some(p => p.includes("row."));
+  // A page that takes over a list's detail sits behind the list's gate: the IR gives it that access
+  const gated = page.access.kind !== "public";
+  if (gated) parts.push(gate(ctx, page.access));
+
+  if (update) {
+    use(ctx, "client", "Inputs");
+    const fields = formFields(
+      ctx,
+      entity.columns.filter(c => update.fields.includes(c.name)),
+      entity
+    );
+    parts.push(
+      formCode(ctx, Comp, fields, { updateType: `Input<"update">["data"]`, updateFields: fields, fromRow: true })
+    );
+  }
+  const names = new Set([Comp]);
+  for (const a of rowActions.filter(a => a.input.length)) {
+    use(ctx, "client", "Inputs");
+    const prefix = `${Comp}${toPascalCase(a.name)}`;
+    names.add(prefix);
+    const fields = formFields(ctx, a.input, null);
+    parts.push(
+      formCode(ctx, prefix, fields, {
+        createType: `Omit<Inputs[${q(R)}][${q(a.name)}], "id">`,
+        createFields: fields,
+        currentType: "never"
+      })
+    );
+  }
+
+  const sections: string[] = [];
+  page.sections.forEach((section, index) => {
+    const plain = `${Comp}${toPascalCase(section.resource)}`;
+    const prefix = names.has(plain) ? `${plain}${index + 1}` : plain;
+    names.add(prefix);
+    const code = sectionCode(ctx, section, prefix);
+    if (!code) return;
+    parts.push(code.decls);
+    sections.push(code.jsx);
+  });
+
+  parts.push(
+    detailComponent(ctx, {
+      name: `${Comp}Page`,
+      form: Comp,
+      base: listPage ? listPage.path : detailBase(page),
+      routeId: detailRouteId(ir, page),
+      listPath: listPage ? listPage.path : null,
+      back: listPage !== null && (listPage.layout ?? "split") !== "split",
+      fields: page.fields,
+      get,
+      update,
+      remove,
+      rowActions,
+      queryClient: Boolean(update || remove || rowActions.length),
+      usesRow,
+      reverse: page.sections.length === 0,
+      sections,
+      refresh: page.refresh
+    })
+  );
+
+  const source = `${conv.header(`The ${page.title} page: one ${entity.name} row${page.sections.length ? " and its sections" : ""}.`)}
+${pageImports(ctx).join("\n")}
+
+${parts.join("\n\n")}
+`;
+  return gated ? guardExports(source, [`${Comp}Page`]) : source;
+}
+
 /** generated/app/pages/<page>.tsx for a dashboard page */
 export function dashboardPageFile(ir: IR, page: PageIR, target: WebTarget, conv: TsConventions): string {
   const Comp = pageComponent(page);
@@ -1395,8 +1895,16 @@ export function dashboardPageFile(ir: IR, page: PageIR, target: WebTarget, conv:
     );
   void filterValues;
   const idPk = ir.auth ? entityByName(ir, ir.auth.identity).primaryKey[0] : "id";
+  const tenantPk = tenantKey(ir);
   const refetch = page.refresh ? `, refetchInterval: ${page.refresh * 1000}` : "";
   const gated = page.access.kind !== "public";
+  // Where a recent row opens, and the test of who may open that page; null when it is not a link
+  const rowLinks = page.recent.map(recent => {
+    const entity = entityByName(ir, ir.resources.find(r => r.name === recent.resource)!.entity);
+    const to = entity.primaryKey.length === 1 ? rowTarget(ir, p => p.resource === recent.resource) : null;
+    const open = to ? rulePredicate(to.access, "user", null, idPk) : "false";
+    return open === "false" ? null : { base: to!.base, open };
+  });
   // Enum groups expand into one tile per value here; relation groups render at runtime, one tile per related row
   type Flat = TileIR & { group?: Extract<TileGroupIR, { kind: "relation" }> };
   const flat: Flat[] = page.tiles.flatMap((tile): Flat[] => {
@@ -1413,17 +1921,25 @@ export function dashboardPageFile(ir: IR, page: PageIR, target: WebTarget, conv:
     return [tile];
   });
   const hasGroup = flat.some(t => t.group);
-  const needsUser = gated || hasGroup || flat.some(t => usesActor(t.filter));
+  const needsUser =
+    gated ||
+    hasGroup ||
+    flat.some(t => usesActor(t.filter)) ||
+    page.recent.some(r => usesActor(r.filter)) ||
+    rowLinks.some(l => l !== null && l.open !== "true");
+  // The tenant the shell's switcher chose: queries filtered by it wait for it
+  const byTenant =
+    flat.some(t => usesContext(t.filter, "tenant")) || page.recent.some(r => usesContext(r.filter, "tenant"));
   const inputExpr = (tile: Flat, extra = "") => {
     const parts = [
       "page: 1",
       "page_size: 1",
-      ...Object.entries(tile.filter).map(([k, v]) => `${k}: ${fixedValue(v, target, "user", idPk)}`)
+      ...Object.entries(tile.filter).map(([k, v]) => `${k}: ${fixedValue(v, target, "user", idPk, tenantPk)}`)
     ];
     if (extra) parts.push(extra);
     return `{ ${parts.join(", ")} } as Inputs[${q(tile.resource)}]["list"]`;
   };
-  const tileOpts = (tile: Flat) => `${refetch}${usesActor(tile.filter) ? ", enabled: user !== null" : ""}`;
+  const tileOpts = (tile: Flat) => `${refetch}${enabledOpt(tile.filter)}`;
   const tileDecls = flat
     .map((tile, i) =>
       tile.group
@@ -1466,7 +1982,7 @@ function GroupTiles${i}({ user }: { user: SessionUser | null }) {
 }
 
 function GroupTile${i}({ id, label, user }: { id: Outputs[${q(g.resource)}]["list"]["data"][number][${q(g.key)}]; label: string; user: SessionUser | null }) {
-  void user;
+  void user;${usesContext(tile.filter, "tenant") ? "\n  const { tenant } = useTenant();" : ""}
   const input = ${inputExpr(tile, `${g.field}: id`)};
   const count = useQuery({ queryKey: [${q(tile.resource)}, "list", input], queryFn: () => client.${tile.resource}.list(input)${tileOpts(tile)} });
   return (
@@ -1477,16 +1993,29 @@ ${wrapLink(tile, `<Tile label={${JSON.stringify(`${tile.label}: `)} + label} val
     .filter(Boolean);
   const recentDecls = page.recent.map((recent, i) => {
     const input = { page: 1, page_size: recent.limit };
-    return `  const recent${i} = useQuery({ queryKey: [${q(recent.resource)}, "list", ${JSON.stringify(input)}], queryFn: () => client.${recent.resource}.list(${JSON.stringify(input)} as Inputs[${q(recent.resource)}]["list"])${refetch} });`;
+    if (!Object.keys(recent.filter).length)
+      return `  const recent${i} = useQuery({ queryKey: [${q(recent.resource)}, "list", ${JSON.stringify(input)}], queryFn: () => client.${recent.resource}.list(${JSON.stringify(input)} as Inputs[${q(recent.resource)}]["list"])${refetch} });`;
+    const fixed = Object.entries(recent.filter).map(
+      ([k, v]) => `${k}: ${fixedValue(v, target, "user", idPk, tenantPk)}`
+    );
+    return `  const recent${i}Input = { page: 1, page_size: ${recent.limit}, ${fixed.join(", ")} } as Inputs[${q(recent.resource)}]["list"];
+  const recent${i} = useQuery({ queryKey: [${q(recent.resource)}, "list", recent${i}Input], queryFn: () => client.${recent.resource}.list(recent${i}Input)${refetch}${enabledOpt(recent.filter)} });`;
   });
   const recentJsx = page.recent.map((recent, i) => {
     const resource = ir.resources.find(r => r.name === recent.resource)!;
     const entity = entityByName(ir, resource.entity);
-    const link = pageFor(recent.resource);
+    const link = rowLinks[i];
     const pk = entity.primaryKey[0];
-    const item = link
-      ? `<Link ${target.linkAttrs(link.path, `text(row.${pk})`)} className="hover:underline">{text(row.${entity.display}) || text(row.${pk})}</Link>`
-      : `<span>{text(row.${entity.display}) || text(row.${pk})}</span>`;
+    const label = `{text(row.${entity.display}) || text(row.${pk})}`;
+    const anchor = link
+      ? `<Link ${target.linkAttrs(link.base, `text(row.${pk})`)} className="hover:underline">${label}</Link>`
+      : "";
+    // A row links to its page only for a viewer who may open that page
+    const item = !link
+      ? `<span>${label}</span>`
+      : link.open === "true"
+        ? anchor
+        : `{${link.open} ? ${anchor} : <span>${label}</span>}`;
     return `        <Card>
           <CardHeader>
             <CardTitle className="text-base">Recent ${toTitleCase(recent.resource).toLowerCase()}</CardTitle>
@@ -1511,7 +2040,7 @@ ${wrapLink(tile, `<Tile label={${JSON.stringify(`${tile.label}: `)} + label} val
           </CardContent>
         </Card>`;
   });
-  const needsLink = gated || page.tiles.some(t => pageFor(t.resource)) || page.recent.some(r => pageFor(r.resource));
+  const needsLink = gated || page.tiles.some(t => pageFor(t.resource)) || rowLinks.some(l => l !== null);
   const userDecl = !needsUser
     ? ""
     : ir.auth
@@ -1520,6 +2049,20 @@ ${wrapLink(tile, `<Tile label={${JSON.stringify(`${tile.label}: `)} + label} val
   void user;`
       : `  const user: SessionUser | null = null;
   void user;`;
+  const tilesBlock = page.tiles.length
+    ? `<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">\n${tileJsx.join("\n")}\n      </div>`
+    : "";
+  const recentBlock = page.recent.length
+    ? `<div className="grid gap-4 lg:grid-cols-2">\n${recentJsx.join("\n")}\n      </div>`
+    : "";
+  const blocks = [tilesBlock, recentBlock];
+  // A user in no tenant sees the empty state in place of the tiles and lists, which would wait forever
+  const deeper = (jsx: string[]) =>
+    jsx
+      .filter(Boolean)
+      .flatMap(block => `      ${block}`.split("\n"))
+      .map(line => (line ? `    ${line}` : line))
+      .join("\n");
   const clientImports = [
     "client",
     ...(needsUser && ir.auth ? ["sessionUser"] : []),
@@ -1534,19 +2077,18 @@ ${target.routerImports({ link: needsLink }).join("\n")}
 ${lucide.size ? `import { ${[...lucide].sort().join(", ")} } from "lucide-react";` : ""}${gated ? `\nimport type { ReactNode } from "react";\nimport { buttonVariants } from "@/components/ui/button";` : ""}
 import { Card, CardContent, ${gated ? "CardDescription, " : ""}CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ${clientImports.join(", ")} } from "../client";
+import { ${clientImports.join(", ")} } from "../client";${byTenant ? `\nimport { NoTenant, useTenant } from "../tenant";` : ""}
 import { ErrorNote, ${gated ? "PaneSkeleton, " : ""}Tile, formatDateTime, text } from "../ui";
 ${gated ? `\n${accessGateDecl(page.access, target, idPk)}\n` : ""}${groupComponents.length ? `\n${groupComponents.join("\n\n")}\n` : ""}
 export function ${Comp}Page() {
-${userDecl}
+${userDecl}${byTenant ? "\n  const { tenant, loading: tenantLoading } = useTenant();" : ""}
 ${tileDecls.join("\n")}
 ${recentDecls.join("\n")}
   void formatDateTime;
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-6">
       <h1 className="text-2xl font-semibold tracking-tight">${page.title}</h1>
-      ${page.tiles.length ? `<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">\n${tileJsx.join("\n")}\n      </div>` : ""}
-      ${page.recent.length ? `<div className="grid gap-4 lg:grid-cols-2">\n${recentJsx.join("\n")}\n      </div>` : ""}
+      ${byTenant ? `{!tenantLoading && tenant === null ? (\n        <NoTenant />\n      ) : (\n        <>\n${deeper(blocks)}\n        </>\n      )}` : blocks.join("\n      ")}
     </div>
   );
 }
@@ -1554,32 +2096,120 @@ ${recentDecls.join("\n")}
   return gated ? guardExports(source, [`${Comp}Page`]) : source;
 }
 
-/** The literal of a fixed filter value for the list input; the REST contract reads booleans as "true" | "false" */
-function fixedValue(value: PageFilterValue, target: WebTarget, userExpr: string, idPk: string): string {
-  if (typeof value === "object") return `${userExpr}?.${idPk} ?? ""`;
+type FilterContext = "actor" | "row" | "tenant";
+type Filter = Record<string, PageFilterValue> | undefined;
+
+/** The context a filter value reads (the signed-in user, the row on the page, the chosen tenant), when it is not a literal */
+function contextOf(value: PageFilterValue): FilterContext | null {
+  if (typeof value !== "object") return null;
+  return "actor" in value ? "actor" : "row" in value ? "row" : "tenant";
+}
+
+/** Whether a filter reads a context, so its query waits for it */
+function usesContext(filter: Filter, context: FilterContext): boolean {
+  return Object.values(filter ?? {}).some(v => contextOf(v) === context);
+}
+
+function usesActor(filter: Filter): boolean {
+  return usesContext(filter, "actor");
+}
+
+/**
+ * The expression of a fixed filter value in the list input: the user's key, the key of the row on the page (`id`
+ * in a section), the chosen tenant's key, or the literal. The REST contract reads booleans as "true" | "false".
+ */
+function fixedValue(
+  value: PageFilterValue,
+  target: WebTarget,
+  userExpr: string,
+  idPk: string,
+  tenantPk = "id"
+): string {
+  switch (contextOf(value)) {
+    case "actor":
+      return `${userExpr}?.${idPk} ?? ""`;
+    case "row":
+      return "id";
+    case "tenant":
+      return `tenant?.${tenantPk} ?? ""`;
+  }
   if (target.kind === "next" && typeof value === "boolean") return JSON.stringify(String(value));
   return JSON.stringify(value);
 }
 
-/** Whether a filter names the signed-in user, so its query waits for the session */
-function usesActor(filter: Record<string, PageFilterValue> | undefined): boolean {
-  return Object.values(filter ?? {}).some(v => typeof v === "object");
+/** `, enabled: ...` for a query whose filter waits for the session or the tenant */
+function enabledOpt(filter: Filter, more: string[] = []): string {
+  const waits = [
+    ...more,
+    ...(usesContext(filter, "actor") ? ["user !== null"] : []),
+    ...(usesContext(filter, "tenant") ? ["tenant !== null"] : [])
+  ];
+  return waits.length ? `, enabled: ${waits.join(" && ")}` : "";
 }
 
-/** The list query options a page adds: a refetch interval, and waiting for the session when a filter names the user */
+/** The list query options a page adds: a refetch interval, and waiting for what its filter reads */
 function listQueryOptions(page: PageIR): { queryOpts: string; fixedSpread: string } {
-  const queryOpts = `${page.refresh ? `, refetchInterval: ${page.refresh * 1000}` : ""}${usesActor(page.filter) ? ", enabled: user !== null" : ""}`;
-  return { queryOpts, fixedSpread: page.filter ? ", ...fixedFilter(user)" : "" };
+  const queryOpts = `${page.refresh ? `, refetchInterval: ${page.refresh * 1000}` : ""}${enabledOpt(page.filter)}`;
+  const args = usesContext(page.filter, "tenant") ? "user, tenant" : "user";
+  return { queryOpts, fixedSpread: page.filter ? `, ...fixedFilter(${args})` : "" };
 }
 
-/** `function fixedFilter(user)` for a page's fixed filter */
-function fixedFilterDecl(filter: Record<string, PageFilterValue>, target: WebTarget, idPk: string): string {
-  const entries = Object.entries(filter).map(([k, v]) => `${k}: ${fixedValue(v, target, "user", idPk)}`);
+/** `function fixedFilter(user)` for a page's fixed filter; it takes the tenant too when the filter reads it */
+function fixedFilterDecl(
+  filter: Record<string, PageFilterValue>,
+  target: WebTarget,
+  idPk: string,
+  tenantPk: string
+): string {
+  const entries = Object.entries(filter).map(([k, v]) => `${k}: ${fixedValue(v, target, "user", idPk, tenantPk)}`);
+  const byTenant = usesContext(filter, "tenant");
   return `/** Filters this page always applies */
-function fixedFilter(user: SessionUser | null) {
+function fixedFilter(user: SessionUser | null${byTenant ? ", tenant: Tenant | null" : ""}) {
   void user;
   return { ${entries.join(", ")} };
 }`;
+}
+
+/**
+ * What a list filtered by the tenant context adds to its component: the hook, and the empty state shown in the
+ * list's place to a user who is in no tenant (the query waits for a tenant, so it would stay pending).
+ */
+function tenantScope(ctx: Ctx, filter: Filter): { decl: string; none: (indent: string) => string } {
+  if (!usesContext(filter, "tenant")) return { decl: "", none: () => "" };
+  use(ctx, "tenant", "useTenant");
+  use(ctx, "tenant", "NoTenant");
+  return {
+    decl: "\n  const { tenant, loading: tenantLoading } = useTenant();",
+    none: indent => `!tenantLoading && tenant === null ? (\n${indent}  <NoTenant />\n${indent}) : `
+  };
+}
+
+interface Preset {
+  field: string;
+  context: FilterContext;
+  /** The expression sent for the field */
+  value: string;
+}
+
+/**
+ * The create fields a filtered list presets: the context values of its filter (the row, the tenant, the user)
+ * are sent with a create opened from it, and their fields leave the form. Literal filters preset nothing.
+ */
+function presetsOf(ir: IR, filter: Filter, create: CreateOp | undefined): Preset[] {
+  if (!create) return [];
+  return Object.entries(filter ?? {}).flatMap(([field, v]): Preset[] => {
+    const context = contextOf(v);
+    if (!context || !create.fields.includes(field)) return [];
+    const value =
+      context === "row" ? "id" : context === "tenant" ? `tenant?.${tenantKey(ir)}` : `user?.${identityKey(ir)}`;
+    return [{ field, context, value }];
+  });
+}
+
+/** The create input a form with presets sends: the form's values and the preset fields */
+function presetInput(presets: Preset[], formInput: string, inputType: string): string {
+  if (!presets.length) return formInput;
+  return `{ ...${formInput}, ${presets.map(p => `${p.field}: ${p.value}`).join(", ")} } as ${inputType}`;
 }
 
 /**

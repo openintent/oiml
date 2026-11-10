@@ -1,0 +1,130 @@
+osl: "1.0"
+summary: "Co-authors: the ArticleEditor junction, editors may update the article, and invites into it, kept by the compiler as ArticleInvite behind article_invites"
+ops:
+  - op: add_entity
+    name: ArticleEditor
+    entity:
+      table: article_editors
+      fields:
+        id: { type: uuid, primary: true }
+        article_id:
+          type: uuid
+          required: true
+          relation: { entity: Article, name: article, reverse: editors, on_delete: cascade }
+        user_id:
+          type: uuid
+          required: true
+          relation: { entity: User, name: user, reverse: editing, on_delete: cascade }
+        created_at: { type: datetime, required: true, default: now }
+      rules:
+        read: public
+        create: "owner:article_id.author_id"
+        delete: "owner:article_id.author_id or owner:user_id"
+      unique: [[article_id, user_id]]
+  - op: add_resource
+    name: article_editors
+    resource:
+      entity: ArticleEditor
+      operations: [list, get, create, delete]
+      list: { filters: [article_id, user_id], include: [user] }
+  - op: set_rules
+    entity: Article
+    rules:
+      read: public
+      create: "owner:author_id"
+      update: "owner:author_id or member:editors or role:admin"
+      delete: "owner:author_id or role:admin"
+  - op: set_auth
+    auth:
+      identity: User
+      providers: [credentials, magic_link, { oauth: github }]
+      invites:
+        ArticleEditor: {}
+  - op: add_scenario
+    scenario:
+      name: co-authors by invite
+      steps:
+        - as: alice
+          op: posts.create
+          body: { title: Shared draft, content: Two hands }
+          expect: { status: 201 }
+          capture: { article: data.id }
+        - as: bob
+          op: posts.update
+          path: { id: "{article}" }
+          body: { content: Mine now }
+          expect: { status: 403 }
+        # Only the author invites to an article, and only the author sees who was invited
+        - as: dave
+          op: article_invites.create
+          body: { article_id: "{article}", email: stranger@example.com }
+          expect: { status: 403 }
+        - as: alice
+          op: article_invites.create
+          body: { article_id: "{article}", email: bob@example.com }
+          expect: { status: 201, body: { data: { article_id: "{article}", email: bob@example.com } } }
+          capture: { bob_token: debug.token }
+        - op: emails.sent
+          query: { to: bob@example.com, subject: Shared draft }
+          expect: { status: 200, body: { data: [{ to: bob@example.com, subject: You are invited to Shared draft }] } }
+        - as: dave
+          op: article_invites.list
+          query: { article_id: "{article}" }
+          expect: { status: 200, body: { page: { total: 0 } } }
+        - op: auth.invite
+          path: { token: "{bob_token}" }
+          expect:
+            status: 200
+            body: { data: { entity: Article, name: Shared draft, email: b•••@example.com, account: true } }
+        # A junction without a role and a model without tenancy: the accept names the article and no tenant
+        - as: bob
+          op: auth.invite_accept
+          path: { token: "{bob_token}" }
+          expect:
+            status: 200
+            body:
+              data: { email: bob@example.com }
+              accepted: [{ entity: Article, id: "{article}", tenant: null }]
+        - as: bob
+          op: posts.update
+          path: { id: "{article}" }
+          body: { content: Four hands }
+          expect: { status: 200, body: { data: { content: Four hands } } }
+        - as: bob
+          op: posts.delete
+          path: { id: "{article}" }
+          expect: { status: 403 }
+        - as: bob
+          op: article_invites.create
+          body: { article_id: "{article}", email: stranger@example.com }
+          expect: { status: 403 }
+        # A magic link proves the address, so signing in with one makes the editor without the invite's link
+        - as: alice
+          op: article_invites.create
+          body: { article_id: "{article}", email: erin@example.com }
+          expect: { status: 201 }
+        - op: auth.magic_link
+          body: { email: erin@example.com }
+          expect: { status: 200 }
+          capture: { erin_link: data.debug.token }
+        - op: auth.magic_link_verify
+          body: { token: "{erin_link}" }
+          expect:
+            status: 200
+            body:
+              data: { email: erin@example.com }
+              accepted: [{ entity: Article, id: "{article}", tenant: null }]
+        - as: erin
+          op: posts.update
+          path: { id: "{article}" }
+          body: { content: Six hands }
+          expect: { status: 200 }
+        - as: alice
+          op: article_editors.list
+          query: { article_id: "{article}" }
+          expect:
+            { status: 200, body: { data: [{ user: { name: Bob } }, { user: { name: Erin } }], page: { total: 2 } } }
+        - as: alice
+          op: article_invites.list
+          query: { article_id: "{article}" }
+          expect: { status: 200, body: { page: { total: 0 } } }

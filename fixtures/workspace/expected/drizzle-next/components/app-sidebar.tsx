@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/sidebar";
 import { client, sessionUser } from "@/generated/app/client";
 import { APP_TITLE, SIDEBAR, canOpen, userInitials, userName, userSubtitle } from "@/generated/app/nav";
+import { TenantSwitcher } from "@/generated/app/tenant";
 
 export function AppSidebar() {
   const pathname = usePathname();
@@ -47,6 +48,7 @@ export function AppSidebar() {
           </Link>
           <SidebarTrigger />
         </div>
+        <TenantSwitcher />
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>

@@ -46,7 +46,7 @@ export const ActionExpect = z
 
 export const PageExpect = z
   .object({
-    kind: z.enum(["resource", "dashboard", "custom"]).optional(),
+    kind: z.enum(["resource", "dashboard", "custom", "detail"]).optional(),
     layout: z.enum(["split", "table", "board"]).optional(),
     group_by: z.string().optional(),
     resource: z.string().optional(),
@@ -56,6 +56,10 @@ export const PageExpect = z
     path: z.string().optional(),
     /** Filter keys the page must carry, with alternatives */
     filter: Names.optional(),
+    /** Resources the page's sections must list, with alternatives ("messages|posts"); detail pages */
+    sections: Names.optional(),
+    /** Some filter of the page (its own, a tile's, a recent list's or a section's) is {tenant.id} */
+    tenant: z.boolean().optional(),
     refresh: z.boolean().optional()
   })
   .strict();
@@ -101,7 +105,9 @@ export const Expect = z
         /** Provider kinds or "oauth:<provider>" that must be configured */
         providers: Names.optional(),
         absent_providers: Names.optional(),
-        tenancy: z.object({ entity: z.string().optional(), membership: z.string().optional() }).strict().optional()
+        tenancy: z.object({ entity: z.string().optional(), membership: z.string().optional() }).strict().optional(),
+        /** Membership entities that must have an entry in auth.invites, with alternatives ("TeamMember|Membership") */
+        invites: Names.optional()
       })
       .strict()
       .optional(),

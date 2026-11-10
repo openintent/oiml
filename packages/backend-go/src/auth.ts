@@ -1,4 +1,5 @@
 import type { IR, ProviderIR } from "@osl/core";
+import { hasInvites, inviteSections } from "./invites.js";
 import { columnsConst, presentFunc, publicType, scanFunc, tableConst } from "./models.js";
 import {
   HEADER,
@@ -17,9 +18,9 @@ import {
 } from "./util.js";
 import { fieldLiteral, objectLiteral } from "./validation.js";
 
-/** Whether the model signs users in with magic links or OAuth */
+/** Whether the model signs users in with magic links or OAuth, or invites them: what needs providers.go and email */
 export function hasProviders(ir: IR): boolean {
-  return Boolean(ir.auth?.providers.some(p => p.kind !== "credentials"));
+  return Boolean(ir.auth?.providers.some(p => p.kind !== "credentials")) || hasInvites(ir);
 }
 
 export function hasMagicLink(ir: IR): boolean {
@@ -83,6 +84,7 @@ func (a *Auth) Routes(r gin.IRouter) {
   const magic = hasMagicLink(ir);
   const oauth = oauthProviders(ir);
   const tenancy = auth.tenancy;
+  const invites = hasInvites(ir);
   const registerFiles = auth.registerFields.map(name => column(identity, name)).filter(isFile);
   const tableC = `models.${tableConst(identity)}`;
   const columnsC = `models.${columnsConst(identity)}`;
@@ -179,6 +181,11 @@ ${goStruct(
       `\tr.GET("/api/auth/oauth/:name", a.OAuthStart)`,
       `\tr.GET("/api/auth/oauth/:name/callback", a.OAuthCallback)`
     );
+  if (invites)
+    routes.push(
+      `\tr.GET("/api/auth/invites/:token", a.Invite)`,
+      `\tr.POST("/api/auth/invites/:token/accept", a.InviteAccept)`
+    );
   routes.push(
     `\tr.POST("/api/auth/logout", a.Logout)`,
     `\tr.GET("/api/auth/me", a.Me)`,
@@ -239,7 +246,7 @@ func (a *Auth) Routes(r gin.IRouter) {
 ${routes.join("\n")}
 }
 
-// AppURL is where the web app lives (OSL_APP_URL, default http://localhost:3000): magic links point there and OAuth returns there.
+// AppURL is where the web app lives (OSL_APP_URL, default http://localhost:3000): the links in emails point there and OAuth returns there.
 func AppURL() string {
 	if v := os.Getenv("OSL_APP_URL"); v != "" {
 		return strings.TrimSuffix(v, "/")
@@ -374,8 +381,25 @@ func (a *Auth) Session(c *gin.Context) (*Session, error) {
     ];
     const loginFields = [
       `{Name: ${q(auth.emailColumn)}, Required: true, Type: validation.String{}}`,
-      `{Name: "password", Required: true, Type: validation.String{}}`
+      `{Name: "password", Required: true, Type: validation.String{}}`,
+      ...(invites ? [`{Name: "invite", Type: validation.String{}}`] : [])
     ];
+    // A password proves the address only together with an invite's token for it; anything else joins nothing
+    const acceptOnLogin = invites
+      ? `\tif token, ok := values["invite"].(string); ok && token != "" {
+		accepted, err := a.acceptWithToken(c.Request.Context(), user, token)
+		if err != nil {
+			httpx.HandleError(c, err, "read")
+			return
+		}
+		if len(accepted) > 0 {
+			signIn(c, user)
+			httpx.JSON(c, http.StatusOK, signedIn{Data: ${present}(user), Accepted: accepted})
+			return
+		}
+	}
+`
+      : "";
     const resolveFiles = registerFiles.length
       ? `\tif err := files.ResolveRefs(c.Request.Context(), a.db, values, registerFileFields); err != nil {
 		httpx.HandleError(c, err, "write")
@@ -422,7 +446,7 @@ ${resolveFiles}	hash, err := HashPassword(values["password"].(string))
 	httpx.Created(c, ${present}(user))
 }
 
-// Login checks the credentials and signs the ${T} in.
+// Login checks the credentials and signs the ${T} in.${invites ? " With an invite's token for the account's own address, it accepts the invites to it." : ""}
 func (a *Auth) Login(c *gin.Context) {
 	body, perr := httpx.ParseBody(c)
 	if perr != nil {
@@ -443,9 +467,13 @@ func (a *Auth) Login(c *gin.Context) {
 		httpx.Fail(c, httpx.NewError(http.StatusUnauthorized, "invalid_credentials", "Email or password is wrong"))
 		return
 	}
-	signIn(c, user)
+${acceptOnLogin}	signIn(c, user)
 	httpx.OK(c, ${present}(user))
 }`);
+  } else if (invites && registerFiles.length) {
+    imports.add(`${modulePath}/generated/files`);
+    sections.push(`// registerFileFields lists the file fields a new account accepts and what they allow.
+var registerFileFields = ${fileSpecsLiteral(registerFiles)}`);
   }
 
   sections.push(`// Logout clears the session cookie.
@@ -525,7 +553,7 @@ export function fileSpecsLiteral(
   return `[]files.FieldSpec{${specs.join(", ")}}`;
 }
 
-/** generated/auth/providers.go: magic links and OAuth. Only when the model has such providers. */
+/** generated/auth/providers.go: magic links, OAuth and invites. Only when the model has such providers or invites. */
 export function authProvidersFile(ir: IR, modulePath: string): string {
   const auth = ir.auth!;
   const identity = entityByName(ir, auth.identity);
@@ -533,10 +561,21 @@ export function authProvidersFile(ir: IR, modulePath: string): string {
   const pk = column(identity, identity.primaryKey[0]);
   const magic = hasMagicLink(ir);
   const oauth = oauthProviders(ir);
+  const invites = hasInvites(ir);
   const tableC = `models.${tableConst(identity)}`;
   const columnsC = `models.${columnsConst(identity)}`;
   const scan = `models.${scanFunc(identity)}`;
   const present = `models.${presentFunc(identity)}`;
+  // A proven address accepts the invites to it: what a sign-in by magic link or OAuth runs before it answers
+  const acceptProven = (address: string, answer: string) =>
+    invites
+      ? `\taccepted, err := a.AcceptPending(ctx, user, ${address}, "")
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+${answer}`
+      : "";
   const imports = new Set<string>([
     "crypto/rand",
     "crypto/sha256",
@@ -667,7 +706,15 @@ func (a *Auth) MagicLinkVerify(c *gin.Context) {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	signIn(c, user)
+${acceptProven(
+  "row.Email",
+  `\tif len(accepted) > 0 {
+		signIn(c, user)
+		httpx.JSON(c, http.StatusOK, signedIn{Data: ${present}(user), Accepted: accepted})
+		return
+	}
+`
+)}	signIn(c, user)
 	httpx.OK(c, ${present}(user))
 }`);
     imports.add("strconv");
@@ -951,12 +998,12 @@ func (a *Auth) OAuthCallback(c *gin.Context) {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	signIn(c, user)
+${acceptProven("profile.Email", "")}	signIn(c, user)
 	redirectTo := "/"
 	if pending.RedirectTo != nil {
 		redirectTo = *pending.RedirectTo
 	}
-	c.Redirect(http.StatusFound, AppURL()+redirectTo)
+${invites ? `\tif len(accepted) > 0 {\n\t\tredirectTo = acceptedPath(accepted[0])\n\t}\n` : ""}	c.Redirect(http.StatusFound, AppURL()+redirectTo)
 }
 
 type githubUser struct {
@@ -1048,9 +1095,15 @@ func fetchProfile(ctx context.Context, provider oauthProvider, tokens oauthToken
 }`);
   }
 
+  if (invites) sections.push(...inviteSections(ir, modulePath, imports));
+
   return goFile(
     modulePath,
-    HEADER("Sign-in providers beyond passwords: magic links and OAuth."),
+    HEADER(
+      invites
+        ? "Sign-in providers beyond passwords (magic links and OAuth) and invites."
+        : "Sign-in providers beyond passwords: magic links and OAuth."
+    ),
     "auth",
     imports,
     sections.join("\n\n")

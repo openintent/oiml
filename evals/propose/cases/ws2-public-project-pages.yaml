@@ -1,0 +1,32 @@
+id: ws2-public-project-pages
+tags: [app, rules, tenancy, generated-origin]
+base: { fixture: workspace, through: WS-6 }
+intent:
+  title: Public project pages
+  ask: >-
+    Teams want to share some projects with clients without giving them accounts. A team admin should be able to mark
+    a project as public, which gives it a page anyone can read without signing in, showing the project's name, status
+    and its task titles with whether they're done. Only team members can change anything; visitors only read.
+  acceptance:
+    - A signed-out visitor can open a public project's page but gets a 404 for a non-public project
+    - A signed-out visitor sees the tasks of a public project and none of a project that is not public
+    - A signed-out visitor trying to mark a task done on a public project gets a 401
+expect:
+  fields: { Project: ["public|is_public|shared|visibility"] }
+  rules: { Project: { hidden: not_found } }
+  pages:
+    "public_project|project_public|shared_project|project_page|project|client_project|project_share|share":
+      { kind: detail, resource: projects, access: public, sections: [tasks] }
+  scenarios: { min: 1, rejections: 2, statuses: [404, 401] }
+  touches: [projects, tasks]
+full: false
+notes: >-
+  Promoted from generated round 5 (gen-r5-10), without the reference code the original also asked for, which is a
+  value only the server sets and belongs to a later round. A share link over a hidden row: a public detail page over
+  projects with a section of its tasks, the project's read rule opened by its own flag (public when public = true)
+  with `hidden: not_found` for the 404, and the tasks opened through the project (public when project_id.public =
+  true). Starts before WS-7, which adds the flag and opens the tasks that way. Graded on the model only: `hidden:
+  not_found` on Project turns five steps of two earlier scenarios false (403s that become 404s, and a signed-out
+  list that now answers 200 with nothing). No op replaces a scenario in place, and one removed and added again runs
+  last, where its list totals no longer hold, so a full run fails on the earlier scenarios. The share link runs in
+  full on blog FEAT-13.

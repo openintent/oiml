@@ -1,0 +1,16 @@
+osl: "1.0"
+title: Invite a colleague by email
+ask: >-
+  A team's owners and admins should be able to bring someone in by email address, whether or not that person has an
+  account yet. The person gets a mail with a link, and joining through the link, or simply signing in with that
+  address, puts them in the team with the role they were given. An admin cannot hand out a role above their own. The
+  team needs a page that lists the invites still waiting, where one can be sent or withdrawn.
+acceptance:
+  - An owner or admin invites an email address to their team with a role, and the address gets a mail with a link
+  - Someone outside the team, or a plain member of it, can neither invite nor see who was invited
+  - An admin cannot invite someone as owner
+  - The invited person joins by accepting the link while signed in under that address, and nobody else can use it
+  - Someone without an account creates one from the link and lands in the team
+  - Signing in by magic link with the invited address joins the team without the invite's link
+  - An address that is already in the team, or already has an invite waiting, cannot be invited again
+  - A withdrawn invite stops working
