@@ -13,7 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { client, sessionUser, type Inputs, type Outputs, type SessionUser } from "../client";
+import { client, fieldsOf, sessionUser, type Inputs, type Outputs, type SessionUser } from "../client";
 import { EmptyPane, ErrorNote, FieldRow, FormRow, ListSkeleton, Pagination, Pane, PaneHeader, PaneSkeleton, formatDateTime, selectClass, splitList, text, toDateTimeInput, yesNo } from "../ui";
 
 type Row = Outputs["tasks"]["list"]["data"][number];
@@ -79,7 +79,7 @@ function guarded<P extends object>(Component: (props: P) => ReactNode) {
   };
 }
 
-const TASKS_FIELDS = ["project_id", "title", "done", "assignee_id", "due_at"] as const;
+const TASKS_FIELDS = ["project_id", "title", "done", "assignee_id", "due_at", "estimate"] as const;
 type TasksField = (typeof TASKS_FIELDS)[number];
 
 type TasksValues = {
@@ -88,6 +88,7 @@ type TasksValues = {
   done: boolean;
   assignee_id: string;
   due_at: string;
+  estimate: string;
 };
 
 const EMPTY_TASKS: TasksValues = {
@@ -95,10 +96,26 @@ const EMPTY_TASKS: TasksValues = {
   title: "",
   done: false,
   assignee_id: "",
-  due_at: ""
+  due_at: "",
+  estimate: ""
 };
 
-const TASKS_CREATE: readonly TasksField[] = ["project_id", "title", "done", "assignee_id", "due_at"];
+/** Fields with a read rule: an input is offered only to a viewer who may read the field, and a field that was not offered is not sent */
+const TASKS_RULED: readonly string[] = ["estimate"];
+
+/** The fields a form offers: `readable` answers for the ones with a read rule (the session for a new row, the row's own keys for an edit) */
+function offeredTasks<F extends string>(fields: readonly F[], readable: (field: string) => boolean): F[] {
+  return fields.filter(field => !TASKS_RULED.includes(field) || readable(field));
+}
+
+/** An input without the fields the form did not offer, so a field its viewer may not read is never overwritten blind */
+function sentTasks<T extends object>(input: T, readable: (field: string) => boolean): T {
+  const out = { ...input } as Record<string, unknown>;
+  for (const field of TASKS_RULED) if (!readable(field)) delete out[field];
+  return out as T;
+}
+
+const TASKS_CREATE: readonly TasksField[] = ["project_id", "title", "done", "assignee_id", "due_at", "estimate"];
 
 function toTasksCreateInput(v: TasksValues): Input<"create"> {
   return {
@@ -106,11 +123,12 @@ function toTasksCreateInput(v: TasksValues): Input<"create"> {
     title: v.title,
     done: v.done,
     assignee_id: (v.assignee_id || null),
-    due_at: (v.due_at === "" ? null : new Date(v.due_at).toISOString())
+    due_at: (v.due_at === "" ? null : new Date(v.due_at).toISOString()),
+    estimate: (v.estimate === "" ? null : Number(v.estimate))
   };
 }
 
-const TASKS_UPDATE: readonly TasksField[] = ["project_id", "title", "done", "assignee_id", "due_at"];
+const TASKS_UPDATE: readonly TasksField[] = ["project_id", "title", "done", "assignee_id", "due_at", "estimate"];
 
 function toTasksUpdateInput(v: TasksValues): Input<"update">["data"] {
   return {
@@ -118,7 +136,8 @@ function toTasksUpdateInput(v: TasksValues): Input<"update">["data"] {
     title: v.title,
     done: v.done,
     assignee_id: (v.assignee_id || null),
-    due_at: (v.due_at === "" ? null : new Date(v.due_at).toISOString())
+    due_at: (v.due_at === "" ? null : new Date(v.due_at).toISOString()),
+    estimate: (v.estimate === "" ? null : Number(v.estimate))
   };
 }
 
@@ -128,7 +147,8 @@ function tasksFromRow(row: Detail): TasksValues {
     title: text(row.title),
     done: row.done ?? false,
     assignee_id: text(row.assignee_id),
-    due_at: toDateTimeInput(row.due_at)
+    due_at: toDateTimeInput(row.due_at),
+    estimate: text(row.estimate)
   };
 }
 
@@ -215,6 +235,12 @@ function renderTasksField(field: TasksField, values: TasksValues, set: TasksSett
       return (
       <FormRow label="Due At" htmlFor="due_at">
         <Input id="due_at" type="datetime-local" value={values.due_at} onChange={e => set("due_at", e.target.value)} />
+      </FormRow>
+      );
+    case "estimate":
+      return (
+      <FormRow label="Estimate" htmlFor="estimate">
+        <Input id="estimate" type="number" step="1" value={values.estimate} onChange={e => set("estimate", e.target.value)} />
       </FormRow>
       );
   }
@@ -364,17 +390,21 @@ function TasksNewInner() {
       await navigate({ to: "/tasks/$id", params: { id: text(row.id) } });
     }
   });
+  // A field with a read rule is offered only to a viewer who could read it, and is not sent otherwise
+  const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
+  const could: Record<string, boolean> = fieldsOf(session.data).tasks;
+  const readable = (field: string) => could[field] === true;
   return (
     <Pane title="New task" actions={<Link to="/tasks" className={buttonVariants({ variant: "ghost", size: "icon-sm" })} aria-label="Back">
             <ArrowLeft />
           </Link>}>
       <TasksForm
-        fields={TASKS_CREATE}
+        fields={offeredTasks(TASKS_CREATE, readable)}
         initial={EMPTY_TASKS}
         submitLabel="Create"
         pending={createRow.isPending}
         error={createRow.error}
-        onSubmit={values => createRow.mutate(toTasksCreateInput(values))}
+        onSubmit={values => createRow.mutate(sentTasks(toTasksCreateInput(values), readable))}
       />
     </Pane>
   );
@@ -456,13 +486,13 @@ function TasksDetailInner() {
       <ErrorNote error={remindAction.error} className="mb-4" />
       {editing ? (
         <TasksForm
-          fields={TASKS_UPDATE}
+          fields={offeredTasks(TASKS_UPDATE, field => field in row)}
           initial={tasksFromRow(row)}
           submitLabel="Save"
           pending={updateRow.isPending}
           error={updateRow.error}
           onCancel={() => setEditing(false)}
-          onSubmit={values => updateRow.mutate({ id, data: toTasksUpdateInput(values) })}
+          onSubmit={values => updateRow.mutate({ id, data: sentTasks(toTasksUpdateInput(values), field => field in row) })}
         />
       ) : (
         <dl className="grid gap-3">
@@ -474,6 +504,9 @@ function TasksDetailInner() {
         <FieldRow label="Created At">{formatDateTime(row.created_at) || "—"}</FieldRow>
         <FieldRow label="Due At">{formatDateTime(row.due_at) || "—"}</FieldRow>
         <FieldRow label="Reminded At">{formatDateTime(row.reminded_at) || "—"}</FieldRow>
+        {"estimate" in row ? (
+          <FieldRow label="Estimate">{text(row.estimate) || "—"}</FieldRow>
+        ) : null}
         </dl>
       )}
     </Pane>

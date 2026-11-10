@@ -14,7 +14,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { client, sessionUser, type Inputs, type Outputs, type SessionUser } from "../client";
+import { client, fieldsOf, sessionUser, type Inputs, type Outputs, type SessionUser } from "../client";
 import { EmptyPane, ErrorNote, FieldRow, FormRow, ListSkeleton, Pagination, Pane, PaneHeader, PaneSkeleton, SortHeader, formatDateTime, selectClass, splitList, text, useDebounced, yesNo } from "../ui";
 
 type Row = Outputs["projects"]["list"]["data"][number];
@@ -76,7 +76,7 @@ function guarded<P extends object>(Component: (props: P) => ReactNode) {
   };
 }
 
-const PROJECTS_FIELDS = ["team_id", "name", "status", "public"] as const;
+const PROJECTS_FIELDS = ["team_id", "name", "status", "public", "budget"] as const;
 type ProjectsField = (typeof PROJECTS_FIELDS)[number];
 
 type ProjectsValues = {
@@ -84,34 +84,53 @@ type ProjectsValues = {
   name: string;
   status: "active" | "archived";
   public: boolean;
+  budget: string;
 };
 
 const EMPTY_PROJECTS: ProjectsValues = {
   team_id: "",
   name: "",
   status: "active",
-  public: false
+  public: false,
+  budget: ""
 };
 
-const PROJECTS_CREATE: readonly ProjectsField[] = ["team_id", "name", "status", "public"];
+/** Fields with a read rule: an input is offered only to a viewer who may read the field, and a field that was not offered is not sent */
+const PROJECTS_RULED: readonly string[] = ["budget"];
+
+/** The fields a form offers: `readable` answers for the ones with a read rule (the session for a new row, the row's own keys for an edit) */
+function offeredProjects<F extends string>(fields: readonly F[], readable: (field: string) => boolean): F[] {
+  return fields.filter(field => !PROJECTS_RULED.includes(field) || readable(field));
+}
+
+/** An input without the fields the form did not offer, so a field its viewer may not read is never overwritten blind */
+function sentProjects<T extends object>(input: T, readable: (field: string) => boolean): T {
+  const out = { ...input } as Record<string, unknown>;
+  for (const field of PROJECTS_RULED) if (!readable(field)) delete out[field];
+  return out as T;
+}
+
+const PROJECTS_CREATE: readonly ProjectsField[] = ["team_id", "name", "status", "public", "budget"];
 
 function toProjectsCreateInput(v: ProjectsValues): Input<"create"> {
   return {
     team_id: v.team_id,
     name: v.name,
     status: (v.status || undefined),
-    public: v.public
+    public: v.public,
+    budget: (v.budget === "" ? null : Number(v.budget))
   };
 }
 
-const PROJECTS_UPDATE: readonly ProjectsField[] = ["team_id", "name", "status", "public"];
+const PROJECTS_UPDATE: readonly ProjectsField[] = ["team_id", "name", "status", "public", "budget"];
 
 function toProjectsUpdateInput(v: ProjectsValues): Input<"update">["data"] {
   return {
     team_id: v.team_id,
     name: v.name,
     status: v.status,
-    public: v.public
+    public: v.public,
+    budget: (v.budget === "" ? null : Number(v.budget))
   };
 }
 
@@ -120,7 +139,8 @@ function projectsFromRow(row: Detail): ProjectsValues {
     team_id: text(row.team_id),
     name: text(row.name),
     status: row.status,
-    public: row.public ?? false
+    public: row.public ?? false,
+    budget: text(row.budget)
   };
 }
 
@@ -180,6 +200,12 @@ function renderProjectsField(field: ProjectsField, values: ProjectsValues, set: 
         <Checkbox id="public" checked={values.public} onCheckedChange={checked => set("public", checked)} />
         <Label htmlFor="public">Public</Label>
       </div>
+      );
+    case "budget":
+      return (
+      <FormRow label="Budget" htmlFor="budget">
+        <Input id="budget" type="number" step="1" value={values.budget} onChange={e => set("budget", e.target.value)} />
+      </FormRow>
       );
   }
 }
@@ -253,6 +279,7 @@ function ProjectsIndexInner() {
   const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
   const user = sessionUser(session.data);
   void user;
+  const could = fieldsOf(session.data).projects;
   const input = {
     page,
     page_size: PAGE_SIZE,
@@ -301,6 +328,7 @@ function ProjectsIndexInner() {
                   </SortHeader>
                 </TableHead>
                 <TableHead>Status</TableHead>
+                {could.budget ? <TableHead>Budget</TableHead> : null}
                 <TableHead>
                   <SortHeader field="created_at" sort={sort} onSort={next => { setSort(next); setPage(1); }}>
                     Created At
@@ -313,6 +341,7 @@ function ProjectsIndexInner() {
                 <TableRow key={text(row.id)} className="cursor-pointer" onClick={() => router.push(`/projects/${text(row.id)}`)}>
                   <TableCell>{text(row.name)}</TableCell>
                   <TableCell>{text(row.status)}</TableCell>
+                  {could.budget ? <TableCell>{text(row.budget)}</TableCell> : null}
                   <TableCell>{formatDateTime(row.created_at)}</TableCell>
                 </TableRow>
               ))}
@@ -335,17 +364,21 @@ function ProjectsNewInner() {
       await router.push(`/projects/${text(row.id)}`);
     }
   });
+  // A field with a read rule is offered only to a viewer who could read it, and is not sent otherwise
+  const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
+  const could: Record<string, boolean> = fieldsOf(session.data).projects;
+  const readable = (field: string) => could[field] === true;
   return (
     <Pane title="New project" actions={<Link href="/projects" className={buttonVariants({ variant: "ghost", size: "icon-sm" })} aria-label="Back">
             <ArrowLeft />
           </Link>}>
       <ProjectsForm
-        fields={PROJECTS_CREATE}
+        fields={offeredProjects(PROJECTS_CREATE, readable)}
         initial={EMPTY_PROJECTS}
         submitLabel="Create"
         pending={createRow.isPending}
         error={createRow.error}
-        onSubmit={values => createRow.mutate(toProjectsCreateInput(values))}
+        onSubmit={values => createRow.mutate(sentProjects(toProjectsCreateInput(values), readable))}
       />
     </Pane>
   );
@@ -414,13 +447,13 @@ function ProjectsDetailInner() {
 
       {editing ? (
         <ProjectsForm
-          fields={PROJECTS_UPDATE}
+          fields={offeredProjects(PROJECTS_UPDATE, field => field in row)}
           initial={projectsFromRow(row)}
           submitLabel="Save"
           pending={updateRow.isPending}
           error={updateRow.error}
           onCancel={() => setEditing(false)}
-          onSubmit={values => updateRow.mutate({ id, data: toProjectsUpdateInput(values) })}
+          onSubmit={values => updateRow.mutate({ id, data: sentProjects(toProjectsUpdateInput(values), field => field in row) })}
         />
       ) : (
         <dl className="grid gap-3">
@@ -432,6 +465,9 @@ function ProjectsDetailInner() {
         <FieldRow label="Public">{row.public == null ? "—" : <Badge variant={row.public ? "default" : "outline"}>{yesNo(row.public)}</Badge>}</FieldRow>
         <FieldRow label="Milestone Count">{text(row.milestone_count) || "—"}</FieldRow>
         <FieldRow label="Open Milestones">{text(row.open_milestones) || "—"}</FieldRow>
+        {"budget" in row ? (
+          <FieldRow label="Budget">{text(row.budget) || "—"}</FieldRow>
+        ) : null}
         </dl>
       )}
     </Pane>

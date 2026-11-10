@@ -58,3 +58,28 @@ func provision(name string, definition Actor) error {
 	_, err = conn.Exec(ctx, "update \"users\" set "+strings.Join(sets, ", ")+" where \"email\" = $"+strconv.Itoa(len(args)), args...)
 	return err
 }
+
+// Carries reports whether the dotted path is in a response body: every key on the way is there, whatever its
+// value (a null is there). Through a list, it is there when any item carries the rest of the path.
+func Carries(value any, path string) bool {
+	return carries(value, strings.Split(path, "."))
+}
+
+func carries(value any, keys []string) bool {
+	switch v := value.(type) {
+	case []any:
+		for _, item := range v {
+			if carries(item, keys) {
+				return true
+			}
+		}
+		return false
+	case map[string]any:
+		inner, present := v[keys[0]]
+		if !present {
+			return false
+		}
+		return len(keys) == 1 || carries(inner, keys[1:])
+	}
+	return false
+}

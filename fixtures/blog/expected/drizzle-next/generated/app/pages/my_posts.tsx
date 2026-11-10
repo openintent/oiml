@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { client, sessionUser, type Inputs, type Outputs, type SessionUser } from "../client";
+import { client, fieldsOf, sessionUser, type Inputs, type Outputs, type SessionUser } from "../client";
 import { EmptyPane, ErrorNote, FieldRow, FileInput, FilePreview, FormRow, ListSkeleton, Pagination, Pane, PaneHeader, PaneSkeleton, formatDateTime, formatList, selectClass, splitList, text, toDateTimeInput, yesNo } from "../ui";
 
 type Row = Outputs["posts"]["list"]["data"][number];
@@ -123,7 +123,7 @@ function guarded<P extends object>(Component: (props: P) => ReactNode) {
   };
 }
 
-const MYPOSTS_FIELDS = ["title", "content", "published", "author_id", "tags", "cover", "publish_at"] as const;
+const MYPOSTS_FIELDS = ["title", "content", "published", "author_id", "tags", "cover", "publish_at", "editor_note"] as const;
 type MyPostsField = (typeof MYPOSTS_FIELDS)[number];
 
 type MyPostsValues = {
@@ -134,6 +134,7 @@ type MyPostsValues = {
   tags: string;
   cover: string;
   publish_at: string;
+  editor_note: string;
 };
 
 const EMPTY_MYPOSTS: MyPostsValues = {
@@ -143,10 +144,26 @@ const EMPTY_MYPOSTS: MyPostsValues = {
   author_id: "",
   tags: "",
   cover: "",
-  publish_at: ""
+  publish_at: "",
+  editor_note: ""
 };
 
-const MYPOSTS_CREATE: readonly MyPostsField[] = ["title", "content", "published", "tags", "cover", "publish_at"];
+/** Fields with a read rule: an input is offered only to a viewer who may read the field, and a field that was not offered is not sent */
+const MYPOSTS_RULED: readonly string[] = ["editor_note"];
+
+/** The fields a form offers: `readable` answers for the ones with a read rule (the session for a new row, the row's own keys for an edit) */
+function offeredMyPosts<F extends string>(fields: readonly F[], readable: (field: string) => boolean): F[] {
+  return fields.filter(field => !MYPOSTS_RULED.includes(field) || readable(field));
+}
+
+/** An input without the fields the form did not offer, so a field its viewer may not read is never overwritten blind */
+function sentMyPosts<T extends object>(input: T, readable: (field: string) => boolean): T {
+  const out = { ...input } as Record<string, unknown>;
+  for (const field of MYPOSTS_RULED) if (!readable(field)) delete out[field];
+  return out as T;
+}
+
+const MYPOSTS_CREATE: readonly MyPostsField[] = ["title", "content", "published", "tags", "cover", "publish_at", "editor_note"];
 
 function toMyPostsCreateInput(v: MyPostsValues): Input<"create"> {
   return {
@@ -155,11 +172,12 @@ function toMyPostsCreateInput(v: MyPostsValues): Input<"create"> {
     published: v.published,
     tags: (v.tags === "" ? null : splitList(v.tags)),
     cover: (v.cover || null),
-    publish_at: (v.publish_at === "" ? null : new Date(v.publish_at).toISOString())
+    publish_at: (v.publish_at === "" ? null : new Date(v.publish_at).toISOString()),
+    editor_note: (v.editor_note || null)
   };
 }
 
-const MYPOSTS_UPDATE: readonly MyPostsField[] = ["title", "content", "published", "author_id", "tags", "cover", "publish_at"];
+const MYPOSTS_UPDATE: readonly MyPostsField[] = ["title", "content", "published", "author_id", "tags", "cover", "publish_at", "editor_note"];
 
 function toMyPostsUpdateInput(v: MyPostsValues): Input<"update">["data"] {
   return {
@@ -169,7 +187,8 @@ function toMyPostsUpdateInput(v: MyPostsValues): Input<"update">["data"] {
     author_id: v.author_id,
     tags: (v.tags === "" ? null : splitList(v.tags)),
     cover: (v.cover || null),
-    publish_at: (v.publish_at === "" ? null : new Date(v.publish_at).toISOString())
+    publish_at: (v.publish_at === "" ? null : new Date(v.publish_at).toISOString()),
+    editor_note: (v.editor_note || null)
   };
 }
 
@@ -181,7 +200,8 @@ function myPostsFromRow(row: Detail): MyPostsValues {
     author_id: text(row.author_id),
     tags: formatList(row.tags),
     cover: row.cover?.id ?? "",
-    publish_at: toDateTimeInput(row.publish_at)
+    publish_at: toDateTimeInput(row.publish_at),
+    editor_note: text(row.editor_note)
   };
 }
 
@@ -255,6 +275,12 @@ function renderMyPostsField(field: MyPostsField, values: MyPostsValues, set: MyP
       return (
       <FormRow label="Publish At" htmlFor="publish_at">
         <Input id="publish_at" type="datetime-local" value={values.publish_at} onChange={e => set("publish_at", e.target.value)} />
+      </FormRow>
+      );
+    case "editor_note":
+      return (
+      <FormRow label="Editor Note" htmlFor="editor_note">
+        <Textarea id="editor_note" rows={4} value={values.editor_note} onChange={e => set("editor_note", e.target.value)} />
       </FormRow>
       );
   }
@@ -405,15 +431,19 @@ function MyPostsNewInner() {
       await router.push(`/my-posts/${text(row.id)}`);
     }
   });
+  // A field with a read rule is offered only to a viewer who could read it, and is not sent otherwise
+  const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
+  const could: Record<string, boolean> = fieldsOf(session.data).posts;
+  const readable = (field: string) => could[field] === true;
   return (
     <Pane title="New article">
       <MyPostsForm
-        fields={MYPOSTS_CREATE}
+        fields={offeredMyPosts(MYPOSTS_CREATE, readable)}
         initial={EMPTY_MYPOSTS}
         submitLabel="Create"
         pending={createRow.isPending}
         error={createRow.error}
-        onSubmit={values => createRow.mutate(toMyPostsCreateInput(values))}
+        onSubmit={values => createRow.mutate(sentMyPosts(toMyPostsCreateInput(values), readable))}
       />
     </Pane>
   );
@@ -596,14 +626,14 @@ function MyPostsDetailInner() {
       <ErrorNote error={retireAction.error} className="mb-4" />
       {editing ? (
         <MyPostsForm
-          fields={MYPOSTS_UPDATE}
+          fields={offeredMyPosts(MYPOSTS_UPDATE, field => field in row)}
           initial={myPostsFromRow(row)}
           current={row}
           submitLabel="Save"
           pending={updateRow.isPending}
           error={updateRow.error}
           onCancel={() => setEditing(false)}
-          onSubmit={values => updateRow.mutate({ id, data: toMyPostsUpdateInput(values) })}
+          onSubmit={values => updateRow.mutate({ id, data: sentMyPosts(toMyPostsUpdateInput(values), field => field in row) })}
         />
       ) : (
         <dl className="grid gap-3">

@@ -163,7 +163,7 @@ func (h *Posts) List(c *gin.Context) {
 	}
 	data := make([]postsListRow, 0, len(items))
 	for _, item := range items {
-		data = append(data, postsListRow{PublicArticle: models.PresentArticle(item), Author: models.PresentUserPtr(authorRows[item.AuthorID])})
+		data = append(data, postsListRow{PublicArticle: models.PresentArticle(item, access.Viewer(session)), Author: models.PresentUserPtr(authorRows[item.AuthorID], access.Viewer(session))})
 	}
 	httpx.List(c, data, httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: total})
 }
@@ -200,7 +200,7 @@ func (h *Posts) Get(c *gin.Context) {
 		httpx.HandleError(c, err, "read")
 		return
 	}
-	httpx.OK(c, postsGetRow{PublicArticle: models.PresentArticle(row), Author: models.PresentUserPtr(authorRows[row.AuthorID])})
+	httpx.OK(c, postsGetRow{PublicArticle: models.PresentArticle(row, access.Viewer(session)), Author: models.PresentUserPtr(authorRows[row.AuthorID], access.Viewer(session))})
 }
 
 // Create handles POST /api/posts.
@@ -242,7 +242,7 @@ func (h *Posts) Create(c *gin.Context) {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	if err := events.ArticleCreated(ctx, models.PresentArticle(row)); err != nil {
+	if err := events.ArticleCreated(ctx, models.PresentArticle(row, models.Server)); err != nil {
 		httpx.HandleError(c, err, "write")
 		return
 	}
@@ -254,7 +254,7 @@ func (h *Posts) Create(c *gin.Context) {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	httpx.Created(c, models.PresentArticle(row))
+	httpx.Created(c, models.PresentArticle(row, access.Viewer(session)))
 }
 
 // Update handles PATCH /api/posts/{id}.
@@ -304,7 +304,7 @@ func (h *Posts) Update(c *gin.Context) {
 		return
 	}
 	if len(patch) == 0 {
-		httpx.OK(c, models.PresentArticle(existing))
+		httpx.OK(c, models.PresentArticle(existing, access.Viewer(session)))
 		return
 	}
 	sql, args := db.Update(models.ArticleTable, patch, `"id"`, id, models.ArticleColumns)
@@ -321,7 +321,7 @@ func (h *Posts) Update(c *gin.Context) {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	httpx.OK(c, models.PresentArticle(row))
+	httpx.OK(c, models.PresentArticle(row, access.Viewer(session)))
 }
 
 // Delete handles DELETE /api/posts/{id}.
@@ -408,11 +408,11 @@ func (h *Posts) ActionPublish(c *gin.Context) {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	if err := events.PostsPublish(ctx, models.PresentArticle(result)); err != nil {
+	if err := events.PostsPublish(ctx, models.PresentArticle(result, models.Server)); err != nil {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	httpx.OK(c, models.PresentArticle(result))
+	httpx.OK(c, models.PresentArticle(result, access.Viewer(session)))
 }
 
 // ActionUnpublishAll handles POST /api/posts/unpublish_all: the unpublish_all action.
@@ -487,7 +487,7 @@ func (h *Posts) ActionLock(c *gin.Context) {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	httpx.OK(c, models.PresentArticle(result))
+	httpx.OK(c, models.PresentArticle(result, access.Viewer(session)))
 }
 
 // ActionUnlock handles POST /api/posts/{id}/unlock: the unlock action.
@@ -532,7 +532,7 @@ func (h *Posts) ActionUnlock(c *gin.Context) {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	httpx.OK(c, models.PresentArticle(result))
+	httpx.OK(c, models.PresentArticle(result, access.Viewer(session)))
 }
 
 // ActionArchive handles POST /api/posts/{id}/archive: the archive action.
@@ -585,11 +585,11 @@ func (h *Posts) ActionArchive(c *gin.Context) {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	if err := events.PostsArchive(ctx, models.PresentArticle(result)); err != nil {
+	if err := events.PostsArchive(ctx, models.PresentArticle(result, models.Server)); err != nil {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	httpx.OK(c, models.PresentArticle(result))
+	httpx.OK(c, models.PresentArticle(result, access.Viewer(session)))
 }
 
 // ActionRestore handles POST /api/posts/{id}/restore: the restore action.
@@ -642,7 +642,7 @@ func (h *Posts) ActionRestore(c *gin.Context) {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	httpx.OK(c, models.PresentArticle(result))
+	httpx.OK(c, models.PresentArticle(result, access.Viewer(session)))
 }
 
 // ActionSubmit handles POST /api/posts/{id}/submit: the submit action.
@@ -695,7 +695,7 @@ func (h *Posts) ActionSubmit(c *gin.Context) {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	httpx.OK(c, models.PresentArticle(result))
+	httpx.OK(c, models.PresentArticle(result, access.Viewer(session)))
 }
 
 // ActionApprove handles POST /api/posts/{id}/approve: the approve action.
@@ -748,11 +748,11 @@ func (h *Posts) ActionApprove(c *gin.Context) {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	if err := events.PostsApprove(ctx, models.PresentArticle(result)); err != nil {
+	if err := events.PostsApprove(ctx, models.PresentArticle(result, models.Server)); err != nil {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	httpx.OK(c, models.PresentArticle(result))
+	httpx.OK(c, models.PresentArticle(result, access.Viewer(session)))
 }
 
 // ActionReject handles POST /api/posts/{id}/reject: the reject action.
@@ -805,7 +805,7 @@ func (h *Posts) ActionReject(c *gin.Context) {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	httpx.OK(c, models.PresentArticle(result))
+	httpx.OK(c, models.PresentArticle(result, access.Viewer(session)))
 }
 
 // ActionRetire handles POST /api/posts/{id}/retire: the retire action.
@@ -858,7 +858,7 @@ func (h *Posts) ActionRetire(c *gin.Context) {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	httpx.OK(c, models.PresentArticle(result))
+	httpx.OK(c, models.PresentArticle(result, access.Viewer(session)))
 }
 
 // loadAuthor fetches the author of each Article, keyed by id.

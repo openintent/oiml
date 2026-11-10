@@ -58,8 +58,8 @@ schema in `packages/evals/src/cases.ts`: entities and fields present or absent, 
 relations with their `on_delete`, unique constraints, junction entities, relations through a junction
 (`through: ["Track.* -> Genre"]`), ordered collections (`ordered: { PlaylistTrack: playlist_id }`), archiving
 entities (`archive: [Article]`), counts (`counts: ["Article.* -> Comment"]`), transitions by name or by what
-they move (`transitions: { Task: [complete, "todo -> doing"] }`), rules,
-resources and operations,
+they move (`transitions: { Task: [complete, "todo -> doing"] }`), rules, the read rule of a field
+(`field_read: { "Product.cost": "role:manager" }`, `"*"` for any), resources and operations,
 list options, actions by name or by shape, auth providers and tenancy (its `isolation` too; rules are read as
 the model declares them, before isolation adds the tenant's membership), events, pages and the sidebar, file
 rules and accept lists, seed steps, scenario counts and rejection statuses, what the scenarios call, an actor

@@ -49,6 +49,87 @@ describe("drizzle-next backend", () => {
     expect(validation).not.toContain("password_hash");
   });
 
+  it("presents a row to a viewer where a field has a read rule, on every way out", async () => {
+    const project = await irFor("blog");
+    const files = drizzleNextBackend.generate({
+      ir: project.ir,
+      revisions: project.lock.revisions,
+      config: project.config
+    });
+    const file = (name: string) => files.find(f => f.path === name)!.content;
+    const present = file("generated/present.ts");
+    // The field is optional in the shape and set only when its rule allows this viewer on this row
+    expect(present).toContain('& Partial<Pick<schema.User, "banned_at" | "phone">>');
+    expect(present).toContain("export function presentUser(row: schema.User, viewer: Viewer): PublicUser {");
+    expect(present).toContain(
+      "if (reads(FIELD_RULES.Article.editor_note, viewer, row)) out.editor_note = row.editor_note;"
+    );
+    expect(present).not.toMatch(/editor_note: row\.editor_note/);
+    // An entity without one keeps the presenter it had
+    expect(present).toContain("export function presentComment(row: schema.Comment): PublicComment {");
+    // No call anywhere forgets the viewer: the session for an answer, the server for an event's payload
+    for (const f of files.filter(f => /generated\/.*\.ts$/.test(f.path))) {
+      expect(f.content, f.path).not.toMatch(/present(Article|User)\(\w+(\.\w+)*\)/);
+      expect(f.content, f.path).not.toMatch(/\.map\(present(Article|User)\)/);
+    }
+    const posts = file("generated/resources/posts.ts");
+    expect(posts).toContain('await emit("Article.created", presentArticle(row, SERVER));');
+    expect(posts).toContain("return created(presentArticle(row, session));");
+    expect(posts).toContain("author: row.author ? presentUser(row.author, viewer) : null");
+    expect(posts).toContain("return ok(presentArticle(result, session));");
+    expect(file("generated/resources/users.ts")).toContain(
+      "posts: row.posts.map(item => presentArticle(item, viewer))"
+    );
+    // The caller's own row is presented to the caller; the session keeps the row the rules read
+    const auth = file("generated/auth.ts");
+    expect(auth).toContain("const session: Session = { user: presentUser(user, SERVER), memberships: [] };");
+    expect(auth).toContain("return ok(shownUser(session), { fields: visibleFields(session) });");
+    expect(auth).toContain("return withCookie(created(shownUser(await sessionOf(user))), sessionCookie(user.id));");
+    // The pages: a detail row where the row carries the field, a form that sends only what it offered
+    const users = file("generated/app/pages/users.tsx");
+    expect(users).toContain('{"phone" in row ? (');
+    expect(users).toContain("fields={offeredUsers(USERS_UPDATE, field => field in row)}");
+    expect(users).toContain("sentUsers(toUsersUpdateInput(values), field => field in row)");
+    expect(file("generated/app/client.ts")).toContain("users: { banned_at: false, phone: false }");
+  });
+
+  it("leaves a table column out for a viewer who could never read its field", async () => {
+    const project = await irFor("workspace");
+    const files = drizzleNextBackend.generate({
+      ir: project.ir,
+      revisions: project.lock.revisions,
+      config: project.config
+    });
+    const projects = files.find(f => f.path === "generated/app/pages/projects.tsx")!.content;
+    expect(projects).toContain("const could = fieldsOf(session.data).projects;");
+    expect(projects).toContain("{could.budget ? <TableHead>Budget</TableHead> : null}");
+    expect(projects).toContain("{could.budget ? <TableCell>{text(row.budget)}</TableCell> : null}");
+    expect(projects).toContain("fields={offeredProjects(PROJECTS_CREATE, readable)}");
+    // Under isolation: database the presenters call the verdict the test hook cannot switch off
+    const present = files.find(f => f.path === "generated/present.ts")!.content;
+    expect(present).toContain("return viewer === SERVER || judge(rule, viewer, row).ok;");
+    const access = files.find(f => f.path === "generated/access.ts")!.content;
+    expect(access).toContain("if (rulesDisabled()) return ALLOW;\n  return judge(rule, session, row);");
+    // The creator of a team reads its row as the owner the same request made them
+    const teams = files.find(f => f.path === "generated/resources/teams.ts")!.content;
+    expect(teams).toContain(
+      'presentTeam(row, { ...session!, memberships: [...session!.memberships, { tenant: row.id, role: "owner" }] })'
+    );
+  });
+
+  it("generates what it did for a model without a field rule", async () => {
+    const project = await irFor("todo");
+    const files = drizzleNextBackend.generate({
+      ir: project.ir,
+      revisions: project.lock.revisions,
+      config: project.config
+    });
+    for (const f of files) {
+      expect(f.content, f.path).not.toContain("Viewer");
+      expect(f.content, f.path).not.toContain("fieldsOf");
+    }
+  });
+
   it("installs with the configured package manager", async () => {
     const project = await irFor("todo");
     const withPm = (pm?: string) => ({

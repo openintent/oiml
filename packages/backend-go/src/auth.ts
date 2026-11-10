@@ -1,5 +1,6 @@
 import type { IR, ProviderIR } from "@osl/core";
-import { columnsConst, presentFunc, publicType, scanFunc, tableConst } from "./models.js";
+import { hasFieldRules } from "@osl/core";
+import { columnsConst, presentFunc, publicType, scanFunc, takesViewer, tableConst } from "./models.js";
 import {
   HEADER,
   column,
@@ -90,10 +91,20 @@ func (a *Auth) Routes(r gin.IRouter) {
   const columnsC = `models.${columnsConst(identity)}`;
   const scan = `models.${scanFunc(identity)}`;
   const present = `models.${presentFunc(identity)}`;
+  // A field with a read rule: the session answers which fields its caller could read, and when the identity has
+  // one, the caller's own row is presented to the caller as any row is. The access package imports this one, so
+  // it hands in what auth needs of it (Visibility).
+  const fields = hasFieldRules(ir);
+  const ruled = takesViewer(identity);
+  /** The lines answering the caller's own row with a status helper of httpx */
+  const answerSelf = (helper: "OK" | "Created") =>
+    ruled
+      ? `\tshown, ok := a.shown(c, user)\n\tif !ok {\n\t\treturn\n\t}\n\thttpx.${helper}(c, shown)`
+      : `\thttpx.${helper}(c, ${present}(user))`;
 
   let roleBody = `\treturn ""`;
   if (roleColumn) {
-    const field = `s.User.${exported(roleColumn.name)}`;
+    const field = `s.User.${exported(roleColumn.name)}${roleColumn.read ? ".Value" : ""}`;
     const isString =
       roleColumn.type.kind === "enum" ||
       (roleColumn.type.kind === "scalar" && (roleColumn.type.scalar === "string" || roleColumn.type.scalar === "text"));
@@ -135,6 +146,8 @@ func (a *Auth) Routes(r gin.IRouter) {
   if (magic || oauth.length) imports.add(`${modulePath}/generated/db`);
 
   const sessionFields: { name: string; type: string }[] = [{ name: "User", type: `models.${publicType(identity)}` }];
+  // The row itself, kept beside the user the rules read, so me can present it to its own caller
+  if (ruled) sessionFields.push({ name: "row", type: `*models.${T}` });
   let membershipSection = "";
   let loadMemberships = "";
   if (tenancy) {
@@ -241,7 +254,28 @@ type Provider struct {
 // Providers lists the model's sign-in providers in declared order.
 var Providers = []Provider{${providerList.join(", ")}}
 
+${
+  fields
+    ? `// Visibility is what the access package knows about fields with a read rule. It imports this package, so the
+// app hands it in when it builds the auth service.
+type Visibility struct {
+	// Viewer presents rows to the caller of a session.
+	Viewer func(*Session) models.Viewer
+	// Fields says, per resource, whether a session could read each field that has a read rule on some row.
+	Fields func(*Session) map[string]map[string]bool
+}
+
 // Auth serves the auth endpoints and resolves sessions.
+type Auth struct {
+	db  ${dbType(ir)}
+	see Visibility
+}
+
+// New builds the auth service.
+func New(db ${dbType(ir)}, see Visibility) *Auth {
+	return &Auth{db: db, see: see}
+}`
+    : `// Auth serves the auth endpoints and resolves sessions.
 type Auth struct {
 	db ${dbType(ir)}
 }
@@ -249,6 +283,7 @@ type Auth struct {
 // New builds the auth service.
 func New(db ${dbType(ir)}) *Auth {
 	return &Auth{db: db}
+}`
 }
 
 // Routes registers the auth endpoints.
@@ -362,7 +397,7 @@ func signIn(c *gin.Context, user *models.${T}) {
 
 // SessionOf builds the session of a user row${tenancy ? ", loading their memberships" : ""}.
 func (a *Auth) SessionOf(ctx context.Context, user *models.${T}) (*Session, error) {
-	session := &Session{User: ${present}(user)}${loadMemberships}
+	session := &Session{User: ${present}(user${ruled ? ", models.Server), row: user" : ")"}}${loadMemberships}
 	return session, nil
 }
 
@@ -436,7 +471,7 @@ ${resolveFiles}	hash, err := HashPassword(values["password"].(string))
 		return
 	}
 	signIn(c, user)
-	httpx.Created(c, ${present}(user))
+${answerSelf("Created")}
 }
 
 // Login checks the credentials and signs the ${T} in.
@@ -461,7 +496,7 @@ func (a *Auth) Login(c *gin.Context) {
 		return
 	}
 	signIn(c, user)
-	httpx.OK(c, ${present}(user))
+${answerSelf("OK")}
 }`);
   }
 
@@ -482,8 +517,27 @@ func (a *Auth) Me(c *gin.Context) {
 		httpx.Fail(c, httpx.NewError(http.StatusUnauthorized, "unauthenticated", "Sign in to continue"))
 		return
 	}
-	httpx.OK(c, session.User)
+${
+  fields
+    ? `\tc.PureJSON(http.StatusOK, gin.H{"data": ${ruled ? `models.${presentFunc(identity)}(session.row, a.see.Viewer(session))` : "session.User"}, "fields": a.see.Fields(session)})`
+    : `\thttpx.OK(c, session.User)`
 }
+}${
+    ruled
+      ? `
+
+// shown is the caller's own row as their own session may read it: what register, login and a magic link answer.
+// The session's User is the whole row, which the rules read, and never leaves the server as it is.
+func (a *Auth) shown(c *gin.Context, user *models.${T}) (models.${publicType(identity)}, bool) {
+	session, err := a.SessionOf(c.Request.Context(), user)
+	if err != nil {
+		httpx.HandleError(c, err, "read")
+		return models.${publicType(identity)}{}, false
+	}
+	return models.${presentFunc(identity)}(user, a.see.Viewer(session)), true
+}`
+      : ""
+  }
 
 // Providers lists how users may sign in, for the sign-in page.
 func (a *Auth) Providers(c *gin.Context) {
@@ -685,7 +739,11 @@ func (a *Auth) MagicLinkVerify(c *gin.Context) {
 		return
 	}
 	signIn(c, user)
-	httpx.OK(c, ${present}(user))
+${
+  takesViewer(identity)
+    ? `\tshown, ok := a.shown(c, user)\n\tif !ok {\n\t\treturn\n\t}\n\thttpx.OK(c, shown)`
+    : `\thttpx.OK(c, ${present}(user))`
+}
 }`);
     imports.add("strconv");
   }

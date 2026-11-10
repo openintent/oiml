@@ -9,7 +9,7 @@ import { articles as articlesTable } from "../../db/schema";
 import { emit } from "../../events";
 import { scheduleTimers } from "../../scheduling";
 import { resolveFileRefs } from "../../files";
-import { presentArticle, presentUser } from "../../present";
+import { SERVER, presentArticle, presentUser, type Viewer } from "../../present";
 import { postsApproveInput, postsArchiveInput, postsCreateInput, postsId, postsListQuery, postsLockInput, postsPublishInput, postsRejectInput, postsRestoreInput, postsRetireInput, postsSubmitInput, postsUnlockInput, postsUnpublishAllInput, postsUpdateInput } from "../../validation";
 import { handlers } from "../../actions";
 import { articleTransitions, setArticleArchived } from "../../row-actions";
@@ -54,13 +54,13 @@ const SORTABLE = {
 };
 
 type ListRow = schema.Article & { author: schema.User | null };
-function presentListRow(row: ListRow) {
-  return { ...presentArticle(row), author: row.author ? presentUser(row.author) : null };
+function presentListRow(row: ListRow, viewer: Viewer) {
+  return { ...presentArticle(row, viewer), author: row.author ? presentUser(row.author, viewer) : null };
 }
 
 type GetRow = schema.Article & { author: schema.User | null };
-function presentGetRow(row: GetRow) {
-  return { ...presentArticle(row), author: row.author ? presentUser(row.author) : null };
+function presentGetRow(row: GetRow, viewer: Viewer) {
+  return { ...presentArticle(row, viewer), author: row.author ? presentUser(row.author, viewer) : null };
 }
 
 function sortOrder(sort: keyof typeof SORTABLE | string): SQL[] {
@@ -89,7 +89,7 @@ export const postsRouter = router({
         db.query.articles.findMany({ where, with: { author: true }, orderBy: sort ? sortOrder(sort) : [desc(articlesTable.posted_at)], limit: page_size, offset: (page - 1) * page_size }),
         db.select({ total: count() }).from(articlesTable).where(where)
       ]);
-      return { data: rows.map(presentListRow), page: { page, page_size, total } };
+      return { data: rows.map(row => presentListRow(row, ctx.session)), page: { page, page_size, total } };
     } catch (err) {
       throw toTRPCError(err, "read");
     }
@@ -103,7 +103,7 @@ export const postsRouter = router({
     });
     if (!row) throw notFound();
     checkRule(RULES.read, ctx.session, row);
-    return presentGetRow(row);
+    return presentGetRow(row, ctx.session);
   }),
 
   create: publicProcedure.input(postsCreateInput).mutation(async ({ ctx, input }) => {
@@ -112,10 +112,10 @@ export const postsRouter = router({
     try {
       const values = await hooks.beforeCreate({ ...await resolveFileRefs(input, FILE_FIELDS), author_id: ctx.session!.user.id }, hookContext);
       const [row] = await db.insert(articlesTable).values(values).returning();
-      await emit("Article.created", presentArticle(row));
+      await emit("Article.created", presentArticle(row, SERVER));
       await scheduleTimers("Article", row);
       await hooks.afterCreate(row, hookContext);
-      return presentArticle(row);
+      return presentArticle(row, ctx.session);
     } catch (err) {
       throw toTRPCError(err, "write");
     }
@@ -134,12 +134,12 @@ export const postsRouter = router({
       const hookContext: HookContext = { session: ctx.session, req: ctx.req };
       try {
         const patch = await hooks.beforeUpdate(existing, await resolveFileRefs(input.data, FILE_FIELDS), hookContext);
-        if (Object.keys(patch).length === 0) return presentArticle(existing);
+        if (Object.keys(patch).length === 0) return presentArticle(existing, ctx.session);
         const [row] = await db.update(articlesTable).set(patch).where(eq(articlesTable.id, id)).returning();
 
       await scheduleTimers("Article", row);
         await hooks.afterUpdate(row, hookContext);
-        return presentArticle(row);
+        return presentArticle(row, ctx.session);
       } catch (err) {
         throw toTRPCError(err, "write");
       }
@@ -177,8 +177,8 @@ export const postsRouter = router({
     checkRule(ACTION_RULES.publish, ctx.session, current);
     try {
       const result = await handlers.posts_publish({ input, row: current, session: ctx.session, db, now: new Date() });
-      await emit("posts.publish", presentArticle(result));
-      return presentArticle(result);
+      await emit("posts.publish", presentArticle(result, SERVER));
+      return presentArticle(result, ctx.session);
     } catch (err) {
       throw toTRPCError(err, "write");
     }
@@ -209,7 +209,7 @@ export const postsRouter = router({
     try {
       const result = await handlers.posts_lock({ input, row: current, session: ctx.session, db, now: new Date() });
 
-      return presentArticle(result);
+      return presentArticle(result, ctx.session);
     } catch (err) {
       throw toTRPCError(err, "write");
     }
@@ -228,7 +228,7 @@ export const postsRouter = router({
     try {
       const result = await handlers.posts_unlock({ input, row: current, session: ctx.session, db, now: new Date() });
 
-      return presentArticle(result);
+      return presentArticle(result, ctx.session);
     } catch (err) {
       throw toTRPCError(err, "write");
     }
@@ -249,8 +249,8 @@ export const postsRouter = router({
       const result = await setArticleArchived(current.id, true, new Date());
       if (!result) fail(409, "conflict", "The row is archived already");
       await scheduleTimers("Article", result);
-      await emit("posts.archive", presentArticle(result));
-      return presentArticle(result);
+      await emit("posts.archive", presentArticle(result, SERVER));
+      return presentArticle(result, ctx.session);
     } catch (err) {
       throw toTRPCError(err, "write");
     }
@@ -272,7 +272,7 @@ export const postsRouter = router({
       if (!result) fail(409, "conflict", "The row is not archived");
       await scheduleTimers("Article", result);
 
-      return presentArticle(result);
+      return presentArticle(result, ctx.session);
     } catch (err) {
       throw toTRPCError(err, "write");
     }
@@ -294,7 +294,7 @@ export const postsRouter = router({
       if (!result) fail(409, "invalid_transition", `submit needs status draft; this row's status is ${current.status}`);
       await scheduleTimers("Article", result);
 
-      return presentArticle(result);
+      return presentArticle(result, ctx.session);
     } catch (err) {
       throw toTRPCError(err, "write");
     }
@@ -315,8 +315,8 @@ export const postsRouter = router({
       const result = await articleTransitions.approve(current.id, new Date());
       if (!result) fail(409, "invalid_transition", `approve needs status in_review; this row's status is ${current.status}`);
       await scheduleTimers("Article", result);
-      await emit("posts.approve", presentArticle(result));
-      return presentArticle(result);
+      await emit("posts.approve", presentArticle(result, SERVER));
+      return presentArticle(result, ctx.session);
     } catch (err) {
       throw toTRPCError(err, "write");
     }
@@ -338,7 +338,7 @@ export const postsRouter = router({
       if (!result) fail(409, "invalid_transition", `reject needs status in_review; this row's status is ${current.status}`);
       await scheduleTimers("Article", result);
 
-      return presentArticle(result);
+      return presentArticle(result, ctx.session);
     } catch (err) {
       throw toTRPCError(err, "write");
     }
@@ -360,7 +360,7 @@ export const postsRouter = router({
       if (!result) fail(409, "invalid_transition", `retire needs status approved; this row's status is ${current.status}`);
       await scheduleTimers("Article", result);
 
-      return presentArticle(result);
+      return presentArticle(result, ctx.session);
     } catch (err) {
       throw toTRPCError(err, "write");
     }

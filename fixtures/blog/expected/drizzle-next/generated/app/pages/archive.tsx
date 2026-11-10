@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { client, sessionUser, type Inputs, type Outputs, type SessionUser } from "../client";
+import { client, fieldsOf, sessionUser, type Inputs, type Outputs, type SessionUser } from "../client";
 import { EmptyPane, ErrorNote, FieldRow, FileInput, FilePreview, FormRow, ListSkeleton, Pagination, Pane, PaneHeader, PaneSkeleton, SortHeader, formatDateTime, formatList, selectClass, splitList, text, toDateTimeInput, useDebounced, yesNo } from "../ui";
 
 type Row = Outputs["posts"]["list"]["data"][number];
@@ -118,7 +118,7 @@ function guarded<P extends object>(Component: (props: P) => ReactNode) {
   };
 }
 
-const ARCHIVE_FIELDS = ["title", "content", "published", "author_id", "tags", "cover", "publish_at"] as const;
+const ARCHIVE_FIELDS = ["title", "content", "published", "author_id", "tags", "cover", "publish_at", "editor_note"] as const;
 type ArchiveField = (typeof ARCHIVE_FIELDS)[number];
 
 type ArchiveValues = {
@@ -129,6 +129,7 @@ type ArchiveValues = {
   tags: string;
   cover: string;
   publish_at: string;
+  editor_note: string;
 };
 
 const EMPTY_ARCHIVE: ArchiveValues = {
@@ -138,10 +139,26 @@ const EMPTY_ARCHIVE: ArchiveValues = {
   author_id: "",
   tags: "",
   cover: "",
-  publish_at: ""
+  publish_at: "",
+  editor_note: ""
 };
 
-const ARCHIVE_CREATE: readonly ArchiveField[] = ["title", "content", "published", "tags", "cover", "publish_at"];
+/** Fields with a read rule: an input is offered only to a viewer who may read the field, and a field that was not offered is not sent */
+const ARCHIVE_RULED: readonly string[] = ["editor_note"];
+
+/** The fields a form offers: `readable` answers for the ones with a read rule (the session for a new row, the row's own keys for an edit) */
+function offeredArchive<F extends string>(fields: readonly F[], readable: (field: string) => boolean): F[] {
+  return fields.filter(field => !ARCHIVE_RULED.includes(field) || readable(field));
+}
+
+/** An input without the fields the form did not offer, so a field its viewer may not read is never overwritten blind */
+function sentArchive<T extends object>(input: T, readable: (field: string) => boolean): T {
+  const out = { ...input } as Record<string, unknown>;
+  for (const field of ARCHIVE_RULED) if (!readable(field)) delete out[field];
+  return out as T;
+}
+
+const ARCHIVE_CREATE: readonly ArchiveField[] = ["title", "content", "published", "tags", "cover", "publish_at", "editor_note"];
 
 function toArchiveCreateInput(v: ArchiveValues): Input<"create"> {
   return {
@@ -150,11 +167,12 @@ function toArchiveCreateInput(v: ArchiveValues): Input<"create"> {
     published: v.published,
     tags: (v.tags === "" ? null : splitList(v.tags)),
     cover: (v.cover || null),
-    publish_at: (v.publish_at === "" ? null : new Date(v.publish_at).toISOString())
+    publish_at: (v.publish_at === "" ? null : new Date(v.publish_at).toISOString()),
+    editor_note: (v.editor_note || null)
   };
 }
 
-const ARCHIVE_UPDATE: readonly ArchiveField[] = ["title", "content", "published", "author_id", "tags", "cover", "publish_at"];
+const ARCHIVE_UPDATE: readonly ArchiveField[] = ["title", "content", "published", "author_id", "tags", "cover", "publish_at", "editor_note"];
 
 function toArchiveUpdateInput(v: ArchiveValues): Input<"update">["data"] {
   return {
@@ -164,7 +182,8 @@ function toArchiveUpdateInput(v: ArchiveValues): Input<"update">["data"] {
     author_id: v.author_id,
     tags: (v.tags === "" ? null : splitList(v.tags)),
     cover: (v.cover || null),
-    publish_at: (v.publish_at === "" ? null : new Date(v.publish_at).toISOString())
+    publish_at: (v.publish_at === "" ? null : new Date(v.publish_at).toISOString()),
+    editor_note: (v.editor_note || null)
   };
 }
 
@@ -176,7 +195,8 @@ function archiveFromRow(row: Detail): ArchiveValues {
     author_id: text(row.author_id),
     tags: formatList(row.tags),
     cover: row.cover?.id ?? "",
-    publish_at: toDateTimeInput(row.publish_at)
+    publish_at: toDateTimeInput(row.publish_at),
+    editor_note: text(row.editor_note)
   };
 }
 
@@ -250,6 +270,12 @@ function renderArchiveField(field: ArchiveField, values: ArchiveValues, set: Arc
       return (
       <FormRow label="Publish At" htmlFor="publish_at">
         <Input id="publish_at" type="datetime-local" value={values.publish_at} onChange={e => set("publish_at", e.target.value)} />
+      </FormRow>
+      );
+    case "editor_note":
+      return (
+      <FormRow label="Editor Note" htmlFor="editor_note">
+        <Textarea id="editor_note" rows={4} value={values.editor_note} onChange={e => set("editor_note", e.target.value)} />
       </FormRow>
       );
   }
@@ -441,17 +467,21 @@ function ArchiveNewInner() {
       await router.push(`/archive/${text(row.id)}`);
     }
   });
+  // A field with a read rule is offered only to a viewer who could read it, and is not sent otherwise
+  const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
+  const could: Record<string, boolean> = fieldsOf(session.data).posts;
+  const readable = (field: string) => could[field] === true;
   return (
     <Pane title="New article" actions={<Link href="/archive" className={buttonVariants({ variant: "ghost", size: "icon-sm" })} aria-label="Back">
             <ArrowLeft />
           </Link>}>
       <ArchiveForm
-        fields={ARCHIVE_CREATE}
+        fields={offeredArchive(ARCHIVE_CREATE, readable)}
         initial={EMPTY_ARCHIVE}
         submitLabel="Create"
         pending={createRow.isPending}
         error={createRow.error}
-        onSubmit={values => createRow.mutate(toArchiveCreateInput(values))}
+        onSubmit={values => createRow.mutate(sentArchive(toArchiveCreateInput(values), readable))}
       />
     </Pane>
   );
@@ -637,14 +667,14 @@ function ArchiveDetailInner() {
       <ErrorNote error={retireAction.error} className="mb-4" />
       {editing ? (
         <ArchiveForm
-          fields={ARCHIVE_UPDATE}
+          fields={offeredArchive(ARCHIVE_UPDATE, field => field in row)}
           initial={archiveFromRow(row)}
           current={row}
           submitLabel="Save"
           pending={updateRow.isPending}
           error={updateRow.error}
           onCancel={() => setEditing(false)}
-          onSubmit={values => updateRow.mutate({ id, data: toArchiveUpdateInput(values) })}
+          onSubmit={values => updateRow.mutate({ id, data: sentArchive(toArchiveUpdateInput(values), field => field in row) })}
         />
       ) : (
         <dl className="grid gap-3">
@@ -675,6 +705,11 @@ function ArchiveDetailInner() {
         <FieldRow label="Status">{row.status == null ? "—" : <Badge variant="secondary">{text(row.status)}</Badge>}</FieldRow>
         <FieldRow label="Approved At">{formatDateTime(row.approved_at) || "—"}</FieldRow>
         <FieldRow label="Retired At">{formatDateTime(row.retired_at) || "—"}</FieldRow>
+        {"editor_note" in row ? (
+          <FieldRow label="Editor Note">
+            <p className="whitespace-pre-wrap">{text(row.editor_note) || "—"}</p>
+          </FieldRow>
+        ) : null}
         </dl>
       )}
     </Pane>

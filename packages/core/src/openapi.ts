@@ -4,6 +4,9 @@
  */
 import {
   ruleKey,
+  ruleText,
+  ruledColumns,
+  hasFieldRules,
   type ActionIR,
   type ColumnIR,
   type EntityIR,
@@ -102,9 +105,19 @@ function scalarSchema(scalar: string): Schema {
 
 function presentedSchema(entity: EntityIR, ir: IR, include: string[] = [], through: string[] = []): Schema {
   const properties: Record<string, Schema> = {};
+  // A field with a read rule may be absent, so it leaves `required`; its description says for whom it is there
+  const ruled = new Set<string>();
   for (const c of entity.columns) {
     if (c.hidden || (c.type.kind === "scalar" && c.type.scalar === "bytes")) continue;
     properties[c.name] = c.readOnly ? { ...columnSchema(c, ir), readOnly: true } : columnSchema(c, ir);
+    if (c.read) {
+      ruled.add(c.name);
+      const note = `Present only for a caller this rule allows on the row: ${ruleText(c.read)}.`;
+      properties[c.name] = {
+        ...properties[c.name],
+        description: c.description ? `${c.description}. ${note}` : note
+      };
+    }
   }
   for (const name of include) {
     const rel = entity.relations.find(r => r.name === name);
@@ -117,7 +130,31 @@ function presentedSchema(entity: EntityIR, ir: IR, include: string[] = [], throu
     const rel = entity.through?.find(t => t.name === name);
     if (rel) properties[name] = { type: "array", items: { $ref: `#/components/schemas/${rel.target}` } };
   }
-  return { type: "object", properties, required: Object.keys(properties) };
+  return { type: "object", properties, required: Object.keys(properties).filter(name => !ruled.has(name)) };
+}
+
+/** What auth.me answers beside the user when the model has field rules: per resource, whether the caller could read each such field on some row */
+function sessionFieldsSchema(ir: IR): Record<string, Schema> {
+  if (!hasFieldRules(ir)) return {};
+  const properties: Record<string, Schema> = {};
+  for (const r of ir.resources) {
+    const columns = ruledColumns(ir.entities.find(e => e.name === r.entity)!);
+    if (!columns.length) continue;
+    properties[r.name] = {
+      type: "object",
+      required: columns.map(c => c.name),
+      properties: Object.fromEntries(columns.map(c => [c.name, { type: "boolean" }]))
+    };
+  }
+  return {
+    fields: {
+      type: "object",
+      description:
+        "For each resource with a field that has a read rule: whether this caller could read the field on some row. A row still leaves out what its own rule refuses.",
+      required: Object.keys(properties),
+      properties
+    }
+  };
 }
 
 function inputSchema(entity: EntityIR, fields: string[], ir: IR, mode: "create" | "update"): Schema {
@@ -466,7 +503,7 @@ export function openapiDocument(ir: IR): Record<string, unknown> {
         operationId: "auth_me",
         summary: "The signed-in user",
         security: session,
-        responses: responses(data(user))
+        responses: responses(data(user, sessionFieldsSchema(ir)))
       }
     };
     paths["/api/auth/providers"] = {
@@ -633,6 +670,7 @@ export interface OpenApiChange {
     | "removed_schema"
     | "removed_property"
     | "narrowed_type"
+    | "optional_property"
     | "added_required";
   path?: string;
   method?: string;
@@ -712,6 +750,19 @@ function diffSchemas(
     }
     const narrowed = narrowing(prop, next);
     if (narrowed) out.push({ ...at, kind: "narrowed_type", property: name, detail: `${where}: ${name} ${narrowed}` });
+  }
+  if (!isInput) {
+    // A response property a client could count on may now be absent (a field gained a read rule)
+    const required = (s: Schema) => (s.required as string[] | undefined) ?? [];
+    const still = required(after);
+    for (const name of required(before))
+      if (name in afterProps && !still.includes(name))
+        out.push({
+          ...at,
+          kind: "optional_property",
+          property: name,
+          detail: `${where}: ${name} may now be absent`
+        });
   }
   if (isInput) {
     const required = (s: Schema) => (s.required as string[] | undefined) ?? [];

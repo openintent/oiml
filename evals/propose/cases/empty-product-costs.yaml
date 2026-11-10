@@ -1,0 +1,26 @@
+id: empty-product-costs
+tags: [entity, rules, auth, visibility, scenario]
+base: { empty: catalog }
+intent:
+  title: Products with a cost price
+  ask: >-
+    Staff sign up and keep a catalog of products: a name, a sale price and a cost price. Everyone who is signed in
+    sees the products and their sale prices. The cost price is for managers only: other staff read a product
+    without it, in the list too. Only managers add and change products.
+  acceptance:
+    - A member of staff reads a product and its cost price is not in the answer, alone or in the list
+    - A manager reads the same product with its cost price
+    - Someone who is not a manager cannot add or change a product
+expect:
+  entities: [User, "Product|Item"]
+  field_read: { "Product|Item.cost|cost_price|unit_cost|cost_cents": "role:manager" }
+  rules: { "Product|Item": { read: authenticated, create: "role:manager", update: "role:manager" } }
+  absent_entities: ["ProductCost|Cost|CostPrice"]
+  scenarios: { min: 1, rejections: 1, statuses: [403] }
+  ops: { forbid: [add_action] }
+notes: >-
+  The first ask the survey made of field rules: one entity, one field some of its readers must not get. `read:
+  "role:manager"` on the cost, the sale price left alone. A hidden cost keeps it from managers too; a second entity
+  with its own read rule answers the acceptance but splits a product in two, and a handler that strips the value
+  has not used the construct. The scenario needs `expect.absent` for the member of staff and the value for the
+  manager; a manager is an actor with `role: manager`.

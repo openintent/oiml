@@ -1,0 +1,13 @@
+osl: "1.0"
+title: Author contact and editor notes
+ask: >-
+  People can add a phone number to their profile. Only the person and the admins see it: everyone else reads the
+  profile without it, in lists and beside an article too. The time someone was banned is theirs and the admins'
+  as well. An article has a note for the editors that only admins read: the author who wrote it does not get it
+  back, whatever they do with the article.
+acceptance:
+  - Someone sees their own phone number in their profile and when they ask who they are; another user and a visitor do not
+  - An admin sees everyone's phone number, in the list of users too
+  - An article's author is shown beside it without the phone number, except to the author and to admins
+  - The author creates, edits, submits, publishes, archives and restores an article and never gets the editor note back
+  - An admin reads the editor note, also in the answer to approving the article

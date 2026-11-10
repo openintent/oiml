@@ -10,6 +10,7 @@ import type {
 } from "@osl/core";
 import {
   alternativeParts,
+  hasFieldRules,
   conditionKey,
   conditionedRules,
   rowDependentRules,
@@ -38,7 +39,22 @@ export function verdictSource(ir: IR): string {
   const roles = ir.auth?.tenancy?.roles ?? [];
   const isolated = Boolean(isolationOf(ir));
   // Under isolation: database the rule checks can be switched off by a test hook, so a walk can prove the policies alone hold
-  const off = isolated ? "\n  if (rulesDisabled()) return ALLOW;" : "";
+  // With a field rule in the model, the verdict itself is `judge`, which the presenters call: the hook never switches a field rule off
+  const split = isolated && hasFieldRules(ir);
+  const off = isolated && !split ? "\n  if (rulesDisabled()) return ALLOW;" : "";
+  const inner = split ? "judge" : "verdict";
+  const judged = split
+    ? `export function verdict(rule: Rule, session: Session | null, row?: Record<string, unknown> | null): Verdict {
+  if (rulesDisabled()) return ALLOW;
+  return judge(rule, session, row);
+}
+
+/**
+ * The verdict itself, whatever the test hook says. A field's read rule is checked with this: no policy stands
+ * behind a field, so switching the rule checks off must not show one.
+ */
+export function judge(rule: Rule, session: Session | null, row?: Record<string, unknown> | null): Verdict {`
+    : `export function verdict(rule: Rule, session: Session | null, row?: Record<string, unknown> | null): Verdict {${off}`;
   const offSatisfied = isolated ? "\n  if (rulesDisabled()) return true;" : "";
   const isolation = isolated
     ? `
@@ -143,7 +159,7 @@ export function satisfied(rule: Rule, session: Session | null): boolean {${offSa
  * refusing part answered.
  * A condition is checked once the row is there; before that, the rule allows what its predicate allows.
  */
-export function verdict(rule: Rule, session: Session | null, row?: Record<string, unknown> | null): Verdict {${off}
+${judged}
   const base = predicateVerdict(rule, session, row);
   if (!base.ok || rule.kind === "any" || rule.kind === "all" || rule.kind === "none" || !rule.when || !row) return base;
   return holds(rule.when, row) ? ALLOW : { ok: false, status: 403 };
@@ -153,7 +169,7 @@ function predicateVerdict(rule: Rule, session: Session | null, row?: Record<stri
   switch (rule.kind) {
     case "all": {
       for (const part of rule.rules) {
-        const result = verdict(part, session, row);
+        const result = ${inner}(part, session, row);
         if (!result.ok) return result;
       }
       return ALLOW;
@@ -161,7 +177,7 @@ function predicateVerdict(rule: Rule, session: Session | null, row?: Record<stri
     case "any": {
       let status: 401 | 403 = 403;
       for (const alternative of rule.rules) {
-        const result = verdict(alternative, session, row);
+        const result = ${inner}(alternative, session, row);
         if (result.ok) return ALLOW;
         if (result.status === 401) status = 401;
       }

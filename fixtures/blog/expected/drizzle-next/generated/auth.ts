@@ -7,7 +7,7 @@ import { z } from "zod";
 import { db } from "./db/client";
 import { users as usersTable } from "./db/schema";
 import { created, error, handleError, noContent, ok, parseBody } from "./http";
-import { presentUser, type PublicUser } from "./present";
+import { SERVER, presentUser, type PublicUser, visibleFields } from "./present";
 import { APP_URL, PROVIDERS, issueMagicLink, oauthCallback, oauthStart, verifyMagicLink } from "./auth-providers";
 
 export type Membership = { tenant: string | number; role: string };
@@ -69,9 +69,21 @@ function readCookie(request: Request): { uid: string | number } | null {
   }
 }
 
-/** The session of a user row: the public user and their memberships */
+/** What each session's caller is told of their own row (register, login, me): the fields their own session may read */
+const SELF = new WeakMap<Session, PublicUser>();
+
+/** The session of a user row: the user as the server reads it, which the rules read, and their memberships */
 export async function sessionOf(user: typeof usersTable.$inferSelect): Promise<Session> {
-  return { user: presentUser(user), memberships: [] };
+  const session: Session = { user: presentUser(user, SERVER), memberships: [] };
+  SELF.set(session, presentUser(user, session));
+  return session;
+}
+
+/** The caller's own row as their own session may read it; `session.user` is the whole row and never leaves the server as it is */
+export function shownUser(session: Session): PublicUser {
+  const shown = SELF.get(session);
+  if (!shown) throw new Error("shownUser needs a session made by sessionOf");
+  return shown;
 }
 
 /** The signed-in user, or null. Loads the user so a deleted account signs out immediately. */
@@ -86,7 +98,8 @@ const registerInput = z
   .object({
   email: z.string().email().max(255),
   password: z.string().min(8).max(200),
-  name: z.string().min(1).max(100)
+  name: z.string().min(1).max(100),
+  phone: z.string().max(40).nullish()
   })
   .strict();
 
@@ -111,7 +124,7 @@ export const auth = {
         .insert(usersTable)
         .values({ ...fields, password_hash: hashPassword(password) })
         .returning();
-      return withCookie(created(presentUser(user)), sessionCookie(user.id));
+      return withCookie(created(shownUser(await sessionOf(user))), sessionCookie(user.id));
     } catch (err) {
       return handleError(err, "write");
     }
@@ -125,7 +138,7 @@ export const auth = {
       if (!user || !verifyPassword(body.data.password, user.password_hash)) {
         return error(401, "invalid_credentials", "Email or password is wrong");
       }
-      return withCookie(ok(presentUser(user)), sessionCookie(user.id));
+      return withCookie(ok(shownUser(await sessionOf(user))), sessionCookie(user.id));
     } catch (err) {
       return handleError(err, "read");
     }
@@ -148,7 +161,7 @@ export const auth = {
       const body = await parseBody(magicLinkVerifyInput, request);
       if (!body.ok) return body.response;
       const user = await verifyMagicLink(body.data.token);
-      return withCookie(ok(presentUser(user)), sessionCookie(user.id));
+      return withCookie(ok(shownUser(await sessionOf(user))), sessionCookie(user.id));
     } catch (err) {
       return handleError(err, "write");
     }
@@ -183,7 +196,7 @@ export const auth = {
     try {
       const session = await getSession(request);
       if (!session) return error(401, "unauthenticated", "Sign in to continue");
-      return ok(session.user);
+      return ok(shownUser(session), { fields: visibleFields(session) });
     } catch (err) {
       return handleError(err, "read");
     }

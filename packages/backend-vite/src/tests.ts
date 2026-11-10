@@ -9,6 +9,7 @@ import {
   actorsDecl,
   assertNoHiddenSource,
   bodyCheck,
+  carriesImport,
   captureLines,
   hiddenColumnsDecl,
   matchersSource,
@@ -196,7 +197,7 @@ export async function actor(name: string): Promise<ActorSession> {
   return { client, id: pick(login.body, "data.id") };
 }
 
-${matchersSource()}
+${matchersSource(ir)}
 `;
 }
 
@@ -209,7 +210,7 @@ export function scenarioTestFiles(ir: IR): GeneratedFile[] {
       path: `generated/tests/${String(index + 1).padStart(2, "0")}_${slugify(scenario.name)}.test.ts`,
       content: `${HEADER(`Contract test for the scenario "${scenario.name}".`)}
 import { beforeAll, describe, expect, it } from "vitest";
-import { Client, actor, coerce, matches, pick, registerActors, resolve, type ActorSession } from "./_client";
+import { Client, actor, ${carriesImport(scenario.steps)}coerce, matches, pick, registerActors, resolve, type ActorSession } from "./_client";
 
 describe(${q(scenario.name)}, () => {
   const actors: Record<string, ActorSession> = {};

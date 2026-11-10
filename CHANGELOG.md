@@ -5,6 +5,36 @@ fixture intent on all three backends before it is listed here.
 
 ## Unreleased
 
+- Field-level visibility (round B5 of the road to 1.0.0). `read:` on a field is a rule in the spelling of the
+  entity's rules; the field is in a response only for a caller the rule allows on that row, and absent, not null,
+  for everyone else. The entity's read rule still decides whether the row is seen, so a field rule only narrows.
+  It holds on every way a row leaves the server: get, list rows, included rows and the far rows of a relation
+  through a junction, the answers of create and update (a writer the rule refuses does not get the value back), of
+  `move`, `archive`, `restore`, every transition and an action that returns the row, and `auth.me`, register and
+  login, which answer the caller's own row as their own session may read it. An event's payload is the row as the
+  server reads it. On each backend one presenter per entity takes the viewer, and for an entity with a field rule a
+  call without one does not compile; a model without `read:` generates what it did. A field rule reads the row and
+  the caller only: a path through a relation or a membership relation is refused on a field (M171). So is `read:`
+  on a hidden field, a primary key or a relation field (M170), on a position, the archive field or the field of
+  `transitions` (M173), and naming such a field in `list.filters`, `sortable`, `order`, `search` or a `group_by`
+  (M172); a rule's `when`, a count's `where` and a timer's `when` may still test it, and a `count_of` field may
+  carry it. Writes follow the entity's rules as before: M174 warns when the create or update rule lets someone
+  write a field its `read:` refuses them, M175 when a field with `read:` is unique (a repeated value still answers
+  409). Under `isolation: database` nothing is added to the database and the rule is compiled as written, without
+  the membership M119 adds to an entity's rules; M176 warns where `authenticated` or `role:` lets a signed-in
+  caller who is not a member read the field on rows a public read alternative shows. `auth.me` answers `fields`
+  beside `data` (`auth.session` under tRPC): per resource, whether the caller could read each such field on some
+  row. The pages leave out the column and the new-row input of a field its viewer could never read, the detail row
+  and the edit input where the row does not carry it, and send no field a form did not offer; a rule's condition
+  on such a field is left to the API. In the OpenAPI document the property leaves `required` and says for whom it
+  is there, and a field that gains `read:` is a breaking change (`optional_property`) its `update_field` explains.
+  Scenarios say a key must be missing with `expect.absent: [data.budget]`. The leak walk now holds every row of
+  every answer to the read rules of its fields, as its caller, and compares what each session is told of its
+  fields. New keys: `Field.read`, `expect.absent`; diagnostics M170 to M176. Not built: a rule per field for
+  writing, masking instead of leaving out, a field rule through a relation. Fixtures: workspace WS-15 (a budget and
+  a count for a team's admins, an estimate for signed-in callers, under `isolation: database`) and blog FEAT-15 (a
+  phone for the person and the admins on the identity, an editor note only admins read on an entity with
+  transitions, archive and events). Design: `docs/designs/field-visibility.md`.
 - State machines (round B4 of the road to 1.0.0). `transitions` on an entity names one `read_only` enum field and,
   per transition, the states it may start from, the state it ends in, who may run it (`rule`, default the update
   rule) and an optional datetime `stamp`. Each transition is a row action the compiler writes on every resource

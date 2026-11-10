@@ -60,7 +60,7 @@ export function generate(input: GenerateInput): GeneratedFile[] {
 
   files.push({ path: `${gen}/http.ts`, content: httpFile(ir) });
   files.push({ path: `${gen}/access.ts`, content: accessFile(ir) });
-  files.push({ path: `${gen}/present.ts`, content: presentFile(ir, NEXT) });
+  files.push({ path: `${gen}/present.ts`, content: presentFile(ir, NEXT, { access: "./access", auth: "./auth" }) });
   files.push({ path: `${gen}/auth.ts`, content: authFile(ir) });
   files.push({ path: `${gen}/validation.ts`, content: validationFile(ir, NEXT) });
   files.push(...eventFiles(ir, NEXT));

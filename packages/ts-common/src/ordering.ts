@@ -5,6 +5,7 @@
  */
 import { toPascalCase, type ActionIR, type EntityIR, type IR, type ThroughIR } from "@osl/core";
 import { entityByName, q, singlePrimaryKey, typeName } from "./conventions.js";
+import { presentMapper } from "./present.js";
 
 type TableVar = (entity: EntityIR) => string;
 
@@ -117,7 +118,7 @@ ${rels.map(r => `  const ${r.name} = await load${toPascalCase(r.name)}(ids);`).j
 export function throughRowParts(ir: IR, rels: ThroughIR[]): { types: string[]; presents: string[] } {
   return {
     types: rels.map(r => `${r.name}: schema.${typeName(entityByName(ir, r.target))}[]`),
-    presents: rels.map(r => `${r.name}: row.${r.name}.map(present${typeName(entityByName(ir, r.target))})`)
+    presents: rels.map(r => `${r.name}: row.${r.name}.map(${presentMapper(entityByName(ir, r.target), "viewer")})`)
   };
 }
 

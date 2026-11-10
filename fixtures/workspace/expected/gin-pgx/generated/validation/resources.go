@@ -71,6 +71,7 @@ var ProjectsCreateInput = Object{Fields: []Field{
 	{Name: "name", Required: true, Type: String{MinLength: 1, MaxLength: 120}},
 	{Name: "status", Type: Enum{Values: []string{"active", "archived"}}},
 	{Name: "public", Type: Boolean{}},
+	{Name: "budget", Nullable: true, Type: Integer{Min: F(0)}},
 }}
 
 // ProjectsUpdateInput validates PATCH /api/projects/{id} bodies.
@@ -79,6 +80,7 @@ var ProjectsUpdateInput = Object{Fields: []Field{
 	{Name: "name", Type: String{MinLength: 1, MaxLength: 120}},
 	{Name: "status", Type: Enum{Values: []string{"active", "archived"}}},
 	{Name: "public", Type: Boolean{}},
+	{Name: "budget", Nullable: true, Type: Integer{Min: F(0)}},
 }}
 
 // TasksID parses a tasks id from the path.
@@ -100,6 +102,7 @@ var TasksCreateInput = Object{Fields: []Field{
 	{Name: "done", Type: Boolean{}},
 	{Name: "assignee_id", Nullable: true, Type: UUID{}},
 	{Name: "due_at", Nullable: true, Type: DateTime{}},
+	{Name: "estimate", Nullable: true, Type: Integer{Min: F(0)}},
 }}
 
 // TasksUpdateInput validates PATCH /api/tasks/{id} bodies.
@@ -109,6 +112,7 @@ var TasksUpdateInput = Object{Fields: []Field{
 	{Name: "done", Type: Boolean{}},
 	{Name: "assignee_id", Nullable: true, Type: UUID{}},
 	{Name: "due_at", Nullable: true, Type: DateTime{}},
+	{Name: "estimate", Nullable: true, Type: Integer{Min: F(0)}},
 }}
 
 // NotesID parses a notes id from the path.

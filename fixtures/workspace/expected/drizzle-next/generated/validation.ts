@@ -70,7 +70,8 @@ export const projectsCreateInput = z
     team_id: z.string().uuid(),
     name: z.string().min(1).max(120),
     status: z.enum(["active", "archived"]).optional(),
-    public: z.boolean().optional()
+    public: z.boolean().optional(),
+    budget: z.number().int().min(0).nullish()
   })
   .strict();
 export const projectsUpdateInput = z
@@ -78,7 +79,8 @@ export const projectsUpdateInput = z
     team_id: z.string().uuid().optional(),
     name: z.string().min(1).max(120).optional(),
     status: z.enum(["active", "archived"]).optional(),
-    public: z.boolean().optional()
+    public: z.boolean().optional(),
+    budget: z.number().int().min(0).nullish()
   })
   .strict();
 
@@ -98,7 +100,8 @@ export const tasksCreateInput = z
     title: z.string().min(1).max(200),
     done: z.boolean().optional(),
     assignee_id: z.string().uuid().nullish(),
-    due_at: z.string().datetime({ offset: true }).transform(value => new Date(value)).nullish()
+    due_at: z.string().datetime({ offset: true }).transform(value => new Date(value)).nullish(),
+    estimate: z.number().int().min(0).nullish()
   })
   .strict();
 export const tasksUpdateInput = z
@@ -107,7 +110,8 @@ export const tasksUpdateInput = z
     title: z.string().min(1).max(200).optional(),
     done: z.boolean().optional(),
     assignee_id: z.string().uuid().nullish(),
-    due_at: z.string().datetime({ offset: true }).transform(value => new Date(value)).nullish()
+    due_at: z.string().datetime({ offset: true }).transform(value => new Date(value)).nullish(),
+    estimate: z.number().int().min(0).nullish()
   })
   .strict();
 

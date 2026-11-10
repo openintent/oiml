@@ -73,7 +73,8 @@ describe("app section", () => {
       "banned_at",
       "ban_reason",
       "post_count",
-      "approved_count"
+      "approved_count",
+      "phone"
     ]);
     expect(posts.fields).toEqual([
       "title",

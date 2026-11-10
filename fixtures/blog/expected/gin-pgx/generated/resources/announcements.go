@@ -125,7 +125,7 @@ func (h *Announcements) List(c *gin.Context) {
 	}
 	data := make([]announcementsListRow, 0, len(items))
 	for _, item := range items {
-		data = append(data, announcementsListRow{PublicAnnouncement: models.PresentAnnouncement(item), Author: models.PresentUserPtr(authorRows[item.AuthorID])})
+		data = append(data, announcementsListRow{PublicAnnouncement: models.PresentAnnouncement(item), Author: models.PresentUserPtr(authorRows[item.AuthorID], access.Viewer(session))})
 	}
 	httpx.List(c, data, httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: total})
 }
@@ -162,7 +162,7 @@ func (h *Announcements) Get(c *gin.Context) {
 		httpx.HandleError(c, err, "read")
 		return
 	}
-	httpx.OK(c, announcementsGetRow{PublicAnnouncement: models.PresentAnnouncement(row), Author: models.PresentUserPtr(authorRows[row.AuthorID])})
+	httpx.OK(c, announcementsGetRow{PublicAnnouncement: models.PresentAnnouncement(row), Author: models.PresentUserPtr(authorRows[row.AuthorID], access.Viewer(session))})
 }
 
 // Create handles POST /api/announcements.

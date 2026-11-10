@@ -30,7 +30,7 @@ import { eventFunc } from "./events.js";
 import { isStatementAction, statementCall } from "./rowactions.js";
 import {
   columnsConst,
-  presentFunc,
+  presentCall,
   presentManyFunc,
   presentPtrFunc,
   publicType,
@@ -619,6 +619,11 @@ func (h *${handler}) ${inc.loader}(ctx context.Context, items []*models.${T}) ($
 }`;
 }
 
+/** The viewer a handler presents rows to: its caller */
+const VIEWER = "access.Viewer(session)";
+/** The server as a viewer: an event's payload is the row as the server reads it, whoever caused it */
+const SERVER = "models.Server";
+
 /** The struct field for an included relation in a row shape */
 function includeField(inc: Include): { name: string; type: string; tag: string } {
   const pub = `models.${publicType(inc.target)}`;
@@ -634,10 +639,10 @@ function includeValue(inc: Include, entity: EntityIR, item: string): string {
     const key = fk.nullable
       ? `models.Lookup(${inc.mapVar}, ${item}.${exported(rel.column)})`
       : `${inc.mapVar}[${item}.${exported(rel.column)}]`;
-    return `models.${presentPtrFunc(target)}(${key})`;
+    return presentCall(target, key, VIEWER, presentPtrFunc);
   }
   const key = `${inc.mapVar}[${item}.${exported(rel.targetColumn)}]`;
-  return rel.kind === "many" ? `models.${presentManyFunc(target)}(${key})` : `models.${presentPtrFunc(target)}(${key})`;
+  return presentCall(target, key, VIEWER, rel.kind === "many" ? presentManyFunc : presentPtrFunc);
 }
 
 /** The loader method for an included relation */
@@ -726,7 +731,8 @@ function actionHandlerMethod(
   );
   if (events.length) imports.add(`${modulePath}/generated/events`);
   const entity = action.entity ? entityByName(ir, action.entity) : null;
-  const present = entity ? `models.${presentFunc(entity)}` : "";
+  const shown = entity ? presentCall(entity, "result", VIEWER) : "";
+  const payload = entity ? presentCall(entity, "result", SERVER) : "";
   const lines: string[] = [];
   lines.push(`// ${actionMethod(action)} handles ${action.method} ${action.path}: the ${action.name} action.`);
   lines.push(`func (h *${handler}) ${actionMethod(action)}(c *gin.Context) {`);
@@ -775,8 +781,8 @@ function actionHandlerMethod(
 	result, err := models.${scanFunc(row.entity)}(h.db.QueryRow(ctx, \`SELECT \`+models.${columnsConst(row.entity)}+\` FROM \`+models.${tableConst(row.entity)}+\` WHERE ${quoteIdent(pk.name)} = $1\`, id))
 ${fail("write")}
 	_ = row`);
-    lines.push(...emitLines(events, `${present}(result)`, "write"));
-    lines.push(`\thttpx.OK(c, ${present}(result))`);
+    lines.push(...emitLines(events, payload, "write"));
+    lines.push(`\thttpx.OK(c, ${shown})`);
     lines.push(`}`);
     return lines.join("\n");
   }
@@ -812,8 +818,8 @@ ${refusal}
       lines.push(
         `\tif err := scheduling.Schedule${typeName(row.entity)}(ctx, result); err != nil {\n\t\thttpx.HandleError(c, err, "write")\n\t\treturn\n\t}`
       );
-    lines.push(...emitLines(events, `${present}(result)`, "write"));
-    lines.push(`\thttpx.OK(c, ${present}(result))`);
+    lines.push(...emitLines(events, payload, "write"));
+    lines.push(`\thttpx.OK(c, ${shown})`);
     lines.push(`}`);
     return lines.join("\n");
   }
@@ -828,8 +834,8 @@ ${refusal}
   } else if (action.returns.kind === "entity") {
     lines.push(`\tresult, err := ${call}`);
     lines.push(fail("write"));
-    lines.push(...emitLines(events, `${present}(result)`, "write"));
-    lines.push(`\thttpx.OK(c, ${present}(result))`);
+    lines.push(...emitLines(events, payload, "write"));
+    lines.push(`\thttpx.OK(c, ${shown})`);
   } else {
     lines.push(`\tresult, err := ${call}`);
     lines.push(fail("write"));
@@ -862,7 +868,7 @@ export function resourceFile(ir: IR, resource: ResourceIR, modulePath: string): 
   const tableC = `models.${tableConst(entity)}`;
   const columnsC = `models.${columnsConst(entity)}`;
   const scan = `models.${scanFunc(entity)}`;
-  const present = `models.${presentFunc(entity)}`;
+  const present = (expr: string, viewer = VIEWER) => presentCall(entity, expr, viewer);
   const files = fileColumns(entity);
   const tenancy = ir.auth?.tenancy;
   const isTenant = tenancy?.entity === entity.name;
@@ -958,7 +964,7 @@ var ${prefix}FileFields = ${fileSpecsLiteral(files)}`);
   const rowShape = (name: string, incs: Include[], doc: string) =>
     goStruct(name, [{ name: "", type: `models.${publicType(entity)}` }, ...incs.map(includeField)], doc);
   const rowLiteral = (name: string, incs: Include[], item: string) =>
-    `${name}{${[`${publicType(entity)}: ${present}(${item})`, ...incs.map(inc => `${includeField(inc).name}: ${includeValue(inc, entity, item)}`)].join(", ")}}`;
+    `${name}{${[`${publicType(entity)}: ${present(item)}`, ...incs.map(inc => `${includeField(inc).name}: ${includeValue(inc, entity, item)}`)].join(", ")}}`;
   const loadIncludes = (incs: Include[], op: "read") =>
     incs.map(inc => `\t${inc.mapVar}, err := h.${inc.loader}(ctx, items)\n${fail(op)}`).join("\n");
   const resolveFiles = (target: string) =>
@@ -981,7 +987,7 @@ var ${prefix}FileFields = ${fileSpecsLiteral(files)}`);
         list.rule,
         ruleVar("read"),
         identityPk,
-        listIncludes.length ? `[]${prefix}ListRow{}` : `models.${presentManyFunc(entity)}(nil)`,
+        listIncludes.length ? `[]${prefix}ListRow{}` : presentCall(entity, "nil", VIEWER, presentManyFunc),
         (total: number) => `httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: ${total}}`
       )
     );
@@ -1011,7 +1017,7 @@ var ${prefix}FileFields = ${fileSpecsLiteral(files)}`);
 		data = append(data, ${rowLiteral(`${prefix}ListRow`, listIncludes, "item")})
 	}
 	httpx.List(c, data, httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: total})`
-      : `\thttpx.List(c, models.${presentManyFunc(entity)}(items), httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: total})`;
+      : `\thttpx.List(c, ${presentCall(entity, "items", VIEWER, presentManyFunc)}, httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: total})`;
     sections.push(`// List handles ${list.method} ${list.path}.
 func (h *${handler}) List(c *gin.Context) {
 	ctx := c.Request.Context()
@@ -1043,7 +1049,7 @@ ${body}
       ? `\titems := []*models.${T}{row}
 ${loadIncludes(getIncludes, "read")}
 	httpx.OK(c, ${rowLiteral(`${prefix}GetRow`, getIncludes, "row")})`
-      : `\thttpx.OK(c, ${present}(row))`;
+      : `\thttpx.OK(c, ${present("row")})`;
     sections.push(`// Get handles ${get.method} ${get.path}.
 func (h *${handler}) Get(c *gin.Context) {
 	ctx := c.Request.Context()
@@ -1065,7 +1071,7 @@ ${body}
     ? `\tif err := scheduling.Schedule${typeName(entity)}(ctx, row); err != nil {\n\t\thttpx.HandleError(c, err, "write")\n\t\treturn\n\t}\n`
     : "";
   if (create) {
-    const emits = emitLines(eventsFor("created"), `${present}(row)`, "write");
+    const emits = emitLines(eventsFor("created"), present("row", SERVER), "write");
     if (emits.length) imports.add(`${modulePath}/generated/events`);
     const bodyCheck =
       rowRules(create.rule).some(r => r.kind === "member" || r.via?.length) || conditionedRules(create.rule).length > 0
@@ -1114,12 +1120,12 @@ ${emits.length ? emits.join("\n") + "\n" : ""}${timerLines}	if err := ${hooksPkg
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	httpx.Created(c, ${present}(row))
+	httpx.Created(c, ${present("row", isTenant && tenancy ? `access.CreatorViewer(session, row.${exported(pk.name)}, ${q(tenancy.creatorRole)})` : VIEWER)})
 }`);
   }
 
   if (update) {
-    const emits = emitLines(eventsFor("updated"), `${present}(row)`, "write");
+    const emits = emitLines(eventsFor("updated"), present("row", SERVER), "write");
     if (emits.length) imports.add(`${modulePath}/generated/events`);
     sections.push(`// Update handles ${update.method} ${update.path}.
 func (h *${handler}) Update(c *gin.Context) {
@@ -1136,7 +1142,7 @@ ${resolveFiles("patch")}	hookCtx := &hooks.Context{Gin: c, Session: session}
 	patch, err = ${hooksPkg}.BeforeUpdate(hookCtx, existing, patch)
 ${fail("write")}
 	if len(patch) == 0 {
-		httpx.OK(c, ${present}(existing))
+		httpx.OK(c, ${present("existing")})
 		return
 	}
 	sql, args := db.Update(${tableC}, patch, ${goRaw(pkIdent)}, id, ${columnsC})
@@ -1146,12 +1152,12 @@ ${emits.length ? emits.join("\n") + "\n" : ""}${timerLines}	if err := ${hooksPkg
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	httpx.OK(c, ${present}(row))
+	httpx.OK(c, ${present("row")})
 }`);
   }
 
   if (remove) {
-    const emits = emitLines(eventsFor("deleted"), `${present}(existing)`, "delete");
+    const emits = emitLines(eventsFor("deleted"), present("existing", SERVER), "delete");
     if (emits.length) imports.add(`${modulePath}/generated/events`);
     sections.push(`// Delete handles ${remove.method} ${remove.path}.
 func (h *${handler}) Delete(c *gin.Context) {

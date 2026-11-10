@@ -1,0 +1,26 @@
+id: empty-staff-salaries
+tags: [entity, rules, auth, visibility, scenario]
+base: { empty: staff }
+intent:
+  title: A staff directory with salaries
+  ask: >-
+    People sign up to the staff directory: a name, a job title and a salary. Anyone signed in can look everyone up.
+    A salary is between the person and HR: nobody else gets it, not in the directory and not on a person's page.
+    People keep their own name and job title up to date; only HR changes a salary.
+  acceptance:
+    - Someone reads a colleague's entry and the salary is not in the answer; they read their own with it
+    - HR reads everyone's salary, in the directory too
+    - Someone who asks who they are gets their own salary
+    - A person cannot change their own salary
+expect:
+  entities: ["User|Employee|Person|Staff"]
+  field_read:
+    "User|Employee|Person|Staff.salary|salary_cents|annual_salary": "owner:id or role:hr|owner:user_id or role:hr"
+  scenarios: { min: 1, rejections: 1, statuses: [400] }
+notes: >-
+  A field rule with an owner on the identity: `owner:id or role:hr`, so auth.me answers the caller's own salary and
+  another person's row comes without it. "Only HR changes a salary" asks for a rule per field for writing, which
+  the model does not have: the honest answers keep the salary out of what people may write (a read_only salary an
+  action of HR's sets, or a salary left out of the update's fields) and prove it with the 400 a person gets when
+  they send one, or say so in not_delivered. A salary writable under `owner:id` lets people set their own pay,
+  and M174 does not warn there, because the owner reads what they write: the scenario's 400 is what tells.

@@ -24,7 +24,7 @@ export default function LoginPage() {
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [fields, setFields] = useState({ name: "" });
+  const [fields, setFields] = useState({ name: "", phone: "" });
   const login = useMutation({ mutationFn: (input: Parameters<typeof client.auth.login>[0]) => client.auth.login(input), onSuccess: done });
   const register = useMutation({ mutationFn: (input: Parameters<typeof client.auth.register>[0]) => client.auth.register(input), onSuccess: done });
   const pending = login.isPending || register.isPending;
@@ -65,6 +65,10 @@ export default function LoginPage() {
               <div className="grid gap-1.5">
                 <Label htmlFor="name">Name</Label>
                 <Input id="name" value={fields.name} onChange={e => setFields(v => ({ ...v, name: e.target.value }))} required />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="phone">Phone</Label>
+                <Input id="phone" value={fields.phone} onChange={e => setFields(v => ({ ...v, phone: e.target.value }))} required />
               </div>
               </>
             ) : null}

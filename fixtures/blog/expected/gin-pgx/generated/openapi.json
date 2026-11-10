@@ -874,11 +874,48 @@
                 "schema": {
                   "type": "object",
                   "required": [
-                    "data"
+                    "data",
+                    "fields"
                   ],
                   "properties": {
                     "data": {
                       "$ref": "#/components/schemas/User"
+                    },
+                    "fields": {
+                      "type": "object",
+                      "description": "For each resource with a field that has a read rule: whether this caller could read the field on some row. A row still leaves out what its own rule refuses.",
+                      "required": [
+                        "users",
+                        "posts"
+                      ],
+                      "properties": {
+                        "users": {
+                          "type": "object",
+                          "required": [
+                            "banned_at",
+                            "phone"
+                          ],
+                          "properties": {
+                            "banned_at": {
+                              "type": "boolean"
+                            },
+                            "phone": {
+                              "type": "boolean"
+                            }
+                          }
+                        },
+                        "posts": {
+                          "type": "object",
+                          "required": [
+                            "editor_note"
+                          ],
+                          "properties": {
+                            "editor_note": {
+                              "type": "boolean"
+                            }
+                          }
+                        }
+                      }
                     }
                   }
                 }
@@ -997,6 +1034,17 @@
                     "type": "string",
                     "maxLength": 100,
                     "minLength": 1
+                  },
+                  "phone": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 40
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 },
                 "required": [
@@ -2745,6 +2793,18 @@
                             ],
                             "readOnly": true
                           },
+                          "editor_note": {
+                            "oneOf": [
+                              {
+                                "type": "string",
+                                "description": "For the editors"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "description": "For the editors. Present only for a caller this rule allows on the row: role:admin."
+                          },
                           "author": {
                             "oneOf": [
                               {
@@ -2871,6 +2931,17 @@
                         "type": "string",
                         "format": "date-time",
                         "description": "When the article goes live on its own"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "editor_note": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "description": "For the editors"
                       },
                       {
                         "type": "null"
@@ -3076,6 +3147,18 @@
                           ],
                           "readOnly": true
                         },
+                        "editor_note": {
+                          "oneOf": [
+                            {
+                              "type": "string",
+                              "description": "For the editors"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "description": "For the editors. Present only for a caller this rule allows on the row: role:admin."
+                        },
                         "author": {
                           "oneOf": [
                             {
@@ -3197,6 +3280,17 @@
                         "type": "string",
                         "format": "date-time",
                         "description": "When the article goes live on its own"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "editor_note": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "description": "For the editors"
                       },
                       {
                         "type": "null"
@@ -3991,7 +4085,8 @@
                                 "type": "null"
                               }
                             ],
-                            "readOnly": true
+                            "readOnly": true,
+                            "description": "Present only for a caller this rule allows on the row: owner:id or role:admin."
                           },
                           "ban_reason": {
                             "oneOf": [
@@ -4011,6 +4106,18 @@
                           "approved_count": {
                             "type": "integer",
                             "readOnly": true
+                          },
+                          "phone": {
+                            "oneOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 40
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "description": "Present only for a caller this rule allows on the row: owner:id or role:admin."
                           }
                         },
                         "required": [
@@ -4020,7 +4127,6 @@
                           "role",
                           "created_at",
                           "banned",
-                          "banned_at",
                           "ban_reason",
                           "post_count",
                           "approved_count"
@@ -4148,7 +4254,8 @@
                               "type": "null"
                             }
                           ],
-                          "readOnly": true
+                          "readOnly": true,
+                          "description": "Present only for a caller this rule allows on the row: owner:id or role:admin."
                         },
                         "ban_reason": {
                           "oneOf": [
@@ -4169,6 +4276,18 @@
                           "type": "integer",
                           "readOnly": true
                         },
+                        "phone": {
+                          "oneOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 40
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "description": "Present only for a caller this rule allows on the row: owner:id or role:admin."
+                        },
                         "posts": {
                           "type": "array",
                           "items": {
@@ -4183,7 +4302,6 @@
                         "role",
                         "created_at",
                         "banned",
-                        "banned_at",
                         "ban_reason",
                         "post_count",
                         "approved_count",
@@ -4246,6 +4364,17 @@
                     "type": "string",
                     "maxLength": 100,
                     "minLength": 1
+                  },
+                  "phone": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 40
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 },
                 "additionalProperties": false
@@ -4529,6 +4658,18 @@
               }
             ],
             "readOnly": true
+          },
+          "editor_note": {
+            "oneOf": [
+              {
+                "type": "string",
+                "description": "For the editors"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "For the editors. Present only for a caller this rule allows on the row: role:admin."
           }
         },
         "required": [
@@ -4731,7 +4872,8 @@
                 "type": "null"
               }
             ],
-            "readOnly": true
+            "readOnly": true,
+            "description": "Present only for a caller this rule allows on the row: owner:id or role:admin."
           },
           "ban_reason": {
             "oneOf": [
@@ -4751,6 +4893,18 @@
           "approved_count": {
             "type": "integer",
             "readOnly": true
+          },
+          "phone": {
+            "oneOf": [
+              {
+                "type": "string",
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Present only for a caller this rule allows on the row: owner:id or role:admin."
           }
         },
         "required": [
@@ -4760,7 +4914,6 @@
           "role",
           "created_at",
           "banned",
-          "banned_at",
           "ban_reason",
           "post_count",
           "approved_count"

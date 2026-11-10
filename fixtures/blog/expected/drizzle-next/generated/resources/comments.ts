@@ -8,7 +8,7 @@ import { comments as commentsTable, articles as articlesTable } from "../db/sche
 import { checkRule, denied, type Rule } from "../access";
 import { getSession, type Session } from "../auth";
 import { created, handleError, noContent, notFound, ok, parseBody, parseId, parseQuery } from "../http";
-import { presentComment, presentUser } from "../present";
+import { presentComment, presentUser, type Viewer } from "../present";
 import { commentsCreateInput, commentsId, commentsListQuery, commentsUpdateInput } from "../validation";
 import { hooks } from "@/src/extensions/comments";
 
@@ -39,8 +39,8 @@ async function withRuleValues(row: Record<string, unknown>): Promise<Record<stri
 }
 
 type ListRow = schema.Comment & { author: schema.User | null };
-function presentListRow(row: ListRow) {
-  return { ...presentComment(row), author: row.author ? presentUser(row.author) : null };
+function presentListRow(row: ListRow, viewer: Viewer) {
+  return { ...presentComment(row), author: row.author ? presentUser(row.author, viewer) : null };
 }
 
 type GetRow = schema.Comment;
@@ -64,7 +64,7 @@ export const comments = {
         db.query.comments.findMany({ where, with: { author: true }, orderBy: [asc(commentsTable.created_at)], limit: page_size, offset: (page - 1) * page_size }),
         db.select({ total: count() }).from(commentsTable).where(where)
       ]);
-      return ok(rows.map(presentListRow), { page: { page, page_size, total } });
+      return ok(rows.map(row => presentListRow(row, session)), { page: { page, page_size, total } });
     } catch (err) {
       return handleError(err, "read");
     }

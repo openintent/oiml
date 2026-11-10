@@ -9,7 +9,7 @@ import "time"
 const UserTable = `"users"`
 
 // UserColumns lists the columns of User in model order, for SELECT and RETURNING.
-const UserColumns = `"id", "email", "name", "role", "created_at", "banned", "banned_at", "ban_reason", "post_count", "approved_count", "password_hash"`
+const UserColumns = `"id", "email", "name", "role", "created_at", "banned", "banned_at", "ban_reason", "post_count", "approved_count", "phone", "password_hash"`
 
 // User is a row of users.
 type User struct {
@@ -23,51 +23,60 @@ type User struct {
 	BanReason     *string    `json:"ban_reason"`
 	PostCount     int        `json:"post_count"`
 	ApprovedCount int        `json:"approved_count"`
+	Phone         *string    `json:"phone"`
 	PasswordHash  *string    `json:"-"`
 }
 
 // PublicUser is User as the API returns it: hidden columns removed, dates rendered.
 type PublicUser struct {
-	ID            string  `json:"id"`
-	Email         string  `json:"email"`
-	Name          string  `json:"name"`
-	Role          string  `json:"role"`
-	CreatedAt     string  `json:"created_at"`
-	Banned        bool    `json:"banned"`
-	BannedAt      *string `json:"banned_at"`
-	BanReason     *string `json:"ban_reason"`
-	PostCount     int     `json:"post_count"`
-	ApprovedCount int     `json:"approved_count"`
+	ID            string         `json:"id"`
+	Email         string         `json:"email"`
+	Name          string         `json:"name"`
+	Role          string         `json:"role"`
+	CreatedAt     string         `json:"created_at"`
+	Banned        bool           `json:"banned"`
+	BannedAt      Maybe[*string] `json:"banned_at,omitzero"`
+	BanReason     *string        `json:"ban_reason"`
+	PostCount     int            `json:"post_count"`
+	ApprovedCount int            `json:"approved_count"`
+	Phone         Maybe[*string] `json:"phone,omitzero"`
 }
 
 // ScanUser reads one User from a row selected with UserColumns.
 func ScanUser(row Scanner) (*User, error) {
 	var r User
-	if err := row.Scan(&r.ID, &r.Email, &r.Name, &r.Role, &r.CreatedAt, &r.Banned, &r.BannedAt, &r.BanReason, &r.PostCount, &r.ApprovedCount, &r.PasswordHash); err != nil {
+	if err := row.Scan(&r.ID, &r.Email, &r.Name, &r.Role, &r.CreatedAt, &r.Banned, &r.BannedAt, &r.BanReason, &r.PostCount, &r.ApprovedCount, &r.Phone, &r.PasswordHash); err != nil {
 		return nil, err
 	}
 	return &r, nil
 }
 
-// PresentUser returns the public shape of a User.
-func PresentUser(row *User) PublicUser {
-	return PublicUser{ID: row.ID, Email: row.Email, Name: row.Name, Role: row.Role, CreatedAt: FormatDateTime(row.CreatedAt), Banned: row.Banned, BannedAt: FormatDateTimePtr(row.BannedAt), BanReason: row.BanReason, PostCount: row.PostCount, ApprovedCount: row.ApprovedCount}
+// PresentUser returns the public shape of a User for a viewer: a field with a read rule is set only when the rule allows.
+func PresentUser(row *User, viewer Viewer) PublicUser {
+	out := PublicUser{ID: row.ID, Email: row.Email, Name: row.Name, Role: row.Role, CreatedAt: FormatDateTime(row.CreatedAt), Banned: row.Banned, BanReason: row.BanReason, PostCount: row.PostCount, ApprovedCount: row.ApprovedCount}
+	if viewer.Reads("User.banned_at", map[string]any{"id": row.ID}) {
+		out.BannedAt = Shown(FormatDateTimePtr(row.BannedAt))
+	}
+	if viewer.Reads("User.phone", map[string]any{"id": row.ID}) {
+		out.Phone = Shown(row.Phone)
+	}
+	return out
 }
 
 // PresentUserPtr presents an optional User; nil stays nil.
-func PresentUserPtr(row *User) *PublicUser {
+func PresentUserPtr(row *User, viewer Viewer) *PublicUser {
 	if row == nil {
 		return nil
 	}
-	out := PresentUser(row)
+	out := PresentUser(row, viewer)
 	return &out
 }
 
 // PresentUsers presents a list of User, never nil.
-func PresentUsers(rows []*User) []PublicUser {
+func PresentUsers(rows []*User, viewer Viewer) []PublicUser {
 	out := make([]PublicUser, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, PresentUser(row))
+		out = append(out, PresentUser(row, viewer))
 	}
 	return out
 }
@@ -76,7 +85,7 @@ func PresentUsers(rows []*User) []PublicUser {
 const ArticleTable = `"articles"`
 
 // ArticleColumns lists the columns of Article in model order, for SELECT and RETURNING.
-const ArticleColumns = `"id", "title", "content", "published", "author_id", "posted_at", "tags", "cover", "publish_at", "locked", "comment_count", "archived_at", "status", "approved_at", "retired_at"`
+const ArticleColumns = `"id", "title", "content", "published", "author_id", "posted_at", "tags", "cover", "publish_at", "locked", "comment_count", "archived_at", "status", "approved_at", "retired_at", "editor_note"`
 
 // Article is a row of articles.
 type Article struct {
@@ -95,55 +104,61 @@ type Article struct {
 	Status       string     `json:"status"`
 	ApprovedAt   *time.Time `json:"approved_at"`
 	RetiredAt    *time.Time `json:"retired_at"`
+	EditorNote   *string    `json:"editor_note"`
 }
 
 // PublicArticle is Article as the API returns it: hidden columns removed, dates rendered.
 type PublicArticle struct {
-	ID           string      `json:"id"`
-	Title        string      `json:"title"`
-	Content      string      `json:"content"`
-	Published    bool        `json:"published"`
-	AuthorID     string      `json:"author_id"`
-	PostedAt     string      `json:"posted_at"`
-	Tags         []string    `json:"tags"`
-	Cover        *PublicFile `json:"cover"`
-	PublishAt    *string     `json:"publish_at"`
-	Locked       bool        `json:"locked"`
-	CommentCount int         `json:"comment_count"`
-	ArchivedAt   *string     `json:"archived_at"`
-	Status       string      `json:"status"`
-	ApprovedAt   *string     `json:"approved_at"`
-	RetiredAt    *string     `json:"retired_at"`
+	ID           string         `json:"id"`
+	Title        string         `json:"title"`
+	Content      string         `json:"content"`
+	Published    bool           `json:"published"`
+	AuthorID     string         `json:"author_id"`
+	PostedAt     string         `json:"posted_at"`
+	Tags         []string       `json:"tags"`
+	Cover        *PublicFile    `json:"cover"`
+	PublishAt    *string        `json:"publish_at"`
+	Locked       bool           `json:"locked"`
+	CommentCount int            `json:"comment_count"`
+	ArchivedAt   *string        `json:"archived_at"`
+	Status       string         `json:"status"`
+	ApprovedAt   *string        `json:"approved_at"`
+	RetiredAt    *string        `json:"retired_at"`
+	EditorNote   Maybe[*string] `json:"editor_note,omitzero"`
 }
 
 // ScanArticle reads one Article from a row selected with ArticleColumns.
 func ScanArticle(row Scanner) (*Article, error) {
 	var r Article
-	if err := row.Scan(&r.ID, &r.Title, &r.Content, &r.Published, &r.AuthorID, &r.PostedAt, &r.Tags, &r.Cover, &r.PublishAt, &r.Locked, &r.CommentCount, &r.ArchivedAt, &r.Status, &r.ApprovedAt, &r.RetiredAt); err != nil {
+	if err := row.Scan(&r.ID, &r.Title, &r.Content, &r.Published, &r.AuthorID, &r.PostedAt, &r.Tags, &r.Cover, &r.PublishAt, &r.Locked, &r.CommentCount, &r.ArchivedAt, &r.Status, &r.ApprovedAt, &r.RetiredAt, &r.EditorNote); err != nil {
 		return nil, err
 	}
 	return &r, nil
 }
 
-// PresentArticle returns the public shape of a Article.
-func PresentArticle(row *Article) PublicArticle {
-	return PublicArticle{ID: row.ID, Title: row.Title, Content: row.Content, Published: row.Published, AuthorID: row.AuthorID, PostedAt: FormatDateTime(row.PostedAt), Tags: row.Tags, Cover: PresentFileRefPtr(row.Cover), PublishAt: FormatDateTimePtr(row.PublishAt), Locked: row.Locked, CommentCount: row.CommentCount, ArchivedAt: FormatDateTimePtr(row.ArchivedAt), Status: row.Status, ApprovedAt: FormatDateTimePtr(row.ApprovedAt), RetiredAt: FormatDateTimePtr(row.RetiredAt)}
+// PresentArticle returns the public shape of a Article for a viewer: a field with a read rule is set only when the rule allows.
+func PresentArticle(row *Article, viewer Viewer) PublicArticle {
+	out := PublicArticle{ID: row.ID, Title: row.Title, Content: row.Content, Published: row.Published, AuthorID: row.AuthorID, PostedAt: FormatDateTime(row.PostedAt), Tags: row.Tags, Cover: PresentFileRefPtr(row.Cover), PublishAt: FormatDateTimePtr(row.PublishAt), Locked: row.Locked, CommentCount: row.CommentCount, ArchivedAt: FormatDateTimePtr(row.ArchivedAt), Status: row.Status, ApprovedAt: FormatDateTimePtr(row.ApprovedAt), RetiredAt: FormatDateTimePtr(row.RetiredAt)}
+	if viewer.Reads("Article.editor_note", nil) {
+		out.EditorNote = Shown(row.EditorNote)
+	}
+	return out
 }
 
 // PresentArticlePtr presents an optional Article; nil stays nil.
-func PresentArticlePtr(row *Article) *PublicArticle {
+func PresentArticlePtr(row *Article, viewer Viewer) *PublicArticle {
 	if row == nil {
 		return nil
 	}
-	out := PresentArticle(row)
+	out := PresentArticle(row, viewer)
 	return &out
 }
 
 // PresentArticles presents a list of Article, never nil.
-func PresentArticles(rows []*Article) []PublicArticle {
+func PresentArticles(rows []*Article, viewer Viewer) []PublicArticle {
 	out := make([]PublicArticle, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, PresentArticle(row))
+		out = append(out, PresentArticle(row, viewer))
 	}
 	return out
 }

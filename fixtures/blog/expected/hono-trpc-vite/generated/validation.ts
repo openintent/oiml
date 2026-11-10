@@ -12,7 +12,8 @@ export const usersListQuery = z
   .strict();
 export const usersUpdateInput = z
   .object({
-    name: z.string().min(1).max(100).optional()
+    name: z.string().min(1).max(100).optional(),
+    phone: z.string().max(40).nullish()
   })
   .strict();
 
@@ -36,7 +37,8 @@ export const postsCreateInput = z
     published: z.boolean().optional(),
     tags: z.array(z.string().max(255)).nullish(),
     cover: z.string().uuid().nullish(),
-    publish_at: z.string().datetime({ offset: true }).transform(value => new Date(value)).nullish()
+    publish_at: z.string().datetime({ offset: true }).transform(value => new Date(value)).nullish(),
+    editor_note: z.string().nullish()
   })
   .strict();
 export const postsUpdateInput = z
@@ -47,7 +49,8 @@ export const postsUpdateInput = z
     author_id: z.string().uuid().optional(),
     tags: z.array(z.string().max(255)).nullish(),
     cover: z.string().uuid().nullish(),
-    publish_at: z.string().datetime({ offset: true }).transform(value => new Date(value)).nullish()
+    publish_at: z.string().datetime({ offset: true }).transform(value => new Date(value)).nullish(),
+    editor_note: z.string().nullish()
   })
   .strict();
 

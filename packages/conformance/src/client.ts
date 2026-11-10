@@ -11,7 +11,8 @@ export interface Reply {
   body: unknown;
 }
 
-export type Listener = (label: string, reply: Reply) => void;
+/** Told of every reply before the caller goes on; `client` is the cookie jar that made the call */
+export type Listener = (label: string, reply: Reply, client: HarnessClient) => void | Promise<void>;
 
 export interface ResourceCall {
   resource: ResourceIR;
@@ -33,6 +34,8 @@ export interface HarnessClient {
   resource(call: ResourceCall): Promise<Reply>;
   action(call: ActionCall): Promise<Reply>;
   auth(kind: AuthKind, body?: unknown): Promise<Reply>;
+  /** What the session is told of the fields with a read rule (`fields` beside the user), or null without a session */
+  fields(): Promise<unknown>;
   /** A request as the transport spells it, for probes the typed calls cannot express */
   raw(method: string, path: string, body?: unknown, query?: Record<string, string>): Promise<Reply>;
   /** A client with its own cookie jar */
@@ -67,6 +70,7 @@ abstract class BaseClient implements HarnessClient {
   abstract resource(call: ResourceCall): Promise<Reply>;
   abstract action(call: ActionCall): Promise<Reply>;
   abstract auth(kind: AuthKind, body?: unknown): Promise<Reply>;
+  abstract fields(): Promise<unknown>;
   abstract fresh(): HarnessClient;
 
   async raw(method: string, path: string, body?: unknown, query: Record<string, string> = {}): Promise<Reply> {
@@ -106,7 +110,7 @@ abstract class BaseClient implements HarnessClient {
       }
     }
     const reply = { status: response.status, body: parsed };
-    this.listen(label, reply);
+    await this.listen(label, reply, this);
     return reply;
   }
 }
@@ -132,6 +136,11 @@ class RestClient extends BaseClient {
   async auth(kind: AuthKind, body?: unknown): Promise<Reply> {
     const url = new URL(`/api/auth/${kind}`, this.baseUrl);
     return this.send(`auth.${kind}`, url, kind === "me" ? "GET" : "POST", kind === "me" ? undefined : (body ?? {}));
+  }
+
+  async fields(): Promise<unknown> {
+    const reply = await this.auth("me");
+    return (reply.body as { fields?: unknown } | null)?.fields ?? null;
   }
 }
 
@@ -169,6 +178,12 @@ class TrpcClient extends BaseClient {
     if (kind === "me") return this.call("auth.me", undefined, "query", "data");
     if (kind === "logout") return this.call("auth.logout", undefined, "mutation", "none");
     return this.call(`auth.${kind}`, body ?? {}, "mutation", "data");
+  }
+
+  /** Under tRPC the answer is on the session the web app asks for */
+  async fields(): Promise<unknown> {
+    const reply = await this.call("auth.session", undefined, "query", "data");
+    return (reply.body as { data?: { fields?: unknown } | null } | null)?.data?.fields ?? null;
   }
 
   /** A scenario's query-string values as the typed input the list expects, as the generated client coerces them */
@@ -237,7 +252,7 @@ class TrpcClient extends BaseClient {
       const data = (json as { result?: { data?: unknown } } | null)?.result?.data;
       reply = { status: response.status, body: shape === "list" ? data : shape === "data" ? { data } : null };
     }
-    this.listen(procedure, reply);
+    await this.listen(procedure, reply, this);
     return reply;
   }
 }

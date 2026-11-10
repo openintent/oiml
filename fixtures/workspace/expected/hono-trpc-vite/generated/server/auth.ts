@@ -8,7 +8,7 @@ import { z } from "zod";
 import { db } from "../db/client";
 import { users as usersTable } from "../db/schema";
 import { toTRPCError } from "./errors";
-import { presentUser, type PublicUser } from "../present";
+import { presentUser, type PublicUser, visibleFields } from "../present";
 import { issueMagicLink, verifyMagicLink, PROVIDERS } from "../auth-providers";
 import { publicProcedure, router } from "./trpc";
 
@@ -148,8 +148,12 @@ export const authRouter = router({
     return ctx.session.user;
   }),
 
-  /** The signed-in user, or null: what the web app asks on every load */
-  session: publicProcedure.query(({ ctx }) => ctx.session),
+  /** The signed-in user, or null: what the web app asks on every load. `fields` says which fields with a read rule this caller could read on some row */
+  session: publicProcedure.query(({ ctx }) => 
+    ctx.session
+      ? { user: ctx.session.user, memberships: ctx.session.memberships, fields: visibleFields(ctx.session) }
+      : null
+  ),
 
   /** How users may sign in, for the sign-in page */
   providers: publicProcedure.query((): { kind: string; name: string }[] => PROVIDERS)

@@ -80,7 +80,7 @@ func (h *Projects) List(c *gin.Context) {
 			alternatives = append(alternatives, `"team_id" = ANY(`+where.Param(tenants2)+`)`)
 		}
 		if len(alternatives) == 0 {
-			httpx.List(c, models.PresentProjects(nil), httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: 0})
+			httpx.List(c, models.PresentProjects(nil, access.Viewer(session)), httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: 0})
 			return
 		}
 		where.AnyOf(alternatives)
@@ -109,7 +109,7 @@ func (h *Projects) List(c *gin.Context) {
 		httpx.HandleError(c, err, "read")
 		return
 	}
-	httpx.List(c, models.PresentProjects(items), httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: total})
+	httpx.List(c, models.PresentProjects(items, access.Viewer(session)), httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: total})
 }
 
 // Get handles GET /api/projects/{id}.
@@ -138,7 +138,7 @@ func (h *Projects) Get(c *gin.Context) {
 		access.Deny(c, verdict)
 		return
 	}
-	httpx.OK(c, models.PresentProject(row))
+	httpx.OK(c, models.PresentProject(row, access.Viewer(session)))
 }
 
 // Create handles POST /api/projects.
@@ -183,7 +183,7 @@ func (h *Projects) Create(c *gin.Context) {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	httpx.Created(c, models.PresentProject(row))
+	httpx.Created(c, models.PresentProject(row, access.Viewer(session)))
 }
 
 // Update handles PATCH /api/projects/{id}.
@@ -229,7 +229,7 @@ func (h *Projects) Update(c *gin.Context) {
 		return
 	}
 	if len(patch) == 0 {
-		httpx.OK(c, models.PresentProject(existing))
+		httpx.OK(c, models.PresentProject(existing, access.Viewer(session)))
 		return
 	}
 	sql, args := db.Update(models.ProjectTable, patch, `"id"`, id, models.ProjectColumns)
@@ -242,7 +242,7 @@ func (h *Projects) Update(c *gin.Context) {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	httpx.OK(c, models.PresentProject(row))
+	httpx.OK(c, models.PresentProject(row, access.Viewer(session)))
 }
 
 // Delete handles DELETE /api/projects/{id}.

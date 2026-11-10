@@ -13,7 +13,7 @@ import { emit } from "../events";
 import { scheduleTimers } from "../scheduling";
 import { resolveFileRefs } from "../files";
 import { created, fail, handleError, noContent, notFound, ok, parseBody, parseId, parseQuery } from "../http";
-import { presentArticle, presentUser } from "../present";
+import { SERVER, presentArticle, presentUser, type Viewer } from "../present";
 import { postsApproveInput, postsArchiveInput, postsCreateInput, postsId, postsListQuery, postsLockInput, postsPublishInput, postsRejectInput, postsRestoreInput, postsRetireInput, postsSubmitInput, postsUnlockInput, postsUnpublishAllInput, postsUpdateInput } from "../validation";
 import { hooks } from "@/src/extensions/posts";
 
@@ -56,13 +56,13 @@ function sortOrder(sort: string): SQL[] {
 }
 
 type ListRow = schema.Article & { author: schema.User | null };
-function presentListRow(row: ListRow) {
-  return { ...presentArticle(row), author: row.author ? presentUser(row.author) : null };
+function presentListRow(row: ListRow, viewer: Viewer) {
+  return { ...presentArticle(row, viewer), author: row.author ? presentUser(row.author, viewer) : null };
 }
 
 type GetRow = schema.Article & { author: schema.User | null };
-function presentGetRow(row: GetRow) {
-  return { ...presentArticle(row), author: row.author ? presentUser(row.author) : null };
+function presentGetRow(row: GetRow, viewer: Viewer) {
+  return { ...presentArticle(row, viewer), author: row.author ? presentUser(row.author, viewer) : null };
 }
 
 export const posts = {
@@ -88,7 +88,7 @@ export const posts = {
         db.query.articles.findMany({ where, with: { author: true }, orderBy: sort ? sortOrder(sort) : [desc(articlesTable.posted_at)], limit: page_size, offset: (page - 1) * page_size }),
         db.select({ total: count() }).from(articlesTable).where(where)
       ]);
-      return ok(rows.map(presentListRow), { page: { page, page_size, total } });
+      return ok(rows.map(row => presentListRow(row, session)), { page: { page, page_size, total } });
     } catch (err) {
       return handleError(err, "read");
     }
@@ -105,7 +105,7 @@ export const posts = {
       if (!row) return notFound();
       const rowVerdict = checkRule(RULES.read, session, row);
       if (!rowVerdict.ok) return denied(rowVerdict);
-      return ok(presentGetRow(row));
+      return ok(presentGetRow(row, session));
     } catch (err) {
       return handleError(err, "read");
     }
@@ -121,10 +121,10 @@ export const posts = {
       const hookContext: HookContext = { request, session };
       const values = await hooks.beforeCreate({ ...await resolveFileRefs(body.data, FILE_FIELDS), author_id: session!.user.id }, hookContext);
       const [row] = await db.insert(articlesTable).values(values).returning();
-      await emit("Article.created", presentArticle(row));
+      await emit("Article.created", presentArticle(row, SERVER));
       await scheduleTimers("Article", row);
       await hooks.afterCreate(row, hookContext);
-      return created(presentArticle(row));
+      return created(presentArticle(row, session));
     } catch (err) {
       return handleError(err, "write");
     }
@@ -145,12 +145,12 @@ export const posts = {
       if (!body.ok) return body.response;
       const hookContext: HookContext = { request, session };
       const patch = await hooks.beforeUpdate(existing, await resolveFileRefs(body.data, FILE_FIELDS), hookContext);
-      if (Object.keys(patch).length === 0) return ok(presentArticle(existing));
+      if (Object.keys(patch).length === 0) return ok(presentArticle(existing, session));
       const [row] = await db.update(articlesTable).set(patch).where(eq(articlesTable.id, id.data)).returning();
 
       await scheduleTimers("Article", row);
       await hooks.afterUpdate(row, hookContext);
-      return ok(presentArticle(row));
+      return ok(presentArticle(row, session));
     } catch (err) {
       return handleError(err, "write");
     }
@@ -193,8 +193,8 @@ export const posts = {
       const body = await parseBody(postsPublishInput, request);
       if (!body.ok) return body.response;
       const result = await handlers.posts_publish({ input: body.data, row: current, session, db, now: new Date() });
-      await emit("posts.publish", presentArticle(result));
-      return ok(presentArticle(result));
+      await emit("posts.publish", presentArticle(result, SERVER));
+      return ok(presentArticle(result, session));
     } catch (err) {
       return handleError(err, "write");
     }
@@ -232,7 +232,7 @@ export const posts = {
       if (!body.ok) return body.response;
       const result = await handlers.posts_lock({ input: body.data, row: current, session, db, now: new Date() });
 
-      return ok(presentArticle(result));
+      return ok(presentArticle(result, session));
     } catch (err) {
       return handleError(err, "write");
     }
@@ -254,7 +254,7 @@ export const posts = {
       if (!body.ok) return body.response;
       const result = await handlers.posts_unlock({ input: body.data, row: current, session, db, now: new Date() });
 
-      return ok(presentArticle(result));
+      return ok(presentArticle(result, session));
     } catch (err) {
       return handleError(err, "write");
     }
@@ -277,8 +277,8 @@ export const posts = {
       const result = await setArticleArchived(current.id, true, new Date());
       if (!result) fail(409, "conflict", "The row is archived already");
       await scheduleTimers("Article", result);
-      await emit("posts.archive", presentArticle(result));
-      return ok(presentArticle(result));
+      await emit("posts.archive", presentArticle(result, SERVER));
+      return ok(presentArticle(result, session));
     } catch (err) {
       return handleError(err, "write");
     }
@@ -302,7 +302,7 @@ export const posts = {
       if (!result) fail(409, "conflict", "The row is not archived");
       await scheduleTimers("Article", result);
 
-      return ok(presentArticle(result));
+      return ok(presentArticle(result, session));
     } catch (err) {
       return handleError(err, "write");
     }
@@ -326,7 +326,7 @@ export const posts = {
       if (!result) fail(409, "invalid_transition", `submit needs status draft; this row's status is ${current.status}`);
       await scheduleTimers("Article", result);
 
-      return ok(presentArticle(result));
+      return ok(presentArticle(result, session));
     } catch (err) {
       return handleError(err, "write");
     }
@@ -349,8 +349,8 @@ export const posts = {
       const result = await articleTransitions.approve(current.id, new Date());
       if (!result) fail(409, "invalid_transition", `approve needs status in_review; this row's status is ${current.status}`);
       await scheduleTimers("Article", result);
-      await emit("posts.approve", presentArticle(result));
-      return ok(presentArticle(result));
+      await emit("posts.approve", presentArticle(result, SERVER));
+      return ok(presentArticle(result, session));
     } catch (err) {
       return handleError(err, "write");
     }
@@ -374,7 +374,7 @@ export const posts = {
       if (!result) fail(409, "invalid_transition", `reject needs status in_review; this row's status is ${current.status}`);
       await scheduleTimers("Article", result);
 
-      return ok(presentArticle(result));
+      return ok(presentArticle(result, session));
     } catch (err) {
       return handleError(err, "write");
     }
@@ -398,7 +398,7 @@ export const posts = {
       if (!result) fail(409, "invalid_transition", `retire needs status approved; this row's status is ${current.status}`);
       await scheduleTimers("Article", result);
 
-      return ok(presentArticle(result));
+      return ok(presentArticle(result, session));
     } catch (err) {
       return handleError(err, "write");
     }

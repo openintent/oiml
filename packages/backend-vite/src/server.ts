@@ -4,7 +4,7 @@
  * semantics (status codes become tRPC error codes; list returns { data, page }).
  */
 import type { ActionIR, EntityIR, GeneratedFile, IR, OperationIR, RelationIR, ResourceIR, RuleIR } from "@osl/core";
-import { actionsOf, globalActions } from "@osl/core";
+import { actionsOf, globalActions, hasFieldRules } from "@osl/core";
 import {
   hasVia,
   actionInputName,
@@ -31,7 +31,12 @@ import {
   throughOf,
   throughRowParts,
   throughSource,
-  withClause
+  withClause,
+  creatorViewer,
+  presentCall,
+  presentMapper,
+  selfSessionSource,
+  takesViewer
 } from "@osl/ts-common";
 import {
   HEADER,
@@ -237,6 +242,16 @@ export const authRouter = router({
     ...(membershipTable && !isolated ? [`${membershipTable} as ${membershipTable}Table`] : [])
   ];
   const fileSpecs = identity.columns.some(c => c.type.kind === "file");
+  // A field with a read rule on the identity: the caller's own row is presented to the caller, as any row is
+  const ruled = takesViewer(identity);
+  const shown = ruled ? `shownUser(await sessionOf(user))` : `present${T}(user)`;
+  const fields = hasFieldRules(ir);
+  const presentImports = [
+    ...(ruled ? ["SERVER"] : []),
+    `present${T}`,
+    `type Public${T}`,
+    ...(fields ? ["visibleFields"] : [])
+  ];
 
   return `${HEADER("Auth: cookie sessions and the auth router (passwords, magic links, sign-out, the session).")}
 import { createHmac, randomBytes${credentials ? ", scryptSync" : ""}, timingSafeEqual } from "node:crypto";
@@ -246,7 +261,7 @@ import { z } from "zod";
 import { db } from "../db/client";
 import { ${schemaImports.join(", ")} } from "../db/schema";
 import { toTRPCError } from "./errors";
-import { present${T}, type Public${T} } from "../present";
+import { ${presentImports.join(", ")} } from "../present";
 ${fileSpecs ? `import { resolveFileRefs } from "../files";\n` : ""}${magic ? `import { issueMagicLink, verifyMagicLink, PROVIDERS } from "../auth-providers";\n` : auth.providers.some(p => p.kind === "oauth") ? `import { PROVIDERS } from "../auth-providers";\n` : ""}import { publicProcedure, router } from "./trpc";
 
 export type Membership = { tenant: string | number; role: string };
@@ -315,9 +330,13 @@ function readCookie(request: Request): { uid: string | number } | null {
   }
 }
 
-/** The session of a user row: the public user and their memberships */
+${
+  ruled
+    ? selfSessionSource(ir, `typeof ${tableAlias}.$inferSelect`, membershipsLoader(ir, `user.${pk}`))
+    : `/** The session of a user row: the public user and their memberships */
 export async function sessionOf(user: typeof ${tableAlias}.$inferSelect): Promise<Session> {
   return { user: present${T}(user), memberships: ${membershipsLoader(ir, `user.${pk}`)} };
+}`
 }
 
 /** The signed-in user, or null. Loads the user so a deleted account signs out immediately. */
@@ -351,7 +370,7 @@ export const authRouter = router({${
         .values({ ...${fileSpecs ? `(await resolveFileRefs(fields, ${fileSpecsLiteral(identity)}))` : "fields"}, ${auth.passwordColumn}: hashPassword(password) })
         .returning();
       ctx.resHeaders.append("set-cookie", sessionCookie(user.${pk}));
-      return present${T}(user);
+      return ${shown};
     } catch (err) {
       throw toTRPCError(err, "write");
     }
@@ -367,7 +386,7 @@ export const authRouter = router({${
       throw new TRPCError({ code: "UNAUTHORIZED", message: "Email or password is wrong" });
     }
     ctx.resHeaders.append("set-cookie", sessionCookie(user.${pk}));
-    return present${T}(user);
+    return ${shown};
   }),
 `
       : ""
@@ -385,7 +404,7 @@ export const authRouter = router({${
   magic_link_verify: publicProcedure.input(z.object({ token: z.string().min(1) }).strict()).mutation(async ({ ctx, input }) => {
     const user = await verifyMagicLink(input.token);
     ctx.resHeaders.append("set-cookie", sessionCookie(user.${pk}));
-    return present${T}(user);
+    return ${shown};
   }),
 `
       : ""
@@ -398,11 +417,19 @@ export const authRouter = router({${
   /** The signed-in user; UNAUTHORIZED when nobody is */
   me: publicProcedure.query(({ ctx }) => {
     if (!ctx.session) throw new TRPCError({ code: "UNAUTHORIZED", message: "Sign in to continue" });
-    return ctx.session.user;
+    return ${ruled ? "shownUser(ctx.session)" : "ctx.session.user"};
   }),
 
-  /** The signed-in user, or null: what the web app asks on every load */
-  session: publicProcedure.query(({ ctx }) => ctx.session),
+  /** The signed-in user, or null: what the web app asks on every load${fields ? ". `fields` says which fields with a read rule this caller could read on some row" : ""} */
+  session: publicProcedure.query(({ ctx }) => ${
+    fields
+      ? `
+    ctx.session
+      ? { user: ${ruled ? "shownUser(ctx.session)" : "ctx.session.user"}, memberships: ctx.session.memberships, fields: visibleFields(ctx.session) }
+      : null
+  `
+      : "ctx.session"
+  }),
 
   /** How users may sign in, for the sign-in page */
   providers: publicProcedure.query((): { kind: string; name: string }[] => ${
@@ -642,8 +669,8 @@ function includeType(ir: IR, rel: RelationIR): string {
 
 function includePresent(ir: IR, rel: RelationIR): string {
   const target = entityByName(ir, rel.target);
-  if (rel.kind === "many") return `row.${rel.name}.map(present${typeName(target)})`;
-  return `row.${rel.name} ? present${typeName(target)}(row.${rel.name}) : null`;
+  if (rel.kind === "many") return `row.${rel.name}.map(${presentMapper(target, "viewer")})`;
+  return `row.${rel.name} ? ${presentCall(target, `row.${rel.name}`, "viewer")} : null`;
 }
 
 /** The TypeScript array type of tenant ids for inArray, by the tenant key's type */
@@ -730,6 +757,16 @@ export function resourceRouterFile(ir: IR, resource: ResourceIR): string {
     }
   }
   const presents = new Set<string>([`present${T}`]);
+  // Whether an operation's rows are presented to a viewer: the entity or a row it includes has a field with a read rule
+  const viewed = (include: string[], throughNames: string[] | undefined) =>
+    takesViewer(entity) ||
+    include.some(name => takesViewer(entityByName(ir, entity.relations.find(r => r.name === name)!.target))) ||
+    throughOf(entity, throughNames).some(t => takesViewer(entityByName(ir, t.target)));
+  /** An event's payload is the row as the server reads it, every field with a read rule included, whoever caused it */
+  const serverPresent = (expr: string) => {
+    if (takesViewer(entity)) presents.add("SERVER");
+    return presentCall(entity, expr, "SERVER");
+  };
   const validationImports = new Set<string>([`${resource.name}Id`]);
   const errorImports = new Set<string>(["parseId", "toTRPCError"]);
   const accessImports = new Set<string>(["checkRule"]);
@@ -803,7 +840,9 @@ async function missing(id: unknown, rule: Rule, session: Session | null) {
     const shown = [...rels.map(r => `${r.name}: ${includePresent(ir, r)}`), ...far.presents];
     const rowType = types.length ? `schema.${T} & { ${types.join("; ")} }` : `schema.${T}`;
     const extra = shown.length ? `, ${shown.join(", ")}` : "";
-    return `type ${name}Row = ${rowType};\nfunction present${name}Row(row: ${name}Row) {\n  return { ...present${T}(row)${extra} };\n}`;
+    const viewer = viewed(include, throughNames) ? ", viewer: Viewer" : "";
+    if (viewer) presents.add("type Viewer");
+    return `type ${name}Row = ${rowType};\nfunction present${name}Row(row: ${name}Row${viewer}) {\n  return { ...${presentCall(entity, "row", "viewer")}${extra} };\n}`;
   };
   if (list) sections.push(rowSection("List", list.include, list.through));
   if (get) sections.push(rowSection("Get", get.include, get.through));
@@ -864,7 +903,7 @@ ${
         db.select({ total: count() }).from(${table}).where(where)
       ]);`
 }
-      return { data: ${through.list("rows")}.map(presentListRow), page: { page, page_size, total } };
+      return { data: ${through.list("rows")}.map(${viewed(list.include, list.through) ? "row => presentListRow(row, ctx.session)" : "presentListRow"}), page: { page, page_size, total } };
     } catch (err) {
       throw toTRPCError(err, "read");
     }
@@ -889,14 +928,14 @@ ${
       get.through?.length
         ? `await attachGet([row]).then(rows => rows[0], err => {\n      throw toTRPCError(err, "read");\n    })`
         : "row"
-    });
+    }${viewed(get.include, get.through) ? ", ctx.session" : ""});
   })`);
   }
 
   if (create) {
     validationImports.add(`${resource.name}CreateInput`);
     const owner = create.ownerField ? `, ${create.ownerField}: ${me}` : "";
-    const emitLines = events("created").map(e => `      await emit(${q(e.name)}, present${T}(row));`);
+    const emitLines = events("created").map(e => `      await emit(${q(e.name)}, ${serverPresent("row")});`);
     const defaults = conditionDefaults(entity, create.rule);
     // The session is checked first: the body check reads the owner id from it and may query related rows
     const bodyCheck = needsBodyCheck(create.rule)
@@ -920,7 +959,7 @@ ${
 ${insert}
 ${emitLines.join("\n")}${timerLine}
       await hooks.afterCreate(row, hookContext);
-      return present${T}(row);
+      return ${presentCall(entity, "row", isTenant && tenancy ? creatorViewer(ir, "ctx.session", `row.${pk}`) : "ctx.session")};
     } catch (err) {
       throw toTRPCError(err, "write");
     }
@@ -930,7 +969,7 @@ ${emitLines.join("\n")}${timerLine}
   if (update) {
     validationImports.add(`${resource.name}UpdateInput`);
     errorImports.add("notFound");
-    const emitLines = events("updated").map(e => `      await emit(${q(e.name)}, present${T}(row));`);
+    const emitLines = events("updated").map(e => `      await emit(${q(e.name)}, ${serverPresent("row")});`);
     const updateChecks = rowChecks(update.rule, "existing", "      ");
     procedures.push(`  update: publicProcedure
     .input(z.object({ id: ID, data: ${resource.name}UpdateInput }))
@@ -945,11 +984,11 @@ ${emitLines.join("\n")}${timerLine}
       const hookContext: HookContext = { session: ctx.session, req: ctx.req };
       try {
         const patch = await hooks.beforeUpdate(existing, ${resolveFiles("input.data")}, hookContext);
-        if (Object.keys(patch).length === 0) return present${T}(existing);
+        if (Object.keys(patch).length === 0) return ${presentCall(entity, "existing", "ctx.session")};
         const [row] = await db.update(${table}).set(patch).where(eq(${table}.${pk}, id)).returning();
 ${emitLines.map(l => "  " + l).join("\n")}${timerLine}
         await hooks.afterUpdate(row, hookContext);
-        return present${T}(row);
+        return ${presentCall(entity, "row", "ctx.session")};
       } catch (err) {
         throw toTRPCError(err, "write");
       }
@@ -958,7 +997,7 @@ ${emitLines.map(l => "  " + l).join("\n")}${timerLine}
 
   if (remove) {
     errorImports.add("notFound");
-    const emitLines = events("deleted").map(e => `      await emit(${q(e.name)}, present${T}(existing));`);
+    const emitLines = events("deleted").map(e => `      await emit(${q(e.name)}, ${serverPresent("existing")});`);
     const deleteChecks = rowChecks(remove.rule, "existing", "    ");
     procedures.push(`  delete: publicProcedure.input(z.object({ id: ID })).mutation(async ({ ctx, input }) => {
     checkRule(RULES.delete, ctx.session);
@@ -990,7 +1029,8 @@ ${emitLines.join("\n")}
         query,
         pk,
         idName: `${resource.name}Id`,
-        T,
+        entity,
+        serverPresent,
         actionEvents: actionEvents(action.name),
         checks: rowChecks(action.rule, "current", "    "),
         miss: miss(`ACTION_RULES.${action.name}`)
@@ -1050,7 +1090,9 @@ function actionProcedure(
     query: string;
     pk: string;
     idName: string;
-    T: string;
+    entity: EntityIR;
+    /** The row as an event's payload carries it */
+    serverPresent: (expr: string) => string;
     actionEvents: IR["events"];
     /** The checks after the row is loaded (a hidden row's 404 when the entity asks for it) and the row the action's own check reads */
     checks: { lines: string; arg: string };
@@ -1059,14 +1101,17 @@ function actionProcedure(
   } | null
 ): string {
   const input = actionInputName(action);
-  const present = action.returns.kind === "entity" ? `present${row!.T}` : null;
   const resultExpr =
-    action.returns.kind === "entity" ? `${present}(result)` : action.returns.kind === "none" ? "null" : "result";
+    action.returns.kind === "entity"
+      ? presentCall(row!.entity, "result", "ctx.session")
+      : action.returns.kind === "none"
+        ? "null"
+        : "result";
   const emitLines = (
     row?.actionEvents ?? ir.events.filter(e => e.kind === "action" && !e.resource && e.actionName === action.name)
   ).map(
     e =>
-      `      await emit(${q(e.name)}, ${action.returns.kind === "entity" ? `${present}(result)` : action.returns.kind === "none" ? "{}" : "result"});`
+      `      await emit(${q(e.name)}, ${action.returns.kind === "entity" ? row!.serverPresent("result") : action.returns.kind === "none" ? "{}" : "result"});`
   );
   const rulesRef = row ? `ACTION_RULES.${action.name}` : `RULES.${action.name}`;
   if (action.scope === "row" && row) {

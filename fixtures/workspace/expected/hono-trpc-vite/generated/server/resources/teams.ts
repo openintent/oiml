@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto";
 import { db, bindTenant, rowExists } from "../../db/client";
 import * as schema from "../../db/schema";
 import { teams as teamsTable, teamMembers as teamMembersTable } from "../../db/schema";
-import { presentTeam, presentTeamMember } from "../../present";
+import { presentTeam, presentTeamMember, type Viewer } from "../../present";
 import { teamsCreateInput, teamsId, teamsListQuery, teamsUpdateInput } from "../../validation";
 import { checkRule, memberTenantIds, refused, rulesDisabled, unreachable, type Rule } from "../access";
 import type { Session } from "../auth";
@@ -33,13 +33,13 @@ async function missing(id: unknown, rule: Rule, session: Session | null) {
 }
 
 type ListRow = schema.Team;
-function presentListRow(row: ListRow) {
-  return { ...presentTeam(row) };
+function presentListRow(row: ListRow, viewer: Viewer) {
+  return { ...presentTeam(row, viewer) };
 }
 
 type GetRow = schema.Team & { members: schema.TeamMember[] };
-function presentGetRow(row: GetRow) {
-  return { ...presentTeam(row), members: row.members.map(presentTeamMember) };
+function presentGetRow(row: GetRow, viewer: Viewer) {
+  return { ...presentTeam(row, viewer), members: row.members.map(presentTeamMember) };
 }
 
 export const teamsRouter = router({
@@ -58,7 +58,7 @@ export const teamsRouter = router({
       // One statement at a time: both run on the procedure's transaction
       const rows = await db.query.teams.findMany({ where, orderBy: [desc(teamsTable.created_at)], limit: page_size, offset: (page - 1) * page_size });
       const [{ total }] = await db.select({ total: count() }).from(teamsTable).where(where);
-      return { data: rows.map(presentListRow), page: { page, page_size, total } };
+      return { data: rows.map(row => presentListRow(row, ctx.session)), page: { page, page_size, total } };
     } catch (err) {
       throw toTRPCError(err, "read");
     }
@@ -72,7 +72,7 @@ export const teamsRouter = router({
     });
     if (!row) throw await missing(id, RULES.read, ctx.session);
     checkRule(RULES.read, ctx.session, row);
-    return presentGetRow(row);
+    return presentGetRow(row, ctx.session);
   }),
 
   create: publicProcedure.input(teamsCreateInput).mutation(async ({ ctx, input }) => {
@@ -89,7 +89,7 @@ export const teamsRouter = router({
       });
 
       await hooks.afterCreate(row, hookContext);
-      return presentTeam(row);
+      return presentTeam(row, { ...ctx.session!, memberships: [...ctx.session!.memberships, { tenant: row.id, role: "owner" }] });
     } catch (err) {
       throw toTRPCError(err, "write");
     }
@@ -108,11 +108,11 @@ export const teamsRouter = router({
       const hookContext: HookContext = { session: ctx.session, req: ctx.req };
       try {
         const patch = await hooks.beforeUpdate(existing, input.data, hookContext);
-        if (Object.keys(patch).length === 0) return presentTeam(existing);
+        if (Object.keys(patch).length === 0) return presentTeam(existing, ctx.session);
         const [row] = await db.update(teamsTable).set(patch).where(eq(teamsTable.id, id)).returning();
 
         await hooks.afterUpdate(row, hookContext);
-        return presentTeam(row);
+        return presentTeam(row, ctx.session);
       } catch (err) {
         throw toTRPCError(err, "write");
       }

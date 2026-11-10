@@ -281,11 +281,56 @@
                 "schema": {
                   "type": "object",
                   "required": [
-                    "data"
+                    "data",
+                    "fields"
                   ],
                   "properties": {
                     "data": {
                       "$ref": "#/components/schemas/User"
+                    },
+                    "fields": {
+                      "type": "object",
+                      "description": "For each resource with a field that has a read rule: whether this caller could read the field on some row. A row still leaves out what its own rule refuses.",
+                      "required": [
+                        "teams",
+                        "projects",
+                        "tasks"
+                      ],
+                      "properties": {
+                        "teams": {
+                          "type": "object",
+                          "required": [
+                            "pending_requests"
+                          ],
+                          "properties": {
+                            "pending_requests": {
+                              "type": "boolean"
+                            }
+                          }
+                        },
+                        "projects": {
+                          "type": "object",
+                          "required": [
+                            "budget"
+                          ],
+                          "properties": {
+                            "budget": {
+                              "type": "boolean"
+                            }
+                          }
+                        },
+                        "tasks": {
+                          "type": "object",
+                          "required": [
+                            "estimate"
+                          ],
+                          "properties": {
+                            "estimate": {
+                              "type": "boolean"
+                            }
+                          }
+                        }
+                      }
                     }
                   }
                 }
@@ -4332,6 +4377,18 @@
                           "open_milestones": {
                             "type": "integer",
                             "readOnly": true
+                          },
+                          "budget": {
+                            "oneOf": [
+                              {
+                                "type": "integer",
+                                "minimum": 0
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "description": "Present only for a caller this rule allows on the row: member:team_id:admin."
                           }
                         },
                         "required": [
@@ -4425,6 +4482,17 @@
                   "public": {
                     "type": "boolean",
                     "description": "Anyone may read a public project and its tasks"
+                  },
+                  "budget": {
+                    "oneOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 },
                 "additionalProperties": false,
@@ -4546,6 +4614,18 @@
                         "open_milestones": {
                           "type": "integer",
                           "readOnly": true
+                        },
+                        "budget": {
+                          "oneOf": [
+                            {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "description": "Present only for a caller this rule allows on the row: member:team_id:admin."
                         }
                       },
                       "required": [
@@ -4630,6 +4710,17 @@
                   "public": {
                     "type": "boolean",
                     "description": "Anyone may read a public project and its tasks"
+                  },
+                  "budget": {
+                    "oneOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 },
                 "additionalProperties": false
@@ -5536,6 +5627,19 @@
                               }
                             ],
                             "readOnly": true
+                          },
+                          "estimate": {
+                            "oneOf": [
+                              {
+                                "type": "integer",
+                                "minimum": 0,
+                                "description": "Hours of work"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "description": "Hours of work. Present only for a caller this rule allows on the row: authenticated."
                           }
                         },
                         "required": [
@@ -5639,6 +5743,18 @@
                         "type": "string",
                         "format": "date-time",
                         "description": "When the task is due"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "estimate": {
+                    "oneOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "Hours of work"
                       },
                       {
                         "type": "null"
@@ -5785,6 +5901,19 @@
                             }
                           ],
                           "readOnly": true
+                        },
+                        "estimate": {
+                          "oneOf": [
+                            {
+                              "type": "integer",
+                              "minimum": 0,
+                              "description": "Hours of work"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "description": "Hours of work. Present only for a caller this rule allows on the row: authenticated."
                         }
                       },
                       "required": [
@@ -5879,6 +6008,18 @@
                         "type": "string",
                         "format": "date-time",
                         "description": "When the task is due"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "estimate": {
+                    "oneOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "Hours of work"
                       },
                       {
                         "type": "null"
@@ -6099,14 +6240,14 @@
                           },
                           "pending_requests": {
                             "type": "integer",
-                            "readOnly": true
+                            "readOnly": true,
+                            "description": "Present only for a caller this rule allows on the row: member:id:admin."
                           }
                         },
                         "required": [
                           "id",
                           "name",
-                          "created_at",
-                          "pending_requests"
+                          "created_at"
                         ]
                       }
                     },
@@ -6274,7 +6415,8 @@
                         },
                         "pending_requests": {
                           "type": "integer",
-                          "readOnly": true
+                          "readOnly": true,
+                          "description": "Present only for a caller this rule allows on the row: member:id:admin."
                         },
                         "members": {
                           "type": "array",
@@ -6287,7 +6429,6 @@
                         "id",
                         "name",
                         "created_at",
-                        "pending_requests",
                         "members"
                       ]
                     }
@@ -6972,6 +7113,18 @@
           "open_milestones": {
             "type": "integer",
             "readOnly": true
+          },
+          "budget": {
+            "oneOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Present only for a caller this rule allows on the row: member:team_id:admin."
           }
         },
         "required": [
@@ -7105,6 +7258,19 @@
               }
             ],
             "readOnly": true
+          },
+          "estimate": {
+            "oneOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Hours of work"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hours of work. Present only for a caller this rule allows on the row: authenticated."
           }
         },
         "required": [
@@ -7136,14 +7302,14 @@
           },
           "pending_requests": {
             "type": "integer",
-            "readOnly": true
+            "readOnly": true,
+            "description": "Present only for a caller this rule allows on the row: member:id:admin."
           }
         },
         "required": [
           "id",
           "name",
-          "created_at",
-          "pending_requests"
+          "created_at"
         ]
       },
       "TeamMember": {

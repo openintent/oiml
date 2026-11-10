@@ -4,7 +4,7 @@
 import { QueryClient } from "@tanstack/react-query";
 import type { z } from "zod";
 import type { FileRecord } from "../files";
-import type { PublicAnnouncement, PublicArticle, PublicBulletin, PublicComment, PublicFollow, PublicUser } from "../present";
+import type { PublicAnnouncement, PublicArticle, PublicBulletin, PublicComment, PublicFollow, PublicUser, VisibleFields } from "../present";
 import type { announcementsCreateInput, announcementsListQuery, announcementsPublishInput, announcementsUpdateInput, bulletinsCreateInput, bulletinsListQuery, bulletinsUpdateInput, commentsCreateInput, commentsListQuery, commentsUpdateInput, followsCreateInput, followsListQuery, postsApproveInput, postsArchiveInput, postsCreateInput, postsListQuery, postsLockInput, postsPublishInput, postsRejectInput, postsRestoreInput, postsRetireInput, postsSubmitInput, postsUnlockInput, postsUnpublishAllInput, postsUpdateInput, sendDigestInput, usersBanInput, usersListQuery, usersUpdateInput } from "../validation";
 
 export class ApiError extends Error {
@@ -53,7 +53,7 @@ async function call<T>(method: string, path: string, options: { query?: Record<s
 export type Inputs = {
   auth: {
     login: { email: string; password: string };
-    register: { email: string; password: string; name?: unknown };
+    register: { email: string; password: string; name?: unknown; phone?: unknown };
     magic_link: { email: string };
     magic_link_verify: { token: string };
   };
@@ -120,7 +120,7 @@ export type Inputs = {
 
 export type Outputs = {
   auth: {
-    session: { user: PublicUser } | null;
+    session: { user: PublicUser; fields: VisibleFields } | null;
     me: PublicUser;
     login: PublicUser;
     register: PublicUser;
@@ -194,7 +194,9 @@ export const client = {
   auth: {
     session: async (): Promise<Outputs["auth"]["session"]> => {
       try {
-        return { user: await call<Outputs["auth"]["me"]>("GET", "/api/auth/me") };
+        // The answer carries, beside the user, which fields with a read rule they could read
+        const me = await call<{ data: Outputs["auth"]["me"]; fields: VisibleFields }>("GET", "/api/auth/me", { whole: true });
+        return { user: me.data, fields: me.fields };
       } catch (error) {
         if (error instanceof ApiError && error.status === 401) return null;
         throw error;
@@ -275,4 +277,18 @@ export type SessionUser = Outputs["auth"]["me"];
 /** The signed-in user out of a session query's data, or null */
 export function sessionUser(session: Session | undefined): SessionUser | null {
   return session?.user ?? null;
+}
+
+/** What a visitor could read of the fields with a read rule: nobody is signed in, so the rules alone answer */
+const VISITOR_FIELDS: VisibleFields = {
+  users: { banned_at: false, phone: false },
+  posts: { editor_note: false }
+};
+
+/**
+ * Per resource, whether the viewer could read each field that has a read rule on some row. A page leaves out the
+ * column and the input of a field they could not; a row still leaves out what its own rule refuses.
+ */
+export function fieldsOf(session: Session | undefined): VisibleFields {
+  return (session as { fields?: VisibleFields } | null | undefined)?.fields ?? VISITOR_FIELDS;
 }

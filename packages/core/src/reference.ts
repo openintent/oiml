@@ -129,6 +129,7 @@ relation:              # makes this field a foreign key; type must match the tar
   on_delete: restrict | cascade | set_null   # set_null needs a nullable field
 hidden: true           # never returned by or accepted from the API
 read_only: true        # returned by the API but never accepted from it: register, create and update answer 400 when a client sends it
+read: "member:team_id:admin" # who may read the field, as a rule: absent from a response for everyone else (see Fields some callers must not see)
 ranked: true           # enum only: the values rank in declared order, first most privileged, for member:<path>:<value> on a membership entity
 position: { within: album_id } # integer only: the row's place among the rows with the same album_id, kept by the server (see Ordered collections)
 count_of: comments     # integer only: how many rows the reverse relation \`comments\` holds, kept by the database (see Counts)
@@ -140,6 +141,45 @@ A \`read_only\` field is one the server owns: a \`banned\` flag, a \`reviewed_at
 handlers (and its default) set it, so declare the action that does, and give the field a default or leave it optional
 (a required one without a default could never be created). Mark the identity's \`role\` read_only the same way. Example
 actors may still set read_only identity fields: the harness writes them into the database after registering the actor.
+
+Fields some callers must not see: \`read:\` on a field is a rule in the spelling of the entity's rules. The field
+is in a response only for a caller the rule allows on that row; for everyone else the key is absent, not null, so a
+client can tell "no value" from "not for you". The entity's read rule still decides whether the row is seen at all,
+so a field rule only narrows:
+
+\`\`\`yaml
+fields:
+  cost: { type: decimal, read: "role:manager or member:team_id:admin" }   # managers and the team's admins
+  phone: { type: string, read: "owner:id or role:admin" }                 # on the identity: the person and admins
+  editor_note: { type: text, read: "role:admin" }
+\`\`\`
+
+It holds wherever the row leaves the server: get, list rows, included rows, the answer to a create or an update (a
+writer the rule refuses does not get the value back), the answers of actions, transitions, \`archive\`, \`restore\` and
+\`move\`, and \`auth.me\`, register and login for the caller's own row. Pages leave out the column and the input for a
+viewer who could never read the field, and the detail row where this row's rule refuses. Use \`hidden: true\` for a
+field nobody may read through the API, \`read:\` for one some callers read.
+
+A field rule reads the row and the caller only: \`public\`, \`authenticated\`, \`role:\`, \`owner:<field>\`,
+\`member:<field>[:<role>]\` and \`when <field> = <value>\` on the entity's own fields, joined with \`or\` and \`and\`. A
+path through a relation (\`member:project_id.team_id\`, \`when project_id.public = true\`) and a membership relation
+are refused on a field (M171): give the entity the field the rule needs (its own tenant relation, an owner), or keep
+the value in an entity of its own with a read rule. Never put \`read:\` on a hidden field, a primary key or a relation
+field (M170: an include and a filter tell a relation anyway), on a position, the archive field or the field of
+\`transitions\` (M173: the order of a list, the archived lists and a 409 tell them; hide a transition's stamp
+instead), and never name such a field in \`list.filters\`, \`sortable\`, \`order\`, \`search\` or a \`group_by\` (M172: which
+rows come back, and in what order, would tell the value). The server itself still reads the field: a rule's \`when\`,
+a count's \`where\` and a timer's \`when\` may test it, a \`count_of\` field may carry \`read:\` (the database counts
+whatever the rule says), and an event's payload carries every field, since a handler is the server.
+
+Writes follow the entity's rules, unchanged: there is no rule per field for writing ("only owners may grant the
+owner role" is still not expressible, say so in not_delivered). When the create or update rule lets someone write a
+field its \`read:\` refuses them, M174 warns: mark the field \`read_only\`, leave it out of the operation's \`fields\`,
+or widen \`read:\`. A \`unique\` field with \`read:\` still answers 409 to a repeated value (M175 warns). Under
+\`isolation: database\` a field rule is read as written: on a row a public read alternative shows to everyone,
+\`authenticated\` or \`role:\` lets a signed-in caller who is not a member read the field (M176 warns); add \`and
+member:<tenant field>\` to keep it to members. Not expressible, say so in not_delivered: masking a value instead of
+leaving it out, a field rule through a relation, a rule per field for writing.
 
 A \`file\` field holds an uploaded file. Clients upload first (\`POST /api/files\` with { name, type, size } answers an
 upload URL and method; PUT the bytes there; \`POST /api/files/{id}/complete\`), then write the file's id into the field.
@@ -478,6 +518,11 @@ scenario:
 \`\`\`
 
 Expected bodies match partially: every listed key must match, and every listed array element must match some element.
+A partial match cannot say a key is missing, so a step that proves a field with \`read:\` is withheld lists the paths
+in \`expect.absent\` beside \`body\`: \`expect: { status: 200, body: { data: { name: Launch } }, absent: [data.budget] }\`.
+A path is dotted like a capture's; through a list (\`data.budget\` on a list, \`data.posts.editor_note\` on an include)
+it holds for every row, and a key that is there with null is present. Give every \`read:\` both steps: a caller the
+rule refuses (\`absent\`) and one it allows (the value in \`body\`).
 Every scenario step has \`expect\` with at least a \`status\`; a step without one is invalid.
 All scenarios run in order against one database, each with every actor registered first, and the rows earlier
 scenarios and steps made are still there: expect a list exactly only through a filter, a search or a unique title

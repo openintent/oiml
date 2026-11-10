@@ -17,7 +17,7 @@ import type {
   TileGroupIR,
   TileIR
 } from "@osl/core";
-import { actionsOf, toPascalCase, toTitleCase, transitionOf } from "@osl/core";
+import { actionsOf, ruledColumns, toPascalCase, toTitleCase, transitionOf } from "@osl/core";
 import { entityByName, q, singlePrimaryKey, type TsConventions } from "../conventions.js";
 import { pageComponent } from "./routes.js";
 import type { WebTarget } from "./target.js";
@@ -79,11 +79,20 @@ function isIntegerKey(column: ColumnIR): boolean {
 }
 
 /** A client-side predicate for a rule, over the signed-in user and (for row rules) the row */
-export function rulePredicate(rule: RuleIR, user: string, row: string | null, identityPkName: string): string {
-  const base = basePredicate(rule, user, row, identityPkName);
+export function rulePredicate(
+  rule: RuleIR,
+  user: string,
+  row: string | null,
+  identityPkName: string,
+  ruled: ReadonlySet<string> = NO_FIELDS
+): string {
+  const base = basePredicate(rule, user, row, identityPkName, ruled);
   if (rule.kind === "any" || rule.kind === "all" || rule.kind === "none" || !rule.when || !row) return base;
   // A condition through a relation is decided by the API; the page offers the control when the base allows
   if (rule.when.via?.length) return base;
+  // So is one on a field with a read rule: the row the page holds may not carry it, and a missing value would
+  // read as "not equal", offering what the API refuses or hiding what it allows
+  if (ruled.has(rule.when.column)) return base;
   // The condition is on the row the page shows; values compare as text, null only to null
   const col = `${row}.${rule.when.column}`;
   const test =
@@ -93,7 +102,16 @@ export function rulePredicate(rule: RuleIR, user: string, row: string | null, id
   return `(${base} && ${test})`;
 }
 
-function basePredicate(rule: RuleIR, user: string, row: string | null, identityPkName: string): string {
+/** The fields of the row's entity that have a read rule, when the caller of rulePredicate names none */
+const NO_FIELDS: ReadonlySet<string> = new Set();
+
+function basePredicate(
+  rule: RuleIR,
+  user: string,
+  row: string | null,
+  identityPkName: string,
+  ruled: ReadonlySet<string>
+): string {
   switch (rule.kind) {
     case "public":
       return "true";
@@ -110,11 +128,11 @@ function basePredicate(rule: RuleIR, user: string, row: string | null, identityP
     case "role":
       return `${user} !== null && (${user} as { role?: unknown }).role === ${JSON.stringify(rule.value)}`;
     case "all": {
-      const parts = [...new Set(rule.rules.map(r => rulePredicate(r, user, row, identityPkName)))];
+      const parts = [...new Set(rule.rules.map(r => rulePredicate(r, user, row, identityPkName, ruled)))];
       return parts.length === 1 ? parts[0] : `(${parts.join(" && ")})`;
     }
     case "any":
-      return `(${rule.rules.map(r => rulePredicate(r, user, row, identityPkName)).join(" || ")})`;
+      return `(${rule.rules.map(r => rulePredicate(r, user, row, identityPkName, ruled)).join(" || ")})`;
   }
 }
 
@@ -151,8 +169,17 @@ function showExpr(ctx: Ctx, col: ColumnIR, obj: string, includes: RelationIR[], 
   }
 }
 
-/** JSX for one field of the detail pane */
+/** JSX for one field of the detail pane; a field with a read rule is there only when the row carries it */
 function detailRow(ctx: Ctx, col: ColumnIR, includes: RelationIR[]): string {
+  const jsx = detailRowJsx(ctx, col, includes);
+  if (!col.read) return jsx;
+  return `        {${q(col.name)} in row ? (\n${jsx
+    .split("\n")
+    .map(line => `  ${line}`)
+    .join("\n")}\n        ) : null}`;
+}
+
+function detailRowJsx(ctx: Ctx, col: ColumnIR, includes: RelationIR[]): string {
   const label = q(humanize(col.name));
   const expr = `row.${col.name}`;
   const rel = includes.find(r => r.direction === "forward" && r.column === col.name);
@@ -534,7 +561,7 @@ function fromRowExpr(ctx: Ctx, field: FormField): string {
     case "boolean":
       return `${expr} ?? false`;
     case "enum":
-      return col.nullable ? `${expr} ?? ""` : expr;
+      return col.nullable ? `${expr} ?? ""` : col.read ? `${expr} ?? ${field.initial}` : expr;
     case "datetime":
       use(ctx, "ui", "toDateTimeInput");
       return `toDateTimeInput(${expr})`;
@@ -699,6 +726,24 @@ ${valuesType}
 const EMPTY_${prefix.toUpperCase()}: ${ValuesT} = {
 ${empty}
 };`);
+  if (fields.some(f => f.col.read))
+    parts.push(`/** Fields with a read rule: an input is offered only to a viewer who may read the field, and a field that was not offered is not sent */
+const ${prefix.toUpperCase()}_RULED: readonly string[] = [${fields
+      .filter(f => f.col.read)
+      .map(f => q(f.col.name))
+      .join(", ")}];
+
+/** The fields a form offers: \`readable\` answers for the ones with a read rule (the session for a new row, the row's own keys for an edit) */
+function offered${prefix}<F extends string>(fields: readonly F[], readable: (field: string) => boolean): F[] {
+  return fields.filter(field => !${prefix.toUpperCase()}_RULED.includes(field) || readable(field));
+}
+
+/** An input without the fields the form did not offer, so a field its viewer may not read is never overwritten blind */
+function sent${prefix}<T extends object>(input: T, readable: (field: string) => boolean): T {
+  const out = { ...input } as Record<string, unknown>;
+  for (const field of ${prefix.toUpperCase()}_RULED) if (!readable(field)) delete out[field];
+  return out as T;
+}`);
   if (options.createType && options.createFields)
     parts.push(`const ${prefix.toUpperCase()}_CREATE: readonly ${prefix}Field[] = [${options.createFields.map(f => q(f.col.name)).join(", ")}];
 
@@ -885,6 +930,8 @@ export function resourcePageFile(ir: IR, page: PageIR, target: WebTarget, conv: 
   const listIncludes = list.include.map(name => entity.relations.find(r => r.name === name)!);
   const getIncludes = get.include.map(name => entity.relations.find(r => r.name === name)!);
   const idPk = ir.auth ? entityByName(ir, ir.auth.identity).primaryKey[0] : "id";
+  // Fields with a read rule: a rule's condition on one is the API's to decide, and its column, detail row and input are for those who may read it
+  const ruledNames: ReadonlySet<string> = new Set(ruledColumns(entity).map(c => c.name));
   const mutations = Boolean(create || update || remove || rowActions.length || collectionActions.length);
   if (mutations) {
     use(ctx, "query", "useMutation");
@@ -921,15 +968,15 @@ function idOf(raw: string) {
     );
   if (update)
     perms.push(
-      `function canUpdate(user: SessionUser | null, row: Detail): boolean {\n  return ${rulePredicate(update.rule, "user", "row", idPk)};\n}`
+      `function canUpdate(user: SessionUser | null, row: Detail): boolean {\n  return ${rulePredicate(update.rule, "user", "row", idPk, ruledNames)};\n}`
     );
   if (remove)
     perms.push(
-      `function canDelete(user: SessionUser | null, row: Detail): boolean {\n  return ${rulePredicate(remove.rule, "user", "row", idPk)};\n}`
+      `function canDelete(user: SessionUser | null, row: Detail): boolean {\n  return ${rulePredicate(remove.rule, "user", "row", idPk, ruledNames)};\n}`
     );
   for (const a of rowActions)
     perms.push(
-      `function can${toPascalCase(a.name)}(user: SessionUser | null, row: Detail): boolean {\n  return ${rulePredicate(a.rule, "user", "row", idPk)};\n}`
+      `function can${toPascalCase(a.name)}(user: SessionUser | null, row: Detail): boolean {\n  return ${rulePredicate(a.rule, "user", "row", idPk, ruledNames)};\n}`
     );
   for (const a of collectionActions)
     perms.push(
@@ -1138,6 +1185,8 @@ export function ${Comp}Index() {
   if (create) {
     use(ctx, "ui", "Pane");
     const back = layout === "split" ? "" : backLink(ctx);
+    const createRuled = create.fields.some(f => ruledNames.has(f));
+    if (createRuled) use(ctx, "client", "fieldsOf");
     sections.push(`export function ${Comp}New() {
   ${target.navigateDecl}
   const queryClient = useQueryClient();
@@ -1148,15 +1197,23 @@ export function ${Comp}Index() {
       await ${target.navigateTo(page.path, `text(row.${pk})`)};
     }
   });
-  return (
+${
+  createRuled
+    ? `  // A field with a read rule is offered only to a viewer who could read it, and is not sent otherwise
+  const session = ${sessionQuery};
+  const could: Record<string, boolean> = fieldsOf(session.data).${R};
+  const readable = (field: string) => could[field] === true;
+`
+    : ""
+}  return (
     <Pane title=${q(`New ${one.toLowerCase()}`)}${back ? ` actions={${back}}` : ""}>
       <${Comp}Form
-        fields={${Comp.toUpperCase()}_CREATE}
+        fields={${createRuled ? `offered${Comp}(${Comp.toUpperCase()}_CREATE, readable)` : `${Comp.toUpperCase()}_CREATE`}}
         initial={EMPTY_${Comp.toUpperCase()}}
         submitLabel="Create"
         pending={createRow.isPending}
         error={createRow.error}
-        onSubmit={values => createRow.mutate(to${Comp}CreateInput(values))}
+        onSubmit={values => createRow.mutate(${createRuled ? `sent${Comp}(to${Comp}CreateInput(values), readable)` : `to${Comp}CreateInput(values)`})}
       />
     </Pane>
   );
@@ -1167,6 +1224,7 @@ export function ${Comp}Index() {
   use(ctx, "ui", "Pane");
   use(ctx, "ui", "PaneSkeleton");
   const detailFields = page.fields.map(name => entity.columns.find(c => c.name === name)!);
+  const updateRuled = Boolean(update?.fields.some(f => ruledNames.has(f)));
   const getThrough = (get.through ?? []).map(name => entity.through!.find(t => t.name === name)!);
   const rows = [
     ...detailFields.map(c => detailRow(ctx, c, getIncludes)),
@@ -1261,13 +1319,13 @@ export function ${Comp}Index() {
   const detailBody = update
     ? `      {editing ? (
         <${Comp}Form
-          fields={${Comp.toUpperCase()}_UPDATE}
+          fields={${updateRuled ? `offered${Comp}(${Comp.toUpperCase()}_UPDATE, field => field in row)` : `${Comp.toUpperCase()}_UPDATE`}}
           initial={${Comp.charAt(0).toLowerCase()}${Comp.slice(1)}FromRow(row)}${entity.columns.some(c => c.type.kind === "file" && update.fields.includes(c.name)) ? "\n          current={row}" : ""}
           submitLabel="Save"
           pending={updateRow.isPending}
           error={updateRow.error}
           onCancel={() => setEditing(false)}
-          onSubmit={values => updateRow.mutate({ id, data: to${Comp}UpdateInput(values) })}
+          onSubmit={values => updateRow.mutate({ id, data: ${updateRuled ? `sent${Comp}(to${Comp}UpdateInput(values), field => field in row)` : `to${Comp}UpdateInput(values)`} })}
         />
       ) : (
         <dl className="grid gap-3">
@@ -1438,11 +1496,18 @@ function tableIndex(
                     ${humanize(c.name)}
                   </SortHeader>
                 </TableHead>`
-      : `                <TableHead>${humanize(c.name)}</TableHead>`
+      : c.read
+        ? `                {could.${c.name} ? <TableHead>${humanize(c.name)}</TableHead> : null}`
+        : `                <TableHead>${humanize(c.name)}</TableHead>`
   );
-  const cells = columns.map(
-    c => `                  <TableCell>{${showExpr(ctx, c, "row", listIncludes, "list")}}</TableCell>`
+  // A column of a field with a read rule is there only for a viewer who could read it on some row; a row leaves its cell empty when its own rule refuses
+  const cells = columns.map(c =>
+    c.read
+      ? `                  {could.${c.name} ? <TableCell>{${showExpr(ctx, c, "row", listIncludes, "list")}}</TableCell> : null}`
+      : `                  <TableCell>{${showExpr(ctx, c, "row", listIncludes, "list")}}</TableCell>`
   );
+  const ruledColumn = columns.some(c => c.read);
+  if (ruledColumn) use(ctx, "client", "fieldsOf");
   for (const relation of relationListExprs(ctx)) {
     heads.push(`                <TableHead>${humanize(relation.name)}</TableHead>`);
     cells.push(`                  <TableCell>{${relation.expr}}</TableCell>`);
@@ -1466,7 +1531,7 @@ ${
   };
   const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
   const user = sessionUser(session.data);
-  void user;
+  void user;${ruledColumn ? `\n  const could = fieldsOf(session.data).${R};` : ""}
   const input = {
     page,
     page_size: PAGE_SIZE${list.sortable.length ? ",\n    sort" : ""}${list.search.length ? ",\n    q: q || undefined" : ""}${filters.toInput ? `,\n    ${filters.toInput}` : ""}${toggle ? `,\n    ${toggle.spread.slice(2)}` : ""}${page.filter ? ",\n    ...fixedFilter(user)" : ""}
@@ -1690,7 +1755,7 @@ function transitionBoard(
     name: ${q(step.name)},
     from: [${step.from.map(q).join(", ")}],
     to: ${q(step.to)},
-    allowed: (user, row) => ${rulePredicate(a.rule, "user", "row", idPk)},
+    allowed: (user, row) => ${rulePredicate(a.rule, "user", "row", idPk, new Set(ruledColumns(ctx.entity).map(c => c.name)))},
     run: id => client.${R}.${a.name}({ id })
   }`;
   });

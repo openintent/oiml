@@ -9,7 +9,7 @@ import { checkRule, denied, type Rule } from "../access";
 import { handlers } from "../actions";
 import { getSession, type Session } from "../auth";
 import { handleError, notFound, ok, parseBody, parseId, parseQuery } from "../http";
-import { presentArticle, presentUser } from "../present";
+import { presentArticle, presentUser, type Viewer } from "../present";
 import { usersBanInput, usersId, usersListQuery, usersUpdateInput } from "../validation";
 import { hooks } from "@/src/extensions/users";
 
@@ -28,13 +28,13 @@ const ACTION_RULES = {
 };
 
 type ListRow = schema.User;
-function presentListRow(row: ListRow) {
-  return { ...presentUser(row) };
+function presentListRow(row: ListRow, viewer: Viewer) {
+  return { ...presentUser(row, viewer) };
 }
 
 type GetRow = schema.User & { posts: schema.Article[] };
-function presentGetRow(row: GetRow) {
-  return { ...presentUser(row), posts: row.posts.map(presentArticle) };
+function presentGetRow(row: GetRow, viewer: Viewer) {
+  return { ...presentUser(row, viewer), posts: row.posts.map(item => presentArticle(item, viewer)) };
 }
 
 export const users = {
@@ -53,7 +53,7 @@ export const users = {
         db.query.users.findMany({ where, orderBy: [desc(usersTable.created_at)], limit: page_size, offset: (page - 1) * page_size }),
         db.select({ total: count() }).from(usersTable).where(where)
       ]);
-      return ok(rows.map(presentListRow), { page: { page, page_size, total } });
+      return ok(rows.map(row => presentListRow(row, session)), { page: { page, page_size, total } });
     } catch (err) {
       return handleError(err, "read");
     }
@@ -70,7 +70,7 @@ export const users = {
       if (!row) return notFound();
       const rowVerdict = checkRule(RULES.read, session, row);
       if (!rowVerdict.ok) return denied(rowVerdict);
-      return ok(presentGetRow(row));
+      return ok(presentGetRow(row, session));
     } catch (err) {
       return handleError(err, "read");
     }
@@ -91,11 +91,11 @@ export const users = {
       if (!body.ok) return body.response;
       const hookContext: HookContext = { request, session };
       const patch = await hooks.beforeUpdate(existing, body.data, hookContext);
-      if (Object.keys(patch).length === 0) return ok(presentUser(existing));
+      if (Object.keys(patch).length === 0) return ok(presentUser(existing, session));
       const [row] = await db.update(usersTable).set(patch).where(eq(usersTable.id, id.data)).returning();
 
       await hooks.afterUpdate(row, hookContext);
-      return ok(presentUser(row));
+      return ok(presentUser(row, session));
     } catch (err) {
       return handleError(err, "write");
     }
@@ -117,7 +117,7 @@ export const users = {
       if (!body.ok) return body.response;
       const result = await handlers.users_ban({ input: body.data, row: current, session, db, now: new Date() });
 
-      return ok(presentUser(result));
+      return ok(presentUser(result, session));
     } catch (err) {
       return handleError(err, "write");
     }

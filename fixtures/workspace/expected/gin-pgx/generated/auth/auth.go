@@ -73,14 +73,24 @@ type Provider struct {
 // Providers lists the model's sign-in providers in declared order.
 var Providers = []Provider{{Kind: "credentials", Name: "credentials"}, {Kind: "magic_link", Name: "magic_link"}}
 
+// Visibility is what the access package knows about fields with a read rule. It imports this package, so the
+// app hands it in when it builds the auth service.
+type Visibility struct {
+	// Viewer presents rows to the caller of a session.
+	Viewer func(*Session) models.Viewer
+	// Fields says, per resource, whether a session could read each field that has a read rule on some row.
+	Fields func(*Session) map[string]map[string]bool
+}
+
 // Auth serves the auth endpoints and resolves sessions.
 type Auth struct {
-	db *db.Scope
+	db  *db.Scope
+	see Visibility
 }
 
 // New builds the auth service.
-func New(db *db.Scope) *Auth {
-	return &Auth{db: db}
+func New(db *db.Scope, see Visibility) *Auth {
+	return &Auth{db: db, see: see}
 }
 
 // Routes registers the auth endpoints.
@@ -325,7 +335,7 @@ func (a *Auth) Me(c *gin.Context) {
 		httpx.Fail(c, httpx.NewError(http.StatusUnauthorized, "unauthenticated", "Sign in to continue"))
 		return
 	}
-	httpx.OK(c, session.User)
+	c.PureJSON(http.StatusOK, gin.H{"data": session.User, "fields": a.see.Fields(session)})
 }
 
 // Providers lists how users may sign in, for the sign-in page.

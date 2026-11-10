@@ -86,6 +86,12 @@ export interface ColumnIR {
   position?: true;
   /** A count the database keeps (`EntityIR.counts`): never null, read-only to clients and to handlers */
   count?: true;
+  /**
+   * Who may read the field (`read:` on a field): the key is in a response only for a caller this rule allows on
+   * that row. It reads the row's own columns and the caller, never a path, and is compiled as written: on a tenant
+   * table under `isolation: database` nothing is added to it, since no policy stands behind a field.
+   */
+  read?: RuleIR;
 }
 
 export interface ForeignKeyIR {
@@ -657,7 +663,7 @@ export interface StepIR {
   pathParams: Record<string, string>;
   query: Record<string, string>;
   body?: unknown;
-  expect: { status: number; body?: unknown };
+  expect: { status: number; body?: unknown; absent?: string[] };
   capture: Record<string, string>;
 }
 
@@ -1162,6 +1168,14 @@ export function compile(input: Model): IR {
 
     for (const [fieldName, field] of Object.entries(entity.fields)) {
       const column = compileColumn(entityName, fieldName, field, primaryKey, true);
+      if (field.read)
+        column.read = parseRule(
+          field.read,
+          { kind: "public" },
+          path => hopsFrom(entityName, path),
+          conditionOn(entityName),
+          path => memberPathFrom(entityName, path)
+        );
       if (field.relation) {
         const targetTable = tableOf(field.relation.entity);
         const targetColumn = pkOf(field.relation.entity)[0];
@@ -2039,7 +2053,8 @@ function defaultOrder(entity: EntityIR): [string, "asc" | "desc"][] {
       [entity.order.within, "asc"],
       [entity.order.column, "asc"]
     ];
-  if (entity.columns.some(c => c.name === "created_at")) return [["created_at", "desc"]];
+  // A field with a read rule never orders a list: the order would tell what the rule keeps back
+  if (entity.columns.some(c => c.name === "created_at" && !c.read)) return [["created_at", "desc"]];
   return entity.primaryKey.map(pk => [pk, "asc"]);
 }
 
@@ -2053,7 +2068,8 @@ function isShortScalar(column: ColumnIR): boolean {
 /** The first string column that is not a key names the row; falling back to the primary key. */
 function displayColumn(columns: ColumnIR[], primaryKey: string[], foreignKeys: ForeignKeyIR[]): string {
   const isKey = (c: ColumnIR) => primaryKey.includes(c.name) || foreignKeys.some(fk => fk.column === c.name);
-  const pick = (test: (c: ColumnIR) => boolean) => columns.find(c => !c.hidden && !isKey(c) && test(c));
+  // A row is named by a column every reader of it gets, so one with a read rule is passed over
+  const pick = (test: (c: ColumnIR) => boolean) => columns.find(c => !c.hidden && !c.read && !isKey(c) && test(c));
   const named = pick(c => ["title", "name", "label"].includes(c.name));
   if (named) return named.name;
   const text = pick(c => c.type.kind === "scalar" && c.type.scalar === "string");
@@ -2074,6 +2090,24 @@ function defaultColumns(entity: EntityIR, outputFields: string[]): string[] {
   );
   const out = [entity.display, ...shorts.map(c => c.name).filter(n => n !== entity.display)].slice(0, 4);
   return out.length ? out : [entity.primaryKey[0]];
+}
+
+/** The columns of an entity that carry a read rule: present in a response only for a caller the rule allows */
+export function ruledColumns(entity: EntityIR): ColumnIR[] {
+  return entity.columns.filter(c => c.read !== undefined && !c.hidden);
+}
+
+/** Whether any entity has a field with a read rule, so presenters take a viewer and the session answers `fields` */
+export function hasFieldRules(ir: IR): boolean {
+  return ir.entities.some(e => ruledColumns(e).length > 0);
+}
+
+/**
+ * Whether a caller without a session could read a field under this rule on some row: an alternative made of public
+ * predicates. What the pages assume of a visitor, for whom the session answers no `fields`.
+ */
+export function anonymousCouldRead(rule: RuleIR): boolean {
+  return sessionFreeAlternatives(rule).length > 0;
 }
 
 export function entityOf(ir: IR, name: string): EntityIR {

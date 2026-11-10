@@ -21,7 +21,11 @@ import {
   throughOf,
   throughRowParts,
   throughSource,
-  withClause
+  withClause,
+  creatorViewer,
+  presentCall,
+  presentMapper,
+  takesViewer
 } from "@osl/ts-common";
 import {
   HEADER,
@@ -45,8 +49,8 @@ function includeType(ir: IR, rel: RelationIR): string {
 
 function includePresent(ir: IR, rel: RelationIR): string {
   const target = entityByName(ir, rel.target);
-  if (rel.kind === "many") return `row.${rel.name}.map(present${typeName(target)})`;
-  return `row.${rel.name} ? present${typeName(target)}(row.${rel.name}) : null`;
+  if (rel.kind === "many") return `row.${rel.name}.map(${presentMapper(target, "viewer")})`;
+  return `row.${rel.name} ? ${presentCall(target, `row.${rel.name}`, "viewer")} : null`;
 }
 
 function isIntegerKey(entity: EntityIR): boolean {
@@ -144,6 +148,16 @@ export function resourceFile(ir: IR, resource: ResourceIR): string {
     }
   }
   const presents = new Set<string>([`present${T}`]);
+  // Whether an operation's rows are presented to a viewer: the entity or a row it includes has a field with a read rule
+  const viewed = (include: string[], throughNames: string[] | undefined) =>
+    takesViewer(entity) ||
+    include.some(name => takesViewer(entityByName(ir, entity.relations.find(r => r.name === name)!.target))) ||
+    throughOf(entity, throughNames).some(t => takesViewer(entityByName(ir, t.target)));
+  /** An event's payload is the row as the server reads it, every field with a read rule included, whoever caused it */
+  const serverPresent = (expr: string) => {
+    if (takesViewer(entity)) presents.add("SERVER");
+    return presentCall(entity, expr, "SERVER");
+  };
   const validationImports = new Set<string>([`${resource.name}Id`]);
   const httpImports = new Set<string>(["handleError", "notFound", "ok"]);
   const accessImports = new Set<string>(["checkRule", "denied"]);
@@ -207,7 +221,9 @@ function sortOrder(sort: string): SQL[] {
     const shown = [...rels.map(r => `${r.name}: ${includePresent(ir, r)}`), ...far.presents];
     const rowType = types.length ? `schema.${T} & { ${types.join("; ")} }` : `schema.${T}`;
     const extra = shown.length ? `, ${shown.join(", ")}` : "";
-    return `type ${name}Row = ${rowType};\nfunction present${name}Row(row: ${name}Row) {\n  return { ...present${T}(row)${extra} };\n}`;
+    const viewer = viewed(include, throughNames) ? ", viewer: Viewer" : "";
+    if (viewer) presents.add("type Viewer");
+    return `type ${name}Row = ${rowType};\nfunction present${name}Row(row: ${name}Row${viewer}) {\n  return { ...${presentCall(entity, "row", "viewer")}${extra} };\n}`;
   };
   if (list) sections.push(rowSection("List", list.include, list.through));
   if (get) sections.push(rowSection("Get", get.include, get.through));
@@ -264,7 +280,7 @@ ${
         db.select({ total: count() }).from(${table}).where(where)
       ]);`
 }
-      return ok(${through.list("rows")}.map(presentListRow), { page: { page, page_size, total } });
+      return ok(${through.list("rows")}.map(${viewed(list.include, list.through) ? "row => presentListRow(row, session)" : "presentListRow"}), { page: { page, page_size, total } });
     } catch (err) {
       return handleError(err, "read");
     }
@@ -284,7 +300,7 @@ ${
       if (!row) return ${miss("RULES.read")};
       const rowVerdict = checkRule(RULES.read, session, ${rowArg(get.rule, "row", sessionArg)});
       if (!rowVerdict.ok) return ${entity.hidden === "not_found" ? "notFound()" : "denied(rowVerdict)"};
-      return ok(presentGetRow(${through.get("row")}));
+      return ok(presentGetRow(${through.get("row")}${viewed(get.include, get.through) ? ", session" : ""}));
     } catch (err) {
       return handleError(err, "read");
     }
@@ -296,7 +312,7 @@ ${
     httpImports.add("parseBody");
     httpImports.add("created");
     const owner = create.ownerField ? `, ${create.ownerField}: ${me}` : "";
-    const emitLines = events("created").map(e => `      await emit(${q(e.name)}, present${T}(row));`);
+    const emitLines = events("created").map(e => `      await emit(${q(e.name)}, ${serverPresent("row")});`);
     const defaults = conditionDefaults(entity, create.rule);
     const bodyCheck = needsBodyCheck(create.rule)
       ? `      const bodyVerdict = checkRule(RULES.create, session, ${rowArg(create.rule, owner || defaults ? `{ ${defaults}...body.data${owner} }` : "body.data", sessionArg)});
@@ -324,7 +340,7 @@ ${bodyCheck}      const hookContext: HookContext = { request, session };
 ${insert}
 ${emitLines.join("\n")}${timerLine}
       await hooks.afterCreate(row, hookContext);
-      return created(present${T}(row));
+      return created(${presentCall(entity, "row", isTenant && tenancy ? creatorViewer(ir, "session", `row.${pk}`) : "session")});
     } catch (err) {
       return handleError(err, "write");
     }
@@ -335,7 +351,7 @@ ${emitLines.join("\n")}${timerLine}
     validationImports.add(`${resource.name}UpdateInput`);
     httpImports.add("parseBody");
     httpImports.add("parseId");
-    const emitLines = events("updated").map(e => `      await emit(${q(e.name)}, present${T}(row));`);
+    const emitLines = events("updated").map(e => `      await emit(${q(e.name)}, ${serverPresent("row")});`);
     const updateChecks = rowChecks(update.rule, "existing");
     methods.push(`  async update(request: Request, ctx: RouteContext): Promise<Response> {
     try {
@@ -352,11 +368,11 @@ ${emitLines.join("\n")}${timerLine}
       if (!body.ok) return body.response;
       const hookContext: HookContext = { request, session };
       const patch = await hooks.beforeUpdate(existing, ${resolveFiles("body.data")}, hookContext);
-      if (Object.keys(patch).length === 0) return ok(present${T}(existing));
+      if (Object.keys(patch).length === 0) return ok(${presentCall(entity, "existing", "session")});
       const [row] = await db.update(${table}).set(patch).where(eq(${table}.${pk}, id.data)).returning();
 ${emitLines.join("\n")}${timerLine}
       await hooks.afterUpdate(row, hookContext);
-      return ok(present${T}(row));
+      return ok(${presentCall(entity, "row", "session")});
     } catch (err) {
       return handleError(err, "write");
     }
@@ -366,7 +382,7 @@ ${emitLines.join("\n")}${timerLine}
   if (remove) {
     httpImports.add("parseId");
     httpImports.add("noContent");
-    const emitLines = events("deleted").map(e => `      await emit(${q(e.name)}, present${T}(existing));`);
+    const emitLines = events("deleted").map(e => `      await emit(${q(e.name)}, ${serverPresent("existing")});`);
     const deleteChecks = rowChecks(remove.rule, "existing");
     methods.push(`  async delete(request: Request, ctx: RouteContext): Promise<Response> {
     try {
@@ -402,7 +418,8 @@ ${emitLines.join("\n")}
         query,
         pk,
         idName: `${resource.name}Id`,
-        T,
+        entity,
+        serverPresent,
         actionEvents: actionEvents(action.name),
         checks: rowChecks(action.rule, "current"),
         miss: miss(`ACTION_RULES.${action.name}`)
@@ -462,7 +479,9 @@ function actionHandler(
     query: string;
     pk: string;
     idName: string;
-    T: string;
+    entity: EntityIR;
+    /** The row as an event's payload carries it */
+    serverPresent: (expr: string) => string;
     actionEvents: IR["events"];
     /** The checks after the row is loaded (a hidden row's 404 when the entity asks for it) and the row the action's own check reads */
     checks: { lines: string; arg: string };
@@ -471,10 +490,9 @@ function actionHandler(
   } | null
 ): string {
   const input = actionInputName(action);
-  const present = action.returns.kind === "entity" ? `present${row!.T}` : null;
   const answer =
     action.returns.kind === "entity"
-      ? `ok(${present}(result))`
+      ? `ok(${presentCall(row!.entity, "result", "session")})`
       : action.returns.kind === "none"
         ? "noContent()"
         : "ok(result)";
@@ -482,7 +500,7 @@ function actionHandler(
     row?.actionEvents ?? ir.events.filter(e => e.kind === "action" && !e.resource && e.actionName === action.name);
   const emitLines = eventsFor.map(
     e =>
-      `      await emit(${q(e.name)}, ${action.returns.kind === "entity" ? `${present}(result)` : action.returns.kind === "none" ? "{}" : "result"});`
+      `      await emit(${q(e.name)}, ${action.returns.kind === "entity" ? row!.serverPresent("result") : action.returns.kind === "none" ? "{}" : "result"});`
   );
   const rulesRef = row ? `ACTION_RULES.${action.name}` : `RULES.${action.name}`;
   const fn = cap(action.name.replace(/_(\w)/g, (_, c: string) => c.toUpperCase()));

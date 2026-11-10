@@ -102,6 +102,12 @@ export const Field = z
     hidden: z.boolean().optional(),
     /** Returned by the API but never accepted from it: only server code (an action handler) and defaults set it */
     read_only: z.boolean().optional(),
+    /**
+     * Who may read the field, in the rules' spelling: the key is in a response only for a caller the rule allows on
+     * that row, absent otherwise. It narrows within the entity's read rule and reads the row and the caller only
+     * (no path through a relation); writes still follow the entity's rules.
+     */
+    read: z.lazy(() => Rule).optional(),
     /** Enum fields only: the values rank in declared order, first most privileged, for member:<path>:<value> on a membership entity */
     ranked: z.boolean().optional(),
     /**
@@ -968,8 +974,24 @@ const StepBase = z.object({
   capture: z.record(z.string()).optional()
 });
 
+/** A dotted path into a response body, as `capture` spells one: `data.budget`, `data.author.phone` */
+const BODY_PATH = /^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$/;
+
 export const Step = StepBase.extend({
-  expect: z.object({ status: z.number().int(), body: z.unknown().optional() }).strict()
+  expect: z
+    .object({
+      status: z.number().int(),
+      body: z.unknown().optional(),
+      /**
+       * Paths that must not be in the response (`data.budget`): the key itself is missing, which the partial match
+       * of `body` cannot say. Through a list the path holds for every row; a key that is there with null is present.
+       */
+      absent: z
+        .array(z.string().regex(BODY_PATH, "a dotted path into the response body, such as data.budget"))
+        .min(1)
+        .optional()
+    })
+    .strict()
 }).strict();
 export type Step = z.infer<typeof Step>;
 
@@ -1480,6 +1502,132 @@ export function validateModel(model: Model): Diagnostic[] {
         if (step.rule) check(step.rule, entityName, `entities.${entityName}.transitions.${step.name}.rule`, "action");
   };
 
+  /** Whether a predicate a writer passed means they pass a predicate of the read rule: the same one, or a stronger one */
+  const predicateImplies = (written: string, read: string): boolean => {
+    if (written === read) return true;
+    const w = splitWhen(written);
+    const r = splitWhen(read);
+    // A condition on the read side must be the writer's own; one on the write side only narrows the writers
+    if (r.when) return false;
+    if (r.base === "public" || w.base === r.base) return true;
+    if (r.base === "authenticated") return w.base !== "public" && w.base !== "none";
+    const wm = predicateParts(w.base);
+    const rm = predicateParts(r.base);
+    if (wm?.kind !== "member" || rm?.kind !== "member" || wm.path.join(".") !== rm.path.join(".")) return false;
+    if (rm.role === undefined) return true;
+    if (wm.role === undefined) return false;
+    const ranks = membershipRoles();
+    return ranks.includes(wm.role) && ranks.includes(rm.role) && ranks.indexOf(wm.role) <= ranks.indexOf(rm.role);
+  };
+  /** Whether everyone a write rule lets through passes the field's read rule: each alternative of the first implies every predicate of one of the second's */
+  const writersRead = (writeRule: string, readRule: string): boolean => {
+    const readers = ruleAlternativeTexts(readRule).map(a => conjunctionParts(a));
+    return ruleAlternativeTexts(writeRule).every(alternative => {
+      const held = conjunctionParts(alternative);
+      return readers.some(parts => parts.every(part => held.some(h => predicateImplies(h, part))));
+    });
+  };
+  const tenantTables = isolated(model) ? tenantLinks(model).links : {};
+
+  /**
+   * `read:` on a field: the rule is checked as an entity's is, then held to what a presenter answers from the row
+   * and the caller alone (M171), and refused on a field whose value shows whatever the rule says (M170, M173).
+   * Where the model names the field in a way that would tell its value is M172, checked where it is named.
+   */
+  const checkFieldRead = (entityName: string, entity: Entity, fieldName: string, field: Field, fpath: string) => {
+    const rule = field.read!;
+    const rpath = `${fpath}.read`;
+    const spelled = `${entityName}.${fieldName}`;
+    const errorsBefore = out.filter(d => d.level === "error").length;
+    if (field.hidden) error("M170", `${spelled} is hidden, so it never leaves the server; drop read`, rpath);
+    else if (field.primary)
+      error("M170", `${spelled} is the primary key: every answer names its row by it, so it cannot carry read`, rpath);
+    else if (field.relation)
+      error(
+        "M170",
+        `${spelled} is a relation field: an include, a reverse relation and a filter by it all tell which ${field.relation.entity} a row points at, so it cannot carry read; put read on the fields of ${field.relation.entity} that some callers must not see`,
+        rpath
+      );
+    checkRule(rule, entityName, rpath, true);
+    for (const predicate of new Set(rulePredicates(rule))) {
+      const { base: basePredicate, when } = splitWhen(predicate);
+      const parts = predicateParts(basePredicate);
+      const reason =
+        "a field rule reads the row and the caller only, because it is checked for every row on every way out, included rows too";
+      if (parts && parts.path.length > 1)
+        error(
+          "M171",
+          `${basePredicate}: ${reason}; a path through a relation is refused here. Give ${entityName} the field itself (${parts.kind === "member" ? "its tenant relation" : "the owner"}) or keep the value in an entity of its own with a read rule`,
+          rpath
+        );
+      else if (parts?.kind === "member" && !entity.fields[parts.path[0]])
+        error(
+          "M171",
+          `${basePredicate}: ${reason}; a membership relation is a lookup, refused here. Use the tenant's member:<field>, an owner, a role, or keep the value in an entity of its own with a read rule`,
+          rpath
+        );
+      if (when && when.field.includes("."))
+        error("M171", `when ${when.field}: ${reason}; a condition through a relation is refused here`, rpath);
+    }
+    const shown = field.position
+      ? `it is a position, and the order of every list of ${entityName} shows it`
+      : archiveOf(entity)?.field === fieldName
+        ? `it is the archive field, and the lists already tell every reader which rows are archived`
+        : transitionsOf(entity)?.field === fieldName
+          ? `it is the field of the transitions, and a transition answers 409 from a state it does not start in, which tells the state to anyone its rule lets through; hide a stamp instead`
+          : null;
+    if (shown) error("M173", `${spelled} cannot carry read: ${shown}`, rpath);
+    // What follows is advice about a rule that stands; one that was refused gets none
+    if (out.filter(d => d.level === "error").length > errorsBefore) return;
+    const uniqueWith = (entity.unique ?? []).find(cols => cols.includes(fieldName));
+    if (field.unique || uniqueWith)
+      warn(
+        "M175",
+        `${spelled} is unique${uniqueWith && !field.unique ? ` with ${uniqueWith.filter(c => c !== fieldName).join(", ")}` : ""}: a write that repeats a value answers 409, which tells the writer the value exists whatever read says`,
+        rpath
+      );
+    // A caller the create or update rule lets write the field, and the read rule may refuse: their own answer leaves it out
+    if (isClientWritable(field)) {
+      for (const [resourceName, resource] of Object.entries(model.resources)) {
+        if (resource.entity !== entityName) continue;
+        for (const op of ["create", "update"] as const) {
+          if (!resource.operations.includes(op)) continue;
+          if (op === "create" && model.auth?.identity === entityName) continue;
+          const listed = resource[op]?.fields;
+          if (listed && !listed.includes(fieldName)) continue;
+          const writeRule = entity.rules?.[op] ?? (model.auth ? "authenticated" : "public");
+          if (writeRule === "none" || writersRead(writeRule, rule)) continue;
+          warn(
+            "M174",
+            `${spelled}: "${writeRule}" lets a caller ${op === "create" ? "set" : "change"} it through ${resourceName}.${op} whom read "${rule}" may refuse, and the answer to their own write then leaves it out; mark it read_only, leave it out of ${resourceName}.${op}.fields, or widen read`,
+            rpath
+          );
+        }
+      }
+    }
+    // Under isolation: database a field rule is read as written: on a row the public-read policy shows, a signed-in caller need not be a member
+    const link = tenantTables[entityName];
+    const readRule = entity.rules?.read ?? "public";
+    const publicRead = ruleAlternativeTexts(readRule).some(a =>
+      conjunctionParts(a).every(part => splitWhen(part).base === "public")
+    );
+    if (link && publicRead) {
+      const open = ruleAlternativeTexts(rule).filter(a => {
+        const bases = conjunctionParts(a).map(part => splitWhen(part).base);
+        return (
+          bases.some(b => b !== "public") &&
+          bases.every(b => !b.startsWith("owner:") && !b.startsWith("member:") && b !== "none")
+        );
+      });
+      if (open.length)
+        warn(
+          "M176",
+          `${spelled}: ${entityName} is a tenant table whose read rule shows some rows to everyone, and a field rule is read as written there: ${open.map(a => `"${a}"`).join(", ")} lets a signed-in caller who is not a member of the row's ${model.auth!.tenancy!.entity} read it on those rows; to keep it to members ${link.path.length === 1 ? `add "and member:${link.path[0]}"` : `give ${entityName} its own relation to ${model.auth!.tenancy!.entity} and add a member predicate on it`}`,
+          rpath
+        );
+    }
+  };
+
   for (const [entityName, entity] of Object.entries(model.entities)) {
     const base = `entities.${entityName}`;
     const fieldNames = new Set(Object.keys(entity.fields));
@@ -1535,6 +1683,7 @@ export function validateModel(model: Model): Diagnostic[] {
           `read_only field ${fieldName} is required and has no default, so nothing could ever create a row; give it a default, drop required, or set it from the session with rules.create: owner:${fieldName}`,
           fpath
         );
+      if (field.read !== undefined) checkFieldRead(entityName, entity, fieldName, field, fpath);
     }
     const positions = Object.entries(entity.fields).filter(([, f]) => f.position);
     if (positions.length > 1)
@@ -1928,16 +2077,35 @@ export function validateModel(model: Model): Diagnostic[] {
       else if (!isQueryable(entity.fields[f]))
         error("M053", `${what} field ${f} is a ${entity.fields[f].type} field`, where);
     };
-    for (const f of resource.list?.filters ?? []) queryable(f, "filter", `${base}.list.filters`);
+    /** A list may not be narrowed, ordered or searched by a field with a read rule: the rows it answers would tell the value */
+    const everyoneReads = (f: string, what: string, tells: string, where: string) => {
+      if (entity.fields[f]?.read !== undefined)
+        error(
+          "M172",
+          `${what} ${f}: ${resource.entity}.${f} has a read rule, and ${tells} would tell its value to a caller the rule refuses; drop it here or drop read`,
+          where
+        );
+    };
+    for (const f of resource.list?.filters ?? []) {
+      queryable(f, "filter", `${base}.list.filters`);
+      everyoneReads(f, "filter", "which rows a filter answers", `${base}.list.filters`);
+    }
     if (archiveOf(entity) && (resource.list?.filters ?? []).includes(ARCHIVED_PARAM))
       error(
         "M157",
         `${resource.entity} archives, so the list parameter ${ARCHIVED_PARAM} is the compiler's (?${ARCHIVED_PARAM}=true answers the archived rows); drop the field ${ARCHIVED_PARAM} from list.filters or rename it`,
         `${base}.list.filters`
       );
-    for (const [f] of resource.list?.order ?? []) queryable(f, "order", `${base}.list.order`);
-    for (const f of resource.list?.sortable ?? []) queryable(f, "sortable", `${base}.list.sortable`);
+    for (const [f] of resource.list?.order ?? []) {
+      queryable(f, "order", `${base}.list.order`);
+      everyoneReads(f, "order", "the order of the list", `${base}.list.order`);
+    }
+    for (const f of resource.list?.sortable ?? []) {
+      queryable(f, "sortable", `${base}.list.sortable`);
+      everyoneReads(f, "sortable", "the order of a sorted list", `${base}.list.sortable`);
+    }
     for (const f of resource.list?.search ?? []) {
+      everyoneReads(f, "search", "which rows a search answers", `${base}.list.search`);
       if (!fieldNames.has(f)) error("M059", `search field ${f} does not exist`, `${base}.list.search`);
       else if (!["string", "text"].includes(entity.fields[f].type))
         error("M059", `search field ${f} must be a string or text field`, `${base}.list.search`);
@@ -2211,6 +2379,12 @@ export function validateModel(model: Model): Diagnostic[] {
               const entity = model.entities[resource.entity];
               const field = entity?.fields[tile.group_by];
               if (!field) error("M089", `tile group_by ${tile.group_by} does not exist on ${resource.entity}`, tpath);
+              else if (field.read !== undefined)
+                error(
+                  "M172",
+                  `tile group_by ${tile.group_by}: ${resource.entity}.${tile.group_by} has a read rule, and a count per value would tell its values to a caller the rule refuses; group by another field or drop read`,
+                  tpath
+                );
               else if (!(resource.list?.filters ?? []).includes(tile.group_by))
                 error("M089", `tile group_by ${tile.group_by} must be a list filter of ${tile.resource}`, tpath);
               else if (field.relation) {
@@ -2277,6 +2451,12 @@ export function validateModel(model: Model): Diagnostic[] {
         const machine = transitionsOf(entity)?.field === page.group_by;
         if (!field || field.type !== "enum")
           error("M087", `group_by ${page.group_by} must be an enum field of ${resource.entity}`, `${base}.group_by`);
+        else if (field.read !== undefined)
+          error(
+            "M172",
+            `group_by ${page.group_by}: ${resource.entity}.${page.group_by} has a read rule, and the column a card sits in would tell its value to a caller the rule refuses; group by another field or drop read`,
+            `${base}.group_by`
+          );
         else if (!machine && field.read_only)
           error(
             "M087",

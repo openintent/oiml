@@ -76,8 +76,35 @@ async function provision(name: string): Promise<void> {
 }`;
 }
 
+/** Whether a scenario says a path must be absent, so the test client needs to tell a missing key from a null one */
+export function usesAbsent(ir: IR): boolean {
+  return ir.examples.scenarios.some(s => s.steps.some(step => step.expect.absent?.length));
+}
+
+/** `carries`: whether a dotted path is in a response body, for `expect.absent` */
+function carriesSource(): string {
+  return `
+
+/**
+ * Whether the dotted path is in a response body: every key on the way is there, whatever its value (a null is
+ * there). Through a list, it is there when any item carries the rest of the path.
+ */
+export function carries(value: unknown, path: string): boolean {
+  const walk = (current: unknown, keys: string[]): boolean => {
+    if (Array.isArray(current)) return current.some(item => walk(item, keys));
+    if (!current || typeof current !== "object" || !(keys[0] in current)) return false;
+    return keys.length === 1 || walk((current as Record<string, unknown>)[keys[0]], keys.slice(1));
+  };
+  return walk(value, path.split("."));
+}`;
+}
+
 /** `matches`, `resolve` and `pick`: partial matching and "{var}" substitution for scenario steps */
-export function matchersSource(): string {
+export function matchersSource(ir?: IR): string {
+  return matchers() + (ir && usesAbsent(ir) ? carriesSource() : "");
+}
+
+function matchers(): string {
   return `/** Partial deep match: every expected key must match; every expected array element must match some actual element. */
 export function matches(expected: unknown, actual: unknown): boolean {
   if (Array.isArray(expected)) {
@@ -132,12 +159,22 @@ export function captureLines(step: StepIR): string[] {
   return Object.entries(step.capture).map(([name, path]) => `    vars.${name} = pick(reply.body, ${q(path)});`);
 }
 
-/** The partial body assertion of a step, or an empty string */
+/** The partial body assertion of a step and the paths that must be absent, or an empty string */
 export function bodyCheck(step: StepIR): string {
-  return step.expect.body !== undefined
-    ? `    const expected = resolve(${JSON.stringify(step.expect.body)}, scope);
+  const body =
+    step.expect.body !== undefined
+      ? `    const expected = resolve(${JSON.stringify(step.expect.body)}, scope);
     expect(matches(expected, reply.body), "expected " + JSON.stringify(expected) + " within " + JSON.stringify(reply.body)).toBe(true);`
+      : "";
+  const absent = step.expect.absent?.length
+    ? `    for (const path of ${JSON.stringify(step.expect.absent)}) expect(carries(reply.body, path), path + " must be absent from " + JSON.stringify(reply.body)).toBe(false);`
     : "";
+  return [body, absent].filter(Boolean).join("\n");
+}
+
+/** `carries, ` in a test file's import of the client when one of its steps says a path must be absent */
+export function carriesImport(steps: StepIR[]): string {
+  return steps.some(step => step.expect.absent?.length) ? "carries, " : "";
 }
 
 export function vitestConfigFile(conv: TsConventions): string {

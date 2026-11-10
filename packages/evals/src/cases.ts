@@ -95,6 +95,11 @@ export const Expect = z
      * name; [] asks only for the block
      */
     transitions: z.record(z.string(), Names).optional(),
+    /**
+     * "Entity.field" -> the read rule the field must carry (`read:` on the field), with alternatives; "*" asks only
+     * that it has one. A hidden field, a second entity or a handler that strips the value has not used the construct.
+     */
+    field_read: z.record(z.string(), z.string()).optional(),
     /** entity -> operation -> rule alternatives, compared after defaults are applied */
     rules: z.record(z.string(), z.record(z.string(), z.string())).optional(),
     resources: Names.optional(),

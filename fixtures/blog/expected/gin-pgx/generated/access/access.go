@@ -12,6 +12,7 @@ import (
 
 	"blog/generated/auth"
 	"blog/generated/httpx"
+	"blog/generated/models"
 )
 
 // Rule is an access rule from the model: public, authenticated, none, owner (Field), role (Value),
@@ -229,4 +230,57 @@ func deref(value any) any {
 		return v.Elem().Interface()
 	}
 	return value
+}
+
+// fieldRules are the read rules of fields, by "Entity.field". Each reads the row and the caller, nothing else.
+var fieldRules = map[string]Rule{
+	"User.banned_at":      {Kind: "any", Any: []Rule{{Kind: "owner", Field: "id"}, {Kind: "role", Value: "admin"}}},
+	"User.phone":          {Kind: "any", Any: []Rule{{Kind: "owner", Field: "id"}, {Kind: "role", Value: "admin"}}},
+	"Article.editor_note": {Kind: "role", Value: "admin"},
+}
+
+type viewer struct {
+	session *auth.Session
+}
+
+// Viewer presents rows to the caller of a session (nil without one): a field with a read rule is in a row's
+// public shape only when the rule allows this caller on that row.
+func Viewer(session *auth.Session) models.Viewer {
+	return viewer{session: session}
+}
+
+func (v viewer) Reads(field string, row map[string]any) bool {
+	rule, ok := fieldRules[field]
+	return ok && CheckRow(rule, v.session, Row(row)) == nil
+}
+
+// could reports whether the session could read a field under this rule on some row: what the rule says before
+// any row is there, and for a member predicate whether a membership of that rank is held at all.
+func could(rule Rule, session *auth.Session) bool {
+	switch rule.Kind {
+	case "all":
+		for _, part := range rule.All {
+			if !could(part, session) {
+				return false
+			}
+		}
+		return true
+	case "any":
+		for _, alternative := range rule.Any {
+			if could(alternative, session) {
+				return true
+			}
+		}
+		return false
+	}
+	return Check(rule, session) == nil
+}
+
+// VisibleFields is what a session is told beside its user: per resource, whether it could read each field that
+// has a read rule on some row. A row still leaves out what its own rule refuses.
+func VisibleFields(session *auth.Session) map[string]map[string]bool {
+	return map[string]map[string]bool{
+		"users": {"banned_at": could(fieldRules["User.banned_at"], session), "phone": could(fieldRules["User.phone"], session)},
+		"posts": {"editor_note": could(fieldRules["Article.editor_note"], session)},
+	}
 }

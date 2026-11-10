@@ -8,7 +8,7 @@ import { z } from "zod";
 import { db } from "../db/client";
 import { users as usersTable } from "../db/schema";
 import { toTRPCError } from "./errors";
-import { presentUser, type PublicUser } from "../present";
+import { SERVER, presentUser, type PublicUser, visibleFields } from "../present";
 import { issueMagicLink, verifyMagicLink, PROVIDERS } from "../auth-providers";
 import { publicProcedure, router } from "./trpc";
 
@@ -72,9 +72,21 @@ function readCookie(request: Request): { uid: string | number } | null {
   }
 }
 
-/** The session of a user row: the public user and their memberships */
+/** What each session's caller is told of their own row (register, login, me): the fields their own session may read */
+const SELF = new WeakMap<Session, PublicUser>();
+
+/** The session of a user row: the user as the server reads it, which the rules read, and their memberships */
 export async function sessionOf(user: typeof usersTable.$inferSelect): Promise<Session> {
-  return { user: presentUser(user), memberships: [] };
+  const session: Session = { user: presentUser(user, SERVER), memberships: [] };
+  SELF.set(session, presentUser(user, session));
+  return session;
+}
+
+/** The caller's own row as their own session may read it; `session.user` is the whole row and never leaves the server as it is */
+export function shownUser(session: Session): PublicUser {
+  const shown = SELF.get(session);
+  if (!shown) throw new Error("shownUser needs a session made by sessionOf");
+  return shown;
 }
 
 /** The signed-in user, or null. Loads the user so a deleted account signs out immediately. */
@@ -89,7 +101,8 @@ const registerInput = z
   .object({
   email: z.string().email().max(255),
   password: z.string().min(8).max(200),
-  name: z.string().min(1).max(100)
+  name: z.string().min(1).max(100),
+  phone: z.string().max(40).nullish()
   })
   .strict();
 
@@ -104,7 +117,7 @@ export const authRouter = router({
         .values({ ...fields, password_hash: hashPassword(password) })
         .returning();
       ctx.resHeaders.append("set-cookie", sessionCookie(user.id));
-      return presentUser(user);
+      return shownUser(await sessionOf(user));
     } catch (err) {
       throw toTRPCError(err, "write");
     }
@@ -120,7 +133,7 @@ export const authRouter = router({
       throw new TRPCError({ code: "UNAUTHORIZED", message: "Email or password is wrong" });
     }
     ctx.resHeaders.append("set-cookie", sessionCookie(user.id));
-    return presentUser(user);
+    return shownUser(await sessionOf(user));
   }),
 
   /** Email a one-time sign-in link; always answers sent so addresses cannot be probed (tests get the token when emails are captured) */
@@ -134,7 +147,7 @@ export const authRouter = router({
   magic_link_verify: publicProcedure.input(z.object({ token: z.string().min(1) }).strict()).mutation(async ({ ctx, input }) => {
     const user = await verifyMagicLink(input.token);
     ctx.resHeaders.append("set-cookie", sessionCookie(user.id));
-    return presentUser(user);
+    return shownUser(await sessionOf(user));
   }),
 
   logout: publicProcedure.mutation(({ ctx }) => {
@@ -145,11 +158,15 @@ export const authRouter = router({
   /** The signed-in user; UNAUTHORIZED when nobody is */
   me: publicProcedure.query(({ ctx }) => {
     if (!ctx.session) throw new TRPCError({ code: "UNAUTHORIZED", message: "Sign in to continue" });
-    return ctx.session.user;
+    return shownUser(ctx.session);
   }),
 
-  /** The signed-in user, or null: what the web app asks on every load */
-  session: publicProcedure.query(({ ctx }) => ctx.session),
+  /** The signed-in user, or null: what the web app asks on every load. `fields` says which fields with a read rule this caller could read on some row */
+  session: publicProcedure.query(({ ctx }) => 
+    ctx.session
+      ? { user: shownUser(ctx.session), memberships: ctx.session.memberships, fields: visibleFields(ctx.session) }
+      : null
+  ),
 
   /** How users may sign in, for the sign-in page */
   providers: publicProcedure.query((): { kind: string; name: string }[] => PROVIDERS)

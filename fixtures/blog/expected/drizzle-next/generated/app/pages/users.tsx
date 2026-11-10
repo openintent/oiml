@@ -69,28 +69,47 @@ function guarded<P extends object>(Component: (props: P) => ReactNode) {
   };
 }
 
-const USERS_FIELDS = ["name"] as const;
+const USERS_FIELDS = ["name", "phone"] as const;
 type UsersField = (typeof USERS_FIELDS)[number];
 
 type UsersValues = {
   name: string;
+  phone: string;
 };
 
 const EMPTY_USERS: UsersValues = {
-  name: ""
+  name: "",
+  phone: ""
 };
 
-const USERS_UPDATE: readonly UsersField[] = ["name"];
+/** Fields with a read rule: an input is offered only to a viewer who may read the field, and a field that was not offered is not sent */
+const USERS_RULED: readonly string[] = ["phone"];
+
+/** The fields a form offers: `readable` answers for the ones with a read rule (the session for a new row, the row's own keys for an edit) */
+function offeredUsers<F extends string>(fields: readonly F[], readable: (field: string) => boolean): F[] {
+  return fields.filter(field => !USERS_RULED.includes(field) || readable(field));
+}
+
+/** An input without the fields the form did not offer, so a field its viewer may not read is never overwritten blind */
+function sentUsers<T extends object>(input: T, readable: (field: string) => boolean): T {
+  const out = { ...input } as Record<string, unknown>;
+  for (const field of USERS_RULED) if (!readable(field)) delete out[field];
+  return out as T;
+}
+
+const USERS_UPDATE: readonly UsersField[] = ["name", "phone"];
 
 function toUsersUpdateInput(v: UsersValues): Input<"update">["data"] {
   return {
-    name: v.name
+    name: v.name,
+    phone: (v.phone || null)
   };
 }
 
 function usersFromRow(row: Detail): UsersValues {
   return {
-    name: text(row.name)
+    name: text(row.name),
+    phone: text(row.phone)
   };
 }
 
@@ -102,6 +121,12 @@ function renderUsersField(field: UsersField, values: UsersValues, set: UsersSett
       return (
       <FormRow label="Name" htmlFor="name">
         <Input id="name" type="text" maxLength={100} value={values.name} onChange={e => set("name", e.target.value)} required />
+      </FormRow>
+      );
+    case "phone":
+      return (
+      <FormRow label="Phone" htmlFor="phone">
+        <Input id="phone" type="text" maxLength={40} value={values.phone} onChange={e => set("phone", e.target.value)} />
       </FormRow>
       );
   }
@@ -274,7 +299,7 @@ function UsersLayoutInner({ children }: { children: ReactNode }) {
                     className={cn("block border-l-2 border-transparent px-4 py-2 hover:bg-accent/60", pathname === `/users/${text(row.id)}` && "border-primary bg-accent")}
                   >
                     <div className="truncate text-sm font-medium">{text(row.name) || "User " + text(row.id)}</div>
-                    <div className="truncate text-xs text-muted-foreground">{[text(row.email), text(row.role), (row.banned ? "Banned" : "Not banned")].filter(Boolean).join(" · ")}</div>
+                    <div className="truncate text-xs text-muted-foreground">{[text(row.email), text(row.role), (row.banned ? "Banned" : "Not banned"), text(row.phone)].filter(Boolean).join(" · ")}</div>
                   </Link>
                 </li>
               ))}
@@ -351,13 +376,13 @@ function UsersDetailInner() {
 
       {editing ? (
         <UsersForm
-          fields={USERS_UPDATE}
+          fields={offeredUsers(USERS_UPDATE, field => field in row)}
           initial={usersFromRow(row)}
           submitLabel="Save"
           pending={updateRow.isPending}
           error={updateRow.error}
           onCancel={() => setEditing(false)}
-          onSubmit={values => updateRow.mutate({ id, data: toUsersUpdateInput(values) })}
+          onSubmit={values => updateRow.mutate({ id, data: sentUsers(toUsersUpdateInput(values), field => field in row) })}
         />
       ) : (
         <dl className="grid gap-3">
@@ -367,12 +392,17 @@ function UsersDetailInner() {
         <FieldRow label="Role">{row.role == null ? "—" : <Badge variant="secondary">{text(row.role)}</Badge>}</FieldRow>
         <FieldRow label="Created At">{formatDateTime(row.created_at) || "—"}</FieldRow>
         <FieldRow label="Banned">{row.banned == null ? "—" : <Badge variant={row.banned ? "default" : "outline"}>{yesNo(row.banned)}</Badge>}</FieldRow>
-        <FieldRow label="Banned At">{formatDateTime(row.banned_at) || "—"}</FieldRow>
+        {"banned_at" in row ? (
+          <FieldRow label="Banned At">{formatDateTime(row.banned_at) || "—"}</FieldRow>
+        ) : null}
         <FieldRow label="Ban Reason">
           <p className="whitespace-pre-wrap">{text(row.ban_reason) || "—"}</p>
         </FieldRow>
         <FieldRow label="Post Count">{text(row.post_count) || "—"}</FieldRow>
         <FieldRow label="Approved Count">{text(row.approved_count) || "—"}</FieldRow>
+        {"phone" in row ? (
+          <FieldRow label="Phone">{text(row.phone) || "—"}</FieldRow>
+        ) : null}
         <FieldRow label="Posts">
           {row.posts.length === 0 ? (
             "—"

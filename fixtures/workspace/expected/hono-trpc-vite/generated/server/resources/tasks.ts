@@ -7,7 +7,7 @@ import { db, rowExists } from "../../db/client";
 import * as schema from "../../db/schema";
 import { tasks as tasksTable, projects as projectsTable } from "../../db/schema";
 import { scheduleTimers } from "../../scheduling";
-import { presentTask } from "../../present";
+import { presentTask, type Viewer } from "../../present";
 import { tasksCreateInput, tasksId, tasksListQuery, tasksRemindInput, tasksUpdateInput } from "../../validation";
 import { handlers } from "../../actions";
 import { checkRule, memberTenantIds, refused, satisfied, unreachable, type Rule } from "../access";
@@ -54,13 +54,13 @@ async function missing(id: unknown, rule: Rule, session: Session | null) {
 }
 
 type ListRow = schema.Task;
-function presentListRow(row: ListRow) {
-  return { ...presentTask(row) };
+function presentListRow(row: ListRow, viewer: Viewer) {
+  return { ...presentTask(row, viewer) };
 }
 
 type GetRow = schema.Task;
-function presentGetRow(row: GetRow) {
-  return { ...presentTask(row) };
+function presentGetRow(row: GetRow, viewer: Viewer) {
+  return { ...presentTask(row, viewer) };
 }
 
 export const tasksRouter = router({
@@ -87,7 +87,7 @@ export const tasksRouter = router({
       // One statement at a time: both run on the procedure's transaction
       const rows = await db.query.tasks.findMany({ where, orderBy: [asc(tasksTable.created_at)], limit: page_size, offset: (page - 1) * page_size });
       const [{ total }] = await db.select({ total: count() }).from(tasksTable).where(where);
-      return { data: rows.map(presentListRow), page: { page, page_size, total } };
+      return { data: rows.map(row => presentListRow(row, ctx.session)), page: { page, page_size, total } };
     } catch (err) {
       throw toTRPCError(err, "read");
     }
@@ -101,7 +101,7 @@ export const tasksRouter = router({
     });
     if (!row) throw await missing(id, RULES.read, ctx.session);
     checkRule(RULES.read, ctx.session, await withRuleValues(row));
-    return presentGetRow(row);
+    return presentGetRow(row, ctx.session);
   }),
 
   create: publicProcedure.input(tasksCreateInput).mutation(async ({ ctx, input }) => {
@@ -114,7 +114,7 @@ export const tasksRouter = router({
 
       await scheduleTimers("Task", row);
       await hooks.afterCreate(row, hookContext);
-      return presentTask(row);
+      return presentTask(row, ctx.session);
     } catch (err) {
       throw toTRPCError(err, "write");
     }
@@ -133,12 +133,12 @@ export const tasksRouter = router({
       const hookContext: HookContext = { session: ctx.session, req: ctx.req };
       try {
         const patch = await hooks.beforeUpdate(existing, input.data, hookContext);
-        if (Object.keys(patch).length === 0) return presentTask(existing);
+        if (Object.keys(patch).length === 0) return presentTask(existing, ctx.session);
         const [row] = await db.update(tasksTable).set(patch).where(eq(tasksTable.id, id)).returning();
 
       await scheduleTimers("Task", row);
         await hooks.afterUpdate(row, hookContext);
-        return presentTask(row);
+        return presentTask(row, ctx.session);
       } catch (err) {
         throw toTRPCError(err, "write");
       }
@@ -177,7 +177,7 @@ export const tasksRouter = router({
     try {
       const result = await handlers.tasks_remind({ input, row: current, session: ctx.session, db, now: new Date() });
 
-      return presentTask(result);
+      return presentTask(result, ctx.session);
     } catch (err) {
       throw toTRPCError(err, "write");
     }

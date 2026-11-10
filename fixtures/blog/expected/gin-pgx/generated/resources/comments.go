@@ -100,7 +100,7 @@ func (h *Comments) List(c *gin.Context) {
 	}
 	data := make([]commentsListRow, 0, len(items))
 	for _, item := range items {
-		data = append(data, commentsListRow{PublicComment: models.PresentComment(item), Author: models.PresentUserPtr(authorRows[item.AuthorID])})
+		data = append(data, commentsListRow{PublicComment: models.PresentComment(item), Author: models.PresentUserPtr(authorRows[item.AuthorID], access.Viewer(session))})
 	}
 	httpx.List(c, data, httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: total})
 }

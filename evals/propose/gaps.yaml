@@ -261,11 +261,18 @@ gaps:
       second pass runs with the rule checks off."
   - key: field-level visibility
     kind: not_delivered
-    status: open
+    status: built
     first_seen: designs-2026-11-09
     last_seen: designs-2026-11-09
     cases: 0
-    note: "A read rule on a field; the key is absent when it refuses. Design: docs/designs/field-visibility.md."
+    construct: "read: on a field: a rule over the row and the caller in the entity rules' spelling; the key is
+      absent from every answer for a caller it refuses, the caller's own row included, and expect.absent says so
+      in a scenario"
+    version: unreleased
+    note: "Built 2026-11-10 (round B5) with workspace WS-15 (a budget and a count for a team's admins, an estimate
+      for signed-in callers, under isolation: database) and blog FEAT-15 (a phone for the person and the admins,
+      an editor note only admins read). Declined: a rule per field for writing, masking, a field rule through a
+      relation. Design: docs/designs/field-visibility.md."
   - key: state machines and transitions
     kind: not_delivered
     status: built

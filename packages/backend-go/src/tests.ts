@@ -446,11 +446,45 @@ func provision(name string, definition Actor) error {
 func provision(string, Actor) error {
 	return nil
 }`;
+  // A scenario that says a path must be absent (expect.absent) needs to tell a missing key from a null one
+  const absent = ir.examples.scenarios.some(s => s.steps.some(step => step.expect.absent?.length));
+  const carries = absent
+    ? `
+
+// Carries reports whether the dotted path is in a response body: every key on the way is there, whatever its
+// value (a null is there). Through a list, it is there when any item carries the rest of the path.
+func Carries(value any, path string) bool {
+	return carries(value, strings.Split(path, "."))
+}
+
+func carries(value any, keys []string) bool {
+	switch v := value.(type) {
+	case []any:
+		for _, item := range v {
+			if carries(item, keys) {
+				return true
+			}
+		}
+		return false
+	case map[string]any:
+		inner, present := v[keys[0]]
+		if !present {
+			return false
+		}
+		return len(keys) == 1 || carries(inner, keys[1:])
+	}
+	return false
+}`
+    : "";
   return goFile(
     modulePath,
     HEADER("What the model says about responses and actors."),
     "client",
-    provisioning ? ["context", "errors", "os", "sort", "strconv", "strings", "github.com/jackc/pgx/v5"] : [],
+    provisioning
+      ? ["context", "errors", "os", "sort", "strconv", "strings", "github.com/jackc/pgx/v5"]
+      : absent
+        ? ["strings"]
+        : [],
     `// Hidden lists the columns that must never appear in any response.
 var Hidden = ${keyedLiteral(
       "map[string]bool",
@@ -460,7 +494,7 @@ var Hidden = ${keyedLiteral(
 // Actors are the model's example actors.
 var Actors = ${keyedLiteral("map[string]Actor", actors)}
 
-${provision}
+${provision}${carries}
 `
   );
 }
@@ -616,6 +650,10 @@ function stepTest(step: StepIR, number: number): string {
   lines.push(`\t\texpectStatus(t, r, ${step.expect.status})`);
   if (step.expect.body !== undefined)
     lines.push(`\t\texpectBody(t, r, client.Resolve(client.MustJSON(${q(JSON.stringify(step.expect.body))}), scope))`);
+  if (step.expect.absent?.length)
+    lines.push(
+      `\t\tfor _, path := range []string{${step.expect.absent.map(q).join(", ")}} {\n\t\t\tif client.Carries(r.Body, path) {\n\t\t\t\tt.Fatalf("%s must be absent from %s", path, client.Encode(r.Body))\n\t\t\t}\n\t\t}`
+    );
   for (const [name, path] of Object.entries(step.capture))
     lines.push(`\t\tvars[${q(name)}] = client.Pick(r.Body, ${q(path)})`);
   lines.push(`\t})`);

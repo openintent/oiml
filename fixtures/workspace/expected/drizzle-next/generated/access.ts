@@ -81,6 +81,14 @@ export function satisfied(rule: Rule, session: Session | null): boolean {
  */
 export function verdict(rule: Rule, session: Session | null, row?: Record<string, unknown> | null): Verdict {
   if (rulesDisabled()) return ALLOW;
+  return judge(rule, session, row);
+}
+
+/**
+ * The verdict itself, whatever the test hook says. A field's read rule is checked with this: no policy stands
+ * behind a field, so switching the rule checks off must not show one.
+ */
+export function judge(rule: Rule, session: Session | null, row?: Record<string, unknown> | null): Verdict {
   const base = predicateVerdict(rule, session, row);
   if (!base.ok || rule.kind === "any" || rule.kind === "all" || rule.kind === "none" || !rule.when || !row) return base;
   return holds(rule.when, row) ? ALLOW : { ok: false, status: 403 };
@@ -90,7 +98,7 @@ function predicateVerdict(rule: Rule, session: Session | null, row?: Record<stri
   switch (rule.kind) {
     case "all": {
       for (const part of rule.rules) {
-        const result = verdict(part, session, row);
+        const result = judge(part, session, row);
         if (!result.ok) return result;
       }
       return ALLOW;
@@ -98,7 +106,7 @@ function predicateVerdict(rule: Rule, session: Session | null, row?: Record<stri
     case "any": {
       let status: 401 | 403 = 403;
       for (const alternative of rule.rules) {
-        const result = verdict(alternative, session, row);
+        const result = judge(alternative, session, row);
         if (result.ok) return ALLOW;
         if (result.status === 401) status = 401;
       }

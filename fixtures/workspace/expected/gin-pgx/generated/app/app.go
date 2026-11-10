@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"workspace/generated"
+	"workspace/generated/access"
 	"workspace/generated/auth"
 	"workspace/generated/db"
 	"workspace/generated/events"
@@ -37,7 +38,7 @@ func New(pool *pgxpool.Pool) *gin.Engine {
 	})
 	r.GET("/healthz", healthz)
 	r.GET("/api/openapi.json", openapi)
-	a := auth.New(requests)
+	a := auth.New(requests, auth.Visibility{Viewer: access.Viewer, Fields: access.VisibleFields})
 	a.Routes(r)
 	scheduling.Use(pool)
 	resources.NewUsers(requests, a).Routes(r)

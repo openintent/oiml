@@ -14,6 +14,7 @@ var UsersListQuery = Query{PageSize: 20}
 // UsersUpdateInput validates PATCH /api/users/{id} bodies.
 var UsersUpdateInput = Object{Fields: []Field{
 	{Name: "name", Type: String{MinLength: 1, MaxLength: 100}},
+	{Name: "phone", Nullable: true, Type: String{MaxLength: 40}},
 }}
 
 // PostsID parses a posts id from the path.
@@ -37,6 +38,7 @@ var PostsCreateInput = Object{Fields: []Field{
 	{Name: "tags", Nullable: true, Type: Array{Of: String{MaxLength: 255}}},
 	{Name: "cover", Nullable: true, Type: UUID{}},
 	{Name: "publish_at", Nullable: true, Type: DateTime{}},
+	{Name: "editor_note", Nullable: true, Type: String{}},
 }}
 
 // PostsUpdateInput validates PATCH /api/posts/{id} bodies.
@@ -48,6 +50,7 @@ var PostsUpdateInput = Object{Fields: []Field{
 	{Name: "tags", Nullable: true, Type: Array{Of: String{MaxLength: 255}}},
 	{Name: "cover", Nullable: true, Type: UUID{}},
 	{Name: "publish_at", Nullable: true, Type: DateTime{}},
+	{Name: "editor_note", Nullable: true, Type: String{}},
 }}
 
 // CommentsID parses a comments id from the path.

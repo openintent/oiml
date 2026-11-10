@@ -1,5 +1,5 @@
 import type { GeneratedFile, IR } from "@osl/core";
-import { globalActions } from "@osl/core";
+import { globalActions, hasFieldRules } from "@osl/core";
 import { hasScheduling } from "./scheduling.js";
 import { HEADER, SCAFFOLD_HEADER, exported, goFile } from "./util.js";
 
@@ -38,6 +38,8 @@ export function appFile(ir: IR, modulePath: string): string {
   // Under isolation: database requests go through the app role's pool, each with its own binding; the owner's pool is the worker's
   const isolated = Boolean(ir.auth?.tenancy?.isolation);
   if (isolated) imports.push(`${modulePath}/generated/db`);
+  // The auth service is handed what the access package knows about fields with a read rule
+  if (ir.auth && hasFieldRules(ir)) imports.push(`${modulePath}/generated/access`);
   const requests = isolated ? "requests" : "pool";
   const registrations: string[] = [];
   if (scheduling) registrations.push(`\tscheduling.Use(pool)`);
@@ -90,7 +92,7 @@ func New(pool *pgxpool.Pool) *gin.Engine {
 	r.Use(gin.Recovery())
 ${scope}	r.GET("/healthz", healthz)
 	r.GET("/api/openapi.json", openapi)
-	a := auth.New(${requests})
+	a := auth.New(${requests}${ir.auth && hasFieldRules(ir) ? ", auth.Visibility{Viewer: access.Viewer, Fields: access.VisibleFields}" : ""})
 	a.Routes(r)
 ${registrations.join("\n")}${registrations.length ? "\n" : ""}	return r
 }

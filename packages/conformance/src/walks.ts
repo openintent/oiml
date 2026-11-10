@@ -5,7 +5,8 @@
  * - rule: for every operation and action, every actor and an anonymous caller, what the IR's rule predicts
  *   against the answer, on rows the walk created (one per actor allowed to create) or found.
  * - tenant: with tenancy, a member of another team reaches nothing of the first team's rows.
- * - leak: no response body of the walks carries a hidden column, a hash column or a raw key.
+ * - leak: no response body of the walks carries a hidden column, a hash column or a raw key, and every row of
+ *   every answer carries a field with a read rule exactly when the rule allows its caller on that row.
  * - fuzz: wrong shapes, types, lengths, extra keys and bad ids answer 4xx, never 5xx or 2xx.
  * - contract: every breaking change between consecutive revisions' OpenAPI documents is explained by a diff op.
  */
@@ -29,7 +30,8 @@ import {
   type ResourceIR,
   type RuleIR
 } from "@osl/core";
-import { callLabel, makeClient, WalkTimeout, type HarnessClient, type Reply } from "./client.js";
+import { callLabel, makeClient, WalkTimeout, type HarnessClient, type Listener, type Reply } from "./client.js";
+import { FieldWatch } from "./fields.js";
 import { badIds, invalidProbes, Rng, validBody, validValue, wrongValue, type BodyContext } from "./bodies.js";
 import { createOp, precheck, Resolver, rowOp, same, verdict, type Expect, type Row, type Session } from "./rules.js";
 
@@ -96,12 +98,15 @@ export async function runWalks(ctx: WalkContext, which: ReadonlySet<string> = ne
   const { ir } = ctx;
   const results = new Map<WalkName, WalkResult>();
   const captured: { label: string; body: unknown }[] = [];
-  const listen = (label: string, reply: Reply) => {
-    if (captured.length < 50_000) captured.push({ label, body: reply.body });
-  };
   const db = new pg.Client({ connectionString: ctx.databaseUrl });
   await db.connect();
   const resolver = new Resolver(db, ir);
+  // The leak walk also holds every answer's rows to the read rules of their fields, as each answer arrives
+  const watch = which.has("leak") ? new FieldWatch(ir, resolver, MAX_FINDINGS) : null;
+  const listen: Listener = async (label, reply, client) => {
+    if (captured.length < 50_000) captured.push({ label, body: reply.body });
+    if (watch) await watch.observe(label, reply, client);
+  };
   const roles = ir.auth?.tenancy?.roles ?? [];
   let counter = 0;
   const bodies: BodyContext = {
@@ -207,7 +212,26 @@ export async function runWalks(ctx: WalkContext, which: ReadonlySet<string> = ne
     }
     if (which.has("leak")) {
       const findings: string[] = [];
-      await timed("leak", async () => leakWalk(ir, captured, findings), findings);
+      await timed(
+        "leak",
+        async () => {
+          if (watch?.active) {
+            // What each session is told of its fields, against what the rules say of it
+            for (const caller of state.actors) {
+              await refresh(caller, resolver);
+              const user = caller.session ? await resolver.fresh(identityEntity(ir), caller.session.id) : null;
+              watch.compareFields(
+                caller.name,
+                caller.session && user ? { ...caller.session, user } : caller.session,
+                await caller.client.fields()
+              );
+            }
+            findings.push(...watch.findings);
+          }
+          return leakWalk(ir, captured, findings) + (watch?.summary() ?? "");
+        },
+        findings
+      );
     }
     if (which.has("contract")) {
       const findings: string[] = [];
@@ -249,12 +273,7 @@ function walkableEntities(ir: IR): Walkable[] {
 }
 
 /** Registers, provisions and signs in every actor of the fixture; none when the identity has no password sign-in */
-async function signIn(
-  ctx: WalkContext,
-  listen: (label: string, reply: Reply) => void,
-  resolver: Resolver,
-  notes: string[]
-): Promise<Caller[]> {
+async function signIn(ctx: WalkContext, listen: Listener, resolver: Resolver, notes: string[]): Promise<Caller[]> {
   const { ir } = ctx;
   const actors = Object.entries(ir.examples.actors);
   if (!ir.auth || actors.length === 0) return [];
@@ -287,6 +306,10 @@ async function signIn(
 
 function identityPk(ir: IR): string {
   return ir.entities.find(e => e.name === ir.auth!.identity)!.primaryKey[0];
+}
+
+function identityEntity(ir: IR): EntityIR {
+  return ir.entities.find(e => e.name === ir.auth!.identity)!;
 }
 
 /** Memberships change as the walk creates tenants, so a session is refreshed before every prediction */
@@ -906,7 +929,7 @@ async function tenantWalk(
   state: State,
   resolver: Resolver,
   db: pg.Client,
-  listen: (label: string, reply: Reply) => void,
+  listen: Listener,
   bodies: BodyContext,
   findings: string[]
 ): Promise<string> {

@@ -92,7 +92,7 @@ func (h *Users) List(c *gin.Context) {
 		httpx.HandleError(c, err, "read")
 		return
 	}
-	httpx.List(c, models.PresentUsers(items), httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: total})
+	httpx.List(c, models.PresentUsers(items, access.Viewer(session)), httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: total})
 }
 
 // Get handles GET /api/users/{id}.
@@ -127,7 +127,7 @@ func (h *Users) Get(c *gin.Context) {
 		httpx.HandleError(c, err, "read")
 		return
 	}
-	httpx.OK(c, usersGetRow{PublicUser: models.PresentUser(row), Posts: models.PresentArticles(postsRows[row.ID])})
+	httpx.OK(c, usersGetRow{PublicUser: models.PresentUser(row, access.Viewer(session)), Posts: models.PresentArticles(postsRows[row.ID], access.Viewer(session))})
 }
 
 // Update handles PATCH /api/users/{id}.
@@ -173,7 +173,7 @@ func (h *Users) Update(c *gin.Context) {
 		return
 	}
 	if len(patch) == 0 {
-		httpx.OK(c, models.PresentUser(existing))
+		httpx.OK(c, models.PresentUser(existing, access.Viewer(session)))
 		return
 	}
 	sql, args := db.Update(models.UserTable, patch, `"id"`, id, models.UserColumns)
@@ -186,7 +186,7 @@ func (h *Users) Update(c *gin.Context) {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	httpx.OK(c, models.PresentUser(row))
+	httpx.OK(c, models.PresentUser(row, access.Viewer(session)))
 }
 
 // ActionBan handles POST /api/users/{id}/ban: the ban action.
@@ -231,7 +231,7 @@ func (h *Users) ActionBan(c *gin.Context) {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	httpx.OK(c, models.PresentUser(result))
+	httpx.OK(c, models.PresentUser(result, access.Viewer(session)))
 }
 
 // loadPosts fetches the posts of each User, grouped by author_id.

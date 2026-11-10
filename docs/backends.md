@@ -91,6 +91,7 @@ The `hono-trpc-vite` contract tests speak tRPC's HTTP transport but assert the s
 | Archive (`archive: true`) | the list's own condition (`isNull(archived_at)`, or `isNotNull` when `?archived=true`); `POST <resource>/{id}/archive` and `/restore` call `set<Entity>Archived(id, archived, now)` in `generated/row-actions.ts`, a conditional update, and answer 409 when it changed no row; the entity's timers are scheduled as after an update, and a timer may run either one | the same, `archived` a boolean of the list input and the two actions tRPC mutations | `archived` parses like a boolean filter and becomes `IS NULL` or `IS NOT NULL` on the `Where`; the two handlers call `rowactions.Set<Entity>Archived`, the same conditional update, and answer 409 when it returns no row |
 | Transitions (`transitions: { field: status, approve: { from, to, rule, stamp } }`) | `generated/row-actions.ts` holds `<entity>Transitions`, one function per step over one `UPDATE ... WHERE id = $1 AND status IN (from) RETURNING *`; `POST <resource>/{id}/<step>` loads the row, checks the read rule and the step's rule, calls it and answers 409 `invalid_transition` when no row came back; a timer calls the same function as the system and schedules the entity's timers again; a board grouped by the field drags along the steps (below) | the same, each step a tRPC mutation; the code travels as the cause of a `CONFLICT` | package `generated/rowactions`: `Transition<Entity><Step>(ctx, db, id, now)` with the same statement, `nil` when it matched no row; the handler answers 409 `invalid_transition`; `run<Timer>` in the scheduling package calls it through the system's pool |
 | Counts (`count_of: comments`) | none beyond the column: `integer NOT NULL DEFAULT 0`, read-only, kept by the database (see below); filters, sorts and tiles read it like any integer | the same | the same |
+| Field rules (`read: "member:team_id:admin"` on a field) | `generated/present.ts` holds the field rules and `present<Entity>(row, viewer)`: the field is optional in the public type and set only when `reads(rule, viewer, row)` allows; the viewer is the request's session for an answer and `SERVER` for an event's payload; `auth.me` answers `fields` beside `data`; the pages read it through `fieldsOf(session)` (see below) | the same; the viewer is `ctx.session`, and `fields` is on `auth.session` | `models.Present<Entity>(row, viewer)`: the field is a `models.Maybe[T]` with `json:",omitzero"`; `access.Viewer(session)` checks the rule, `models.Server` reads everything; `auth` gets `auth.Visibility` from the app |
 | Schedules, timers                                                               | pg-boss cron schedules and jobs with `startAfter`; a timer job reloads the row and runs the action only if the row still says so; test hooks at `/api/osl-hooks/*` when `OSL_TEST_HOOKS=1`                                                       | the same, with the hooks as REST routes beside tRPC                                            | River periodic jobs (robfig/cron) and `ScheduledAt` jobs; the same hooks                                                                |
 | Magic links, OAuth                                                              | `POST /api/auth/magic-link`, `/verify`, `GET /api/auth/oauth/<name>[/callback]`, `GET /api/auth/providers`; email through log, Resend or capture                                                                                                 | procedures `auth.magic_link`, `auth.magic_link_verify`, `auth.providers`; OAuth as REST routes | the same routes                                                                                                                         |
 | Queued events                                                                   | pg-boss in the `pgboss` schema; the worker runs in the Next.js process from `instrumentation.ts` or alone with `tsx src/worker.ts`; `OSL_ROLE=web                                                                                                | worker                                                                                         | all`                                                                                                                                    | pg-boss; `src/server/main.ts` starts it; `src/server/worker.ts` alone | River; `river_%` tables are left alone by drift |
@@ -212,6 +213,43 @@ a column takes a drop only when one of them takes the dragged card there from it
 at once and puts it back when the API refuses (a stale card's 409, a rule that depends on more than the page
 knows). The page never calls update for the field. A board over any other enum updates the field as before.
 
+## Fields with a read rule
+
+`read:` on a field adds nothing to the database and changes one thing in the generated code: the function that
+turns a row into its public shape takes the viewer. That function is the only way to the shape on every backend,
+and for an entity with a field rule a call without the viewer does not compile, so every way a row leaves the
+server passes through it: get, the rows of a list, included rows and the far rows of a relation through a junction,
+the answers of create and update, of `move`, `archive`, `restore` and every transition, of an action that returns
+the row, and `auth.me`, register and login. An entity without a field rule keeps the presenter it had, so a model
+without `read:` generates what it did.
+
+| Who the row goes to                  | The viewer                                                                           |
+| ------------------------------------ | ------------------------------------------------------------------------------------ |
+| The caller of a request              | their session, or none: each field rule is checked for them on that row              |
+| The creator of a new tenant          | their session with the membership the same request made                              |
+| The caller, of their own row         | their own session: `auth.me`, register and login answer what `read:` lets them read  |
+| An event's handler, inline or queued | the server: every field with a read rule, no hidden one, whoever caused the event    |
+| An action or a hook                  | none: it gets the row itself                                                         |
+| The session, for its rules           | the server: `session.user` is the whole row, and never leaves as it is               |
+| A webhook, an audit entry            | not generated yet; the round that adds them presents the row to the party it goes to |
+
+A field rule reads the row's own columns and the session, so the presenter looks nothing up: no query per row, no
+path, and under `isolation: database` nothing that runs under the policy. The rule is compiled as written there
+(the membership M119 adds to an entity rule is not added), and the test hook that switches the rule checks off
+does not switch it off: the presenters call `judge` (`judgeRow` in Go), the verdict without the hook.
+
+The key is absent, not null. In TypeScript the property is optional and the presenter leaves it unset; in Go a
+`Maybe[T]` reports itself zero until the presenter calls `Shown`, and `omitzero` leaves the key out. In the OpenAPI
+document the property leaves `required` and its description says for whom it is there.
+
+`fields` beside `data` on `GET /api/auth/me` (on `auth.session` under tRPC) says, per resource, whether the caller
+could read each such field on some row: the rule before any row, and for a member predicate whether a membership
+of that rank is held at all. The pages read it with `fieldsOf(session)` (a visitor's answer is compiled in from the
+rules): a table leaves out the column, a new-row form the input. Where the question is about one row, the row's
+own keys answer: the detail pane leaves the field's row out and the edit form its input, and neither form sends a
+field it did not offer. A rule's condition on a field with a read rule is left to the API, as a path through a
+relation is.
+
 ## The conformance walks
 
 After the scenarios, the harness runs six checks over every fixture that no scenario names, each a function of
@@ -247,14 +285,22 @@ skips them).
   ends by comparing every count of the model with its rows: the counts over an ordered table were written inside
   each of those calls.
 - **leak**: every response body of the walks is scanned for hidden columns, the password, key and token hash
-  columns, and the shape of a raw key.
+  columns, and the shape of a raw key. Where the model has a field with a read rule, every successful answer of
+  every walk is also held to it as it arrives, before the walk goes on: for each row in the answer, and each row
+  an include or a relation through a junction put under it, the harness reads the row and the caller's
+  memberships from the database, predicts with its own evaluator whether the rule allows that caller on that row,
+  and wants the key in the row exactly then. A key that is there for a caller the rule refuses is a leak; one
+  missing for a caller it allows is a presenter that withholds too much. This runs through the tenant walk's
+  second pass too, where the rule checks are off and the field rules are not. At the end each actor's `fields`
+  answer is compared with what the rules say of their session. The detail counts the fields predicted, present
+  and absent.
 - **fuzz**: from the IR, wrong types, boundary lengths, extra keys, missing and null required fields, server-owned
   fields, malformed and missing ids and bad list parameters, as every caller; only 400, 401, 403, 404, 409 and 410
   may answer, never a 5xx, a timeout or a 2xx on an invalid input. The seed is `walks: { seed }` in `fixture.yaml`
   (or `--seed`), so a failure replays.
 - **contract**: between every two consecutive revisions of the fixture's lock, the breaking changes of the OpenAPI
   document (`diffOpenApi` in core: removed paths, operations, parameters, schemas and properties, narrowed types,
-  new required fields) must each be explained by an op of that revision's diff (`explainedBy`); one no op explains
+  new required fields, a response property that may now be absent) must each be explained by an op of that revision's diff (`explainedBy`); one no op explains
   is a compiler regression. Migration steps that rewrite a table (`MigrationPlan.rewrites`) are listed in the
   detail.
 

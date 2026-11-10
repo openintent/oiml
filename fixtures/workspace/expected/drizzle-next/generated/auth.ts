@@ -7,7 +7,7 @@ import { z } from "zod";
 import { db, withTenants } from "./db/client";
 import { users as usersTable } from "./db/schema";
 import { created, error, handleError, noContent, ok, parseBody } from "./http";
-import { presentUser, type PublicUser } from "./present";
+import { presentUser, type PublicUser, visibleFields } from "./present";
 import { PROVIDERS, issueMagicLink, verifyMagicLink } from "./auth-providers";
 
 export type Membership = { tenant: string | number; role: string };
@@ -183,7 +183,7 @@ export const auth = {
     try {
       const session = await getSession(request);
       if (!session) return error(401, "unauthenticated", "Sign in to continue");
-      return ok(session.user);
+      return ok(session.user, { fields: visibleFields(session) });
     } catch (err) {
       return handleError(err, "read");
     }

@@ -98,6 +98,7 @@ describe("gin-pgx backend", () => {
       "generated/tests/14_followers_read_bulletins_test.go",
       "generated/tests/15_comment_counts_and_archived_articles_test.go",
       "generated/tests/16_editorial_review_test.go",
+      "generated/tests/17_contact_details_and_editor_notes_test.go",
       "generated/tests/support_test.go"
     ]);
     const runtime = ginPgxBackend.runtime(project.config);
@@ -114,6 +115,49 @@ describe("gin-pgx backend", () => {
     expect(teams).toContain('"owner"');
     const access = files.find(f => f.path === "generated/access/access.go")!.content;
     expect(access).toContain("MemberTenantIDs");
+  });
+
+  it("presents a row to a viewer where a field has a read rule, on every way out", async () => {
+    const project = await irFor("blog");
+    const files = ginPgxBackend.generate({ ir: project.ir, revisions: project.lock.revisions, config: project.config });
+    const file = (name: string) => files.find(f => f.path === name)!.content;
+    const entities = file("generated/models/entities.go");
+    // The field is a Maybe the JSON leaves out, set only when the rule allows this viewer on this row
+    expect(entities).toMatch(/Phone\s+Maybe\[\*string\]\s+`json:"phone,omitzero"`/);
+    expect(entities).toContain("func PresentUser(row *User, viewer Viewer) PublicUser {");
+    expect(entities).toContain(
+      'if viewer.Reads("User.phone", map[string]any{"id": row.ID}) {\n\t\tout.Phone = Shown(row.Phone)\n\t}'
+    );
+    expect(entities).toContain('if viewer.Reads("Article.editor_note", nil) {');
+    expect(entities).toContain("func PresentComment(row *Comment) PublicComment {");
+    expect(file("generated/models/viewer.go")).toContain("func (m Maybe[T]) IsZero() bool {");
+    const access = file("generated/access/access.go");
+    expect(access).toContain('"Article.editor_note": {Kind: "role", Value: "admin"},');
+    expect(access).toContain("func Viewer(session *auth.Session) models.Viewer {");
+    // An answer is presented to its caller, an event's payload as the server reads it
+    const posts = file("generated/resources/posts.go");
+    expect(posts).toContain("httpx.Created(c, models.PresentArticle(row, access.Viewer(session)))");
+    expect(posts).toContain("events.ArticleCreated(ctx, models.PresentArticle(row, models.Server))");
+    expect(posts).toContain("Author: models.PresentUserPtr(authorRows[item.AuthorID], access.Viewer(session))");
+    expect(file("generated/resources/users.go")).toContain(
+      "Posts: models.PresentArticles(postsRows[row.ID], access.Viewer(session))"
+    );
+    for (const f of files.filter(f => f.path.endsWith(".go")))
+      expect(f.content, f.path).not.toMatch(/models\.Present(Article|User)(Ptr|s)?\([^,()]+\)/);
+    // The caller's own row is presented to the caller; the app hands auth what access knows
+    const auth = file("generated/auth/auth.go");
+    expect(auth).toContain("session := &Session{User: models.PresentUser(user, models.Server), row: user}");
+    expect(auth).toContain(
+      'c.PureJSON(http.StatusOK, gin.H{"data": models.PresentUser(session.row, a.see.Viewer(session)), "fields": a.see.Fields(session)})'
+    );
+    expect(file("generated/app/app.go")).toContain(
+      "auth.New(pool, auth.Visibility{Viewer: access.Viewer, Fields: access.VisibleFields})"
+    );
+    // A model without a field rule generates what it did
+    const todo = await irFor("todo");
+    const plain = ginPgxBackend.generate({ ir: todo.ir, revisions: todo.lock.revisions, config: todo.config });
+    expect(plain.map(f => f.path)).not.toContain("generated/models/viewer.go");
+    for (const f of plain) expect(f.content, f.path).not.toContain("Viewer");
   });
 
   it("never emits a hidden column in public shapes or validation", async () => {

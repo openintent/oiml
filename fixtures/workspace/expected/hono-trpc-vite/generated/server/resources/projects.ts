@@ -6,7 +6,7 @@ import { z } from "zod";
 import { db, rowExists } from "../../db/client";
 import * as schema from "../../db/schema";
 import { projects as projectsTable } from "../../db/schema";
-import { presentProject } from "../../present";
+import { presentProject, type Viewer } from "../../present";
 import { projectsCreateInput, projectsId, projectsListQuery, projectsUpdateInput } from "../../validation";
 import { checkRule, memberTenantIds, refused, satisfied, unreachable, type Rule } from "../access";
 import type { Session } from "../auth";
@@ -37,13 +37,13 @@ const SORTABLE = {
 };
 
 type ListRow = schema.Project;
-function presentListRow(row: ListRow) {
-  return { ...presentProject(row) };
+function presentListRow(row: ListRow, viewer: Viewer) {
+  return { ...presentProject(row, viewer) };
 }
 
 type GetRow = schema.Project;
-function presentGetRow(row: GetRow) {
-  return { ...presentProject(row) };
+function presentGetRow(row: GetRow, viewer: Viewer) {
+  return { ...presentProject(row, viewer) };
 }
 
 function sortOrder(sort: keyof typeof SORTABLE | string): SQL[] {
@@ -78,7 +78,7 @@ export const projectsRouter = router({
       // One statement at a time: both run on the procedure's transaction
       const rows = await db.query.projects.findMany({ where, orderBy: sort ? sortOrder(sort) : [desc(projectsTable.created_at)], limit: page_size, offset: (page - 1) * page_size });
       const [{ total }] = await db.select({ total: count() }).from(projectsTable).where(where);
-      return { data: rows.map(presentListRow), page: { page, page_size, total } };
+      return { data: rows.map(row => presentListRow(row, ctx.session)), page: { page, page_size, total } };
     } catch (err) {
       throw toTRPCError(err, "read");
     }
@@ -92,7 +92,7 @@ export const projectsRouter = router({
     });
     if (!row) throw await missing(id, RULES.read, ctx.session);
     checkRule(RULES.read, ctx.session, row);
-    return presentGetRow(row);
+    return presentGetRow(row, ctx.session);
   }),
 
   create: publicProcedure.input(projectsCreateInput).mutation(async ({ ctx, input }) => {
@@ -104,7 +104,7 @@ export const projectsRouter = router({
       const [row] = await db.insert(projectsTable).values(values).returning();
 
       await hooks.afterCreate(row, hookContext);
-      return presentProject(row);
+      return presentProject(row, ctx.session);
     } catch (err) {
       throw toTRPCError(err, "write");
     }
@@ -123,11 +123,11 @@ export const projectsRouter = router({
       const hookContext: HookContext = { session: ctx.session, req: ctx.req };
       try {
         const patch = await hooks.beforeUpdate(existing, input.data, hookContext);
-        if (Object.keys(patch).length === 0) return presentProject(existing);
+        if (Object.keys(patch).length === 0) return presentProject(existing, ctx.session);
         const [row] = await db.update(projectsTable).set(patch).where(eq(projectsTable.id, id)).returning();
 
         await hooks.afterUpdate(row, hookContext);
-        return presentProject(row);
+        return presentProject(row, ctx.session);
       } catch (err) {
         throw toTRPCError(err, "write");
       }

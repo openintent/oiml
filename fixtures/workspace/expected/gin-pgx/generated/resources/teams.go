@@ -75,7 +75,7 @@ func (h *Teams) List(c *gin.Context) {
 	if !access.RulesDisabled() {
 		tenants := access.MemberTenantIDs(session, "")
 		if len(tenants) == 0 {
-			httpx.List(c, models.PresentTeams(nil), httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: 0})
+			httpx.List(c, models.PresentTeams(nil, access.Viewer(session)), httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: 0})
 			return
 		}
 		where.In(`"id"`, tenants)
@@ -97,7 +97,7 @@ func (h *Teams) List(c *gin.Context) {
 		httpx.HandleError(c, err, "read")
 		return
 	}
-	httpx.List(c, models.PresentTeams(items), httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: total})
+	httpx.List(c, models.PresentTeams(items, access.Viewer(session)), httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: total})
 }
 
 // Get handles GET /api/teams/{id}.
@@ -132,7 +132,7 @@ func (h *Teams) Get(c *gin.Context) {
 		httpx.HandleError(c, err, "read")
 		return
 	}
-	httpx.OK(c, teamsGetRow{PublicTeam: models.PresentTeam(row), Members: models.PresentTeamMembers(membersRows[row.ID])})
+	httpx.OK(c, teamsGetRow{PublicTeam: models.PresentTeam(row, access.Viewer(session)), Members: models.PresentTeamMembers(membersRows[row.ID])})
 }
 
 // Create handles POST /api/teams.
@@ -194,7 +194,7 @@ func (h *Teams) Create(c *gin.Context) {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	httpx.Created(c, models.PresentTeam(row))
+	httpx.Created(c, models.PresentTeam(row, access.CreatorViewer(session, row.ID, "owner")))
 }
 
 // Update handles PATCH /api/teams/{id}.
@@ -240,7 +240,7 @@ func (h *Teams) Update(c *gin.Context) {
 		return
 	}
 	if len(patch) == 0 {
-		httpx.OK(c, models.PresentTeam(existing))
+		httpx.OK(c, models.PresentTeam(existing, access.Viewer(session)))
 		return
 	}
 	sql, args := db.Update(models.TeamTable, patch, `"id"`, id, models.TeamColumns)
@@ -253,7 +253,7 @@ func (h *Teams) Update(c *gin.Context) {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	httpx.OK(c, models.PresentTeam(row))
+	httpx.OK(c, models.PresentTeam(row, access.Viewer(session)))
 }
 
 // Delete handles DELETE /api/teams/{id}.

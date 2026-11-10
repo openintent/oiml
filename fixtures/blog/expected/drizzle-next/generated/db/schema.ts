@@ -23,6 +23,7 @@ export const users = pgTable("users", {
   ban_reason: text(),
   post_count: integer().notNull().default(0),
   approved_count: integer().notNull().default(0),
+  phone: varchar({ length: 40 }),
   password_hash: varchar({ length: 255 })
 });
 
@@ -43,7 +44,8 @@ export const articles = pgTable(
     archived_at: timestamp({ withTimezone: true }),
     status: articleStatusEnum().notNull().default("draft"),
     approved_at: timestamp({ withTimezone: true }),
-    retired_at: timestamp({ withTimezone: true })
+    retired_at: timestamp({ withTimezone: true }),
+    editor_note: text()
   },
   t => [unique("articles_author_id_title_key").on(t.author_id, t.title), index("articles_author_id_idx").on(t.author_id)]
 );

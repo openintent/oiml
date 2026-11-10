@@ -5,6 +5,7 @@ import { QueryClient } from "@tanstack/react-query";
 import { createTRPCClient, httpBatchLink } from "@trpc/client";
 import type { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "../server/router";
+import type { VisibleFields } from "../present";
 
 /** A request the server refused as asked: the same request would fail again, so it is not retried. */
 function isRefused(error: unknown): boolean {
@@ -142,4 +143,19 @@ export type SessionUser = Outputs["auth"]["me"];
 /** The signed-in user out of a session query's data, or null */
 export function sessionUser(session: Session | undefined): SessionUser | null {
   return session?.user ?? null;
+}
+
+/** What a visitor could read of the fields with a read rule: nobody is signed in, so the rules alone answer */
+const VISITOR_FIELDS: VisibleFields = {
+  teams: { pending_requests: false },
+  projects: { budget: false },
+  tasks: { estimate: false }
+};
+
+/**
+ * Per resource, whether the viewer could read each field that has a read rule on some row. A page leaves out the
+ * column and the input of a field they could not; a row still leaves out what its own rule refuses.
+ */
+export function fieldsOf(session: Session | undefined): VisibleFields {
+  return (session as { fields?: VisibleFields } | null | undefined)?.fields ?? VISITOR_FIELDS;
 }

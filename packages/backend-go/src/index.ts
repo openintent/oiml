@@ -1,5 +1,5 @@
 import type { Backend, GeneratedFile, GenerateInput } from "@osl/core";
-import { globalActions, migrationFiles, openapiDocument, userActions } from "@osl/core";
+import { globalActions, hasFieldRules, migrationFiles, openapiDocument, userActions } from "@osl/core";
 import { actionHandlersFile, actionScaffolds, actionsFile } from "./actions.js";
 import { appFile, mainScaffold, openapiFile, workerScaffold } from "./app.js";
 import { authFile, authProvidersFile, hasProviders } from "./auth.js";
@@ -9,7 +9,7 @@ import { hasScheduling, schedulingFile, testHooksFile } from "./scheduling.js";
 import { eventHandlerScaffolds, eventsFile } from "./events.js";
 import { filesApiFile, filesFile } from "./files.js";
 import { jobsFile } from "./jobs.js";
-import { entitiesFile, formatFile, modelFilesFile, valuesFile } from "./models.js";
+import { entitiesFile, formatFile, modelFilesFile, valuesFile, viewerFile } from "./models.js";
 import { globalActionsFile, hooksScaffold, resourceFile } from "./resources.js";
 import { accessFile, dbFile, hooksFile, httpxFile } from "./runtime.js";
 import { scaffoldFiles } from "./scaffold.js";
@@ -36,6 +36,7 @@ export function generate(input: GenerateInput): GeneratedFile[] {
   files.push({ path: `${gen}/models/format.go`, content: formatFile(mod) });
   files.push({ path: `${gen}/models/entities.go`, content: entitiesFile(ir, mod) });
   if (ir.files) files.push({ path: `${gen}/models/files.go`, content: modelFilesFile(mod) });
+  if (hasFieldRules(ir)) files.push({ path: `${gen}/models/viewer.go`, content: viewerFile(mod) });
   files.push({ path: `${gen}/httpx/httpx.go`, content: httpxFile(mod, ir) });
   files.push({ path: `${gen}/validation/types.go`, content: validationRuntimeFile(mod) });
   files.push({ path: `${gen}/validation/resources.go`, content: validationResourcesFile(ir, mod) });

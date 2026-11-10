@@ -6,7 +6,7 @@ import { z } from "zod";
 import { db } from "../../db/client";
 import * as schema from "../../db/schema";
 import { users as usersTable } from "../../db/schema";
-import { presentArticle, presentUser } from "../../present";
+import { presentArticle, presentUser, type Viewer } from "../../present";
 import { usersBanInput, usersId, usersListQuery, usersUpdateInput } from "../../validation";
 import { handlers } from "../../actions";
 import { checkRule, type Rule } from "../access";
@@ -32,13 +32,13 @@ const ACTION_RULES = {
 const ID = z.string();
 
 type ListRow = schema.User;
-function presentListRow(row: ListRow) {
-  return { ...presentUser(row) };
+function presentListRow(row: ListRow, viewer: Viewer) {
+  return { ...presentUser(row, viewer) };
 }
 
 type GetRow = schema.User & { posts: schema.Article[] };
-function presentGetRow(row: GetRow) {
-  return { ...presentUser(row), posts: row.posts.map(presentArticle) };
+function presentGetRow(row: GetRow, viewer: Viewer) {
+  return { ...presentUser(row, viewer), posts: row.posts.map(item => presentArticle(item, viewer)) };
 }
 
 export const usersRouter = router({
@@ -52,7 +52,7 @@ export const usersRouter = router({
         db.query.users.findMany({ where, orderBy: [desc(usersTable.created_at)], limit: page_size, offset: (page - 1) * page_size }),
         db.select({ total: count() }).from(usersTable).where(where)
       ]);
-      return { data: rows.map(presentListRow), page: { page, page_size, total } };
+      return { data: rows.map(row => presentListRow(row, ctx.session)), page: { page, page_size, total } };
     } catch (err) {
       throw toTRPCError(err, "read");
     }
@@ -66,7 +66,7 @@ export const usersRouter = router({
     });
     if (!row) throw notFound();
     checkRule(RULES.read, ctx.session, row);
-    return presentGetRow(row);
+    return presentGetRow(row, ctx.session);
   }),
 
   update: publicProcedure
@@ -82,11 +82,11 @@ export const usersRouter = router({
       const hookContext: HookContext = { session: ctx.session, req: ctx.req };
       try {
         const patch = await hooks.beforeUpdate(existing, input.data, hookContext);
-        if (Object.keys(patch).length === 0) return presentUser(existing);
+        if (Object.keys(patch).length === 0) return presentUser(existing, ctx.session);
         const [row] = await db.update(usersTable).set(patch).where(eq(usersTable.id, id)).returning();
 
         await hooks.afterUpdate(row, hookContext);
-        return presentUser(row);
+        return presentUser(row, ctx.session);
       } catch (err) {
         throw toTRPCError(err, "write");
       }
@@ -105,7 +105,7 @@ export const usersRouter = router({
     try {
       const result = await handlers.users_ban({ input, row: current, session: ctx.session, db, now: new Date() });
 
-      return presentUser(result);
+      return presentUser(result, ctx.session);
     } catch (err) {
       throw toTRPCError(err, "write");
     }

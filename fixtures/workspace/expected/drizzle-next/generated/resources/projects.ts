@@ -8,7 +8,7 @@ import { projects as projectsTable } from "../db/schema";
 import { checkRule, denied, memberTenantIds, satisfied, unreachable, type Rule } from "../access";
 import { getSession, type Session } from "../auth";
 import { created, handleError, noContent, notFound, ok, parseBody, parseId, parseQuery } from "../http";
-import { presentProject } from "../present";
+import { presentProject, type Viewer } from "../present";
 import { projectsCreateInput, projectsId, projectsListQuery, projectsUpdateInput } from "../validation";
 import { hooks } from "@/src/extensions/projects";
 
@@ -39,13 +39,13 @@ function sortOrder(sort: string): SQL[] {
 }
 
 type ListRow = schema.Project;
-function presentListRow(row: ListRow) {
-  return { ...presentProject(row) };
+function presentListRow(row: ListRow, viewer: Viewer) {
+  return { ...presentProject(row, viewer) };
 }
 
 type GetRow = schema.Project;
-function presentGetRow(row: GetRow) {
-  return { ...presentProject(row) };
+function presentGetRow(row: GetRow, viewer: Viewer) {
+  return { ...presentProject(row, viewer) };
 }
 
 export const projects = {
@@ -77,7 +77,7 @@ export const projects = {
       // One statement at a time: both run on the request's transaction
       const rows = await db.query.projects.findMany({ where, orderBy: sort ? sortOrder(sort) : [desc(projectsTable.created_at)], limit: page_size, offset: (page - 1) * page_size });
       const [{ total }] = await db.select({ total: count() }).from(projectsTable).where(where);
-      return ok(rows.map(presentListRow), { page: { page, page_size, total } });
+      return ok(rows.map(row => presentListRow(row, session)), { page: { page, page_size, total } });
     } catch (err) {
       return handleError(err, "read");
     }
@@ -94,7 +94,7 @@ export const projects = {
       if (!row) return missing(id.data, RULES.read, session);
       const rowVerdict = checkRule(RULES.read, session, row);
       if (!rowVerdict.ok) return denied(rowVerdict);
-      return ok(presentGetRow(row));
+      return ok(presentGetRow(row, session));
     } catch (err) {
       return handleError(err, "read");
     }
@@ -114,7 +114,7 @@ export const projects = {
       const [row] = await db.insert(projectsTable).values(values).returning();
 
       await hooks.afterCreate(row, hookContext);
-      return created(presentProject(row));
+      return created(presentProject(row, session));
     } catch (err) {
       return handleError(err, "write");
     }
@@ -135,11 +135,11 @@ export const projects = {
       if (!body.ok) return body.response;
       const hookContext: HookContext = { request, session };
       const patch = await hooks.beforeUpdate(existing, body.data, hookContext);
-      if (Object.keys(patch).length === 0) return ok(presentProject(existing));
+      if (Object.keys(patch).length === 0) return ok(presentProject(existing, session));
       const [row] = await db.update(projectsTable).set(patch).where(eq(projectsTable.id, id.data)).returning();
 
       await hooks.afterUpdate(row, hookContext);
-      return ok(presentProject(row));
+      return ok(presentProject(row, session));
     } catch (err) {
       return handleError(err, "write");
     }

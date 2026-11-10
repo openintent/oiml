@@ -48,7 +48,8 @@ export const projects = pgTable(
     created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
     public: boolean().notNull().default(false),
     milestone_count: integer().notNull().default(0),
-    open_milestones: integer().notNull().default(0)
+    open_milestones: integer().notNull().default(0),
+    budget: integer()
   },
   t => [index("projects_team_id_idx").on(t.team_id)]
 );
@@ -63,7 +64,8 @@ export const tasks = pgTable(
     assignee_id: uuid().references(() => users.id, { onDelete: "set null" }),
     created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
     due_at: timestamp({ withTimezone: true }),
-    reminded_at: timestamp({ withTimezone: true })
+    reminded_at: timestamp({ withTimezone: true }),
+    estimate: integer()
   },
   t => [index("tasks_project_id_idx").on(t.project_id), index("tasks_assignee_id_idx").on(t.assignee_id)]
 );

@@ -14,6 +14,7 @@ import (
 
 	"workspace/generated/auth"
 	"workspace/generated/httpx"
+	"workspace/generated/models"
 )
 
 // Rule is an access rule from the model: public, authenticated, none, owner (Field), role (Value),
@@ -89,6 +90,12 @@ func Check(rule Rule, session *auth.Session) *Verdict {
 	if RulesDisabled() {
 		return nil
 	}
+	return judge(rule, session)
+}
+
+// judge is Check whatever the test hook says. A field's read rule is checked with it and with judgeRow: no
+// policy stands behind a field, so switching the rule checks off must not show one.
+func judge(rule Rule, session *auth.Session) *Verdict {
 	switch rule.Kind {
 	case "public":
 		return nil
@@ -113,9 +120,9 @@ func Check(rule Rule, session *auth.Session) *Verdict {
 		}
 		return nil
 	case "all":
-		return allOf(rule.All, func(part Rule) *Verdict { return Check(part, session) })
+		return allOf(rule.All, func(part Rule) *Verdict { return judge(part, session) })
 	case "any":
-		return anyOf(rule.Any, func(alternative Rule) *Verdict { return Check(alternative, session) })
+		return anyOf(rule.Any, func(alternative Rule) *Verdict { return judge(alternative, session) })
 	}
 	return &Verdict{Status: http.StatusForbidden}
 }
@@ -126,13 +133,18 @@ func CheckRow(rule Rule, session *auth.Session, row Row) *Verdict {
 	if RulesDisabled() {
 		return nil
 	}
+	return judgeRow(rule, session, row)
+}
+
+// judgeRow is CheckRow whatever the test hook says.
+func judgeRow(rule Rule, session *auth.Session, row Row) *Verdict {
 	if rule.Kind == "all" {
-		return allOf(rule.All, func(part Rule) *Verdict { return CheckRow(part, session, row) })
+		return allOf(rule.All, func(part Rule) *Verdict { return judgeRow(part, session, row) })
 	}
 	if rule.Kind == "any" {
-		return anyOf(rule.Any, func(alternative Rule) *Verdict { return CheckRow(alternative, session, row) })
+		return anyOf(rule.Any, func(alternative Rule) *Verdict { return judgeRow(alternative, session, row) })
 	}
-	if verdict := Check(rule, session); verdict != nil {
+	if verdict := judge(rule, session); verdict != nil {
 		return verdict
 	}
 	if rule.Kind == "owner" && !same(row[rule.Field], session.UserID()) {
@@ -323,4 +335,71 @@ func Unreachable(rule Rule, session *auth.Session) *Verdict {
 		return &Verdict{Status: http.StatusUnauthorized}
 	}
 	return &Verdict{Status: http.StatusForbidden}
+}
+
+// fieldRules are the read rules of fields, by "Entity.field". Each reads the row and the caller, nothing else.
+var fieldRules = map[string]Rule{
+	"Team.pending_requests": {Kind: "member", Field: "id", Role: "admin"},
+	"Project.budget":        {Kind: "member", Field: "team_id", Role: "admin"},
+	"Task.estimate":         {Kind: "authenticated"},
+}
+
+type viewer struct {
+	session *auth.Session
+}
+
+// Viewer presents rows to the caller of a session (nil without one): a field with a read rule is in a row's
+// public shape only when the rule allows this caller on that row.
+func Viewer(session *auth.Session) models.Viewer {
+	return viewer{session: session}
+}
+
+func (v viewer) Reads(field string, row map[string]any) bool {
+	rule, ok := fieldRules[field]
+	return ok && judgeRow(rule, v.session, Row(row)) == nil
+}
+
+// CreatorViewer presents a new tenant to its creator, who is a member of it from the same request: the session
+// was read before the membership existed.
+func CreatorViewer(session *auth.Session, tenant string, role string) models.Viewer {
+	if session == nil {
+		return viewer{}
+	}
+	joined := *session
+	joined.Memberships = append(append([]auth.Membership{}, session.Memberships...), auth.Membership{Tenant: tenant, Role: role})
+	return viewer{session: &joined}
+}
+
+// could reports whether the session could read a field under this rule on some row: what the rule says before
+// any row is there, and for a member predicate whether a membership of that rank is held at all.
+func could(rule Rule, session *auth.Session) bool {
+	switch rule.Kind {
+	case "all":
+		for _, part := range rule.All {
+			if !could(part, session) {
+				return false
+			}
+		}
+		return true
+	case "any":
+		for _, alternative := range rule.Any {
+			if could(alternative, session) {
+				return true
+			}
+		}
+		return false
+	case "member":
+		return len(MemberTenantIDs(session, rule.Role)) > 0
+	}
+	return judge(rule, session) == nil
+}
+
+// VisibleFields is what a session is told beside its user: per resource, whether it could read each field that
+// has a read rule on some row. A row still leaves out what its own rule refuses.
+func VisibleFields(session *auth.Session) map[string]map[string]bool {
+	return map[string]map[string]bool{
+		"teams":    {"pending_requests": could(fieldRules["Team.pending_requests"], session)},
+		"projects": {"budget": could(fieldRules["Project.budget"], session)},
+		"tasks":    {"estimate": could(fieldRules["Task.estimate"], session)},
+	}
 }

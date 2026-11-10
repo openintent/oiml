@@ -6,7 +6,7 @@ import { z } from "zod";
 import { db } from "../../db/client";
 import * as schema from "../../db/schema";
 import { announcements as announcementsTable } from "../../db/schema";
-import { presentAnnouncement, presentUser } from "../../present";
+import { presentAnnouncement, presentUser, type Viewer } from "../../present";
 import { announcementsCreateInput, announcementsId, announcementsListQuery, announcementsPublishInput, announcementsUpdateInput } from "../../validation";
 import { handlers } from "../../actions";
 import { checkRule, satisfied, verdict, type Rule } from "../access";
@@ -32,13 +32,13 @@ const ACTION_RULES = {
 const ID = z.string();
 
 type ListRow = schema.Announcement & { author: schema.User | null };
-function presentListRow(row: ListRow) {
-  return { ...presentAnnouncement(row), author: row.author ? presentUser(row.author) : null };
+function presentListRow(row: ListRow, viewer: Viewer) {
+  return { ...presentAnnouncement(row), author: row.author ? presentUser(row.author, viewer) : null };
 }
 
 type GetRow = schema.Announcement & { author: schema.User | null };
-function presentGetRow(row: GetRow) {
-  return { ...presentAnnouncement(row), author: row.author ? presentUser(row.author) : null };
+function presentGetRow(row: GetRow, viewer: Viewer) {
+  return { ...presentAnnouncement(row), author: row.author ? presentUser(row.author, viewer) : null };
 }
 
 export const announcementsRouter = router({
@@ -62,7 +62,7 @@ export const announcementsRouter = router({
         db.query.announcements.findMany({ where, with: { author: true }, orderBy: [desc(announcementsTable.created_at)], limit: page_size, offset: (page - 1) * page_size }),
         db.select({ total: count() }).from(announcementsTable).where(where)
       ]);
-      return { data: rows.map(presentListRow), page: { page, page_size, total } };
+      return { data: rows.map(row => presentListRow(row, ctx.session)), page: { page, page_size, total } };
     } catch (err) {
       throw toTRPCError(err, "read");
     }
@@ -76,7 +76,7 @@ export const announcementsRouter = router({
     });
     if (!row) throw notFound();
     if (!verdict(RULES.read, ctx.session, row).ok) throw notFound();
-    return presentGetRow(row);
+    return presentGetRow(row, ctx.session);
   }),
 
   create: publicProcedure.input(announcementsCreateInput).mutation(async ({ ctx, input }) => {

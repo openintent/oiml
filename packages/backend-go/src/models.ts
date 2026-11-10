@@ -1,5 +1,5 @@
-import type { ColumnIR, EntityIR, IR } from "@osl/core";
-import { pluralize } from "@osl/core";
+import type { ColumnIR, EntityIR, IR, RuleIR } from "@osl/core";
+import { conditionedRules, pluralize, rowRules, ruledColumns } from "@osl/core";
 import {
   HEADER,
   exported,
@@ -190,6 +190,84 @@ export function presentManyFunc(entity: EntityIR): string {
   return `Present${pluralize(typeName(entity))}`;
 }
 
+/** Whether an entity's presenters take the viewer: it has a field with a read rule */
+export function takesViewer(entity: EntityIR): boolean {
+  return ruledColumns(entity).length > 0;
+}
+
+/**
+ * A presenter called from another package: `models.PresentPost(expr)`, with the viewer when the entity has a field
+ * with a read rule. `fn` picks the presenter (one row, an optional row, a list).
+ */
+export function presentCall(
+  entity: EntityIR,
+  expr: string,
+  viewer: string,
+  fn: (entity: EntityIR) => string = presentFunc
+): string {
+  return `models.${fn(entity)}(${expr}${takesViewer(entity) ? `, ${viewer}` : ""})`;
+}
+
+/** The columns of the row a field rule reads: the owner or tenant its predicates name and the ones its conditions test */
+function ruleColumns(rule: RuleIR): string[] {
+  return [...new Set([...rowRules(rule).map(r => r.field), ...conditionedRules(rule).map(r => r.when!.column)])];
+}
+
+/** generated/models/viewer.go: who a row is presented to, and a field that may be absent. Static; only with a field rule. */
+export function viewerFile(modulePath: string): string {
+  return goFile(
+    modulePath,
+    HEADER("Who a row is presented to, and the shape of a field with a read rule."),
+    "models",
+    ["encoding/json"],
+    `// Viewer is who a row is presented to. A field with a read rule is in the public shape only when Reads allows
+// it for this viewer on this row; otherwise the key is absent from the JSON, never null. The entity's read rule
+// decided before this whether the row is seen at all, so a field rule only narrows.
+type Viewer interface {
+	// Reads says whether the viewer may read a field ("Project.budget") of a row with these column values.
+	Reads(field string, row map[string]any) bool
+}
+
+type server struct{}
+
+func (server) Reads(string, map[string]any) bool {
+	return true
+}
+
+// Server is the server itself as a viewer: it reads every field (an event's payload, the user a session keeps
+// for its rules).
+var Server Viewer = server{}
+
+// Maybe is a field with a read rule in a public shape: in the JSON only when Present.
+type Maybe[T any] struct {
+	Value   T
+	Present bool
+}
+
+// Shown is a field the viewer may read.
+func Shown[T any](value T) Maybe[T] {
+	return Maybe[T]{Value: value, Present: true}
+}
+
+// IsZero reports an absent field, so a \`json:",omitzero"\` tag leaves the key out.
+func (m Maybe[T]) IsZero() bool {
+	return !m.Present
+}
+
+// MarshalJSON renders the value itself.
+func (m Maybe[T]) MarshalJSON() ([]byte, error) {
+	return json.Marshal(m.Value)
+}
+
+// UnmarshalJSON reads a value that was there.
+func (m *Maybe[T]) UnmarshalJSON(data []byte) error {
+	m.Present = true
+	return json.Unmarshal(data, &m.Value)
+}
+`
+  );
+}
+
 /** Expression presenting one column of `row` in the public shape */
 function presentExpr(col: ColumnIR): string {
   const field = `row.${exported(col.name)}`;
@@ -269,13 +347,34 @@ export function entitiesFile(ir: IR, modulePath: string): string {
       for (const i of importsForType(type)) imports.add(i);
       return { name: exported(c.name), type, tag: c.hidden || isBytes(c) ? '`json:"-"`' : `\`json:${q(c.name)}\`` };
     });
+    // A field with a read rule is a Maybe the presenter sets only for a viewer the rule allows; the key is left out otherwise
     const publicFields = pub.map(c => {
       const type = publicGoType(c);
       for (const i of importsForType(type)) imports.add(i);
-      return { name: exported(c.name), type, tag: `\`json:${q(c.name)}\`` };
+      return c.read
+        ? { name: exported(c.name), type: `Maybe[${type}]`, tag: `\`json:${q(`${c.name},omitzero`)}\`` }
+        : { name: exported(c.name), type, tag: `\`json:${q(c.name)}\`` };
     });
     const scanTargets = entity.columns.map(c => `&r.${exported(c.name)}`).join(", ");
-    const presentPairs = pub.map(c => `${exported(c.name)}: ${presentExpr(c)}`).join(", ");
+    const presentPairs = pub
+      .filter(c => !c.read)
+      .map(c => `${exported(c.name)}: ${presentExpr(c)}`)
+      .join(", ");
+    const viewed = takesViewer(entity);
+    const viewerParam = viewed ? ", viewer Viewer" : "";
+    const viewerArg = viewed ? ", viewer" : "";
+    const ruledLines = pub
+      .filter(c => c.read)
+      .map(c => {
+        const columns = ruleColumns(c.read!);
+        const row = columns.length
+          ? `map[string]any{${columns.map(name => `${q(name)}: row.${exported(name)}`).join(", ")}}`
+          : "nil";
+        return `\tif viewer.Reads(${q(`${entity.name}.${c.name}`)}, ${row}) {\n\t\tout.${exported(c.name)} = Shown(${presentExpr(c)})\n\t}`;
+      });
+    const presentBody = viewed
+      ? [`\tout := ${publicType(entity)}{${presentPairs}}`, ...ruledLines, `\treturn out`].join("\n")
+      : `\treturn ${publicType(entity)}{${presentPairs}}`;
     sections.push(`// ${tableConst(entity)} is the quoted table of ${entity.name}.
 const ${tableConst(entity)} = ${goRaw(quoteIdent(entity.table))}
 
@@ -295,25 +394,25 @@ func ${scanFunc(entity)}(row Scanner) (*${T}, error) {
 	return &r, nil
 }
 
-// ${presentFunc(entity)} returns the public shape of a ${T}.
-func ${presentFunc(entity)}(row *${T}) ${publicType(entity)} {
-	return ${publicType(entity)}{${presentPairs}}
+// ${presentFunc(entity)} returns the public shape of a ${T}${viewed ? " for a viewer: a field with a read rule is set only when the rule allows" : ""}.
+func ${presentFunc(entity)}(row *${T}${viewerParam}) ${publicType(entity)} {
+${presentBody}
 }
 
 // ${presentPtrFunc(entity)} presents an optional ${T}; nil stays nil.
-func ${presentPtrFunc(entity)}(row *${T}) *${publicType(entity)} {
+func ${presentPtrFunc(entity)}(row *${T}${viewerParam}) *${publicType(entity)} {
 	if row == nil {
 		return nil
 	}
-	out := ${presentFunc(entity)}(row)
+	out := ${presentFunc(entity)}(row${viewerArg})
 	return &out
 }
 
 // ${presentManyFunc(entity)} presents a list of ${T}, never nil.
-func ${presentManyFunc(entity)}(rows []*${T}) []${publicType(entity)} {
+func ${presentManyFunc(entity)}(rows []*${T}${viewerParam}) []${publicType(entity)} {
 	out := make([]${publicType(entity)}, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, ${presentFunc(entity)}(row))
+		out = append(out, ${presentFunc(entity)}(row${viewerArg}))
 	}
 	return out
 }`);

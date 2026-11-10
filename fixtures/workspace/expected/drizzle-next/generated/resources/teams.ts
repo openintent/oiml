@@ -9,7 +9,7 @@ import { teams as teamsTable, teamMembers as teamMembersTable } from "../db/sche
 import { checkRule, denied, memberTenantIds, rulesDisabled, unreachable, type Rule } from "../access";
 import { getSession, type Session } from "../auth";
 import { created, handleError, noContent, notFound, ok, parseBody, parseId, parseQuery } from "../http";
-import { presentTeam, presentTeamMember } from "../present";
+import { presentTeam, presentTeamMember, type Viewer } from "../present";
 import { teamsCreateInput, teamsId, teamsListQuery, teamsUpdateInput } from "../validation";
 import { hooks } from "@/src/extensions/teams";
 
@@ -29,13 +29,13 @@ async function missing(id: unknown, rule: Rule, session: Session | null): Promis
 }
 
 type ListRow = schema.Team;
-function presentListRow(row: ListRow) {
-  return { ...presentTeam(row) };
+function presentListRow(row: ListRow, viewer: Viewer) {
+  return { ...presentTeam(row, viewer) };
 }
 
 type GetRow = schema.Team & { members: schema.TeamMember[] };
-function presentGetRow(row: GetRow) {
-  return { ...presentTeam(row), members: row.members.map(presentTeamMember) };
+function presentGetRow(row: GetRow, viewer: Viewer) {
+  return { ...presentTeam(row, viewer), members: row.members.map(presentTeamMember) };
 }
 
 export const teams = {
@@ -57,7 +57,7 @@ export const teams = {
       // One statement at a time: both run on the request's transaction
       const rows = await db.query.teams.findMany({ where, orderBy: [desc(teamsTable.created_at)], limit: page_size, offset: (page - 1) * page_size });
       const [{ total }] = await db.select({ total: count() }).from(teamsTable).where(where);
-      return ok(rows.map(presentListRow), { page: { page, page_size, total } });
+      return ok(rows.map(row => presentListRow(row, session)), { page: { page, page_size, total } });
     } catch (err) {
       return handleError(err, "read");
     }
@@ -74,7 +74,7 @@ export const teams = {
       if (!row) return missing(id.data, RULES.read, session);
       const rowVerdict = checkRule(RULES.read, session, row);
       if (!rowVerdict.ok) return denied(rowVerdict);
-      return ok(presentGetRow(row));
+      return ok(presentGetRow(row, session));
     } catch (err) {
       return handleError(err, "read");
     }
@@ -98,7 +98,7 @@ export const teams = {
       });
 
       await hooks.afterCreate(row, hookContext);
-      return created(presentTeam(row));
+      return created(presentTeam(row, { ...session!, memberships: [...session!.memberships, { tenant: row.id, role: "owner" }] }));
     } catch (err) {
       return handleError(err, "write");
     }
@@ -119,11 +119,11 @@ export const teams = {
       if (!body.ok) return body.response;
       const hookContext: HookContext = { request, session };
       const patch = await hooks.beforeUpdate(existing, body.data, hookContext);
-      if (Object.keys(patch).length === 0) return ok(presentTeam(existing));
+      if (Object.keys(patch).length === 0) return ok(presentTeam(existing, session));
       const [row] = await db.update(teamsTable).set(patch).where(eq(teamsTable.id, id.data)).returning();
 
       await hooks.afterUpdate(row, hookContext);
-      return ok(presentTeam(row));
+      return ok(presentTeam(row, session));
     } catch (err) {
       return handleError(err, "write");
     }

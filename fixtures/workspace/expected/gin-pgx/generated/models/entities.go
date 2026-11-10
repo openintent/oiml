@@ -78,10 +78,10 @@ type Team struct {
 
 // PublicTeam is Team as the API returns it: hidden columns removed, dates rendered.
 type PublicTeam struct {
-	ID              string `json:"id"`
-	Name            string `json:"name"`
-	CreatedAt       string `json:"created_at"`
-	PendingRequests int    `json:"pending_requests"`
+	ID              string     `json:"id"`
+	Name            string     `json:"name"`
+	CreatedAt       string     `json:"created_at"`
+	PendingRequests Maybe[int] `json:"pending_requests,omitzero"`
 }
 
 // ScanTeam reads one Team from a row selected with TeamColumns.
@@ -93,25 +93,29 @@ func ScanTeam(row Scanner) (*Team, error) {
 	return &r, nil
 }
 
-// PresentTeam returns the public shape of a Team.
-func PresentTeam(row *Team) PublicTeam {
-	return PublicTeam{ID: row.ID, Name: row.Name, CreatedAt: FormatDateTime(row.CreatedAt), PendingRequests: row.PendingRequests}
+// PresentTeam returns the public shape of a Team for a viewer: a field with a read rule is set only when the rule allows.
+func PresentTeam(row *Team, viewer Viewer) PublicTeam {
+	out := PublicTeam{ID: row.ID, Name: row.Name, CreatedAt: FormatDateTime(row.CreatedAt)}
+	if viewer.Reads("Team.pending_requests", map[string]any{"id": row.ID}) {
+		out.PendingRequests = Shown(row.PendingRequests)
+	}
+	return out
 }
 
 // PresentTeamPtr presents an optional Team; nil stays nil.
-func PresentTeamPtr(row *Team) *PublicTeam {
+func PresentTeamPtr(row *Team, viewer Viewer) *PublicTeam {
 	if row == nil {
 		return nil
 	}
-	out := PresentTeam(row)
+	out := PresentTeam(row, viewer)
 	return &out
 }
 
 // PresentTeams presents a list of Team, never nil.
-func PresentTeams(rows []*Team) []PublicTeam {
+func PresentTeams(rows []*Team, viewer Viewer) []PublicTeam {
 	out := make([]PublicTeam, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, PresentTeam(row))
+		out = append(out, PresentTeam(row, viewer))
 	}
 	return out
 }
@@ -176,7 +180,7 @@ func PresentTeamMembers(rows []*TeamMember) []PublicTeamMember {
 const ProjectTable = `"projects"`
 
 // ProjectColumns lists the columns of Project in model order, for SELECT and RETURNING.
-const ProjectColumns = `"id", "team_id", "name", "status", "created_at", "public", "milestone_count", "open_milestones"`
+const ProjectColumns = `"id", "team_id", "name", "status", "created_at", "public", "milestone_count", "open_milestones", "budget"`
 
 // Project is a row of projects.
 type Project struct {
@@ -188,48 +192,54 @@ type Project struct {
 	Public         bool      `json:"public"`
 	MilestoneCount int       `json:"milestone_count"`
 	OpenMilestones int       `json:"open_milestones"`
+	Budget         *int      `json:"budget"`
 }
 
 // PublicProject is Project as the API returns it: hidden columns removed, dates rendered.
 type PublicProject struct {
-	ID             string `json:"id"`
-	TeamID         string `json:"team_id"`
-	Name           string `json:"name"`
-	Status         string `json:"status"`
-	CreatedAt      string `json:"created_at"`
-	Public         bool   `json:"public"`
-	MilestoneCount int    `json:"milestone_count"`
-	OpenMilestones int    `json:"open_milestones"`
+	ID             string      `json:"id"`
+	TeamID         string      `json:"team_id"`
+	Name           string      `json:"name"`
+	Status         string      `json:"status"`
+	CreatedAt      string      `json:"created_at"`
+	Public         bool        `json:"public"`
+	MilestoneCount int         `json:"milestone_count"`
+	OpenMilestones int         `json:"open_milestones"`
+	Budget         Maybe[*int] `json:"budget,omitzero"`
 }
 
 // ScanProject reads one Project from a row selected with ProjectColumns.
 func ScanProject(row Scanner) (*Project, error) {
 	var r Project
-	if err := row.Scan(&r.ID, &r.TeamID, &r.Name, &r.Status, &r.CreatedAt, &r.Public, &r.MilestoneCount, &r.OpenMilestones); err != nil {
+	if err := row.Scan(&r.ID, &r.TeamID, &r.Name, &r.Status, &r.CreatedAt, &r.Public, &r.MilestoneCount, &r.OpenMilestones, &r.Budget); err != nil {
 		return nil, err
 	}
 	return &r, nil
 }
 
-// PresentProject returns the public shape of a Project.
-func PresentProject(row *Project) PublicProject {
-	return PublicProject{ID: row.ID, TeamID: row.TeamID, Name: row.Name, Status: row.Status, CreatedAt: FormatDateTime(row.CreatedAt), Public: row.Public, MilestoneCount: row.MilestoneCount, OpenMilestones: row.OpenMilestones}
+// PresentProject returns the public shape of a Project for a viewer: a field with a read rule is set only when the rule allows.
+func PresentProject(row *Project, viewer Viewer) PublicProject {
+	out := PublicProject{ID: row.ID, TeamID: row.TeamID, Name: row.Name, Status: row.Status, CreatedAt: FormatDateTime(row.CreatedAt), Public: row.Public, MilestoneCount: row.MilestoneCount, OpenMilestones: row.OpenMilestones}
+	if viewer.Reads("Project.budget", map[string]any{"team_id": row.TeamID}) {
+		out.Budget = Shown(row.Budget)
+	}
+	return out
 }
 
 // PresentProjectPtr presents an optional Project; nil stays nil.
-func PresentProjectPtr(row *Project) *PublicProject {
+func PresentProjectPtr(row *Project, viewer Viewer) *PublicProject {
 	if row == nil {
 		return nil
 	}
-	out := PresentProject(row)
+	out := PresentProject(row, viewer)
 	return &out
 }
 
 // PresentProjects presents a list of Project, never nil.
-func PresentProjects(rows []*Project) []PublicProject {
+func PresentProjects(rows []*Project, viewer Viewer) []PublicProject {
 	out := make([]PublicProject, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, PresentProject(row))
+		out = append(out, PresentProject(row, viewer))
 	}
 	return out
 }
@@ -238,7 +248,7 @@ func PresentProjects(rows []*Project) []PublicProject {
 const TaskTable = `"tasks"`
 
 // TaskColumns lists the columns of Task in model order, for SELECT and RETURNING.
-const TaskColumns = `"id", "project_id", "title", "done", "assignee_id", "created_at", "due_at", "reminded_at"`
+const TaskColumns = `"id", "project_id", "title", "done", "assignee_id", "created_at", "due_at", "reminded_at", "estimate"`
 
 // Task is a row of tasks.
 type Task struct {
@@ -250,48 +260,54 @@ type Task struct {
 	CreatedAt  time.Time  `json:"created_at"`
 	DueAt      *time.Time `json:"due_at"`
 	RemindedAt *time.Time `json:"reminded_at"`
+	Estimate   *int       `json:"estimate"`
 }
 
 // PublicTask is Task as the API returns it: hidden columns removed, dates rendered.
 type PublicTask struct {
-	ID         string  `json:"id"`
-	ProjectID  string  `json:"project_id"`
-	Title      string  `json:"title"`
-	Done       bool    `json:"done"`
-	AssigneeID *string `json:"assignee_id"`
-	CreatedAt  string  `json:"created_at"`
-	DueAt      *string `json:"due_at"`
-	RemindedAt *string `json:"reminded_at"`
+	ID         string      `json:"id"`
+	ProjectID  string      `json:"project_id"`
+	Title      string      `json:"title"`
+	Done       bool        `json:"done"`
+	AssigneeID *string     `json:"assignee_id"`
+	CreatedAt  string      `json:"created_at"`
+	DueAt      *string     `json:"due_at"`
+	RemindedAt *string     `json:"reminded_at"`
+	Estimate   Maybe[*int] `json:"estimate,omitzero"`
 }
 
 // ScanTask reads one Task from a row selected with TaskColumns.
 func ScanTask(row Scanner) (*Task, error) {
 	var r Task
-	if err := row.Scan(&r.ID, &r.ProjectID, &r.Title, &r.Done, &r.AssigneeID, &r.CreatedAt, &r.DueAt, &r.RemindedAt); err != nil {
+	if err := row.Scan(&r.ID, &r.ProjectID, &r.Title, &r.Done, &r.AssigneeID, &r.CreatedAt, &r.DueAt, &r.RemindedAt, &r.Estimate); err != nil {
 		return nil, err
 	}
 	return &r, nil
 }
 
-// PresentTask returns the public shape of a Task.
-func PresentTask(row *Task) PublicTask {
-	return PublicTask{ID: row.ID, ProjectID: row.ProjectID, Title: row.Title, Done: row.Done, AssigneeID: row.AssigneeID, CreatedAt: FormatDateTime(row.CreatedAt), DueAt: FormatDateTimePtr(row.DueAt), RemindedAt: FormatDateTimePtr(row.RemindedAt)}
+// PresentTask returns the public shape of a Task for a viewer: a field with a read rule is set only when the rule allows.
+func PresentTask(row *Task, viewer Viewer) PublicTask {
+	out := PublicTask{ID: row.ID, ProjectID: row.ProjectID, Title: row.Title, Done: row.Done, AssigneeID: row.AssigneeID, CreatedAt: FormatDateTime(row.CreatedAt), DueAt: FormatDateTimePtr(row.DueAt), RemindedAt: FormatDateTimePtr(row.RemindedAt)}
+	if viewer.Reads("Task.estimate", nil) {
+		out.Estimate = Shown(row.Estimate)
+	}
+	return out
 }
 
 // PresentTaskPtr presents an optional Task; nil stays nil.
-func PresentTaskPtr(row *Task) *PublicTask {
+func PresentTaskPtr(row *Task, viewer Viewer) *PublicTask {
 	if row == nil {
 		return nil
 	}
-	out := PresentTask(row)
+	out := PresentTask(row, viewer)
 	return &out
 }
 
 // PresentTasks presents a list of Task, never nil.
-func PresentTasks(rows []*Task) []PublicTask {
+func PresentTasks(rows []*Task, viewer Viewer) []PublicTask {
 	out := make([]PublicTask, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, PresentTask(row))
+		out = append(out, PresentTask(row, viewer))
 	}
 	return out
 }

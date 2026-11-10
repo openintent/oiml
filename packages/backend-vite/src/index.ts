@@ -84,7 +84,10 @@ export function generate(input: GenerateInput): GeneratedFile[] {
   files.push(...migrationFiles(revisions, `${gen}/db/migrations`).files);
 
   // Shared by the API and the web app
-  files.push({ path: `${gen}/present.ts`, content: presentFile(ir, VITE) });
+  files.push({
+    path: `${gen}/present.ts`,
+    content: presentFile(ir, VITE, { access: "./server/access", auth: "./server/auth" })
+  });
   files.push({ path: `${gen}/validation.ts`, content: validationFile(ir, VITE, { listInput: "typed" }) });
   files.push(...eventFiles(ir, VITE));
   if (hasScheduling(ir)) files.push({ path: `${gen}/scheduling.ts`, content: schedulingFile(ir, VITE) });

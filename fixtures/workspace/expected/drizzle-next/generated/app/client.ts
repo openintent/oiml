@@ -3,7 +3,7 @@
 
 import { QueryClient } from "@tanstack/react-query";
 import type { z } from "zod";
-import type { PublicChannel, PublicChannelMember, PublicLabel, PublicMessage, PublicMilestone, PublicMilestoneLabel, PublicNote, PublicProject, PublicRequest, PublicTask, PublicTeam, PublicTeamMember, PublicUser } from "../present";
+import type { PublicChannel, PublicChannelMember, PublicLabel, PublicMessage, PublicMilestone, PublicMilestoneLabel, PublicNote, PublicProject, PublicRequest, PublicTask, PublicTeam, PublicTeamMember, PublicUser, VisibleFields } from "../present";
 import type { channel_membersCreateInput, channel_membersListQuery, channelsCreateInput, channelsJoinInput, channelsListQuery, channelsUpdateInput, labelsArchiveInput, labelsCreateInput, labelsListQuery, labelsRestoreInput, labelsUpdateInput, membersCreateInput, membersListQuery, membersUpdateInput, messagesCreateInput, messagesListQuery, messagesUpdateInput, milestone_labelsCreateInput, milestone_labelsListQuery, milestonesArchiveInput, milestonesCreateInput, milestonesListQuery, milestonesMoveInput, milestonesRestoreInput, milestonesUpdateInput, notesCreateInput, notesListQuery, notesUpdateInput, projectsCreateInput, projectsListQuery, projectsUpdateInput, requestsApproveInput, requestsCreateInput, requestsDeclineInput, requestsListQuery, requestsReopenInput, requestsUpdateInput, tasksCreateInput, tasksListQuery, tasksRemindInput, tasksUpdateInput, teamsCreateInput, teamsListQuery, teamsUpdateInput, usersListQuery } from "../validation";
 
 export class ApiError extends Error {
@@ -156,7 +156,7 @@ export type Inputs = {
 
 export type Outputs = {
   auth: {
-    session: { user: PublicUser } | null;
+    session: { user: PublicUser; fields: VisibleFields } | null;
     me: PublicUser;
     login: PublicUser;
     register: PublicUser;
@@ -267,7 +267,9 @@ export const client = {
   auth: {
     session: async (): Promise<Outputs["auth"]["session"]> => {
       try {
-        return { user: await call<Outputs["auth"]["me"]>("GET", "/api/auth/me") };
+        // The answer carries, beside the user, which fields with a read rule they could read
+        const me = await call<{ data: Outputs["auth"]["me"]; fields: VisibleFields }>("GET", "/api/auth/me", { whole: true });
+        return { user: me.data, fields: me.fields };
       } catch (error) {
         if (error instanceof ApiError && error.status === 401) return null;
         throw error;
@@ -385,4 +387,19 @@ export type SessionUser = Outputs["auth"]["me"];
 /** The signed-in user out of a session query's data, or null */
 export function sessionUser(session: Session | undefined): SessionUser | null {
   return session?.user ?? null;
+}
+
+/** What a visitor could read of the fields with a read rule: nobody is signed in, so the rules alone answer */
+const VISITOR_FIELDS: VisibleFields = {
+  teams: { pending_requests: false },
+  projects: { budget: false },
+  tasks: { estimate: false }
+};
+
+/**
+ * Per resource, whether the viewer could read each field that has a read rule on some row. A page leaves out the
+ * column and the input of a field they could not; a row still leaves out what its own rule refuses.
+ */
+export function fieldsOf(session: Session | undefined): VisibleFields {
+  return (session as { fields?: VisibleFields } | null | undefined)?.fields ?? VISITOR_FIELDS;
 }

@@ -383,6 +383,19 @@ export function checkExpectations(expect: Expect, checked: Checked): string[] {
     if (!hit) fail(`count ${spec} missing (a count_of field)`);
   }
 
+  for (const [ref, want] of Object.entries(expect.field_read ?? {})) {
+    const hit = pickField(model, ref);
+    if (!hit) {
+      fail(`field ${ref} missing (expected read: ${want})`);
+      continue;
+    }
+    const column = ir.entities.find(e => e.name === hit.entity)?.columns.find(c => c.name === hit.field);
+    if (!column?.read)
+      fail(`field ${hit.entity}.${hit.field} has no read rule (no read: on the field), expected ${want}`);
+    else if (want !== "*" && !ruleMatches(want, column.read))
+      fail(`${hit.entity}.${hit.field}.read is ${ruleText(column.read)}, expected ${want}`);
+  }
+
   for (const [entityName, rules] of Object.entries(expect.rules ?? {})) {
     const entity = pick(entityName, entities);
     const irEntity = entity && ir.entities.find(e => e.name === entity);

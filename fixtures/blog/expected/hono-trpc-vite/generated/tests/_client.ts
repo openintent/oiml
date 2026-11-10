@@ -271,3 +271,16 @@ export function pick(value: unknown, path: string): unknown {
     return undefined;
   }, value);
 }
+
+/**
+ * Whether the dotted path is in a response body: every key on the way is there, whatever its value (a null is
+ * there). Through a list, it is there when any item carries the rest of the path.
+ */
+export function carries(value: unknown, path: string): boolean {
+  const walk = (current: unknown, keys: string[]): boolean => {
+    if (Array.isArray(current)) return current.some(item => walk(item, keys));
+    if (!current || typeof current !== "object" || !(keys[0] in current)) return false;
+    return keys.length === 1 || walk((current as Record<string, unknown>)[keys[0]], keys.slice(1));
+  };
+  return walk(value, path.split("."));
+}

@@ -93,7 +93,7 @@ func (h *Tasks) List(c *gin.Context) {
 			alternatives = append(alternatives, `"project_id" IN (SELECT "id" FROM `+models.ProjectTable+` WHERE "team_id" = ANY(`+where.Param(tenants2)+`))`)
 		}
 		if len(alternatives) == 0 {
-			httpx.List(c, models.PresentTasks(nil), httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: 0})
+			httpx.List(c, models.PresentTasks(nil, access.Viewer(session)), httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: 0})
 			return
 		}
 		where.AnyOf(alternatives)
@@ -115,7 +115,7 @@ func (h *Tasks) List(c *gin.Context) {
 		httpx.HandleError(c, err, "read")
 		return
 	}
-	httpx.List(c, models.PresentTasks(items), httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: total})
+	httpx.List(c, models.PresentTasks(items, access.Viewer(session)), httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: total})
 }
 
 // Get handles GET /api/tasks/{id}.
@@ -149,7 +149,7 @@ func (h *Tasks) Get(c *gin.Context) {
 		access.Deny(c, verdict)
 		return
 	}
-	httpx.OK(c, models.PresentTask(row))
+	httpx.OK(c, models.PresentTask(row, access.Viewer(session)))
 }
 
 // Create handles POST /api/tasks.
@@ -203,7 +203,7 @@ func (h *Tasks) Create(c *gin.Context) {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	httpx.Created(c, models.PresentTask(row))
+	httpx.Created(c, models.PresentTask(row, access.Viewer(session)))
 }
 
 // Update handles PATCH /api/tasks/{id}.
@@ -254,7 +254,7 @@ func (h *Tasks) Update(c *gin.Context) {
 		return
 	}
 	if len(patch) == 0 {
-		httpx.OK(c, models.PresentTask(existing))
+		httpx.OK(c, models.PresentTask(existing, access.Viewer(session)))
 		return
 	}
 	sql, args := db.Update(models.TaskTable, patch, `"id"`, id, models.TaskColumns)
@@ -271,7 +271,7 @@ func (h *Tasks) Update(c *gin.Context) {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	httpx.OK(c, models.PresentTask(row))
+	httpx.OK(c, models.PresentTask(row, access.Viewer(session)))
 }
 
 // Delete handles DELETE /api/tasks/{id}.
@@ -368,7 +368,7 @@ func (h *Tasks) ActionRemind(c *gin.Context) {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	httpx.OK(c, models.PresentTask(result))
+	httpx.OK(c, models.PresentTask(result, access.Viewer(session)))
 }
 
 // missing answers a row that did not come back: another tenant's as the rule answers a caller it refuses, a

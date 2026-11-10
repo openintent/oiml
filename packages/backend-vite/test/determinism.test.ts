@@ -59,6 +59,33 @@ describe("hono-trpc-vite backend", () => {
     expect(present).not.toMatch(/password_hash: row/);
   });
 
+  it("presents a row to a viewer where a field has a read rule, and tells the session its fields", async () => {
+    const project = await projectFor("blog");
+    const files = honoTrpcViteBackend.generate({
+      ir: project.ir,
+      revisions: project.lock.revisions,
+      config: project.config
+    });
+    const file = (name: string) => files.find(f => f.path === name)!.content;
+    const present = file("generated/present.ts");
+    expect(present).toContain('import { memberTenantIds, verdict, type Rule } from "./server/access";');
+    expect(present).toContain("export function presentArticle(row: schema.Article, viewer: Viewer): PublicArticle {");
+    for (const f of files.filter(f => /generated\/.*\.ts$/.test(f.path))) {
+      expect(f.content, f.path).not.toMatch(/present(Article|User)\(\w+(\.\w+)*\)/);
+      expect(f.content, f.path).not.toMatch(/\.map\(present(Article|User)\)/);
+    }
+    const posts = file("generated/server/resources/posts.ts");
+    expect(posts).toContain("return presentArticle(row, ctx.session);");
+    expect(posts).toContain('await emit("Article.created", presentArticle(row, SERVER));');
+    expect(posts).toContain("data: rows.map(row => presentListRow(row, ctx.session))");
+    const auth = file("generated/server/auth.ts");
+    expect(auth).toContain("return shownUser(ctx.session);");
+    expect(auth).toContain(
+      "{ user: shownUser(ctx.session), memberships: ctx.session.memberships, fields: visibleFields(ctx.session) }"
+    );
+    expect(file("generated/app/client.ts")).toContain("export function fieldsOf(session: Session | undefined)");
+  });
+
   it("installs and runs the project with the configured package manager", async () => {
     const project = await projectFor("todo");
     const withPm = (pm?: string) => ({

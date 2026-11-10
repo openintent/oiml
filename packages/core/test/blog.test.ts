@@ -31,7 +31,8 @@ describe("blog fixture", () => {
       "FEAT-11",
       "FEAT-12",
       "FEAT-13",
-      "FEAT-14"
+      "FEAT-14",
+      "FEAT-15"
     ]);
 
     for (const id of ids) {
@@ -42,7 +43,7 @@ describe("blog fixture", () => {
     expect(again.status).toBe("noop");
 
     const project = await loadProject(root);
-    expect(project.lock.revisions).toHaveLength(14);
+    expect(project.lock.revisions).toHaveLength(15);
     const ir = project.ir;
 
     const article = ir.entities.find(e => e.name === "Article")!;
@@ -62,7 +63,8 @@ describe("blog fixture", () => {
       "archived_at",
       "status",
       "approved_at",
-      "retired_at"
+      "retired_at",
+      "editor_note"
     ]);
     expect(article.foreignKeys[0]).toMatchObject({ column: "author_id", targetTable: "users", onDelete: "cascade" });
     expect(article.relations.map(r => r.name)).toEqual(["author", "comments"]);
@@ -95,13 +97,13 @@ describe("blog fixture", () => {
       }
     ]);
     expect(user.columns.find(c => c.name === "password_hash")).toMatchObject({ hidden: true, nullable: true });
-    expect(ir.auth?.registerFields).toEqual(["name"]);
+    expect(ir.auth?.registerFields).toEqual(["name", "phone"]);
 
     const posts = ir.resources.find(r => r.name === "posts")!;
     const create = posts.operations.find(o => o.kind === "create")!;
     expect(create).toMatchObject({
       ownerField: "author_id",
-      fields: ["title", "content", "published", "tags", "cover", "publish_at"]
+      fields: ["title", "content", "published", "tags", "cover", "publish_at", "editor_note"]
     });
     const list = posts.operations.find(o => o.kind === "list")!;
     expect(list).toMatchObject({ sortable: ["title", "posted_at", "comment_count"], search: ["title", "content"] });
@@ -122,7 +124,8 @@ describe("blog fixture", () => {
       "private drafts",
       "followers read bulletins",
       "comment counts and archived articles",
-      "editorial review"
+      "editorial review",
+      "contact details and editor notes"
     ]);
     expect(ir.examples.seed.map(s => s.op)).toEqual(["posts.create", "posts.create"]);
     expect(ir.actions.map(a => `${a.resource ?? "actions"}.${a.name}:${a.scope}`)).toEqual([

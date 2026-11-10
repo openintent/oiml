@@ -9,7 +9,7 @@ import { checkRule, denied, satisfied, type Rule } from "../access";
 import { handlers } from "../actions";
 import { getSession, type Session } from "../auth";
 import { created, handleError, noContent, notFound, ok, parseBody, parseId, parseQuery } from "../http";
-import { presentAnnouncement, presentUser } from "../present";
+import { presentAnnouncement, presentUser, type Viewer } from "../present";
 import { announcementsCreateInput, announcementsId, announcementsListQuery, announcementsPublishInput, announcementsUpdateInput } from "../validation";
 import { hooks } from "@/src/extensions/announcements";
 
@@ -28,13 +28,13 @@ const ACTION_RULES = {
 };
 
 type ListRow = schema.Announcement & { author: schema.User | null };
-function presentListRow(row: ListRow) {
-  return { ...presentAnnouncement(row), author: row.author ? presentUser(row.author) : null };
+function presentListRow(row: ListRow, viewer: Viewer) {
+  return { ...presentAnnouncement(row), author: row.author ? presentUser(row.author, viewer) : null };
 }
 
 type GetRow = schema.Announcement & { author: schema.User | null };
-function presentGetRow(row: GetRow) {
-  return { ...presentAnnouncement(row), author: row.author ? presentUser(row.author) : null };
+function presentGetRow(row: GetRow, viewer: Viewer) {
+  return { ...presentAnnouncement(row), author: row.author ? presentUser(row.author, viewer) : null };
 }
 
 export const announcements = {
@@ -61,7 +61,7 @@ export const announcements = {
         db.query.announcements.findMany({ where, with: { author: true }, orderBy: [desc(announcementsTable.created_at)], limit: page_size, offset: (page - 1) * page_size }),
         db.select({ total: count() }).from(announcementsTable).where(where)
       ]);
-      return ok(rows.map(presentListRow), { page: { page, page_size, total } });
+      return ok(rows.map(row => presentListRow(row, session)), { page: { page, page_size, total } });
     } catch (err) {
       return handleError(err, "read");
     }
@@ -78,7 +78,7 @@ export const announcements = {
       if (!row) return notFound();
       const rowVerdict = checkRule(RULES.read, session, row);
       if (!rowVerdict.ok) return notFound();
-      return ok(presentGetRow(row));
+      return ok(presentGetRow(row, session));
     } catch (err) {
       return handleError(err, "read");
     }

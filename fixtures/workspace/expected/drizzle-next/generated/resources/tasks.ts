@@ -10,7 +10,7 @@ import { handlers } from "../actions";
 import { getSession, type Session } from "../auth";
 import { scheduleTimers } from "../scheduling";
 import { created, handleError, noContent, notFound, ok, parseBody, parseId, parseQuery } from "../http";
-import { presentTask } from "../present";
+import { presentTask, type Viewer } from "../present";
 import { tasksCreateInput, tasksId, tasksListQuery, tasksRemindInput, tasksUpdateInput } from "../validation";
 import { hooks } from "@/src/extensions/tasks";
 
@@ -50,13 +50,13 @@ async function missing(id: unknown, rule: Rule, session: Session | null): Promis
 }
 
 type ListRow = schema.Task;
-function presentListRow(row: ListRow) {
-  return { ...presentTask(row) };
+function presentListRow(row: ListRow, viewer: Viewer) {
+  return { ...presentTask(row, viewer) };
 }
 
 type GetRow = schema.Task;
-function presentGetRow(row: GetRow) {
-  return { ...presentTask(row) };
+function presentGetRow(row: GetRow, viewer: Viewer) {
+  return { ...presentTask(row, viewer) };
 }
 
 export const tasks = {
@@ -86,7 +86,7 @@ export const tasks = {
       // One statement at a time: both run on the request's transaction
       const rows = await db.query.tasks.findMany({ where, orderBy: [asc(tasksTable.created_at)], limit: page_size, offset: (page - 1) * page_size });
       const [{ total }] = await db.select({ total: count() }).from(tasksTable).where(where);
-      return ok(rows.map(presentListRow), { page: { page, page_size, total } });
+      return ok(rows.map(row => presentListRow(row, session)), { page: { page, page_size, total } });
     } catch (err) {
       return handleError(err, "read");
     }
@@ -103,7 +103,7 @@ export const tasks = {
       if (!row) return missing(id.data, RULES.read, session);
       const rowVerdict = checkRule(RULES.read, session, await withRuleValues(row));
       if (!rowVerdict.ok) return denied(rowVerdict);
-      return ok(presentGetRow(row));
+      return ok(presentGetRow(row, session));
     } catch (err) {
       return handleError(err, "read");
     }
@@ -124,7 +124,7 @@ export const tasks = {
 
       await scheduleTimers("Task", row);
       await hooks.afterCreate(row, hookContext);
-      return created(presentTask(row));
+      return created(presentTask(row, session));
     } catch (err) {
       return handleError(err, "write");
     }
@@ -145,12 +145,12 @@ export const tasks = {
       if (!body.ok) return body.response;
       const hookContext: HookContext = { request, session };
       const patch = await hooks.beforeUpdate(existing, body.data, hookContext);
-      if (Object.keys(patch).length === 0) return ok(presentTask(existing));
+      if (Object.keys(patch).length === 0) return ok(presentTask(existing, session));
       const [row] = await db.update(tasksTable).set(patch).where(eq(tasksTable.id, id.data)).returning();
 
       await scheduleTimers("Task", row);
       await hooks.afterUpdate(row, hookContext);
-      return ok(presentTask(row));
+      return ok(presentTask(row, session));
     } catch (err) {
       return handleError(err, "write");
     }
@@ -194,7 +194,7 @@ export const tasks = {
       if (!body.ok) return body.response;
       const result = await handlers.tasks_remind({ input: body.data, row: current, session, db, now: new Date() });
 
-      return ok(presentTask(result));
+      return ok(presentTask(result, session));
     } catch (err) {
       return handleError(err, "write");
     }

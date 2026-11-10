@@ -248,6 +248,8 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
         const entity = entityOf(op.entity);
         if (!entity.fields[op.name]) fail(`field ${op.entity}.${op.name} does not exist`);
         if (entity.fields[op.name].primary) fail(`cannot remove primary key field ${op.name}`);
+        // The field's own read rule goes with it, whatever it names
+        delete entity.fields[op.name].read;
         forEachRule(model, (rule, from, where) => {
           mapRuleFields(model, from, rule, (e, f) => {
             if (e === op.entity && f === op.name)
@@ -596,6 +598,9 @@ function forEachRule(model: ModelType, fn: (rule: string, entity: string, where:
       if (name === TRANSITIONS_FIELD_KEY || typeof step === "string" || !step.rule) continue;
       step.rule = fn(step.rule, entityName, `rule of the transition ${name} of ${entityName}`);
     }
+    // A field's read rule names fields of its entity
+    for (const [fieldName, field] of Object.entries(entity.fields))
+      if (field.read) field.read = fn(field.read, entityName, `read rule of ${entityName}.${fieldName}`);
     if (!entity.rules) continue;
     for (const action of ["read", "create", "update", "delete"] as const) {
       const rule = entity.rules[action];

@@ -31,6 +31,15 @@ at the transition's `to` with its stamp set, or where it was). The tenant walk n
 every row action as the outsider and takes nothing but 401, 403 or 404, so a 409 from another tenant's row would be
 a finding. No walk drives a page: the board's drag was checked once with a browser outside the repository.
 
+Since round B5 (`field-visibility.md`) the leak walk does the part of its design that waited for `read:` on a
+field: every successful answer of every walk is held to the read rules of its rows' fields as it arrives, the rows
+an include put under a row too. The harness reads the row and the caller's memberships from the database, predicts
+with the evaluator the rule walk uses, and wants the key in the row exactly when the rule allows that caller on
+that row, so it reports a field that leaked and a field a presenter withheld from someone who may read it. It
+also compares what each actor's session is told of its fields (`fields` beside the user) with what the rules say.
+The second pass of the tenant walk, with the rule checks off, is held to the field rules like the first: the
+switch does not turn them off.
+
 Scenarios prove what a fixture's author thought to write. The hand-written applications surveyed for these notes
 learned that the properties worth proving are the ones nobody writes a test for per entity: every procedure records
 a permission or is on a reviewed open list; every id-taking procedure called by another tenant's owner returns or

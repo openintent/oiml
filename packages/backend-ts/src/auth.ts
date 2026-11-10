@@ -1,5 +1,14 @@
 import type { GeneratedFile, IR } from "@osl/core";
-import { fileSpecsLiteral, fillEnums, membershipType, membershipsLoader, zodForColumn } from "@osl/ts-common";
+import { hasFieldRules } from "@osl/core";
+import {
+  fileSpecsLiteral,
+  fillEnums,
+  membershipType,
+  membershipsLoader,
+  selfSessionSource,
+  takesViewer,
+  zodForColumn
+} from "@osl/ts-common";
 import { HEADER, entityByName, q, tableExport, typeName } from "./util.js";
 
 /** generated/auth.ts: sessions, passwords and the auth handlers. Without auth, a stub. */
@@ -37,6 +46,16 @@ export async function getSession(_request: Request): Promise<Session | null> {
     ...(membershipTable && !isolated ? [`${membershipTable} as ${membershipTable}Table`] : [])
   ];
   const fileSpecs = identity.columns.some(c => c.type.kind === "file");
+  // A field with a read rule on the identity: the caller's own row is presented to the caller, as any row is
+  const ruled = takesViewer(identity);
+  const shown = ruled ? `shownUser(await sessionOf(user))` : `present${T}(user)`;
+  const fields = hasFieldRules(ir);
+  const presentImports = [
+    ...(ruled ? ["SERVER"] : []),
+    `present${T}`,
+    `type Public${T}`,
+    ...(fields ? ["visibleFields"] : [])
+  ];
   const providerImports = [
     ...(magic ? ["issueMagicLink", "verifyMagicLink"] : []),
     ...(oauth ? ["APP_URL", "oauthCallback", "oauthStart"] : []),
@@ -50,7 +69,7 @@ import { z } from "zod";
 import { db${isolated ? ", withTenants" : ""} } from "./db/client";
 import { ${schemaImports.join(", ")} } from "./db/schema";
 import { created, error, handleError, noContent, ok, parseBody } from "./http";
-import { present${T}, type Public${T} } from "./present";
+import { ${presentImports.join(", ")} } from "./present";
 ${fileSpecs ? `import { resolveFileRefs } from "./files";\n` : ""}${providerImports.length ? `import { ${providerImports.sort().join(", ")} } from "./auth-providers";\n` : ""}
 export type Membership = { tenant: string | number; role: string };
 export type Session = { user: Public${T}; memberships: ${membershipType(ir)} };
@@ -117,9 +136,13 @@ function readCookie(request: Request): { uid: string | number } | null {
   }
 }
 
-/** The session of a user row: the public user and their memberships */
+${
+  ruled
+    ? selfSessionSource(ir, `typeof ${tableAlias}.$inferSelect`, membershipsLoader(ir, `user.${pk}`))
+    : `/** The session of a user row: the public user and their memberships */
 export async function sessionOf(user: typeof ${tableAlias}.$inferSelect): Promise<Session> {
   return { user: present${T}(user), memberships: ${membershipsLoader(ir, `user.${pk}`)} };
+}`
 }
 
 ${
@@ -192,7 +215,7 @@ export const auth = {${
         .insert(${tableAlias})
         .values({ ...${fileSpecs ? `(await resolveFileRefs(fields, ${fileSpecsLiteral(identity)} as const))` : "fields"}, ${auth.passwordColumn}: hashPassword(password) })
         .returning();
-      return withCookie(created(present${T}(user)), sessionCookie(user.${pk}));
+      return withCookie(created(${shown}), sessionCookie(user.${pk}));
     } catch (err) {
       return handleError(err, "write");
     }
@@ -206,7 +229,7 @@ export const auth = {${
       if (!user || !verifyPassword(body.data.password, user.${auth.passwordColumn})) {
         return error(401, "invalid_credentials", "Email or password is wrong");
       }
-      return withCookie(ok(present${T}(user)), sessionCookie(user.${pk}));
+      return withCookie(ok(${shown}), sessionCookie(user.${pk}));
     } catch (err) {
       return handleError(err, "read");
     }
@@ -233,7 +256,7 @@ export const auth = {${
       const body = await parseBody(magicLinkVerifyInput, request);
       if (!body.ok) return body.response;
       const user = await verifyMagicLink(body.data.token);
-      return withCookie(ok(present${T}(user)), sessionCookie(user.${pk}));
+      return withCookie(ok(${shown}), sessionCookie(user.${pk}));
     } catch (err) {
       return handleError(err, "write");
     }
@@ -274,7 +297,7 @@ export const auth = {${
     try {
       const session = await getSession(request);
       if (!session) return error(401, "unauthenticated", "Sign in to continue");
-      return ok(session.user);
+      return ok(${ruled ? "shownUser(session)" : "session.user"}${fields ? ", { fields: visibleFields(session) }" : ""});
     } catch (err) {
       return handleError(err, "read");
     }

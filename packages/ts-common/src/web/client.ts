@@ -4,7 +4,7 @@
  * the pages are the same code; only this module differs.
  */
 import type { ActionIR, EntityIR, IR, OperationIR, ResourceIR } from "@osl/core";
-import { actionsOf, globalActions } from "@osl/core";
+import { actionsOf, anonymousCouldRead, globalActions, hasFieldRules, ruledColumns } from "@osl/core";
 import { entityByName, q, typeName, type TsConventions } from "../conventions.js";
 import { actionInputName } from "../validation.js";
 
@@ -113,7 +113,7 @@ import { QueryClient } from "@tanstack/react-query";
 import { createTRPCClient, httpBatchLink } from "@trpc/client";
 import type { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "../server/router";
-
+${hasFieldRules(ir) ? `import type { VisibleFields } from "../present";\n` : ""}
 /** A request the server refused as asked: the same request would fail again, so it is not retried. */
 function isRefused(error: unknown): boolean {
   const status = (error as { data?: { httpStatus?: unknown } } | null)?.data?.httpStatus;
@@ -162,7 +162,35 @@ ${sessionHelpers(ir)}
 `;
 }
 
+/** `fieldsOf`: which fields with a read rule the viewer could read on some row, from the session or, for a visitor, from the rules */
+function fieldHelpers(ir: IR): string {
+  if (!hasFieldRules(ir)) return "";
+  const visitor = ir.resources
+    .map(r => ({ r, columns: ruledColumns(entityByName(ir, r.entity)) }))
+    .filter(x => x.columns.length)
+    .map(x => `  ${x.r.name}: { ${x.columns.map(c => `${c.name}: ${anonymousCouldRead(c.read!)}`).join(", ")} }`)
+    .join(",\n");
+  return `
+
+/** What a visitor could read of the fields with a read rule: nobody is signed in, so the rules alone answer */
+const VISITOR_FIELDS: VisibleFields = {
+${visitor}
+};
+
+/**
+ * Per resource, whether the viewer could read each field that has a read rule on some row. A page leaves out the
+ * column and the input of a field they could not; a row still leaves out what its own rule refuses.
+ */
+export function fieldsOf(session: Session | undefined): VisibleFields {
+  return (session as { fields?: VisibleFields } | null | undefined)?.fields ?? VISITOR_FIELDS;
+}`;
+}
+
 function sessionHelpers(ir: IR): string {
+  return sessionBase(ir) + fieldHelpers(ir);
+}
+
+function sessionBase(ir: IR): string {
   return ir.auth
     ? `export type Session = Outputs["auth"]["session"];
 export type SessionUser = Outputs["auth"]["me"];
@@ -283,7 +311,7 @@ export function restClientFile(ir: IR, conv: TsConventions): string {
   return `${conv.header("The typed client the pages call. Same call surface on every backend; this one speaks the REST contract.")}
 import { QueryClient } from "@tanstack/react-query";
 import type { z } from "zod";
-${ir.files ? `import type { FileRecord } from "../files";\n` : ""}import type { ${[...presentTypes].sort().join(", ")} } from "../present";
+${ir.files ? `import type { FileRecord } from "../files";\n` : ""}import type { ${[...presentTypes, ...(hasFieldRules(ir) ? ["VisibleFields"] : [])].sort().join(", ")} } from "../present";
 ${validationTypes.size ? `import type { ${[...validationTypes].sort().join(", ")} } from "../validation";` : ""}
 
 export class ApiError extends Error {
@@ -357,7 +385,7 @@ ${inputs.join(";\n")};
 
 export type Outputs = {
   auth: {
-    session: { user: ${U} } | null;
+    session: { user: ${U}${auth && hasFieldRules(ir) ? "; fields: VisibleFields" : ""} } | null;
     me: ${U};
     login: ${U};
     register: ${U};
@@ -389,7 +417,13 @@ export const client = {
   auth: {
     session: async (): Promise<Outputs["auth"]["session"]> => {
       try {
-        return { user: await call<Outputs["auth"]["me"]>("GET", "/api/auth/me") };
+${
+  auth && hasFieldRules(ir)
+    ? `        // The answer carries, beside the user, which fields with a read rule they could read
+        const me = await call<{ data: Outputs["auth"]["me"]; fields: VisibleFields }>("GET", "/api/auth/me", { whole: true });
+        return { user: me.data, fields: me.fields };`
+    : `        return { user: await call<Outputs["auth"]["me"]>("GET", "/api/auth/me") };`
+}
       } catch (error) {
         if (error instanceof ApiError && error.status === 401) return null;
         throw error;

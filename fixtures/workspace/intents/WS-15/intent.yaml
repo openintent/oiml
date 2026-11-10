@@ -1,0 +1,13 @@
+osl: "1.0"
+title: Budgets and estimates
+ask: >-
+  A project has a budget that only the admins of its team see: an ordinary member reads the project without it,
+  in the list too, and the projects table shows them no budget column. A team's number of pending requests is for
+  its admins as well. A task has an estimate in hours for people who are signed in: a visitor reading the tasks of
+  a public project does not get it.
+acceptance:
+  - A member reads a project and its budget is not in the answer, alone or in a list; an admin gets it
+  - A member who changes the budget is not told the budget back, and the admin then reads the new one
+  - The creator of a team reads its count of pending requests in the answer to creating it
+  - A member reads the team without the count of pending requests, which still follows the requests
+  - A visitor reads a public project's task without its estimate; someone signed in reads it with it

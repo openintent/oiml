@@ -140,7 +140,11 @@ func (a *Auth) MagicLinkVerify(c *gin.Context) {
 		return
 	}
 	signIn(c, user)
-	httpx.OK(c, models.PresentUser(user))
+	shown, ok := a.shown(c, user)
+	if !ok {
+		return
+	}
+	httpx.OK(c, shown)
 }
 
 // oauthProvider is one configured OAuth provider: GitHub's fixed endpoints, or an OpenID Connect issuer discovered at runtime.

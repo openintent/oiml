@@ -1,6 +1,7 @@
 import type { IR } from "@osl/core";
+import { hasFieldRules, ruledColumns } from "@osl/core";
 import { ISOLATION_DB_IMPORTS, isolationDbSource } from "./isolation.js";
-import { HEADER, entityByName, goFile, q, rowGoType, singlePrimaryKey } from "./util.js";
+import { HEADER, entityByName, goFile, q, rowGoType, ruleLiteral, singlePrimaryKey } from "./util.js";
 
 /** generated/httpx/httpx.go: responses, body parsing and database error mapping. Static. */
 export function httpxFile(modulePath: string, ir?: IR): string {
@@ -248,7 +249,135 @@ func memberOf(session *auth.Session, tenant any, role string) bool {
     : "";
   // Under isolation: database a test hook can switch the rule checks off, so a walk proves the policies alone hold
   const isolated = Boolean(tenancy?.isolation);
-  const off = isolated ? "\tif RulesDisabled() {\n\t\treturn nil\n\t}\n" : "";
+  // With a field rule in the model the checks themselves are judge and judgeRow, which the viewer calls: the hook never switches a field rule off
+  const fields = hasFieldRules(ir);
+  const split = isolated && fields;
+  const off = isolated && !split ? "\tif RulesDisabled() {\n\t\treturn nil\n\t}\n" : "";
+  const check = split ? "judge" : "Check";
+  const checkRow = split ? "judgeRow" : "CheckRow";
+  const checkHead = split
+    ? `// Check evaluates a rule before any row is loaded: 401 without a session, 403 for none and a wrong role.
+func Check(rule Rule, session *auth.Session) *Verdict {
+	if RulesDisabled() {
+		return nil
+	}
+	return judge(rule, session)
+}
+
+// judge is Check whatever the test hook says. A field's read rule is checked with it and with judgeRow: no
+// policy stands behind a field, so switching the rule checks off must not show one.
+func judge(rule Rule, session *auth.Session) *Verdict {`
+    : `// Check evaluates a rule before any row is loaded: 401 without a session, 403 for none and a wrong role.
+func Check(rule Rule, session *auth.Session) *Verdict {`;
+  const checkRowHead = split
+    ? `// CheckRow evaluates a rule against a loaded row (or the body of a create): row holds the values the
+// rule's fields name, the owner for owner rules, the tenant for member rules and the values conditions test.
+func CheckRow(rule Rule, session *auth.Session, row Row) *Verdict {
+	if RulesDisabled() {
+		return nil
+	}
+	return judgeRow(rule, session, row)
+}
+
+// judgeRow is CheckRow whatever the test hook says.
+func judgeRow(rule Rule, session *auth.Session, row Row) *Verdict {`
+    : `// CheckRow evaluates a rule against a loaded row (or the body of a create): row holds the values the
+// rule's fields name, the owner for owner rules, the tenant for member rules and the values conditions test.
+func CheckRow(rule Rule, session *auth.Session, row Row) *Verdict {`;
+  const ruled = ir.entities.flatMap(e => ruledColumns(e).map(c => ({ key: `${e.name}.${c.name}`, rule: c.read! })));
+  const keyWidth = Math.max(0, ...ruled.map(r => q(r.key).length + 1));
+  const visible = ir.resources
+    .map(r => ({ name: r.name, entity: entityByName(ir, r.entity) }))
+    .filter(r => ruledColumns(r.entity).length > 0);
+  const resourceWidth = Math.max(0, ...visible.map(r => q(r.name).length + 1));
+  const viewerSection = fields
+    ? `
+
+// fieldRules are the read rules of fields, by "Entity.field". Each reads the row and the caller, nothing else.
+var fieldRules = map[string]Rule{
+${ruled
+  .map(
+    r =>
+      `\t${`${q(r.key)}:`.padEnd(keyWidth)} ${ruleLiteral(r.rule)
+        .replace(/access\./g, "")
+        .replace(/^Rule/, "")},`
+  )
+  .join("\n")}
+}
+
+type viewer struct {
+	session *auth.Session
+}
+
+// Viewer presents rows to the caller of a session (nil without one): a field with a read rule is in a row's
+// public shape only when the rule allows this caller on that row.
+func Viewer(session *auth.Session) models.Viewer {
+	return viewer{session: session}
+}
+
+func (v viewer) Reads(field string, row map[string]any) bool {
+	rule, ok := fieldRules[field]
+	return ok && ${checkRow}(rule, v.session, Row(row)) == nil
+}
+${
+  tenancy
+    ? `
+// CreatorViewer presents a new tenant to its creator, who is a member of it from the same request: the session
+// was read before the membership existed.
+func CreatorViewer(session *auth.Session, tenant ${tenantType}, role string) models.Viewer {
+	if session == nil {
+		return viewer{}
+	}
+	joined := *session
+	joined.Memberships = append(append([]auth.Membership{}, session.Memberships...), auth.Membership{Tenant: tenant, Role: role})
+	return viewer{session: &joined}
+}
+`
+    : ""
+}
+// could reports whether the session could read a field under this rule on some row: what the rule says before
+// any row is there, and for a member predicate whether a membership of that rank is held at all.
+func could(rule Rule, session *auth.Session) bool {
+	switch rule.Kind {
+	case "all":
+		for _, part := range rule.All {
+			if !could(part, session) {
+				return false
+			}
+		}
+		return true
+	case "any":
+		for _, alternative := range rule.Any {
+			if could(alternative, session) {
+				return true
+			}
+		}
+		return false${
+      tenancy
+        ? `
+	case "member":
+		return len(MemberTenantIDs(session, rule.Role)) > 0`
+        : ""
+    }
+	}
+	return ${check}(rule, session) == nil
+}
+
+// VisibleFields is what a session is told beside its user: per resource, whether it could read each field that
+// has a read rule on some row. A row still leaves out what its own rule refuses.
+func VisibleFields(session *auth.Session) map[string]map[string]bool {
+	return map[string]map[string]bool{
+${visible
+  .map(
+    r =>
+      `\t\t${`${q(r.name)}:`.padEnd(resourceWidth)} {${ruledColumns(r.entity)
+        .map(c => `${q(c.name)}: could(fieldRules[${q(`${r.entity.name}.${c.name}`)}], session)`)
+        .join(", ")}},`
+  )
+  .join("\n")}
+	}
+}`
+    : "";
   const offSatisfied = isolated ? "\tif RulesDisabled() {\n\t\treturn true\n\t}\n" : "";
   const isolationSection = isolated
     ? `
@@ -309,7 +438,8 @@ func Unreachable(rule Rule, session *auth.Session) *Verdict {
       ...(isolated ? ["os", "sync/atomic"] : []),
       "github.com/gin-gonic/gin",
       `${modulePath}/generated/auth`,
-      `${modulePath}/generated/httpx`
+      `${modulePath}/generated/httpx`,
+      ...(fields ? [`${modulePath}/generated/models`] : [])
     ],
     `// Rule is an access rule from the model: public, authenticated, none, owner (Field), role (Value),
 // member (Field names the row's tenant column, Role the least privileged role allowed, or ""), all (All
@@ -379,8 +509,7 @@ type Verdict struct {
 	Status int
 }
 
-// Check evaluates a rule before any row is loaded: 401 without a session, 403 for none and a wrong role.
-func Check(rule Rule, session *auth.Session) *Verdict {
+${checkHead}
 ${off}	switch rule.Kind {
 	case "public":
 		return nil
@@ -400,23 +529,21 @@ ${off}	switch rule.Kind {
 		}
 		return nil${memberCheck}
 	case "all":
-		return allOf(rule.All, func(part Rule) *Verdict { return Check(part, session) })
+		return allOf(rule.All, func(part Rule) *Verdict { return ${check}(part, session) })
 	case "any":
-		return anyOf(rule.Any, func(alternative Rule) *Verdict { return Check(alternative, session) })
+		return anyOf(rule.Any, func(alternative Rule) *Verdict { return ${check}(alternative, session) })
 	}
 	return &Verdict{Status: http.StatusForbidden}
 }
 
-// CheckRow evaluates a rule against a loaded row (or the body of a create): row holds the values the
-// rule's fields name, the owner for owner rules, the tenant for member rules and the values conditions test.
-func CheckRow(rule Rule, session *auth.Session, row Row) *Verdict {
+${checkRowHead}
 ${off}	if rule.Kind == "all" {
-		return allOf(rule.All, func(part Rule) *Verdict { return CheckRow(part, session, row) })
+		return allOf(rule.All, func(part Rule) *Verdict { return ${checkRow}(part, session, row) })
 	}
 	if rule.Kind == "any" {
-		return anyOf(rule.Any, func(alternative Rule) *Verdict { return CheckRow(alternative, session, row) })
+		return anyOf(rule.Any, func(alternative Rule) *Verdict { return ${checkRow}(alternative, session, row) })
 	}
-	if verdict := Check(rule, session); verdict != nil {
+	if verdict := ${check}(rule, session); verdict != nil {
 		return verdict
 	}
 	if rule.Kind == "owner" && !same(row[rule.Field], session.UserID()) {
@@ -510,7 +637,7 @@ func deref(value any) any {
 		return v.Elem().Interface()
 	}
 	return value
-}${memberSection}${isolationSection}
+}${memberSection}${isolationSection}${viewerSection}
 `
   );
 }
