@@ -31,13 +31,14 @@ func NewMilestones(db *db.Scope, a *auth.Auth) *Milestones {
 	return &Milestones{db: db, auth: a}
 }
 
-// Routes registers every operation of the resource.
+// Routes registers every operation of the resource and its actions.
 func (h *Milestones) Routes(r gin.IRouter) {
 	r.GET("/api/milestones", h.List)
 	r.GET("/api/milestones/:id", h.Get)
 	r.POST("/api/milestones", h.Create)
 	r.PATCH("/api/milestones/:id", h.Update)
 	r.DELETE("/api/milestones/:id", h.Delete)
+	r.POST("/api/milestones/:id/move", h.ActionMove)
 }
 
 var milestonesReadRule = access.Rule{Kind: "member", Field: "project_id.team_id"}
@@ -47,6 +48,20 @@ var milestonesCreateRule = access.Rule{Kind: "member", Field: "project_id.team_i
 var milestonesUpdateRule = access.Rule{Kind: "member", Field: "project_id.team_id"}
 
 var milestonesDeleteRule = access.Rule{Kind: "member", Field: "project_id.team_id", Role: "admin"}
+
+var milestonesMoveActionRule = access.Rule{Kind: "member", Field: "project_id.team_id"}
+
+// milestonesListRow is a list item with its includes.
+type milestonesListRow struct {
+	models.PublicMilestone
+	Labels []models.PublicLabel `json:"labels"`
+}
+
+// milestonesGetRow is a single row with its includes.
+type milestonesGetRow struct {
+	models.PublicMilestone
+	Labels []models.PublicLabel `json:"labels"`
+}
 
 // List handles GET /api/milestones.
 func (h *Milestones) List(c *gin.Context) {
@@ -75,7 +90,7 @@ func (h *Milestones) List(c *gin.Context) {
 	if !access.RulesDisabled() {
 		tenants := access.MemberTenantIDs(session, "")
 		if len(tenants) == 0 {
-			httpx.List(c, models.PresentMilestones(nil), httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: 0})
+			httpx.List(c, []milestonesListRow{}, httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: 0})
 			return
 		}
 		where.Raw(`"project_id" IN (SELECT "id" FROM ` + models.ProjectTable + ` WHERE "team_id" = ANY(` + where.Param(tenants) + `))`)
@@ -97,7 +112,16 @@ func (h *Milestones) List(c *gin.Context) {
 		httpx.HandleError(c, err, "read")
 		return
 	}
-	httpx.List(c, models.PresentMilestones(items), httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: total})
+	labelsRows, err := h.loadLabels(ctx, items)
+	if err != nil {
+		httpx.HandleError(c, err, "read")
+		return
+	}
+	data := make([]milestonesListRow, 0, len(items))
+	for _, item := range items {
+		data = append(data, milestonesListRow{PublicMilestone: models.PresentMilestone(item), Labels: models.PresentLabels(labelsRows[item.ID])})
+	}
+	httpx.List(c, data, httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: total})
 }
 
 // Get handles GET /api/milestones/{id}.
@@ -131,7 +155,13 @@ func (h *Milestones) Get(c *gin.Context) {
 		httpx.Fail(c, httpx.NotFound())
 		return
 	}
-	httpx.OK(c, models.PresentMilestone(row))
+	items := []*models.Milestone{row}
+	labelsRows, err := h.loadLabels(ctx, items)
+	if err != nil {
+		httpx.HandleError(c, err, "read")
+		return
+	}
+	httpx.OK(c, milestonesGetRow{PublicMilestone: models.PresentMilestone(row), Labels: models.PresentLabels(labelsRows[row.ID])})
 }
 
 // Create handles POST /api/milestones.
@@ -292,7 +322,7 @@ func (h *Milestones) Delete(c *gin.Context) {
 		httpx.HandleError(c, err, "delete")
 		return
 	}
-	if _, err := h.db.Exec(ctx, `DELETE FROM `+models.MilestoneTable+` WHERE "id" = $1`, id); err != nil {
+	if _, err := h.db.Exec(ctx, `SELECT "osl_remove_milestones"($1)`, id); err != nil {
 		httpx.HandleError(c, err, "delete")
 		return
 	}
@@ -301,6 +331,70 @@ func (h *Milestones) Delete(c *gin.Context) {
 		return
 	}
 	httpx.NoContent(c)
+}
+
+// ActionMove handles POST /api/milestones/{id}/move: the move action.
+func (h *Milestones) ActionMove(c *gin.Context) {
+	ctx := c.Request.Context()
+	session, err := h.auth.Session(c)
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if verdict := access.Check(milestonesMoveActionRule, session); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	id, ok := validation.MilestonesID(c.Param("id"))
+	if !ok {
+		httpx.Fail(c, httpx.NotFound())
+		return
+	}
+	row, err := models.ScanMilestone(h.db.QueryRow(ctx, `SELECT `+models.MilestoneColumns+` FROM `+models.MilestoneTable+` WHERE "id" = $1`, id))
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	ruleRow, err := h.ruleRow(ctx, access.Row{"project_id": row.ProjectID})
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if access.CheckRow(milestonesReadRule, session, ruleRow) != nil {
+		httpx.Fail(c, httpx.NotFound())
+		return
+	}
+	if verdict := access.CheckRow(milestonesMoveActionRule, session, ruleRow); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	body, perr := httpx.ParseBody(c)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	values, perr := validation.MilestonesMoveInput.Parse(body)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	to, _ := values["to"].(int)
+	var place *int
+	if err := h.db.QueryRow(ctx, `SELECT "osl_move_milestones"($1, $2)`, id, to).Scan(&place); err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if place == nil {
+		httpx.Fail(c, httpx.NotFound())
+		return
+	}
+	result, err := models.ScanMilestone(h.db.QueryRow(ctx, `SELECT `+models.MilestoneColumns+` FROM `+models.MilestoneTable+` WHERE "id" = $1`, id))
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	_ = row
+	httpx.OK(c, models.PresentMilestone(result))
 }
 
 // ruleRow adds to row the values the rules reach through relations, under their dotted keys.
@@ -313,4 +407,60 @@ func (h *Milestones) ruleRow(ctx context.Context, row access.Row) (access.Row, e
 		row["project_id.team_id"] = v0
 	}
 	return row, nil
+}
+
+// loadLabels fetches the labels of each Milestone: the Label rows MilestoneLabel links it to, by name.
+func (h *Milestones) loadLabels(ctx context.Context, items []*models.Milestone) (map[string][]*models.Label, error) {
+	keys := make([]string, 0, len(items))
+	for _, item := range items {
+		keys = append(keys, item.ID)
+	}
+	out := make(map[string][]*models.Label, len(keys))
+	if len(keys) == 0 {
+		return out, nil
+	}
+	links, err := h.db.Query(ctx, `SELECT j."milestone_id", j."label_id" FROM "milestone_labels" AS j JOIN "labels" AS f ON f."id" = j."label_id" WHERE j."milestone_id" = ANY($1) ORDER BY f."name", f."id"`, keys)
+	if err != nil {
+		return nil, err
+	}
+	type link struct {
+		from string
+		to   string
+	}
+	var pairs []link
+	farKeys := make([]string, 0)
+	for links.Next() {
+		var l link
+		if err := links.Scan(&l.from, &l.to); err != nil {
+			links.Close()
+			return nil, err
+		}
+		pairs = append(pairs, l)
+		farKeys = append(farKeys, l.to)
+	}
+	links.Close()
+	if err := links.Err(); err != nil {
+		return nil, err
+	}
+	if len(pairs) == 0 {
+		return out, nil
+	}
+	rows, err := h.db.Query(ctx, `SELECT `+models.LabelColumns+` FROM `+models.LabelTable+` WHERE "id" = ANY($1)`, farKeys)
+	if err != nil {
+		return nil, err
+	}
+	related, err := models.Collect(rows, models.ScanLabel)
+	if err != nil {
+		return nil, err
+	}
+	far := make(map[string]*models.Label, len(related))
+	for _, row := range related {
+		far[row.ID] = row
+	}
+	for _, l := range pairs {
+		if row, ok := far[l.to]; ok {
+			out[l.from] = append(out[l.from], row)
+		}
+	}
+	return out, nil
 }

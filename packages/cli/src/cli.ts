@@ -22,6 +22,7 @@ import {
   provisionAppLogin,
   runMigrations,
   toYaml,
+  userActions,
   validateModel,
   writeDiff,
   type GeneratedFile
@@ -224,7 +225,7 @@ program
     const root = projectRoot();
     const project = await loadProject(root);
     const backend = backendNamed(project.config.backend);
-    if (project.ir.actions.length === 0) {
+    if (userActions(project.ir).length === 0) {
       info("the model declares no actions, so there is nothing to implement");
       return;
     }

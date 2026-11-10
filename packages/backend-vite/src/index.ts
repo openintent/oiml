@@ -1,5 +1,5 @@
 import type { Backend, GeneratedFile, GenerateInput } from "@osl/core";
-import { globalActions, migrationFiles } from "@osl/core";
+import { globalActions, migrationFiles, userActions } from "@osl/core";
 import {
   JOBS_DEPENDENCIES,
   STORAGE_DEPENDENCIES,
@@ -102,7 +102,7 @@ export function generate(input: GenerateInput): GeneratedFile[] {
     files.push({ path: `${gen}/email.ts`, content: emailFile(VITE_SERVER) });
     files.push({ path: `${gen}/auth-providers.ts`, content: authProvidersFile(ir, VITE_SERVER) });
   }
-  if (ir.actions.length) {
+  if (userActions(ir).length) {
     files.push({ path: `${gen}/actions.ts`, content: actionsFile(ir, VITE_SERVER) });
     files.push(...actionScaffolds(ir, VITE_SERVER));
   }

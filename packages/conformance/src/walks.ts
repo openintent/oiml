@@ -32,7 +32,7 @@ import { callLabel, makeClient, WalkTimeout, type HarnessClient, type Reply } fr
 import { badIds, invalidProbes, Rng, validBody, validValue, wrongValue, type BodyContext } from "./bodies.js";
 import { createOp, precheck, Resolver, rowOp, same, verdict, type Expect, type Row, type Session } from "./rules.js";
 
-export const WALKS = ["rule", "tenant", "leak", "fuzz", "contract"] as const;
+export const WALKS = ["rule", "tenant", "order", "leak", "fuzz", "contract"] as const;
 export type WalkName = (typeof WALKS)[number];
 
 export interface WalkContext {
@@ -143,14 +143,15 @@ export async function runWalks(ctx: WalkContext, which: ReadonlySet<string> = ne
       calls: 0,
       predicted: new Map()
     };
-    const needsWalks = which.has("rule") || which.has("tenant") || which.has("fuzz") || which.has("leak");
+    const needsWalks =
+      which.has("rule") || which.has("tenant") || which.has("order") || which.has("fuzz") || which.has("leak");
     if (needsWalks) {
       state.actors = await signIn(ctx, listen, resolver, state.notes);
       state.callers = [...state.actors, anonymous];
     }
     const ruleFindings: string[] = [];
     const ruleStarted = Date.now();
-    if (which.has("rule") || which.has("tenant") || which.has("fuzz")) {
+    if (which.has("rule") || which.has("tenant") || which.has("order") || which.has("fuzz")) {
       // The rule walk's first phase makes the rows every other walk uses, so it runs even when only they were asked
       await createRows(ctx, state, resolver, roles, bodies, which.has("rule") ? ruleFindings : []);
     }
@@ -162,6 +163,10 @@ export async function runWalks(ctx: WalkContext, which: ReadonlySet<string> = ne
     if (which.has("fuzz")) {
       const findings: string[] = [];
       await timed("fuzz", () => fuzzWalk(ctx, state, resolver, bodies, findings), findings);
+    }
+    if (which.has("order")) {
+      const findings: string[] = [];
+      await timed("order", () => orderWalk(ctx, state, db, bodies, findings), findings);
     }
     if (which.has("rule")) {
       await deleteWalk(ctx, state, resolver, roles, ruleFindings);
@@ -611,6 +616,143 @@ async function deleteWalk(
   }
 }
 
+/** How many calls the order walk makes at once in each of its bursts */
+const ORDER_BURST = 8;
+
+/**
+ * The order walk: on every ordered entity, bursts of concurrent calls into one parent (creates, then moves, then
+ * creates, moves and deletes together), each burst followed by what the database holds. No call may fail (a
+ * create may meet a unique pair, 409), no two rows of the parent may share a place, the places are 1..n when the
+ * burst is over, and the list comes back in that order.
+ */
+async function orderWalk(
+  ctx: WalkContext,
+  state: State,
+  db: pg.Client,
+  bodies: BodyContext,
+  findings: string[]
+): Promise<string> {
+  const { ir } = ctx;
+  const ordered = state.walkable.filter(w => w.entity.order);
+  if (ordered.length === 0) return "no ordered collection: nothing to walk";
+  const notes: string[] = [];
+  let calls = 0;
+  for (const { entity, resource } of ordered) {
+    const order = entity.order!;
+    const pk = entity.primaryKey[0];
+    const create = resource.operations.find((o): o is Extract<OperationIR, { kind: "create" }> => o.kind === "create");
+    const del = resource.operations.find(o => o.kind === "delete" && o.rule.kind !== "none");
+    const list = resource.operations.find((o): o is Extract<OperationIR, { kind: "list" }> => o.kind === "list");
+    const move = ir.actions.find(a => a.resource === resource.name && a.builtin === "move" && a.rule.kind !== "none");
+    const seed = (state.rows.get(entity.name) ?? []).find(r => r.creator?.session);
+    if (!create || create.rule.kind === "none" || !seed) {
+      notes.push(`${entity.name} not walked (${create ? "no row a caller made" : "no create operation"})`);
+      continue;
+    }
+    const caller = seed.creator!;
+    const parentOf = async (id: unknown) =>
+      (await db.query(`select "${order.within}" as parent from "${entity.table}" where "${pk}" = $1`, [id])).rows[0]
+        ?.parent as unknown;
+    const parent = await parentOf(seed.id);
+    if (parent === undefined) {
+      notes.push(`${entity.name} not walked (its row is gone)`);
+      continue;
+    }
+    const places = async (): Promise<{ id: unknown; place: number }[]> =>
+      (
+        await db.query(
+          `select "${pk}" as id, "${order.column}" as place from "${entity.table}" where "${order.within}" = $1 order by "${order.column}", "${pk}"`,
+          [parent]
+        )
+      ).rows as { id: unknown; place: number }[];
+    /** What the database holds after a burst: every place once, 1..n; and the list in that order */
+    const settled = async (after: string): Promise<{ id: unknown; place: number }[]> => {
+      const rows = await places();
+      const seen = rows.map(r => r.place);
+      const want = rows.map((_, i) => i + 1);
+      if (seen.join(",") !== want.join(","))
+        findings.push(
+          `${resource.name} after ${after}: the places of one ${order.within} are ${seen.join(",")}, not 1..${rows.length}`
+        );
+      // The list is compared when it lists in the entity's own order: a resource may declare another
+      const inOrder = list?.order.find(([column]) => column !== order.within)?.[0] === order.column;
+      if (list && inOrder && list.filters.includes(order.within) && rows.length <= 200) {
+        const reply = await caller.client.resource({
+          resource,
+          op: list,
+          query: { [order.within]: String(parent), page_size: "200" }
+        });
+        calls++;
+        const data = (reply.body as { data?: Row[] } | null)?.data;
+        if (reply.status !== 200 || !Array.isArray(data))
+          findings.push(`${resource.name}.list after ${after}: answered ${reply.status}${message(reply)}`);
+        else if (
+          data.length === rows.length &&
+          data.map(r => String(r[pk])).join(",") !== rows.map(r => String(r.id)).join(",")
+        )
+          findings.push(`${resource.name}.list after ${after}: the rows do not come in the order of ${order.column}`);
+      }
+      return rows;
+    };
+    const body = () => ({ ...buildCreateBody(ir, entity, create, caller, state, bodies).body, [order.within]: parent });
+    const creates = (n: number) =>
+      Array.from({ length: n }, async () => {
+        const reply = await caller.client.resource({ resource, op: create, body: body() });
+        calls++;
+        if (!success(reply.status) && reply.status !== 409)
+          findings.push(
+            `${resource.name}.create as ${caller.name}, ${n} at once: answered ${reply.status}${message(reply)}`
+          );
+        return reply;
+      });
+    const moves = (rows: { id: unknown }[], n: number) =>
+      move
+        ? rows.map(async row => {
+            const to = 1 + bodies.rng.int(Math.max(n, 1));
+            const reply = await caller.client.action({ action: move, id: row.id, body: { to } });
+            calls++;
+            if (!success(reply.status))
+              findings.push(
+                `${resource.name}.move to ${to} as ${caller.name}, ${rows.length} at once: answered ${reply.status}${message(reply)}`
+              );
+            return reply;
+          })
+        : [];
+
+    const made = (await Promise.all(creates(ORDER_BURST)))
+      .filter(reply => success(reply.status))
+      .map(reply => String(idOf(reply.body, pk)));
+    let rows = await settled(`${ORDER_BURST} creates at once`);
+    await Promise.all(moves(rows.slice(0, ORDER_BURST), rows.length));
+    const moved = await settled(`${Math.min(rows.length, ORDER_BURST)} moves at once`);
+    if (moved.length !== rows.length || moved.some(r => !rows.some(o => String(o.id) === String(r.id))))
+      findings.push(`${resource.name} after moves at once: the rows of the parent changed`);
+    rows = moved;
+    // Together: new rows arrive while some leave and others move. The rows that leave and the rows that move are
+    // different ones, so that every call has one right answer
+    // Only rows this walk made leave: the rule walk still has its own to delete
+    const leaving = del ? rows.filter(r => made.includes(String(r.id))).slice(0, ORDER_BURST / 2) : [];
+    const staying = rows.filter(r => !leaving.includes(r)).slice(0, ORDER_BURST / 2);
+    await Promise.all([
+      ...creates(ORDER_BURST / 2),
+      ...moves(staying, rows.length),
+      ...leaving.map(async row => {
+        const reply = await caller.client.resource({ resource, op: del!, id: row.id });
+        calls++;
+        if (!success(reply.status))
+          findings.push(
+            `${resource.name}.delete as ${caller.name}, among creates and moves: answered ${reply.status}${message(reply)}`
+          );
+      })
+    ]);
+    const mixed = await settled("creates, moves and deletes at once");
+    if (mixed.some(r => leaving.some(l => String(l.id) === String(r.id))))
+      findings.push(`${resource.name} after deletes at once: a deleted row is still there`);
+    notes.push(`${entity.name}: ${mixed.length} rows in one ${order.within} in order`);
+  }
+  return `${calls} calls in bursts of ${ORDER_BURST} over ${ordered.length} ordered ${ordered.length === 1 ? "entity" : "entities"} (${notes.join("; ")})`;
+}
+
 /** With tenancy: the chain of required relations from an entity to the tenant, or null when it never reaches it */
 function tenantChain(ir: IR, entity: EntityIR, seen = new Set<string>()): ForeignKeyIR[] | null {
   const tenancy = ir.auth!.tenancy!;
@@ -1055,6 +1197,8 @@ function describeStep(step: MigrationStep): string {
       return `${step.table}.${step.column} becomes NOT NULL`;
     case "backfill_tenant":
       return `${step.table}.${step.column} is filled from ${step.parent}`;
+    case "backfill_position":
+      return `${step.table}.${step.column} is numbered within ${step.within}`;
     default:
       return step.kind;
   }

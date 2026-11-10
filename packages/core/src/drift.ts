@@ -6,6 +6,7 @@
  */
 import type { ColumnIR, IR } from "./ir.js";
 import { canonicalExpression, isolationObjects } from "./isolation.js";
+import { orderObjects } from "./order.js";
 import { physicalColumns } from "./migrations.js";
 import { withClient } from "./migrator.js";
 
@@ -72,7 +73,8 @@ export interface LiveIsolation {
  */
 export function isolationDrift(ir: IR, live: LiveIsolation): DriftItem[] {
   const items: DriftItem[] = [];
-  const objects = isolationObjects(ir);
+  // The functions and triggers of the ordered collections are compared with the isolation layer's
+  const objects = [...isolationObjects(ir), ...orderObjects(ir)];
   const modelTables = new Set(ir.entities.map(e => e.table));
   const expectedSecured = new Set(objects.filter(o => o.kind === "rls").map(o => o.table!));
   for (const table of expectedSecured)

@@ -6,6 +6,7 @@ import type { Renames } from "./diff.js";
 import { slugify } from "./naming.js";
 import type { ColumnIR, EntityIR, IR, TenantKeyIR, TypeIR } from "./ir.js";
 import { isolationObjects } from "./isolation.js";
+import { backfillPositions, orderObjects } from "./order.js";
 
 export type MigrationStep =
   | { kind: "create_enum"; name: string; values: string[] }
@@ -37,7 +38,9 @@ export type MigrationStep =
     }
   /** A composite key: (tenant, relation) to the parent's (tenant, key) */
   | { kind: "add_tenant_key"; table: string; key: TenantKeyIR }
-  /** Statements of the isolation layer (roles and grants, functions, triggers, row security, policies), made or dropped whole */
+  /** Number the rows a table already has, parent by parent, when it gains a position field */
+  | { kind: "backfill_position"; table: string; column: string; within: string; statement: string }
+  /** Statements of the isolation layer (roles and grants, functions, triggers, row security, policies) and of the ordered collections (the constraint, functions and triggers), made or dropped whole */
   | { kind: "sql"; about: string; statements: string[] };
 
 export interface MigrationPlan {
@@ -49,7 +52,8 @@ export interface MigrationPlan {
 
 /** Whether a step rewrites its table rather than adding to it */
 export function isRewrite(step: MigrationStep, next: IR): boolean {
-  if (step.kind === "alter_column_type" || step.kind === "backfill_tenant") return true;
+  if (step.kind === "alter_column_type" || step.kind === "backfill_tenant" || step.kind === "backfill_position")
+    return true;
   if (step.kind === "set_not_null" && step.notNull) {
     const entity = next.entities.find(e => e.table === step.table);
     // A derived tenant column is filled by the backfill step before it; that step is the rewrite
@@ -88,6 +92,7 @@ export function planMigration(prev: IR | null, next: IR, renames: Renames = EMPT
   const backfills: MigrationStep[] = []; // derived tenant columns of tables that have rows
   const dropsKeys: MigrationStep[] = []; // composite tenant keys, before the uniques they point at
   const addsKeys: MigrationStep[] = []; // composite tenant keys, after the uniques they point at
+  const positionFills: MigrationStep[] = []; // positions of tables that have rows
 
   const prevEntities = prev?.entities ?? [];
   const prevEnums = prev?.enums ?? [];
@@ -171,6 +176,21 @@ export function planMigration(prev: IR | null, next: IR, renames: Renames = EMPT
     for (const prevColumn of physicalColumns(prevEntity)) {
       if (!matchedPrevColumns.has(prevColumn.name))
         dropsColumns.push({ kind: "drop_column", table, column: prevColumn.name });
+    }
+
+    // A table that has rows and gains an order (or is ordered within another parent now): its rows are numbered
+    // before the unique constraint arrives
+    if (entity.order) {
+      const prevOrder = prevEntity.order;
+      const sameParent = prevOrder && oldFieldOf(entity.name, entity.order.within) === prevOrder.within;
+      if (!sameParent)
+        positionFills.push({
+          kind: "backfill_position",
+          table,
+          column: entity.order.column,
+          within: entity.order.within,
+          statement: backfillPositions(entity)
+        });
     }
 
     // Foreign keys by column: drop changed or removed, add new or changed
@@ -257,8 +277,8 @@ export function planMigration(prev: IR | null, next: IR, renames: Renames = EMPT
 
   // The isolation layer: what is gone or defined differently is dropped before anything is renamed or removed,
   // and what is new or defined differently is made once the tables are in their final shape
-  const before = prev ? isolationObjects(prev) : [];
-  const after = isolationObjects(next);
+  const before = prev ? [...isolationObjects(prev), ...orderObjects(prev)] : [];
+  const after = [...isolationObjects(next), ...orderObjects(next)];
   const beforeByKey = new Map(before.map(o => [o.key, o]));
   const afterByKey = new Map(after.map(o => [o.key, o]));
   const remade = new Set<string>();
@@ -294,6 +314,7 @@ export function planMigration(prev: IR | null, next: IR, renames: Renames = EMPT
     ...tables,
     ...alters,
     ...ordered,
+    ...positionFills,
     ...dropsKeys,
     ...dropsConstraints,
     ...dropsColumns,
@@ -473,6 +494,9 @@ export function renderPostgres(plan: MigrationPlan): string {
         out.push(
           `UPDATE ${quoteIdent(step.table)} AS child SET ${quoteIdent(step.column)} = parent.${quoteIdent(step.parentColumn)} FROM ${quoteIdent(step.parent)} AS parent WHERE parent.${quoteIdent(step.parentKey)} = child.${quoteIdent(step.through)};`
         );
+        break;
+      case "backfill_position":
+        out.push(step.statement);
         break;
       case "add_tenant_key": {
         const key = step.key;

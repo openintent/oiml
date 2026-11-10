@@ -63,6 +63,17 @@ const COERCE: Record<string, Record<string, "int" | "number" | "boolean" | "stri
     "page": "int",
     "page_size": "int",
     "channel_id": "string"
+  },
+  "labels.list": {
+    "page": "int",
+    "page_size": "int",
+    "team_id": "string"
+  },
+  "milestone_labels.list": {
+    "page": "int",
+    "page_size": "int",
+    "milestone_id": "string",
+    "label_id": "string"
   }
 };
 

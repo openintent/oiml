@@ -1,0 +1,12 @@
+osl: "1.0"
+title: Accounts and the catalog
+ask: >-
+  People register with an email and a password and have a name. A signed-in person creates artists, which are
+  theirs. An artist's owner adds albums to it and tracks to an album; a track has a title and a length in seconds.
+  The tracks of an album are in order: a new track goes last, the owner can move a track to another place, and
+  removing one closes the gap. Everyone can read the catalog; only the artist's owner changes it.
+acceptance:
+  - Three tracks added to an album are numbered 1, 2 and 3, and the list of the album's tracks follows that order
+  - Moving the third track first renumbers the other two; a place beyond the end means last
+  - Deleting a track renumbers the ones after it
+  - Someone who does not own the artist cannot add, move or delete its tracks, and a client cannot set the number

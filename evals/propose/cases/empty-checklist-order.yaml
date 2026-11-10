@@ -1,0 +1,25 @@
+id: empty-checklist-order
+tags: [entity, rules, relation, ordering, auth, scenario]
+base: { empty: checklists }
+intent:
+  title: Checklists with steps in order
+  ask: >-
+    People sign up and make checklists that are theirs. A checklist has steps, each with a text and a done flag, in
+    an order the owner arranges: a new step goes to the bottom, the owner moves a step up or down or straight to the
+    top, and deleting a step leaves no hole in the numbering. Only the owner sees and changes a checklist and its
+    steps.
+  acceptance:
+    - New steps are numbered in the order they were added
+    - Moving the last step to the top renumbers the others
+    - Deleting a step renumbers the ones below it
+    - Another person cannot read or move the steps
+expect:
+  entities: [User, Checklist, "Step|ChecklistStep|ChecklistItem|Item"]
+  ordered: { "Step|ChecklistStep|ChecklistItem|Item": "checklist_id|list_id" }
+  absent_fields: { "Step|ChecklistStep|ChecklistItem|Item": [sort_order, order_index] }
+  scenarios: { min: 1, rejections: 1, statuses: [403] }
+  touches: ["steps.move|checklist_steps.move|checklist_items.move|items.move"]
+notes: >-
+  An ordered collection without a junction, over an empty model: one position field within the checklist and the
+  compiler's move. A diff that writes move_up and move_down actions with handlers, or a plain integer the client
+  sets, has not used the construct.

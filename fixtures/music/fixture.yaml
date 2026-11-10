@@ -1,0 +1,4 @@
+name: music
+description: A music catalog. Albums hold tracks in an order the server keeps, tracks have genres through a junction, and listeners order the tracks of their playlists.
+backends: [drizzle-next, gin-pgx, hono-trpc-vite]
+walks: { seed: 1 }

@@ -1,0 +1,208 @@
+osl: "1.0"
+summary: Playlists owned by a listener, PlaylistTrack ordered within its playlist, a playlist's tracks through it
+ops:
+  - op: add_entity
+    name: Playlist
+    entity:
+      fields:
+        id: { type: uuid, primary: true }
+        owner_id:
+          type: uuid
+          required: true
+          relation: { entity: User, name: owner, on_delete: cascade }
+        name: { type: string, max_length: 120, required: true }
+        public: { type: boolean, required: true, default: false }
+        created_at: { type: datetime, required: true, default: now }
+      rules:
+        read: "public when public = true or owner:owner_id"
+        create: "owner:owner_id"
+        update: "owner:owner_id"
+        delete: "owner:owner_id"
+      relations:
+        tracks: { through: PlaylistTrack }
+  - op: add_entity
+    name: PlaylistTrack
+    entity:
+      fields:
+        id: { type: uuid, primary: true }
+        playlist_id:
+          type: uuid
+          required: true
+          relation: { entity: Playlist, name: playlist, reverse: entries, on_delete: cascade }
+        track_id:
+          type: uuid
+          required: true
+          relation: { entity: Track, name: track, on_delete: cascade }
+        position: { type: integer, position: { within: playlist_id } }
+        added_at: { type: datetime, required: true, default: now }
+      rules:
+        read: "public when playlist_id.public = true or owner:playlist_id.owner_id"
+        create: "owner:playlist_id.owner_id"
+        update: "owner:playlist_id.owner_id"
+        delete: "owner:playlist_id.owner_id"
+  - op: add_resource
+    name: playlists
+    resource:
+      entity: Playlist
+      operations: [list, get, create, update, delete]
+      list: { filters: [owner_id, public], order: [[name, asc]] }
+      get: { include: [tracks] }
+      create: { fields: [name, public] }
+      update: { fields: [name, public] }
+  - op: add_resource
+    name: playlist_tracks
+    resource:
+      entity: PlaylistTrack
+      operations: [list, get, create, delete]
+      list: { filters: [playlist_id, track_id], include: [track], page_size: 50 }
+  - op: add_scenario
+    scenario:
+      name: a listener orders a playlist
+      steps:
+        - as: alice
+          op: artists.create
+          body: { name: Glass Harbor }
+          expect: { status: 201 }
+          capture: { artist: data.id }
+        - as: alice
+          op: albums.create
+          body: { artist_id: "{artist}", title: Signals }
+          expect: { status: 201 }
+          capture: { album: data.id }
+        - as: alice
+          op: tracks.create
+          body: { album_id: "{album}", title: Beacon, duration_seconds: 180 }
+          expect: { status: 201 }
+          capture: { beacon: data.id }
+        - as: alice
+          op: tracks.create
+          body: { album_id: "{album}", title: Relay, duration_seconds: 200 }
+          expect: { status: 201 }
+          capture: { relay: data.id }
+        - as: alice
+          op: tracks.create
+          body: { album_id: "{album}", title: Static, duration_seconds: 220 }
+          expect: { status: 201 }
+          capture: { static: data.id }
+        - as: bob
+          op: playlists.create
+          body: { name: Morning run }
+          expect: { status: 201, body: { data: { name: Morning run, public: false, owner_id: "{actor.id}" } } }
+          capture: { playlist: data.id }
+        - as: bob
+          op: playlist_tracks.create
+          body: { playlist_id: "{playlist}", track_id: "{beacon}" }
+          expect: { status: 201, body: { data: { position: 1 } } }
+          capture: { first: data.id }
+        - as: bob
+          op: playlist_tracks.create
+          body: { playlist_id: "{playlist}", track_id: "{relay}" }
+          expect: { status: 201, body: { data: { position: 2 } } }
+          capture: { second: data.id }
+        - as: bob
+          op: playlist_tracks.create
+          body: { playlist_id: "{playlist}", track_id: "{static}" }
+          expect: { status: 201, body: { data: { position: 3 } } }
+          capture: { third: data.id }
+        - as: bob
+          op: playlist_tracks.create
+          body: { playlist_id: "{playlist}", track_id: "{beacon}" }
+          expect: { status: 201, body: { data: { position: 4 } } }
+          capture: { fourth: data.id }
+        - as: alice
+          op: playlist_tracks.create
+          body: { playlist_id: "{playlist}", track_id: "{relay}" }
+          expect: { status: 403 }
+        - as: alice
+          op: playlists.get
+          path: { id: "{playlist}" }
+          expect: { status: 403 }
+        - as: alice
+          op: playlist_tracks.list
+          query: { playlist_id: "{playlist}" }
+          expect: { status: 200, body: { page: { total: 0 } } }
+        - as: bob
+          op: playlist_tracks.list
+          query: { playlist_id: "{playlist}", page_size: "1" }
+          expect:
+            status: 200
+            body: { data: [{ id: "{first}", position: 1, track: { title: Beacon } }], page: { total: 4 } }
+        - as: alice
+          op: playlist_tracks.move
+          path: { id: "{third}" }
+          body: { to: 1 }
+          expect: { status: 403 }
+        - as: bob
+          op: playlist_tracks.move
+          path: { id: "{third}" }
+          body: { to: 1 }
+          expect: { status: 200, body: { data: { id: "{third}", position: 1, track_id: "{static}" } } }
+        - as: bob
+          op: playlist_tracks.list
+          query: { playlist_id: "{playlist}" }
+          expect:
+            status: 200
+            body:
+              data:
+                - { id: "{third}", position: 1 }
+                - { id: "{first}", position: 2 }
+                - { id: "{second}", position: 3 }
+                - { id: "{fourth}", position: 4 }
+        - as: bob
+          op: playlist_tracks.list
+          query: { playlist_id: "{playlist}", page_size: "1", page: "2" }
+          expect: { status: 200, body: { data: [{ id: "{first}" }] } }
+        - as: bob
+          op: playlists.update
+          path: { id: "{playlist}" }
+          body: { public: true }
+          expect: { status: 200, body: { data: { public: true } } }
+        - op: playlists.get
+          path: { id: "{playlist}" }
+          expect:
+            status: 200
+            body:
+              data:
+                name: Morning run
+                tracks: [{ title: Static }, { title: Beacon }, { title: Relay }]
+        - op: playlist_tracks.list
+          query: { playlist_id: "{playlist}", page_size: "1" }
+          expect: { status: 200, body: { data: [{ track: { title: Static } }], page: { total: 4 } } }
+        - op: playlist_tracks.move
+          path: { id: "{first}" }
+          body: { to: 1 }
+          expect: { status: 401 }
+        - as: alice
+          op: tracks.delete
+          path: { id: "{beacon}" }
+          expect: { status: 204 }
+        - as: bob
+          op: playlist_tracks.list
+          query: { playlist_id: "{playlist}" }
+          expect:
+            status: 200
+            body:
+              data: [{ id: "{third}", position: 1 }, { id: "{second}", position: 2 }]
+              page: { total: 2 }
+        - as: bob
+          op: playlist_tracks.create
+          body: { playlist_id: "{playlist}", track_id: "{relay}" }
+          expect: { status: 201, body: { data: { position: 3 } } }
+          capture: { last: data.id }
+        - as: bob
+          op: playlist_tracks.delete
+          path: { id: "{third}" }
+          expect: { status: 204 }
+        - as: bob
+          op: playlist_tracks.get
+          path: { id: "{last}" }
+          expect: { status: 200, body: { data: { position: 2 } } }
+        - as: bob
+          op: playlist_tracks.move
+          path: { id: "{second}" }
+          body: { to: 99 }
+          expect: { status: 200, body: { data: { position: 2 } } }
+        - as: bob
+          op: playlist_tracks.get
+          path: { id: "{last}" }
+          expect: { status: 200, body: { data: { position: 1 } } }

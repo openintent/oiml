@@ -348,7 +348,7 @@ func PresentNotes(rows []*Note) []PublicNote {
 const MilestoneTable = `"milestones"`
 
 // MilestoneColumns lists the columns of Milestone in model order, for SELECT and RETURNING.
-const MilestoneColumns = `"id", "project_id", "title", "due_on", "done"`
+const MilestoneColumns = `"id", "project_id", "title", "due_on", "done", "position"`
 
 // Milestone is a row of milestones.
 type Milestone struct {
@@ -357,6 +357,7 @@ type Milestone struct {
 	Title     string    `json:"title"`
 	DueOn     time.Time `json:"due_on"`
 	Done      bool      `json:"done"`
+	Position  int       `json:"position"`
 }
 
 // PublicMilestone is Milestone as the API returns it: hidden columns removed, dates rendered.
@@ -366,12 +367,13 @@ type PublicMilestone struct {
 	Title     string `json:"title"`
 	DueOn     string `json:"due_on"`
 	Done      bool   `json:"done"`
+	Position  int    `json:"position"`
 }
 
 // ScanMilestone reads one Milestone from a row selected with MilestoneColumns.
 func ScanMilestone(row Scanner) (*Milestone, error) {
 	var r Milestone
-	if err := row.Scan(&r.ID, &r.ProjectID, &r.Title, &r.DueOn, &r.Done); err != nil {
+	if err := row.Scan(&r.ID, &r.ProjectID, &r.Title, &r.DueOn, &r.Done, &r.Position); err != nil {
 		return nil, err
 	}
 	return &r, nil
@@ -379,7 +381,7 @@ func ScanMilestone(row Scanner) (*Milestone, error) {
 
 // PresentMilestone returns the public shape of a Milestone.
 func PresentMilestone(row *Milestone) PublicMilestone {
-	return PublicMilestone{ID: row.ID, ProjectID: row.ProjectID, Title: row.Title, DueOn: FormatDate(row.DueOn), Done: row.Done}
+	return PublicMilestone{ID: row.ID, ProjectID: row.ProjectID, Title: row.Title, DueOn: FormatDate(row.DueOn), Done: row.Done, Position: row.Position}
 }
 
 // PresentMilestonePtr presents an optional Milestone; nil stays nil.
@@ -566,6 +568,112 @@ func PresentMessages(rows []*Message) []PublicMessage {
 	out := make([]PublicMessage, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, PresentMessage(row))
+	}
+	return out
+}
+
+// LabelTable is the quoted table of Label.
+const LabelTable = `"labels"`
+
+// LabelColumns lists the columns of Label in model order, for SELECT and RETURNING.
+const LabelColumns = `"id", "team_id", "name"`
+
+// Label is a row of labels.
+type Label struct {
+	ID     string `json:"id"`
+	TeamID string `json:"team_id"`
+	Name   string `json:"name"`
+}
+
+// PublicLabel is Label as the API returns it: hidden columns removed, dates rendered.
+type PublicLabel struct {
+	ID     string `json:"id"`
+	TeamID string `json:"team_id"`
+	Name   string `json:"name"`
+}
+
+// ScanLabel reads one Label from a row selected with LabelColumns.
+func ScanLabel(row Scanner) (*Label, error) {
+	var r Label
+	if err := row.Scan(&r.ID, &r.TeamID, &r.Name); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// PresentLabel returns the public shape of a Label.
+func PresentLabel(row *Label) PublicLabel {
+	return PublicLabel{ID: row.ID, TeamID: row.TeamID, Name: row.Name}
+}
+
+// PresentLabelPtr presents an optional Label; nil stays nil.
+func PresentLabelPtr(row *Label) *PublicLabel {
+	if row == nil {
+		return nil
+	}
+	out := PresentLabel(row)
+	return &out
+}
+
+// PresentLabels presents a list of Label, never nil.
+func PresentLabels(rows []*Label) []PublicLabel {
+	out := make([]PublicLabel, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, PresentLabel(row))
+	}
+	return out
+}
+
+// MilestoneLabelTable is the quoted table of MilestoneLabel.
+const MilestoneLabelTable = `"milestone_labels"`
+
+// MilestoneLabelColumns lists the columns of MilestoneLabel in model order, for SELECT and RETURNING.
+const MilestoneLabelColumns = `"id", "team_id", "milestone_id", "label_id"`
+
+// MilestoneLabel is a row of milestone_labels.
+type MilestoneLabel struct {
+	ID          string `json:"id"`
+	TeamID      string `json:"team_id"`
+	MilestoneID string `json:"milestone_id"`
+	LabelID     string `json:"label_id"`
+}
+
+// PublicMilestoneLabel is MilestoneLabel as the API returns it: hidden columns removed, dates rendered.
+type PublicMilestoneLabel struct {
+	ID          string `json:"id"`
+	TeamID      string `json:"team_id"`
+	MilestoneID string `json:"milestone_id"`
+	LabelID     string `json:"label_id"`
+}
+
+// ScanMilestoneLabel reads one MilestoneLabel from a row selected with MilestoneLabelColumns.
+func ScanMilestoneLabel(row Scanner) (*MilestoneLabel, error) {
+	var r MilestoneLabel
+	if err := row.Scan(&r.ID, &r.TeamID, &r.MilestoneID, &r.LabelID); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// PresentMilestoneLabel returns the public shape of a MilestoneLabel.
+func PresentMilestoneLabel(row *MilestoneLabel) PublicMilestoneLabel {
+	return PublicMilestoneLabel{ID: row.ID, TeamID: row.TeamID, MilestoneID: row.MilestoneID, LabelID: row.LabelID}
+}
+
+// PresentMilestoneLabelPtr presents an optional MilestoneLabel; nil stays nil.
+func PresentMilestoneLabelPtr(row *MilestoneLabel) *PublicMilestoneLabel {
+	if row == nil {
+		return nil
+	}
+	out := PresentMilestoneLabel(row)
+	return &out
+}
+
+// PresentMilestoneLabels presents a list of MilestoneLabel, never nil.
+func PresentMilestoneLabels(rows []*MilestoneLabel) []PublicMilestoneLabel {
+	out := make([]PublicMilestoneLabel, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, PresentMilestoneLabel(row))
 	}
 	return out
 }

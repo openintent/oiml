@@ -1,5 +1,5 @@
 import type { ActionIR, GeneratedFile, IR } from "@osl/core";
-import { toPascalCase } from "@osl/core";
+import { toPascalCase, userActions } from "@osl/core";
 import { cap, entityByName, q, typeName } from "./conventions.js";
 import type { ServerConventions } from "./server-conventions.js";
 import { actionInputName } from "./validation.js";
@@ -75,13 +75,14 @@ function zeroValue(f: ActionIR["input"][number]): string {
 export function actionsFile(ir: IR, conv: ServerConventions): string {
   const rowType = (a: ActionIR) =>
     a.scope === "row" ? `schema.${typeName(entityByName(ir, a.entity!))}` : "undefined";
-  const inputs = [...new Set(ir.actions.map(actionInputType))].sort();
+  const actions = userActions(ir);
+  const inputs = [...new Set(actions.map(actionInputType))].sort();
   return `${conv.header("Actions: the context handlers receive and the registry of the handlers you own in src/actions.")}
 import type { Db } from "./db/client";
 import type * as schema from "./db/schema";
 import type { Session } from "${conv.authModule}";
 ${inputs.length ? `import type { ${inputs.join(", ")} } from "./validation";` : ""}
-${ir.actions.map(a => `import * as ${a.handler} from "${conv.src(`actions/${a.handler}`)}";`).join("\n")}
+${actions.map(a => `import * as ${a.handler} from "${conv.src(`actions/${a.handler}`)}";`).join("\n")}
 
 /** What a handler gets: the validated input, the row for row actions, the caller's session and the database */
 export interface ActionContext<Input, Row = undefined> {
@@ -94,10 +95,10 @@ export interface ActionContext<Input, Row = undefined> {
   now: Date;
 }
 
-${ir.actions.map(a => `export type ${actionResultType(a)} = ${actionResultTs(ir, a)};`).join("\n")}
+${actions.map(a => `export type ${actionResultType(a)} = ${actionResultTs(ir, a)};`).join("\n")}
 
 export const handlers = {
-${ir.actions
+${actions
   .map(
     a =>
       `  ${a.handler}: ${a.handler}.handler as (ctx: ActionContext<${actionInputType(a)}, ${rowType(a)}>) => Promise<${actionResultType(a)}>`
@@ -109,7 +110,7 @@ ${ir.actions
 
 /** src/actions/<handler>.ts, created once per action */
 export function actionScaffolds(ir: IR, conv: ServerConventions): GeneratedFile[] {
-  return ir.actions.map(action => {
+  return userActions(ir).map(action => {
     const row = action.scope === "row" ? typeName(entityByName(ir, action.entity!)) : null;
     const result = actionResultTs(ir, action).replace(/schema\./g, "");
     const schemaTypes = [

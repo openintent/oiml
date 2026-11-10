@@ -1,0 +1,32 @@
+id: fx-mu-3-playlists
+tags: [fixture, entity, rules, relation, many-to-many, ordering, scenario]
+base: { fixture: music, through: MU-2 }
+oracle: fixtures/music/intents/MU-3/diff.yaml
+intent:
+  title: Playlists
+  ask: >-
+    A signed-in listener makes playlists with a name and a public flag, and adds tracks to a playlist of theirs in an
+    order they can change: a new track goes last, they move a track to another place, and removing one closes the
+    gap. The same track may be in a playlist twice. A playlist shows its tracks, with their titles, in that order.
+    Only the owner changes a playlist; everyone reads a public one and nobody else reads a private one. When a track
+    is deleted from the catalog it leaves every playlist, and each playlist keeps its order without a gap.
+  acceptance:
+    - Tracks added to a playlist are numbered in the order they were added, and the playlist lists their titles in that order
+    - The owner moves the last track first and the others follow; someone else is refused
+    - A private playlist and its tracks are not readable by another listener; a public one is
+    - Deleting a track from the catalog removes it from the playlist and renumbers what is left
+expect:
+  entities: [Playlist, "PlaylistTrack|PlaylistEntry|PlaylistItem"]
+  relations:
+    - "PlaylistTrack|PlaylistEntry|PlaylistItem.* -> Playlist:cascade"
+    - "PlaylistTrack|PlaylistEntry|PlaylistItem.* -> Track:cascade"
+  ordered: { "PlaylistTrack|PlaylistEntry|PlaylistItem": "playlist_id" }
+  through: ["Playlist.* -> Track"]
+  rules:
+    Playlist: { read: "public when public = true or owner:owner_id|public when public = true or owner:user_id" }
+  scenarios: { min: 1, rejections: 2, statuses: [403] }
+  touches: ["playlist_tracks.move|playlist_entries.move|playlist_items.move", playlists.get]
+notes: >-
+  Both constructs on one junction: the entry is ordered within its playlist, and the playlist's tracks are a
+  relation through it, so they come back as tracks in the listener's order. The pair is not unique (the same track
+  twice), and the cascade from Track is what the last acceptance line is about.

@@ -55,7 +55,9 @@ Names may offer alternatives with `|`, because an intent that does not name thin
 to choose. The checks read the model after the diff is applied (and its IR, for rules and actions after
 defaults), so they judge the result, not the spelling of the ops. The full list of checks is the `Expect`
 schema in `packages/evals/src/cases.ts`: entities and fields present or absent, types, field properties,
-relations with their `on_delete`, unique constraints, junction entities, rules, resources and operations,
+relations with their `on_delete`, unique constraints, junction entities, relations through a junction
+(`through: ["Track.* -> Genre"]`), ordered collections (`ordered: { PlaylistTrack: playlist_id }`), rules,
+resources and operations,
 list options, actions by name or by shape, auth providers and tenancy (its `isolation` too; rules are read as
 the model declares them, before isolation adds the tenant's membership), events, pages and the sidebar, file
 rules and accept lists, seed steps, scenario counts and rejection statuses, what the scenarios call, an actor

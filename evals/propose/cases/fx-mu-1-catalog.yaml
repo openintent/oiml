@@ -1,0 +1,29 @@
+id: fx-mu-1-catalog
+tags: [fixture, entity, rules, relation, auth, ordering, scenario]
+base: { empty: music }
+oracle: fixtures/music/intents/MU-1/diff.yaml
+intent:
+  title: Accounts and the catalog
+  ask: >-
+    People register with an email and a password and have a name. A signed-in person creates artists, which are
+    theirs. An artist's owner adds albums to it and tracks to an album; a track has a title and a length in seconds.
+    The tracks of an album are in order: a new track goes last, the owner can move a track to another place, and
+    removing one closes the gap. Everyone can read the catalog; only the artist's owner changes it.
+  acceptance:
+    - Three tracks added to an album are numbered 1, 2 and 3, and the list of the album's tracks follows that order
+    - Moving the third track first renumbers the other two; a place beyond the end means last
+    - Deleting a track renumbers the ones after it
+    - Someone who does not own the artist cannot add, move or delete its tracks, and a client cannot set the number
+expect:
+  entities: [User, Artist, Album, "Track|Song"]
+  relations: ["Album.* -> Artist", "Track|Song.* -> Album"]
+  ordered: { "Track|Song": "album_id" }
+  absent_fields: { "Track|Song": [sort_order] }
+  rules:
+    Album: { update: "owner:artist_id.owner_id|owner:artist_id.user_id|owner:artist_id.created_by" }
+  scenarios: { min: 1, rejections: 2, statuses: [403] }
+  touches: ["tracks.move|songs.move"]
+notes: >-
+  The first ordered collection: a position field within album_id, and the move action the compiler adds. A diff
+  that declares its own move or reorder action with a handler, makes the number a plain writable integer, or lets
+  the client send it has not used the construct; the scenario must call the resource's move.

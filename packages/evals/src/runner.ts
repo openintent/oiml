@@ -14,6 +14,7 @@ import {
   Model,
   parseDiff,
   toYaml,
+  userActions,
   type Diff,
   type Intent,
   type Model as ModelType
@@ -301,7 +302,7 @@ async function writeCaseFixture(
   if (dir && existsSync(path.join(dir, "overlay"))) {
     const keep = oracleCompletes
       ? null
-      : new Set(compile(await modelThrough(dir, fixtureName, ids)).actions.map(a => a.handler));
+      : new Set(userActions(compile(await modelThrough(dir, fixtureName, ids))).map(a => a.handler));
     await copyOverlay(path.join(dir, "overlay"), path.join(fixtureDir, "overlay"), keep);
   }
   // Sorts after every fixture intent id (FEAT-, TODO-, WS-)

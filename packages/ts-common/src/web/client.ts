@@ -14,15 +14,18 @@ function isIntegerKey(entity: EntityIR): boolean {
 }
 
 /** The presented row type of a resource operation, with its includes */
-function outputType(ir: IR, resource: ResourceIR, include: string[]): string {
+function outputType(ir: IR, resource: ResourceIR, include: string[], through: string[] = []): string {
   const entity = entityByName(ir, resource.entity);
   const base = `Public${typeName(entity)}`;
-  if (!include.length) return base;
+  if (!include.length && !through.length) return base;
   const extras = include.map(name => {
     const rel = entity.relations.find(r => r.name === name)!;
     const target = `Public${typeName(entityByName(ir, rel.target))}`;
     return `${name}: ${rel.kind === "many" ? `${target}[]` : `${target} | null`}`;
   });
+  // Relations through a junction: the far rows
+  for (const name of through)
+    extras.push(`${name}: Public${typeName(entityByName(ir, entity.through!.find(t => t.name === name)!.target))}[]`);
   return `${base} & { ${extras.join("; ")} }`;
 }
 
@@ -201,8 +204,10 @@ export function restClientFile(ir: IR, conv: TsConventions): string {
           validationTypes.add(`${r.name}ListQuery`);
           for (const inc of op.include)
             presentTypes.add(`Public${typeName(entityByName(ir, entity.relations.find(x => x.name === inc)!.target))}`);
+          for (const inc of op.through ?? [])
+            presentTypes.add(`Public${typeName(entityByName(ir, entity.through!.find(t => t.name === inc)!.target))}`);
           inLines.push(`    list: z.input<typeof ${r.name}ListQuery>`);
-          outLines.push(`    list: { data: (${outputType(ir, r, op.include)})[]; page: Page }`);
+          outLines.push(`    list: { data: (${outputType(ir, r, op.include, op.through)})[]; page: Page }`);
           implLines.push(
             `    list: (input: Inputs[${q(r.name)}]["list"]) => call<Outputs[${q(r.name)}]["list"]>("GET", ${q(op.path)}, { query: input as Record<string, unknown>, whole: true })`
           );
@@ -211,8 +216,10 @@ export function restClientFile(ir: IR, conv: TsConventions): string {
         case "get":
           for (const inc of op.include)
             presentTypes.add(`Public${typeName(entityByName(ir, entity.relations.find(x => x.name === inc)!.target))}`);
+          for (const inc of op.through ?? [])
+            presentTypes.add(`Public${typeName(entityByName(ir, entity.through!.find(t => t.name === inc)!.target))}`);
           inLines.push(`    get: { id: ${Id} }`);
-          outLines.push(`    get: ${outputType(ir, r, op.include)}`);
+          outLines.push(`    get: ${outputType(ir, r, op.include, op.through)}`);
           implLines.push(
             `    get: ({ id }: Inputs[${q(r.name)}]["get"]) => call<Outputs[${q(r.name)}]["get"]>("GET", ${q(r.path)} + "/" + id)`
           );

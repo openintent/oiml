@@ -13,6 +13,7 @@ import type {
   RelationIR,
   ResourceIR,
   RuleIR,
+  ThroughIR,
   TileGroupIR,
   TileIR
 } from "@osl/core";
@@ -198,6 +199,229 @@ function detailRow(ctx: Ctx, col: ColumnIR, includes: RelationIR[]): string {
   return `        <FieldRow label=${label}>{${showExpr(ctx, col, "row", includes, "detail")} || "—"}</FieldRow>`;
 }
 
+/** What a list shows for the relations through a junction the page names in its columns: the far rows' names */
+function relationListExprs(ctx: Ctx): { name: string; expr: string }[] {
+  return (ctx.page.relations ?? []).map(name => {
+    const rel = ctx.entity.through!.find(t => t.name === name)!;
+    const far = entityByName(ctx.ir, rel.target);
+    use(ctx, "ui", "text");
+    return { name, expr: `row.${name}.map(item => text(item.${far.display})).join(", ")` };
+  });
+}
+
+/**
+ * A child's or junction's rule as the page can answer it from the parent row it shows: an owner path that goes one
+ * step, through the relation to that parent, is a field of the parent (owner:playlist_id.owner_id on an entry is
+ * owner_id on the playlist). Anything deeper stays the API's to decide, and the page offers the control to whoever
+ * is signed in.
+ */
+function ruleFromParent(rule: RuleIR, from: string): RuleIR {
+  if (rule.kind === "any") return { kind: "any", rules: rule.rules.map(r => ruleFromParent(r, from)) as never };
+  if (rule.kind === "all") return { kind: "all", rules: rule.rules.map(r => ruleFromParent(r, from)) as never };
+  if (rule.kind === "owner" && rule.via?.length === 1 && rule.via[0].column === from && !rule.when)
+    return { kind: "owner", field: rule.field };
+  return rule;
+}
+
+/** The predicate that offers a control of a child or junction resource on the parent's detail pane */
+function parentPredicate(rule: RuleIR, from: string, idPk: string): string {
+  const mapped = ruleFromParent(rule, from);
+  const direct = JSON.stringify(mapped) !== JSON.stringify(rule);
+  return rulePredicate(mapped, "user", direct ? "row" : null, idPk);
+}
+
+/** The component name of a relation the detail pane shows with its own controls */
+function relationFieldName(ctx: Ctx, name: string): string {
+  return `${pageComponent(ctx.page)}${toPascalCase(name)}Field`;
+}
+
+/**
+ * The detail pane's component for a relation through a junction: the far rows by name, in the junction's order
+ * when it has one. Adding, removing and reordering go through the junction's own resource, under its own rules,
+ * as far as that resource offers them; without it the names are all there is.
+ */
+function throughFieldComponent(ctx: Ctx, rel: ThroughIR): string {
+  const { ir, entity } = ctx;
+  const junction = entityByName(ir, rel.junction);
+  const far = entityByName(ir, rel.target);
+  const idPk = ir.auth ? entityByName(ir, ir.auth.identity).primaryKey[0] : "id";
+  const Field = relationFieldName(ctx, rel.name);
+  const List = rel.orderBy ? "OrderedList" : "NameChips";
+  use(ctx, "ui", List);
+  use(ctx, "ui", "text");
+  use(ctx, "client", "SessionUser");
+  const farKey = `text(item.${rel.targetColumn})`;
+  const farLabel = `text(item.${far.display})`;
+  // A track may be in a playlist twice: an ordered list keys its rows by their place too
+  const readOnly = `<${List} items={row.${rel.name}} keyOf={item => ${farKey}${rel.orderBy ? ` + ":" + row.${rel.name}.indexOf(item)` : ""}} label={item => ${farLabel}} />`;
+  const via = ir.resources.find(r => r.entity === junction.name);
+  const ops = via?.operations.filter(o => o.rule.kind !== "none") ?? [];
+  const list = ops.find(o => o.kind === "list") as ListOp | undefined;
+  // The junction's rows are needed to address one: its list, filtered by the row
+  if (!via || !list || !list.filters.includes(rel.from)) {
+    return `/** The ${rel.name} of ${article(entityTitle(entity))}: the ${far.name} rows ${rel.junction} links it to */
+function ${Field}({ row, user }: { row: Detail; user: SessionUser | null }) {
+  void user;
+  return ${readOnly};
+}`;
+  }
+  const J = via.name;
+  const create = ops.find(o => o.kind === "create") as CreateOp | undefined;
+  const remove = ops.find(o => o.kind === "delete") as DeleteOp | undefined;
+  const move = rel.orderBy ? actionsOf(ir, J).find(a => a.builtin === "move" && a.rule.kind !== "none") : undefined;
+  const options = ir.resources.find(
+    r => r.entity === far.name && r.operations.some(o => o.kind === "list" && o.rule.kind !== "none")
+  );
+  // Adding needs only the two relation fields: a junction that asks for more (a role, a note) is added on its own page
+  const addable =
+    create &&
+    options &&
+    create.fields.includes(rel.to) &&
+    (create.fields.includes(rel.from) || create.ownerField === rel.from) &&
+    create.fields.every(f => {
+      const c = junction.columns.find(col => col.name === f)!;
+      return f === rel.from || f === rel.to || c.nullable || c.default !== undefined;
+    });
+  const paired =
+    junction.uniques.some(u => u.columns.length === 2 && u.columns.includes(rel.from) && u.columns.includes(rel.to)) ||
+    (junction.primaryKey.length === 2 &&
+      junction.primaryKey.includes(rel.from) &&
+      junction.primaryKey.includes(rel.to));
+  use(ctx, "query", "useQuery");
+  use(ctx, "query", "useMutation");
+  use(ctx, "query", "useQueryClient");
+  use(ctx, "ui", "ErrorNote");
+  use(ctx, "client", "Inputs");
+  use(ctx, "client", "Outputs");
+  if (addable) use(ctx, "ui", "AddPicker");
+  const jpk = junction.primaryKey[0];
+  const mutation = (name: string, op: string) =>
+    `  const ${name} = useMutation({ mutationFn: (input: Inputs[${q(J)}][${q(op)}]) => client.${J}.${op}(input), onSuccess: settle });`;
+  const errors = [
+    ...(addable ? ["add.error"] : []),
+    ...(remove ? ["remove.error"] : []),
+    ...(move ? ["move.error"] : [])
+  ];
+  const busy = [
+    ...(addable ? ["add.isPending"] : []),
+    ...(remove ? ["remove.isPending"] : []),
+    ...(move ? ["move.isPending"] : [])
+  ];
+  const sorted = rel.orderBy
+    ? `[...(links.data?.data ?? [])].sort((a, b) => Number(a.${rel.orderBy}) - Number(b.${rel.orderBy}))`
+    : `[...(links.data?.data ?? [])].sort((a, b) => label(a).localeCompare(label(b)))`;
+  const props = [
+    `items={items}`,
+    `keyOf={link => text(link.${jpk})}`,
+    `label={label}`,
+    ...(move
+      ? [
+          `onMove={${parentPredicate(move.rule, rel.from, idPk)} ? (link, to) => move.mutate({ id: link.${jpk}, to }) : undefined}`
+        ]
+      : []),
+    ...(remove
+      ? [
+          `onRemove={${parentPredicate(remove.rule, rel.from, idPk)} ? link => remove.mutate({ id: link.${jpk} }) : undefined}`
+        ]
+      : []),
+    ...(busy.length ? [`busy={busy}`] : [])
+  ];
+  const one = entityTitle(far).toLowerCase();
+  return `/**
+ * The ${rel.name} of ${article(entityTitle(entity))}: the ${far.name} rows ${rel.junction} links it to${rel.orderBy ? `, in the order of its ${rel.orderBy}` : ""}. Changes go
+ * through ${J}, under its own rules; the names come with the row.
+ */
+function ${Field}({ row, user }: { row: Detail; user: SessionUser | null }) {
+  void user;
+  const queryClient = useQueryClient();
+  const linkInput = { ${rel.from}: row.${rel.sourceColumn}, page_size: 200 } as Inputs[${q(J)}]["list"];
+  const links = useQuery({ queryKey: [${q(J)}, "list", linkInput], queryFn: () => client.${J}.list(linkInput) });${
+    addable
+      ? `
+  const options = useQuery({ queryKey: [${q(options!.name)}, "list", { page_size: 200 }], queryFn: () => client.${options!.name}.list({ page_size: 200 }) });`
+      : ""
+  }
+  const settle = async () => {
+    await queryClient.invalidateQueries({ queryKey: [${q(J)}] });
+    await queryClient.invalidateQueries({ queryKey: KEY });
+  };
+  void settle;
+${[...(addable ? [mutation("add", "create")] : []), ...(remove ? [mutation("remove", "delete")] : []), ...(move ? [mutation("move", "move")] : [])].join("\n")}
+  type Link = Outputs[${q(J)}]["list"]["data"][number];
+  const far = new Map(row.${rel.name}.map(item => [${farKey}, item] as const));
+  const label = (link: Link) => text(far.get(text(link.${rel.to}))?.${far.display});
+  const items = ${sorted};${busy.length ? `\n  const busy = ${busy.join(" || ")};` : ""}
+  return (
+    <div>
+      {links.data ? <${List} ${props.join(" ")} /> : ${readOnly}}${
+        addable
+          ? `
+      {${parentPredicate(create!.rule, rel.from, idPk)} ? (
+        <AddPicker
+          options={(options.data?.data ?? [])${paired ? `.filter(item => !far.has(${farKey}))` : ""}}
+          keyOf={item => ${farKey}}
+          label={item => ${farLabel}}
+          placeholder=${q(`Add ${article(one)}…`)}
+          onAdd={item => add.mutate({ ${rel.from}: row.${rel.sourceColumn}, ${rel.to}: item.${rel.targetColumn} } as Inputs[${q(J)}]["create"])}${busy.length ? "\n          busy={busy}" : ""}
+        />
+      ) : null}`
+          : ""
+      }${errors.length ? `\n      <ErrorNote error={${errors.join(" ?? ")}} className="mt-2" />` : ""}
+    </div>
+  );
+}`;
+}
+
+/**
+ * The detail pane's component for the children a row orders (a reverse relation to an ordered entity): the rows in
+ * their order, moved through the child resource's move action when it has one.
+ */
+function orderedChildrenComponent(ctx: Ctx, rel: RelationIR): string {
+  const { ir, entity } = ctx;
+  const child = entityByName(ir, rel.target);
+  const idPk = ir.auth ? entityByName(ir, ir.auth.identity).primaryKey[0] : "id";
+  const Field = relationFieldName(ctx, rel.name);
+  const cpk = child.primaryKey[0];
+  const via = ir.resources.find(r => r.entity === child.name);
+  const move = via ? actionsOf(ir, via.name).find(a => a.builtin === "move" && a.rule.kind !== "none") : undefined;
+  use(ctx, "ui", "OrderedList");
+  use(ctx, "ui", "text");
+  use(ctx, "client", "SessionUser");
+  const base = `items={row.${rel.name}} keyOf={item => text(item.${cpk})} label={item => text(item.${child.display})}`;
+  if (!via || !move)
+    return `/** The ${rel.name} of ${article(entityTitle(entity))}, in their order */
+function ${Field}({ row, user }: { row: Detail; user: SessionUser | null }) {
+  void user;
+  return <OrderedList ${base} />;
+}`;
+  use(ctx, "query", "useMutation");
+  use(ctx, "query", "useQueryClient");
+  use(ctx, "ui", "ErrorNote");
+  use(ctx, "client", "Inputs");
+  return `/** The ${rel.name} of ${article(entityTitle(entity))}, in their order; a move goes through ${via.name}.move, under its own rule */
+function ${Field}({ row, user }: { row: Detail; user: SessionUser | null }) {
+  void user;
+  const queryClient = useQueryClient();
+  const move = useMutation({
+    mutationFn: (input: Inputs[${q(via.name)}]["move"]) => client.${via.name}.move(input),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: [${q(via.name)}] });
+      await queryClient.invalidateQueries({ queryKey: KEY });
+    }
+  });
+  return (
+    <div>
+      <OrderedList
+        ${base}
+        onMove={${parentPredicate(move.rule, rel.column, idPk)} ? (item, to) => move.mutate({ id: item.${cpk}, to }) : undefined}
+        busy={move.isPending}
+      />
+      <ErrorNote error={move.error} className="mt-2" />
+    </div>
+  );
+}`;
+}
+
 /** Rows for relations the get operation includes that are not a column of the entity (reverse sides) */
 function reverseRows(ctx: Ctx, includes: RelationIR[]): string[] {
   const out: string[] = [];
@@ -205,7 +429,11 @@ function reverseRows(ctx: Ctx, includes: RelationIR[]): string[] {
     const target = entityByName(ctx.ir, rel.target);
     use(ctx, "ui", "FieldRow");
     use(ctx, "ui", "text");
-    if (rel.kind === "many") {
+    if (rel.orderBy) {
+      out.push(`        <FieldRow label=${q(humanize(rel.name))}>
+          <${relationFieldName(ctx, rel.name)} row={row} user={user} />
+        </FieldRow>`);
+    } else if (rel.kind === "many") {
       out.push(`        <FieldRow label=${q(humanize(rel.name))}>
           {row.${rel.name}.length === 0 ? (
             "—"
@@ -667,9 +895,11 @@ export function resourcePageFile(ir: IR, page: PageIR, target: WebTarget, conv: 
 
   const columns = page.columns.map(name => entity.columns.find(c => c.name === name)!);
   const [first, ...rest] = columns;
-  const metaExpr = rest.length
-    ? `[${rest.map(c => showExpr(ctx, c, "row", listIncludes, "list")).join(", ")}].filter(Boolean).join(" · ")`
-    : null;
+  const metaParts = [
+    ...rest.map(c => showExpr(ctx, c, "row", listIncludes, "list")),
+    ...relationListExprs(ctx).map(r => r.expr)
+  ];
+  const metaExpr = metaParts.length ? `[${metaParts.join(", ")}].filter(Boolean).join(" · ")` : null;
   use(ctx, "ui", "text");
 
   const sections: string[] = [];
@@ -935,7 +1165,21 @@ export function ${Comp}Index() {
   use(ctx, "ui", "Pane");
   use(ctx, "ui", "PaneSkeleton");
   const detailFields = page.fields.map(name => entity.columns.find(c => c.name === name)!);
-  const rows = [...detailFields.map(c => detailRow(ctx, c, getIncludes)), ...reverseRows(ctx, getIncludes)];
+  const getThrough = (get.through ?? []).map(name => entity.through!.find(t => t.name === name)!);
+  const rows = [
+    ...detailFields.map(c => detailRow(ctx, c, getIncludes)),
+    ...reverseRows(ctx, getIncludes),
+    ...getThrough.map(
+      rel => `        <FieldRow label=${q(humanize(rel.name))}>
+          <${relationFieldName(ctx, rel.name)} row={row} user={user} />
+        </FieldRow>`
+    )
+  ];
+  if (getThrough.length) use(ctx, "ui", "FieldRow");
+  // The relations the pane shows with their own controls: each is a component of its own, with its own requests
+  for (const rel of getIncludes.filter(r => r.direction === "reverse" && r.orderBy))
+    sections.push(orderedChildrenComponent(ctx, rel));
+  for (const rel of getThrough) sections.push(throughFieldComponent(ctx, rel));
   const actions: string[] = [];
   if (layout !== "split") actions.push(`          ${backLink(ctx)}`);
   for (const a of rowActions) {
@@ -1184,6 +1428,10 @@ function tableIndex(
   const cells = columns.map(
     c => `                  <TableCell>{${showExpr(ctx, c, "row", listIncludes, "list")}}</TableCell>`
   );
+  for (const relation of relationListExprs(ctx)) {
+    heads.push(`                <TableHead>${humanize(relation.name)}</TableHead>`);
+    cells.push(`                  <TableCell>{${relation.expr}}</TableCell>`);
+  }
   return `export function ${Comp}Index() {
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState<string | undefined>(undefined);${list.sortable.length ? "" : "\n  void setSort;"}
@@ -1277,9 +1525,11 @@ function boardIndex(
   const columns = page.columns.map(name => entity.columns.find(c => c.name === name)!).filter(c => c.name !== groupBy);
   const listIncludes = list.include.map(name => entity.relations.find(r => r.name === name)!);
   const [first, ...rest] = columns.length ? columns : [entity.columns.find(c => c.name === entity.display)!];
-  const metaExpr = rest.length
-    ? `[${rest.map(c => showExpr(ctx, c, "row", listIncludes, "list")).join(", ")}].filter(Boolean).join(" · ")`
-    : null;
+  const metaParts = [
+    ...rest.map(c => showExpr(ctx, c, "row", listIncludes, "list")),
+    ...relationListExprs(ctx).map(r => r.expr)
+  ];
+  const metaExpr = metaParts.length ? `[${metaParts.join(", ")}].filter(Boolean).join(" · ")` : null;
   use(ctx, "query", "useMutation");
   use(ctx, "query", "useQueryClient");
   use(ctx, "ui", "ListSkeleton");

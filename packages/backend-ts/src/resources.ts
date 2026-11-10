@@ -9,7 +9,14 @@ import {
   needsBodyCheck,
   rowArg,
   ruleLiteral,
-  ruleValuesSource
+  ruleValuesSource,
+  isMove,
+  moveSource,
+  removeStatement,
+  throughOf,
+  throughRowParts,
+  throughSource,
+  withClause
 } from "@osl/ts-common";
 import {
   HEADER,
@@ -35,10 +42,6 @@ function includePresent(ir: IR, rel: RelationIR): string {
   const target = entityByName(ir, rel.target);
   if (rel.kind === "many") return `row.${rel.name}.map(present${typeName(target)})`;
   return `row.${rel.name} ? present${typeName(target)}(row.${rel.name}) : null`;
-}
-
-function withClause(include: string[]): string {
-  return include.length ? `, with: { ${include.map(i => `${i}: true`).join(", ")} }` : "";
 }
 
 function isIntegerKey(entity: EntityIR): boolean {
@@ -147,6 +150,13 @@ export function resourceFile(ir: IR, resource: ResourceIR): string {
   const relationsFor = (include: string[]) => include.map(name => entity.relations.find(r => r.name === name)!);
   for (const rel of [...relationsFor(list?.include ?? []), ...relationsFor(get?.include ?? [])])
     presents.add(`present${typeName(entityByName(ir, rel.target))}`);
+  // Relations through a junction: loaded after the rows, one statement per relation
+  const through = throughSource(ir, entity, list?.through, get?.through, tableVar);
+  for (const name of through.presents) presents.add(name);
+  for (const name of through.tables) if (name !== entity.name) extraTables.add(name);
+  for (const name of through.drizzle) drizzleImports.add(name);
+  const move = actions.find(isMove);
+  if (move || (remove && entity.order)) drizzleImports.add("sql");
 
   const sections: string[] = [];
 
@@ -180,16 +190,19 @@ function sortOrder(sort: string): SQL[] {
 }`);
   }
 
-  const rowSection = (name: "List" | "Get", include: string[]) => {
+  const rowSection = (name: "List" | "Get", include: string[], throughNames: string[] | undefined) => {
     const rels = relationsFor(include);
-    const rowType = rels.length
-      ? `schema.${T} & { ${rels.map(r => `${r.name}: ${includeType(ir, r)}`).join("; ")} }`
-      : `schema.${T}`;
-    const extra = rels.length ? `, ${rels.map(r => `${r.name}: ${includePresent(ir, r)}`).join(", ")}` : "";
+    const far = throughRowParts(ir, throughOf(entity, throughNames));
+    const types = [...rels.map(r => `${r.name}: ${includeType(ir, r)}`), ...far.types];
+    const shown = [...rels.map(r => `${r.name}: ${includePresent(ir, r)}`), ...far.presents];
+    const rowType = types.length ? `schema.${T} & { ${types.join("; ")} }` : `schema.${T}`;
+    const extra = shown.length ? `, ${shown.join(", ")}` : "";
     return `type ${name}Row = ${rowType};\nfunction present${name}Row(row: ${name}Row) {\n  return { ...present${T}(row)${extra} };\n}`;
   };
-  if (list) sections.push(rowSection("List", list.include));
-  if (get) sections.push(rowSection("Get", get.include));
+  if (list) sections.push(rowSection("List", list.include, list.through));
+  if (get) sections.push(rowSection("Get", get.include, get.through));
+  sections.push(...through.sections);
+  if (move) sections.push(moveSource(entity, table, query));
 
   const resolveFiles = (expr: string) => (hasFiles ? `await resolveFileRefs(${expr}, FILE_FIELDS)` : expr);
   const methods: string[] = [];
@@ -232,14 +245,14 @@ ${filterLines.join("\n")}
 ${
   isolated
     ? `      // One statement at a time: both run on the request's transaction
-      const rows = await ${query}.findMany({ where${withClause(list.include)}, orderBy: ${orderBy}, limit: page_size, offset: (page - 1) * page_size });
+      const rows = await ${query}.findMany({ where${withClause(entity, list.include)}, orderBy: ${orderBy}, limit: page_size, offset: (page - 1) * page_size });
       const [{ total }] = await db.select({ total: count() }).from(${table}).where(where);`
     : `      const [rows, [{ total }]] = await Promise.all([
-        ${query}.findMany({ where${withClause(list.include)}, orderBy: ${orderBy}, limit: page_size, offset: (page - 1) * page_size }),
+        ${query}.findMany({ where${withClause(entity, list.include)}, orderBy: ${orderBy}, limit: page_size, offset: (page - 1) * page_size }),
         db.select({ total: count() }).from(${table}).where(where)
       ]);`
 }
-      return ok(rows.map(presentListRow), { page: { page, page_size, total } });
+      return ok(${through.list("rows")}.map(presentListRow), { page: { page, page_size, total } });
     } catch (err) {
       return handleError(err, "read");
     }
@@ -255,11 +268,11 @@ ${
       if (!verdict.ok) return denied(verdict);
       const id = parseId(${resource.name}Id, (await ctx.params).id);
       if (!id.ok) return id.response;
-      const row = await ${query}.findFirst({ where: eq(${table}.${pk}, id.data)${withClause(get.include)} });
+      const row = await ${query}.findFirst({ where: eq(${table}.${pk}, id.data)${withClause(entity, get.include)} });
       if (!row) return ${miss("RULES.read")};
       const rowVerdict = checkRule(RULES.read, session, ${rowArg(get.rule, "row", sessionArg)});
       if (!rowVerdict.ok) return ${entity.hidden === "not_found" ? "notFound()" : "denied(rowVerdict)"};
-      return ok(presentGetRow(row));
+      return ok(presentGetRow(${through.get("row")}));
     } catch (err) {
       return handleError(err, "read");
     }
@@ -356,7 +369,7 @@ ${emitLines.join("\n")}${timerLine}
       if (!rowVerdict.ok) return denied(rowVerdict);
       const hookContext: HookContext = { request, session };
       await hooks.beforeDelete(existing, hookContext);
-      await db.delete(${table}).where(eq(${table}.${pk}, id.data));
+      ${removeStatement(entity, "id.data") ?? `await db.delete(${table}).where(eq(${table}.${pk}, id.data));`}
 ${emitLines.join("\n")}
       await hooks.afterDelete(existing, hookContext);
       return noContent();
@@ -402,7 +415,7 @@ ${emitLines.join("\n")}
         .map(name => `${tableExport(entityByName(ir, name))} as ${tableVar(entityByName(ir, name))}`)
     ].join(", ")} } from "../db/schema";`,
     `import { ${[...accessImports].sort().join(", ")}, type Rule } from "../access";`,
-    ...(actions.length ? [`import { handlers } from "../actions";`] : []),
+    ...(actions.some(a => !isMove(a)) ? [`import { handlers } from "../actions";`] : []),
     `import { getSession, type Session } from "../auth";`,
     ...(usesEmit ? [`import { emit } from "../events";`] : []),
     ...(hasTimers ? [`import { scheduleTimers } from "../scheduling";`] : []),
@@ -476,7 +489,11 @@ function actionHandler(
       if (!rowVerdict.ok) return denied(rowVerdict);
       const body = await parseBody(${input}, request);
       if (!body.ok) return body.response;
-      const result = await handlers.${action.handler}({ input: body.data, row: current, session, db, now: new Date() });
+      ${
+        isMove(action)
+          ? `const result = await moveRow(current, body.data.to);\n      if (!result) return notFound();`
+          : `const result = await handlers.${action.handler}({ input: body.data, row: current, session, db, now: new Date() });`
+      }
 ${emitLines.join("\n")}
       return ${answer};
     } catch (err) {

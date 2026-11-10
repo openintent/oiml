@@ -5,6 +5,22 @@ fixture intent on all three backends before it is listed here.
 
 ## Unreleased
 
+- Many-to-many relations and ordered collections (round B2 of the road to 1.0.0), proven together by a fourth
+  fixture, `music`. A junction stays a declared entity with its own rules and resource, and
+  `relations: { genres: { through: TrackGenre } }` on an entity names the rows on its far side once: `include` on
+  list and get returns them (a track shows its genres' names where it showed ids), a page column shows the names,
+  and the detail pane adds and removes them through the junction's resource. `position: { within: album_id }` on
+  an integer field makes an ordered collection: the server owns the place, create appends, the resource gets a
+  `move` row action (`{ to }`, under the update rule) without declaring one, a delete closes the gap, lists and
+  includes follow the order, and the pages drag to reorder. The order lives in the database (a deferrable unique
+  constraint, an append trigger, `osl_move_<table>` and `osl_remove_<table>` under the parent row's lock), so
+  hand-written code and cascades keep it; no writer waits for a row while holding rows of the parent, which a test
+  proves with 24 connections against a real database. A sixth conformance walk, `order`, bursts concurrent creates,
+  moves and deletes into one parent on every backend. New ops and keys: `set_relations`, `Field.position`,
+  `Entity.relations`; diagnostics M014, M015 and M140 to M144. Adding a position to an entity that exists takes its
+  parent field out of update (a row keeps its parent), which the contract walk reports as a breaking change the op
+  explains. Fixtures: music MU-1 to MU-4 and workspace WS-12 (ordered milestones and labels under
+  `isolation: database`). Design: `docs/designs/many-to-many-and-ordering.md`.
 - The tenant isolation backstop (round B1 of the road to 1.0.0): `auth.tenancy.isolation: database` puts row-level
   security behind the rules on every tenant table (the tenant entity, the membership, and every entity that reaches
   the tenant through required relations). The compiler derives the tenant column of a table that does not declare

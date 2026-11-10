@@ -16,7 +16,10 @@ import {
   resolveStepOp,
   ruleAlternativeTexts,
   membershipRelation,
+  MOVE_ACTION,
+  positionOf,
   tenantLinks,
+  throughRelation,
   splitCondition,
   splitWhen,
   type Action,
@@ -24,6 +27,7 @@ import {
   type Field,
   type Model,
   type Rule,
+  type ThroughLink,
   type Validate
 } from "./model.js";
 import { defaultTableName, relationNameFromColumn, toSnakeCase, toTitleCase } from "./naming.js";
@@ -72,6 +76,8 @@ export interface ColumnIR {
   relation?: string;
   /** Enum values for columns that are not stored (action inputs and results), where no database enum exists */
   enumValues?: string[];
+  /** The row's place within its parent (`EntityIR.order`): numbered by the database, read-only to clients */
+  position?: true;
 }
 
 export interface ForeignKeyIR {
@@ -93,6 +99,48 @@ export interface RelationIR {
   column: string;
   /** Column the foreign key points at */
   targetColumn: string;
+  /** A reverse relation through the field its target is ordered within: the target's position column, the order its rows come in */
+  orderBy?: string;
+}
+
+/** A relation through a junction entity: the rows on the far side, as an include returns them */
+export interface ThroughIR {
+  name: string;
+  junction: string;
+  junctionTable: string;
+  /** The junction column pointing at this entity, and this entity's key it holds */
+  from: string;
+  sourceColumn: string;
+  /** The junction column pointing at the far entity, the far entity and its key */
+  to: string;
+  target: string;
+  targetColumn: string;
+  /**
+   * The junction's position column when the junction is ordered within `from`: the far rows come in that order.
+   * Without one they come by the far entity's display column, then its key.
+   */
+  orderBy?: string;
+}
+
+/** An ordered collection: rows that hold a place among the rows sharing a parent */
+export interface OrderIR {
+  /** The position column: 1 for the first row of a parent, no two rows of one parent alike */
+  column: string;
+  /** The required relation column naming the parent */
+  within: string;
+  parentEntity: string;
+  parentTable: string;
+  parentKey: string;
+  /** UNIQUE (within, position), deferrable so that one statement may renumber a parent */
+  unique: { name: string; columns: string[] };
+  /** The trigger function that appends a new row at the end of its parent */
+  assign: string;
+  /** The trigger function that closes the gap rows leave when they are deleted */
+  close: string;
+  /** move(id, to): puts the row at place `to` of its parent, the last place when `to` is beyond it */
+  move: string;
+  /** remove(id): deletes the row holding its parent's lock, so that the gap closes whatever else is writing */
+  remove: string;
 }
 
 /** One step of a rule that follows a relation: the column on the entity it starts from and the row it reaches */
@@ -357,6 +405,10 @@ export interface EntityIR {
   system?: boolean;
   /** Under `isolation: database`: present on a tenant table, absent on a shared one */
   tenant?: TenantIR;
+  /** Present when the entity has a position field */
+  order?: OrderIR;
+  /** Relations through a junction, as `relations` declares them; absent without any */
+  through?: ThroughIR[];
 }
 
 export interface EnumIR {
@@ -380,8 +432,10 @@ export type OperationIR =
       /** Fields `q` searches as a case-insensitive substring */
       search: string[];
       rule: RuleIR;
+      /** Relations through a junction to embed in each row (`EntityIR.through`); absent without any */
+      through?: string[];
     }
-  | { kind: "get"; method: "GET"; path: string; include: string[]; rule: RuleIR }
+  | { kind: "get"; method: "GET"; path: string; include: string[]; rule: RuleIR; through?: string[] }
   | { kind: "create"; method: "POST"; path: string; fields: string[]; ownerField?: string; rule: RuleIR }
   | { kind: "update"; method: "PATCH"; path: string; fields: string[]; rule: RuleIR }
   | { kind: "delete"; method: "DELETE"; path: string; rule: RuleIR };
@@ -414,6 +468,8 @@ export interface ActionIR {
   returns: ActionReturnsIR;
   /** The user-owned handler module name under src/actions */
   handler: string;
+  /** Written by the compiler, with no handler of yours: `move` on a resource over an ordered entity */
+  builtin?: "move";
 }
 
 export type ProviderIR =
@@ -581,6 +637,8 @@ export interface PageIR {
   description?: string;
   /** Resource pages: columns of the master list */
   columns: string[];
+  /** Resource pages: relations through a junction the master list shows after its columns, by the far rows' names */
+  relations?: string[];
   /** Resource pages: fields of the detail pane, in order */
   fields: string[];
   /** Dashboard pages */
@@ -997,6 +1055,13 @@ export function compile(input: Model): IR {
     if (type.kind === "enum" && !stored) column.enumValues = field.enum_values!;
     const def = columnDefault(field);
     if (def) column.default = def;
+    if (field.position && stored) {
+      // The database numbers it: a trigger overwrites the default on every insert, and no client writes it
+      column.nullable = false;
+      column.readOnly = true;
+      column.default = { kind: "literal", value: 0 };
+      column.position = true;
+    }
     if (isPrimary && primaryKey.length === 1 && !def) {
       if (field.type === "uuid") column.default = { kind: "uuid" };
       else if (field.type === "integer" || field.type === "bigint") column.generated = "identity";
@@ -1113,6 +1178,25 @@ export function compile(input: Model): IR {
       display: displayColumn(columns, primaryKey, foreignKeys)
     };
     if (isSystem) compiled.system = true;
+    const position = positionOf(entity);
+    if (position) {
+      const parentEntity = entity.fields[position.within].relation!.entity;
+      compiled.order = {
+        column: position.field,
+        within: position.within,
+        parentEntity,
+        parentTable: tableOf(parentEntity),
+        parentKey: pkOf(parentEntity)[0],
+        unique: {
+          name: sqlName(`${table}_${position.within}_${position.field}_key`),
+          columns: [position.within, position.field]
+        },
+        assign: sqlName(`osl_position_${table}`),
+        close: sqlName(`osl_close_${table}`),
+        move: sqlName(`osl_move_${table}`),
+        remove: sqlName(`osl_remove_${table}`)
+      };
+    }
     if (tenantOf[entityName]) {
       compiled.rules = {
         read: withReaders(entityName, withinTenant(entityName, compiled.rules.read)),
@@ -1188,15 +1272,40 @@ export function compile(input: Model): IR {
       const field = allEntities[source.name].fields[fk.column];
       if (!field.relation?.reverse) continue;
       const target = entities.find(e => e.name === fk.targetEntity)!;
-      target.relations.push({
+      const reverse: RelationIR = {
         name: field.relation.reverse,
         kind: field.relation.kind === "one_to_one" ? "one" : "many",
         direction: "reverse",
         target: source.name,
         column: fk.column,
         targetColumn: fk.targetColumn
-      });
+      };
+      // The children of the parent they are ordered within come in that order
+      if (source.order?.within === fk.column && reverse.kind === "many") reverse.orderBy = source.order.column;
+      target.relations.push(reverse);
     }
+  }
+
+  // Relations through a junction
+  for (const entity of entities) {
+    const declared = Object.keys(allEntities[entity.name].relations ?? {});
+    if (!declared.length) continue;
+    entity.through = declared.map(name => {
+      const link = throughRelation(model, entity.name, name) as ThroughLink;
+      const junction = entities.find(e => e.name === link.junction)!;
+      const through: ThroughIR = {
+        name,
+        junction: link.junction,
+        junctionTable: junction.table,
+        from: link.from,
+        sourceColumn: entity.primaryKey[0],
+        to: link.to,
+        target: link.target,
+        targetColumn: pkOf(link.target)[0]
+      };
+      if (junction.order?.within === link.from) through.orderBy = junction.order.column;
+      return through;
+    });
   }
 
   const entityByName = (name: string) => entities.find(e => e.name === name)!;
@@ -1358,6 +1467,13 @@ export function compile(input: Model): IR {
     const writable = entity.columns
       .filter(c => !c.primary && !c.hidden && !c.readOnly && !isBytes(c) && !isGeneratedDefault(c))
       .map(c => c.name);
+    const throughNames = new Set((entity.through ?? []).map(t => t.name));
+    /** An include list as the model wrote it, split into the relations of fields and the ones through a junction */
+    const includes = (names: string[] | undefined): { include: string[]; through?: string[] } => {
+      const through = (names ?? []).filter(n => throughNames.has(n));
+      const include = (names ?? []).filter(n => !throughNames.has(n));
+      return through.length ? { include, through } : { include };
+    };
     const operations: OperationIR[] = [];
     for (const kind of resource.operations) {
       switch (kind) {
@@ -1369,7 +1485,7 @@ export function compile(input: Model): IR {
             filters: resource.list?.filters ?? [],
             order: resource.list?.order ?? defaultOrder(entity),
             pageSize: resource.list?.page_size ?? 20,
-            include: resource.list?.include ?? [],
+            ...includes(resource.list?.include),
             sortable: resource.list?.sortable ?? [],
             search: resource.list?.search ?? [],
             rule: entity.rules.read
@@ -1380,7 +1496,7 @@ export function compile(input: Model): IR {
             kind,
             method: "GET",
             path: `${path}/{id}`,
-            include: resource.get?.include ?? [],
+            ...includes(resource.get?.include),
             rule: entity.rules.read
           });
           break;
@@ -1396,7 +1512,10 @@ export function compile(input: Model): IR {
           // with alternatives (an admin may reassign) the column stays writable
           const rule = entity.rules.update;
           const ownerField = ruleAlternatives(rule).length === 1 ? directOwnerOf(rule) : undefined;
-          const fields = (resource.update?.fields ?? writable).filter(f => f !== ownerField);
+          // An ordered row keeps its parent: its place is among that parent's rows
+          const fields = (resource.update?.fields ?? writable).filter(
+            f => f !== ownerField && f !== entity.order?.within
+          );
           operations.push({ kind, method: "PATCH", path: `${path}/{id}`, fields, rule });
           break;
         }
@@ -1415,6 +1534,19 @@ export function compile(input: Model): IR {
     });
     for (const [actionName, action] of Object.entries(resource.actions ?? {}))
       actions.push(compileAction(actionName, action, { name: resourceName, entity, path }));
+    // The compiler's own row action on an ordered entity: no handler of the user's, the database reorders
+    if (entity.order && entity.rules.update.kind !== "none") {
+      const move = compileAction(
+        MOVE_ACTION,
+        {
+          description: `Moves the row to place \`to\` among the rows of its ${entity.order.within} (1 is first; past the end is last)`,
+          input: { to: { type: "integer", required: true, validate: { min: 1 } } }
+        },
+        { name: resourceName, entity, path }
+      );
+      move.builtin = "move";
+      actions.push(move);
+    }
   }
   for (const [actionName, action] of Object.entries(model.actions))
     actions.push(compileAction(actionName, action, null));
@@ -1614,13 +1746,15 @@ export function compile(input: Model): IR {
       }
       const resource = resources.find(r => r.name === page.resource)!;
       const entity = entityByName(resource.entity);
+      const isThrough = (name: string) => Boolean(entity.through?.some(t => t.name === name));
       const out: PageIR = {
         ...common,
         resource: resource.name,
         entity: entity.name,
         layout: page.layout ?? "split",
-        columns: page.columns ?? defaultColumns(entity, resource.outputFields),
-        fields: page.fields ?? resource.outputFields
+        columns: (page.columns ?? defaultColumns(entity, resource.outputFields)).filter(c => !isThrough(c)),
+        fields: (page.fields ?? resource.outputFields).filter(f => !isThrough(f)),
+        ...((page.columns ?? []).some(isThrough) ? { relations: (page.columns ?? []).filter(isThrough) } : {})
       };
       if (page.group_by) out.groupBy = page.group_by;
       if (page.filter && Object.keys(page.filter).length) out.filter = filterIR(page.filter);
@@ -1717,6 +1851,12 @@ function isGeneratedDefault(column: ColumnIR): boolean {
 }
 
 function defaultOrder(entity: EntityIR): [string, "asc" | "desc"][] {
+  // An ordered entity lists in its own order: parent by parent, each in place
+  if (entity.order)
+    return [
+      [entity.order.within, "asc"],
+      [entity.order.column, "asc"]
+    ];
   if (entity.columns.some(c => c.name === "created_at")) return [["created_at", "desc"]];
   return entity.primaryKey.map(pk => [pk, "asc"]);
 }
@@ -1778,6 +1918,11 @@ export function actionsOf(ir: IR, resource: string): ActionIR[] {
 }
 
 /** Actions not tied to a resource */
+/** The actions whose handler the user owns in src/actions: every one but the compiler's own (`move`) */
+export function userActions(ir: IR): ActionIR[] {
+  return ir.actions.filter(a => !a.builtin);
+}
+
 export function globalActions(ir: IR): ActionIR[] {
   return ir.actions.filter(a => !a.resource);
 }

@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { client, sessionUser, type Inputs, type Outputs, type SessionUser } from "../client";
-import { EmptyPane, ErrorNote, FieldRow, FormRow, ListSkeleton, Pagination, Pane, PaneHeader, PaneSkeleton, selectClass, splitList, text, yesNo } from "../ui";
+import { EmptyPane, ErrorNote, FieldRow, FormRow, ListSkeleton, NameChips, Pagination, Pane, PaneHeader, PaneSkeleton, selectClass, splitList, text, yesNo } from "../ui";
 
 type Row = Outputs["milestones"]["list"]["data"][number];
 type Detail = Outputs["milestones"]["get"];
@@ -36,6 +36,10 @@ function canUpdate(user: SessionUser | null, row: Detail): boolean {
 }
 
 function canDelete(user: SessionUser | null, row: Detail): boolean {
+  return user !== null;
+}
+
+function canMove(user: SessionUser | null, row: Detail): boolean {
   return user !== null;
 }
 
@@ -103,11 +107,10 @@ function toMilestonesCreateInput(v: MilestonesValues): Input<"create"> {
   };
 }
 
-const MILESTONES_UPDATE: readonly MilestonesField[] = ["project_id", "title", "due_on", "done"];
+const MILESTONES_UPDATE: readonly MilestonesField[] = ["title", "due_on", "done"];
 
 function toMilestonesUpdateInput(v: MilestonesValues): Input<"update">["data"] {
   return {
-    project_id: v.project_id,
     title: v.title,
     due_on: v.due_on,
     done: v.done
@@ -213,6 +216,87 @@ function MilestonesForm({
     <form onSubmit={submit} className="grid max-w-xl gap-4">
       {fields.map(field => (
         <Fragment key={field}>{renderMilestonesField(field, values, set)}</Fragment>
+      ))}
+      <ErrorNote error={error ?? (problem ? { message: problem } : null)} />
+      <div className="flex gap-2">
+        <Button type="submit" disabled={pending}>
+          {submitLabel}
+        </Button>
+        {onCancel ? (
+          <Button type="button" variant="ghost" onClick={onCancel}>
+            Cancel
+          </Button>
+        ) : null}
+      </div>
+    </form>
+  );
+}
+
+const MILESTONESMOVE_FIELDS = ["to"] as const;
+type MilestonesMoveField = (typeof MILESTONESMOVE_FIELDS)[number];
+
+type MilestonesMoveValues = {
+  to: string;
+};
+
+const EMPTY_MILESTONESMOVE: MilestonesMoveValues = {
+  to: ""
+};
+
+const MILESTONESMOVE_CREATE: readonly MilestonesMoveField[] = ["to"];
+
+function toMilestonesMoveCreateInput(v: MilestonesMoveValues): Omit<Inputs["milestones"]["move"], "id"> {
+  return {
+    to: Number(v.to)
+  };
+}
+
+type MilestonesMoveSetter = <K extends keyof MilestonesMoveValues>(key: K, value: MilestonesMoveValues[K]) => void;
+
+function renderMilestonesMoveField(field: MilestonesMoveField, values: MilestonesMoveValues, set: MilestonesMoveSetter) {
+  switch (field) {
+    case "to":
+      return (
+      <FormRow label="To" htmlFor="to">
+        <Input id="to" type="number" step="1" value={values.to} onChange={e => set("to", e.target.value)} required />
+      </FormRow>
+      );
+  }
+}
+
+function MilestonesMoveForm({
+  fields,
+  initial,
+  submitLabel,
+  pending,
+  error,
+  onSubmit,
+  onCancel
+}: {
+  fields: readonly MilestonesMoveField[];
+  initial: MilestonesMoveValues;
+  submitLabel: string;
+  pending: boolean;
+  error: { message: string } | null;
+  onSubmit: (values: MilestonesMoveValues) => void;
+  onCancel?: () => void;
+}) {
+  const [values, setValues] = useState<MilestonesMoveValues>(initial);
+  const [problem, setProblem] = useState<string | null>(null);
+  const set: MilestonesMoveSetter = (key, value) => setValues(current => ({ ...current, [key]: value }));
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    setProblem(null);
+    try {
+      onSubmit(values);
+    } catch (err) {
+      setProblem(err instanceof Error ? err.message : String(err));
+    }
+  };
+  return (
+    <form onSubmit={submit} className="grid max-w-xl gap-4">
+      {fields.map(field => (
+        <Fragment key={field}>{renderMilestonesMoveField(field, values, set)}</Fragment>
       ))}
       <ErrorNote error={error ?? (problem ? { message: problem } : null)} />
       <div className="flex gap-2">
@@ -339,14 +423,44 @@ function MilestonesNewInner() {
   );
 }
 
+/**
+ * The labels of a milestone: the Label rows MilestoneLabel links it to. Changes go
+ * through milestone_labels, under its own rules; the names come with the row.
+ */
+function MilestonesLabelsField({ row, user }: { row: Detail; user: SessionUser | null }) {
+  void user;
+  const queryClient = useQueryClient();
+  const linkInput = { milestone_id: row.id, page_size: 200 } as Inputs["milestone_labels"]["list"];
+  const links = useQuery({ queryKey: ["milestone_labels", "list", linkInput], queryFn: () => client.milestone_labels.list(linkInput) });
+  const settle = async () => {
+    await queryClient.invalidateQueries({ queryKey: ["milestone_labels"] });
+    await queryClient.invalidateQueries({ queryKey: KEY });
+  };
+  void settle;
+  const remove = useMutation({ mutationFn: (input: Inputs["milestone_labels"]["delete"]) => client.milestone_labels.delete(input), onSuccess: settle });
+  type Link = Outputs["milestone_labels"]["list"]["data"][number];
+  const far = new Map(row.labels.map(item => [text(item.id), item] as const));
+  const label = (link: Link) => text(far.get(text(link.label_id))?.name);
+  const items = [...(links.data?.data ?? [])].sort((a, b) => label(a).localeCompare(label(b)));
+  const busy = remove.isPending;
+  return (
+    <div>
+      {links.data ? <NameChips items={items} keyOf={link => text(link.id)} label={label} onRemove={user !== null ? link => remove.mutate({ id: link.id }) : undefined} busy={busy} /> : <NameChips items={row.labels} keyOf={item => text(item.id)} label={item => text(item.name)} />}
+      <ErrorNote error={remove.error} className="mt-2" />
+    </div>
+  );
+}
+
 function MilestonesDetailInner() {
   const { id: rawId } = useParams({ from: "/milestones/$id" });
   const id = idOf(rawId);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
+  const [openAction, setOpenAction] = useState<string | null>(null);
   useEffect(() => {
     setEditing(false);
+    setOpenAction(null);
   }, [id]);
   const query = useQuery({ queryKey: [...KEY, "get", id], queryFn: () => client.milestones.get({ id }) });
   const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
@@ -366,7 +480,13 @@ function MilestonesDetailInner() {
       await navigate({ to: "/milestones" });
     }
   });
-
+  const moveAction = useMutation({
+    mutationFn: (input: Inputs["milestones"]["move"]) => client.milestones.move(input),
+    onSuccess: async () => {
+      setOpenAction(null);
+      await queryClient.invalidateQueries({ queryKey: KEY });
+    }
+  });
   if (query.isPending) return <PaneSkeleton />;
   if (query.error) return <ErrorNote error={query.error} className="m-6" />;
   const row: Detail = query.data;
@@ -379,6 +499,11 @@ function MilestonesDetailInner() {
           <Link to="/milestones" className={buttonVariants({ variant: "ghost", size: "icon-sm" })} aria-label="Back">
             <ArrowLeft />
           </Link>
+          {canMove(user, row) ? (
+            <Button variant="outline" size="sm" onClick={() => setOpenAction(open => (open === "move" ? null : "move"))}>
+              Move
+            </Button>
+          ) : null}
           {canUpdate(user, row) ? (
             <Button variant="outline" size="sm" onClick={() => setEditing(current => !current)}>
               {editing ? "Cancel" : "Edit"}
@@ -399,7 +524,11 @@ function MilestonesDetailInner() {
         </>
       }
     >
-
+      {openAction === "move" ? (
+        <div className="mb-6 rounded-md border border-border p-4">
+          <MilestonesMoveForm fields={MILESTONESMOVE_CREATE} initial={EMPTY_MILESTONESMOVE} submitLabel="Move" pending={moveAction.isPending} error={moveAction.error} onCancel={() => setOpenAction(null)} onSubmit={values => moveAction.mutate({ id, ...toMilestonesMoveCreateInput(values) })} />
+        </div>
+      ) : null}
 
       {editing ? (
         <MilestonesForm
@@ -418,6 +547,10 @@ function MilestonesDetailInner() {
         <FieldRow label="Title">{text(row.title) || "—"}</FieldRow>
         <FieldRow label="Due On">{text(row.due_on) || "—"}</FieldRow>
         <FieldRow label="Done">{row.done == null ? "—" : <Badge variant={row.done ? "default" : "outline"}>{yesNo(row.done)}</Badge>}</FieldRow>
+        <FieldRow label="Position">{text(row.position) || "—"}</FieldRow>
+        <FieldRow label="Labels">
+          <MilestonesLabelsField row={row} user={user} />
+        </FieldRow>
         </dl>
       )}
     </Pane>

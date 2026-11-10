@@ -100,7 +100,7 @@ function scalarSchema(scalar: string): Schema {
   }
 }
 
-function presentedSchema(entity: EntityIR, ir: IR, include: string[] = []): Schema {
+function presentedSchema(entity: EntityIR, ir: IR, include: string[] = [], through: string[] = []): Schema {
   const properties: Record<string, Schema> = {};
   for (const c of entity.columns) {
     if (c.hidden || (c.type.kind === "scalar" && c.type.scalar === "bytes")) continue;
@@ -111,6 +111,11 @@ function presentedSchema(entity: EntityIR, ir: IR, include: string[] = []): Sche
     if (!rel) continue;
     const ref = { $ref: `#/components/schemas/${rel.target}` };
     properties[name] = rel.kind === "many" ? { type: "array", items: ref } : { oneOf: [ref, { type: "null" }] };
+  }
+  // Relations through a junction: the far rows
+  for (const name of through) {
+    const rel = entity.through?.find(t => t.name === name);
+    if (rel) properties[name] = { type: "array", items: { $ref: `#/components/schemas/${rel.target}` } };
   }
   return { type: "object", properties, required: Object.keys(properties) };
 }
@@ -267,7 +272,7 @@ export function openapiDocument(ir: IR): Record<string, unknown> {
             parameters,
             responses: responses(
               data(
-                { type: "array", items: presentedSchema(entity, ir, op.include) },
+                { type: "array", items: presentedSchema(entity, ir, op.include, op.through) },
                 {
                   page: {
                     type: "object",
@@ -289,7 +294,7 @@ export function openapiDocument(ir: IR): Record<string, unknown> {
             ...base,
             summary: `Get one of ${resource.name}`,
             parameters: [idParam(entity)],
-            responses: responses(data(presentedSchema(entity, ir, op.include)))
+            responses: responses(data(presentedSchema(entity, ir, op.include, op.through)))
           };
           break;
         case "create":
@@ -795,6 +800,7 @@ export function explainedBy(change: OpenApiChange, ops: DiffOp[], before: IR): b
       case "update_field":
       case "remove_field":
       case "set_rules":
+      case "set_relations":
         return subject.entities.has(op.entity);
       case "rename_field":
         return subject.entities.has(op.entity);

@@ -1,0 +1,37 @@
+osl: "1.0"
+summary: Pages over the catalog and the playlists, with ordered tracks and genres by name
+ops:
+  - op: set_app
+    app:
+      title: Music
+      pages:
+        albums:
+          resource: albums
+          columns: [title, artist_id]
+          access: public
+        tracks:
+          resource: tracks
+          layout: table
+          columns: [title, album_id, duration_seconds, genres]
+          fields: [title, album_id, duration_seconds, track_number]
+          access: public
+        artists:
+          resource: artists
+          columns: [name]
+          access: public
+        genres:
+          resource: genres
+          columns: [name]
+          access: public
+        playlists:
+          resource: playlists
+          columns: [name, public]
+          filter: { owner_id: "{actor.id}" }
+      sidebar:
+        items:
+          - { page: albums, icon: disc-3 }
+          - { page: tracks, icon: music }
+          - { page: artists, icon: mic-vocal }
+          - { page: genres, icon: tags }
+          - { page: playlists, icon: list-music }
+        footer: { user: true, settings: true }

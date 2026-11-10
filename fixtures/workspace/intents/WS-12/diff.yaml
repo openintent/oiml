@@ -1,0 +1,217 @@
+osl: "1.0"
+summary: A position on Milestone within its project, team labels, and a milestone's labels through a junction that names its team
+ops:
+  - op: add_field
+    entity: Milestone
+    name: position
+    field: { type: integer, position: { within: project_id } }
+  - op: add_entity
+    name: Label
+    entity:
+      fields:
+        id: { type: uuid, primary: true }
+        team_id:
+          type: uuid
+          required: true
+          relation: { entity: Team, name: team, reverse: labels, on_delete: cascade }
+        name: { type: string, max_length: 60, required: true }
+      unique: [[team_id, name]]
+      rules:
+        read: "member:team_id"
+        create: "member:team_id"
+        update: "member:team_id:admin"
+        delete: "member:team_id:admin"
+        hidden: not_found
+  - op: add_entity
+    name: MilestoneLabel
+    entity:
+      fields:
+        id: { type: uuid, primary: true }
+        team_id:
+          type: uuid
+          required: true
+          relation: { entity: Team, name: team, on_delete: cascade }
+        milestone_id:
+          type: uuid
+          required: true
+          relation: { entity: Milestone, name: milestone, on_delete: cascade }
+        label_id:
+          type: uuid
+          required: true
+          relation: { entity: Label, name: label, on_delete: cascade }
+      unique: [[milestone_id, label_id]]
+      rules:
+        read: "member:team_id"
+        create: "member:team_id"
+        update: none
+        delete: "member:team_id"
+        hidden: not_found
+  - op: set_relations
+    entity: Milestone
+    relations:
+      labels: { through: MilestoneLabel, to: label_id }
+  - op: add_resource
+    name: labels
+    resource:
+      entity: Label
+      operations: [list, get, create, update, delete]
+      list: { filters: [team_id], order: [[name, asc]] }
+  - op: add_resource
+    name: milestone_labels
+    resource:
+      entity: MilestoneLabel
+      operations: [list, get, create, delete]
+      list: { filters: [milestone_id, label_id] }
+  - op: update_resource
+    name: milestones
+    resource:
+      entity: Milestone
+      operations: [list, get, create, update, delete]
+      list: { filters: [project_id, done], order: [[due_on, asc]], include: [labels] }
+      get: { include: [labels] }
+  - op: add_scenario
+    scenario:
+      name: ordered milestones and their labels
+      steps:
+        - as: alice
+          op: teams.create
+          body: { name: Pied Piper }
+          expect: { status: 201 }
+          capture: { team: data.id }
+        - as: bob
+          op: auth.me
+          expect: { status: 200 }
+          capture: { bob_id: data.id }
+        - as: alice
+          op: members.create
+          body: { team_id: "{team}", user_id: "{bob_id}" }
+          expect: { status: 201 }
+        - as: carol
+          op: teams.create
+          body: { name: Raviga }
+          expect: { status: 201 }
+          capture: { other_team: data.id }
+        - as: alice
+          op: projects.create
+          body: { name: Compression, team_id: "{team}" }
+          expect: { status: 201 }
+          capture: { project: data.id }
+        - as: alice
+          op: milestones.create
+          body: { project_id: "{project}", title: Alpha, due_on: "2027-01-10" }
+          expect: { status: 201, body: { data: { position: 1 } } }
+          capture: { alpha: data.id }
+        - as: bob
+          op: milestones.create
+          body: { project_id: "{project}", title: Beta, due_on: "2027-02-10" }
+          expect: { status: 201, body: { data: { position: 2 } } }
+          capture: { beta: data.id }
+        - as: alice
+          op: milestones.create
+          body: { project_id: "{project}", title: Launch, due_on: "2027-03-10" }
+          expect: { status: 201, body: { data: { position: 3 } } }
+          capture: { launch: data.id }
+        - as: alice
+          op: milestones.create
+          body: { project_id: "{project}", title: Numbered by hand, due_on: "2027-04-10", position: 1 }
+          expect: { status: 400 }
+        - as: carol
+          op: milestones.move
+          path: { id: "{launch}" }
+          body: { to: 1 }
+          expect: { status: 404 }
+        - op: milestones.move
+          path: { id: "{launch}" }
+          body: { to: 1 }
+          expect: { status: 401 }
+        - as: bob
+          op: milestones.move
+          path: { id: "{launch}" }
+          body: { to: 1 }
+          expect: { status: 200, body: { data: { id: "{launch}", position: 1 } } }
+        - as: alice
+          op: milestones.get
+          path: { id: "{alpha}" }
+          expect: { status: 200, body: { data: { position: 2 } } }
+        - as: alice
+          op: milestones.get
+          path: { id: "{beta}" }
+          expect: { status: 200, body: { data: { position: 3 } } }
+        - as: bob
+          op: milestones.delete
+          path: { id: "{launch}" }
+          expect: { status: 403 }
+        - as: alice
+          op: milestones.delete
+          path: { id: "{launch}" }
+          expect: { status: 204 }
+        - as: bob
+          op: milestones.get
+          path: { id: "{beta}" }
+          expect: { status: 200, body: { data: { position: 2 } } }
+        - as: alice
+          op: labels.create
+          body: { team_id: "{team}", name: Risky }
+          expect: { status: 201 }
+          capture: { risky: data.id }
+        - as: bob
+          op: labels.create
+          body: { team_id: "{team}", name: Customer }
+          expect: { status: 201 }
+          capture: { customer: data.id }
+        - as: carol
+          op: labels.create
+          body: { team_id: "{other_team}", name: Portfolio }
+          expect: { status: 201 }
+          capture: { foreign: data.id }
+        - as: carol
+          op: labels.create
+          body: { team_id: "{team}", name: Intruder }
+          expect: { status: 403 }
+        - as: alice
+          op: milestone_labels.create
+          body: { team_id: "{team}", milestone_id: "{alpha}", label_id: "{risky}" }
+          expect: { status: 201 }
+          capture: { tag: data.id }
+        - as: bob
+          op: milestone_labels.create
+          body: { team_id: "{team}", milestone_id: "{alpha}", label_id: "{customer}" }
+          expect: { status: 201 }
+        - as: alice
+          op: milestone_labels.create
+          body: { team_id: "{team}", milestone_id: "{alpha}", label_id: "{risky}" }
+          expect: { status: 409 }
+        - as: carol
+          op: milestone_labels.create
+          body: { team_id: "{other_team}", milestone_id: "{alpha}", label_id: "{foreign}" }
+          expect: { status: 400 }
+        - as: bob
+          op: milestones.get
+          path: { id: "{alpha}" }
+          expect:
+            status: 200
+            body: { data: { title: Alpha, labels: [{ name: Customer }, { name: Risky }] } }
+        - as: alice
+          op: milestones.list
+          query: { project_id: "{project}" }
+          expect:
+            status: 200
+            body:
+              data: [{ title: Alpha, position: 1, labels: [{ name: Risky }] }, { title: Beta, position: 2, labels: [] }]
+              page: { total: 2 }
+        - as: carol
+          op: milestones.get
+          path: { id: "{alpha}" }
+          expect: { status: 404 }
+        - as: carol
+          op: milestone_labels.list
+          query: { milestone_id: "{alpha}" }
+          expect: { status: 200, body: { page: { total: 0 } } }
+        - as: bob
+          op: milestone_labels.delete
+          path: { id: "{tag}" }
+          expect: { status: 204 }
+        - as: alice
+          op: milestones.get
+          path: { id: "{alpha}" }
+          expect: { status: 200, body: { data: { labels: [{ name: Customer }] } } }

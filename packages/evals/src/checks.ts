@@ -3,7 +3,7 @@
  * is applied (and its IR, for rules and actions after defaults). Every failure is one line a reader can act on.
  */
 import type { Diff, IR, Model, RuleIR } from "@osl/core";
-import { compile, ruleText as coreRuleText } from "@osl/core";
+import { compile, positionOf, ruleText as coreRuleText, throughRelation } from "@osl/core";
 import { Expect as ExpectSchema, type Expect } from "./cases.js";
 
 export interface Checked {
@@ -301,6 +301,32 @@ export function checkExpectations(expect: Expect, checked: Checked): string[] {
         return uniques.some(set => set.length === 2 && pair.every(f => set.includes(f)));
       });
     if (!found) fail(`junction between ${a} and ${b} missing`);
+  }
+
+  for (const spec of expect.through ?? []) {
+    const [left, targetAlts] = spec.split("->").map(s => s.trim());
+    const dot = left.indexOf(".");
+    const entity = pick(left.slice(0, dot), entities);
+    if (!entity) {
+      fail(`entity ${left.slice(0, dot)} missing (for the relation ${spec})`);
+      continue;
+    }
+    const nameSpec = left.slice(dot + 1);
+    const hit = Object.keys(model.entities[entity].relations ?? {}).some(name => {
+      if (nameSpec !== "*" && !alts(nameSpec).includes(name)) return false;
+      const link = throughRelation(model, entity, name);
+      return Boolean(link && !("problem" in link) && alts(targetAlts).includes(link.target));
+    });
+    if (!hit) fail(`relation through a junction ${spec} missing`);
+  }
+
+  for (const [entityName, within] of Object.entries(expect.ordered ?? {})) {
+    const entity = pick(entityName, entities);
+    const position = entity ? positionOf(model.entities[entity]) : undefined;
+    if (!entity) fail(`entity ${entityName} missing (for its order)`);
+    else if (!position) fail(`${entity} has no position field`);
+    else if (within !== "*" && !alts(within).includes(position.within))
+      fail(`${entity} is ordered within ${position.within}, expected ${within}`);
   }
 
   for (const [entityName, rules] of Object.entries(expect.rules ?? {})) {

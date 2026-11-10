@@ -151,7 +151,6 @@ export const milestonesCreateInput = z
   .strict();
 export const milestonesUpdateInput = z
   .object({
-    project_id: z.string().uuid().optional(),
     title: z.string().min(1).max(200).optional(),
     due_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     done: z.boolean().optional()
@@ -221,8 +220,53 @@ export const messagesUpdateInput = z
   })
   .strict();
 
+export const labelsId = z.string().uuid();
+export const labelsListQuery = z
+  .object({
+    page: z.number().int().min(1).default(1),
+    page_size: z.number().int().min(1).max(200).default(20),
+    team_id: z.string().uuid().optional()
+  })
+  .strict();
+export const labelsCreateInput = z
+  .object({
+    team_id: z.string().uuid(),
+    name: z.string().max(60)
+  })
+  .strict();
+export const labelsUpdateInput = z
+  .object({
+    team_id: z.string().uuid().optional(),
+    name: z.string().max(60).optional()
+  })
+  .strict();
+
+export const milestone_labelsId = z.string().uuid();
+export const milestone_labelsListQuery = z
+  .object({
+    page: z.number().int().min(1).default(1),
+    page_size: z.number().int().min(1).max(200).default(20),
+    milestone_id: z.string().uuid().optional(),
+    label_id: z.string().uuid().optional()
+  })
+  .strict();
+export const milestone_labelsCreateInput = z
+  .object({
+    team_id: z.string().uuid(),
+    milestone_id: z.string().uuid(),
+    label_id: z.string().uuid()
+  })
+  .strict();
+
 export const tasksRemindInput = z.object({}).strict();
 export type TasksRemindInput = z.infer<typeof tasksRemindInput>;
+
+export const milestonesMoveInput = z
+  .object({
+    to: z.number().int().min(1)
+  })
+  .strict();
+export type MilestonesMoveInput = z.infer<typeof milestonesMoveInput>;
 
 export const channelsJoinInput = z.object({}).strict();
 export type ChannelsJoinInput = z.infer<typeof channelsJoinInput>;

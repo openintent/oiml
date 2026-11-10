@@ -27,6 +27,7 @@ import {
   Sidebar,
   splitCondition,
   splitWhen,
+  ThroughRelation,
   Timer,
   type Model as ModelType
 } from "./model.js";
@@ -44,6 +45,9 @@ export const DiffOp = z.discriminatedUnion("op", [
   z.object({ op: z.literal("remove_field"), entity: EntityName, name: Identifier }).strict(),
   z.object({ op: z.literal("rename_field"), entity: EntityName, from: Identifier, to: Identifier }).strict(),
   z.object({ op: z.literal("set_rules"), entity: EntityName, rules: Rules }).strict(),
+  z
+    .object({ op: z.literal("set_relations"), entity: EntityName, relations: z.record(Identifier, ThroughRelation) })
+    .strict(),
   z
     .object({
       op: z.literal("set_indexes"),
@@ -147,6 +151,12 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
               fail(`${otherName}.${fieldName} still references ${op.name}; remove that field first`);
           }
         }
+        for (const [otherName, other] of Object.entries(model.entities)) {
+          if (otherName === op.name) continue;
+          for (const [relationName, relation] of Object.entries(other.relations ?? {}))
+            if (relation.through === op.name)
+              fail(`${otherName}.relations.${relationName} still goes through ${op.name}; change the relations first`);
+        }
         for (const [resourceName, resource] of Object.entries(model.resources)) {
           if (resource.entity === op.name) fail(`resource ${resourceName} still uses ${op.name}; remove it first`);
         }
@@ -168,6 +178,8 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
         for (const other of Object.values(model.entities)) {
           for (const field of Object.values(other.fields))
             if (field.relation?.entity === op.from) field.relation.entity = op.to;
+          for (const relation of Object.values(other.relations ?? {}))
+            if (relation.through === op.from) relation.through = op.to;
         }
         for (const resource of Object.values(model.resources)) if (resource.entity === op.from) resource.entity = op.to;
         for (const event of model.events) {
@@ -212,6 +224,15 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
           });
           return rule;
         });
+        for (const [fieldName, field] of Object.entries(entity.fields))
+          if (field.position?.within === op.name)
+            fail(`${op.entity}.${fieldName} is a position within ${op.name}; remove or change that field first`);
+        for (const [otherName, other] of Object.entries(model.entities))
+          for (const [relationName, relation] of Object.entries(other.relations ?? {}))
+            if (relation.through === op.entity && (relation.from === op.name || relation.to === op.name))
+              fail(
+                `${otherName}.relations.${relationName} still names ${op.entity}.${op.name}; change the relations first`
+              );
         delete entity.fields[op.name];
         entity.indexes = entity.indexes?.filter(i => !i.fields.includes(op.name));
         entity.unique = entity.unique?.filter(cols => !cols.includes(op.name));
@@ -257,6 +278,14 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
         for (const [name, value] of Object.entries(entity.fields)) rebuilt[name === op.from ? op.to : name] = value;
         entity.fields = rebuilt;
         const swap = (name: string) => (name === op.from ? op.to : name);
+        for (const field of Object.values(entity.fields))
+          if (field.position?.within === op.from) field.position.within = op.to;
+        for (const other of Object.values(model.entities))
+          for (const relation of Object.values(other.relations ?? {})) {
+            if (relation.through !== op.entity) continue;
+            if (relation.from === op.from) relation.from = op.to;
+            if (relation.to === op.from) relation.to = op.to;
+          }
         entity.indexes = entity.indexes?.map(i => ({ ...i, fields: i.fields.map(swap) }));
         entity.unique = entity.unique?.map(cols => cols.map(swap));
         for (const resource of Object.values(model.resources)) {
@@ -293,6 +322,13 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
       case "set_rules":
         entityOf(op.entity).rules = op.rules;
         break;
+
+      case "set_relations": {
+        const entity = entityOf(op.entity);
+        if (Object.keys(op.relations).length) entity.relations = op.relations;
+        else delete entity.relations;
+        break;
+      }
 
       case "set_indexes": {
         const entity = entityOf(op.entity);

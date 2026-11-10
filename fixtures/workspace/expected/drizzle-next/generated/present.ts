@@ -33,9 +33,9 @@ export function presentNote(row: schema.Note): PublicNote {
   return { id: row.id, project_id: row.project_id, author_id: row.author_id, body: row.body, created_at: row.created_at };
 }
 
-export type PublicMilestone = Pick<schema.Milestone, "id" | "project_id" | "title" | "due_on" | "done">;
+export type PublicMilestone = Pick<schema.Milestone, "id" | "project_id" | "title" | "due_on" | "done" | "position">;
 export function presentMilestone(row: schema.Milestone): PublicMilestone {
-  return { id: row.id, project_id: row.project_id, title: row.title, due_on: row.due_on, done: row.done };
+  return { id: row.id, project_id: row.project_id, title: row.title, due_on: row.due_on, done: row.done, position: row.position };
 }
 
 export type PublicChannel = Pick<schema.Channel, "id" | "team_id" | "created_by" | "name" | "private" | "created_at">;
@@ -51,6 +51,16 @@ export function presentChannelMember(row: schema.ChannelMember): PublicChannelMe
 export type PublicMessage = Pick<schema.Message, "id" | "channel_id" | "author_id" | "body" | "created_at">;
 export function presentMessage(row: schema.Message): PublicMessage {
   return { id: row.id, channel_id: row.channel_id, author_id: row.author_id, body: row.body, created_at: row.created_at };
+}
+
+export type PublicLabel = Pick<schema.Label, "id" | "team_id" | "name">;
+export function presentLabel(row: schema.Label): PublicLabel {
+  return { id: row.id, team_id: row.team_id, name: row.name };
+}
+
+export type PublicMilestoneLabel = Pick<schema.MilestoneLabel, "id" | "team_id" | "milestone_id" | "label_id">;
+export function presentMilestoneLabel(row: schema.MilestoneLabel): PublicMilestoneLabel {
+  return { id: row.id, team_id: row.team_id, milestone_id: row.milestone_id, label_id: row.label_id };
 }
 
 export type PublicOslAuthToken = Pick<schema.OslAuthToken, "id" | "token_hash" | "email" | "purpose" | "expires_at" | "created_at">;

@@ -19,7 +19,14 @@ import {
   ruleLiteral,
   ruleValuesSource,
   verdictSource,
-  zodForColumn
+  zodForColumn,
+  isMove,
+  moveSource,
+  removeStatement,
+  throughOf,
+  throughRowParts,
+  throughSource,
+  withClause
 } from "@osl/ts-common";
 import {
   HEADER,
@@ -634,10 +641,6 @@ function includePresent(ir: IR, rel: RelationIR): string {
   return `row.${rel.name} ? present${typeName(target)}(row.${rel.name}) : null`;
 }
 
-function withClause(include: string[]): string {
-  return include.length ? `, with: { ${include.map(i => `${i}: true`).join(", ")} }` : "";
-}
-
 /** The TypeScript array type of tenant ids for inArray, by the tenant key's type */
 function tenantIdsCast(ir: IR): string {
   const t = ir.auth?.tenancy;
@@ -746,6 +749,13 @@ export function resourceRouterFile(ir: IR, resource: ResourceIR): string {
   const relationsFor = (include: string[]) => include.map(name => entity.relations.find(r => r.name === name)!);
   for (const rel of [...relationsFor(list?.include ?? []), ...relationsFor(get?.include ?? [])])
     presents.add(`present${typeName(entityByName(ir, rel.target))}`);
+  // Relations through a junction: loaded after the rows, one statement per relation
+  const through = throughSource(ir, entity, list?.through, get?.through, tableVar);
+  for (const name of through.presents) presents.add(name);
+  for (const name of through.tables) if (name !== entity.name) extraTables.add(name);
+  for (const name of through.drizzle) drizzleImports.add(name);
+  const move = actions.find(isMove);
+  if (move || (remove && entity.order)) drizzleImports.add("sql");
 
   const sections: string[] = [];
   sections.push(`const RULES = {
@@ -777,16 +787,19 @@ async function missing(id: unknown, rule: Rule, session: Session | null) {
   if (list?.sortable.length)
     sections.push(`const SORTABLE = {\n${list.sortable.map(f => `  ${f}: ${table}.${f}`).join(",\n")}\n};`);
 
-  const rowSection = (name: "List" | "Get", include: string[]) => {
+  const rowSection = (name: "List" | "Get", include: string[], throughNames: string[] | undefined) => {
     const rels = relationsFor(include);
-    const rowType = rels.length
-      ? `schema.${T} & { ${rels.map(r => `${r.name}: ${includeType(ir, r)}`).join("; ")} }`
-      : `schema.${T}`;
-    const extra = rels.length ? `, ${rels.map(r => `${r.name}: ${includePresent(ir, r)}`).join(", ")}` : "";
+    const far = throughRowParts(ir, throughOf(entity, throughNames));
+    const types = [...rels.map(r => `${r.name}: ${includeType(ir, r)}`), ...far.types];
+    const shown = [...rels.map(r => `${r.name}: ${includePresent(ir, r)}`), ...far.presents];
+    const rowType = types.length ? `schema.${T} & { ${types.join("; ")} }` : `schema.${T}`;
+    const extra = shown.length ? `, ${shown.join(", ")}` : "";
     return `type ${name}Row = ${rowType};\nfunction present${name}Row(row: ${name}Row) {\n  return { ...present${T}(row)${extra} };\n}`;
   };
-  if (list) sections.push(rowSection("List", list.include));
-  if (get) sections.push(rowSection("Get", get.include));
+  if (list) sections.push(rowSection("List", list.include, list.through));
+  if (get) sections.push(rowSection("Get", get.include, get.through));
+  sections.push(...through.sections);
+  if (move) sections.push(moveSource(entity, table, query));
 
   const resolveFiles = (expr: string) => (hasFiles ? `await resolveFileRefs(${expr}, FILE_FIELDS)` : expr);
   const procedures: string[] = [];
@@ -832,14 +845,14 @@ ${whereLines}
 ${
   isolated
     ? `      // One statement at a time: both run on the procedure's transaction
-      const rows = await ${query}.findMany({ where${withClause(list.include)}, orderBy: ${orderBy}, limit: page_size, offset: (page - 1) * page_size });
+      const rows = await ${query}.findMany({ where${withClause(entity, list.include)}, orderBy: ${orderBy}, limit: page_size, offset: (page - 1) * page_size });
       const [{ total }] = await db.select({ total: count() }).from(${table}).where(where);`
     : `      const [rows, [{ total }]] = await Promise.all([
-        ${query}.findMany({ where${withClause(list.include)}, orderBy: ${orderBy}, limit: page_size, offset: (page - 1) * page_size }),
+        ${query}.findMany({ where${withClause(entity, list.include)}, orderBy: ${orderBy}, limit: page_size, offset: (page - 1) * page_size }),
         db.select({ total: count() }).from(${table}).where(where)
       ]);`
 }
-      return { data: rows.map(presentListRow), page: { page, page_size, total } };
+      return { data: ${through.list("rows")}.map(presentListRow), page: { page, page_size, total } };
     } catch (err) {
       throw toTRPCError(err, "read");
     }
@@ -851,7 +864,7 @@ ${
     procedures.push(`  get: publicProcedure.input(z.object({ id: ID })).query(async ({ ctx, input }) => {
     checkRule(RULES.read, ctx.session);
     const id = parseId(${resource.name}Id, input.id);
-    const row = await ${query}.findFirst({ where: eq(${table}.${pk}, id)${withClause(get.include)} }).catch(err => {
+    const row = await ${query}.findFirst({ where: eq(${table}.${pk}, id)${withClause(entity, get.include)} }).catch(err => {
       throw toTRPCError(err, "read");
     });
     if (!row) throw ${miss("RULES.read")};
@@ -860,7 +873,11 @@ ${
         ? `if (!verdict(RULES.read, ctx.session, ${rowArg(get.rule, "row", sessionArg)}).ok) throw notFound();`
         : `checkRule(RULES.read, ctx.session, ${rowArg(get.rule, "row", sessionArg)});`
     }
-    return presentGetRow(row);
+    return presentGetRow(${
+      get.through?.length
+        ? `await attachGet([row]).then(rows => rows[0], err => {\n      throw toTRPCError(err, "read");\n    })`
+        : "row"
+    });
   })`);
   }
 
@@ -942,7 +959,7 @@ ${emitLines.map(l => "  " + l).join("\n")}${timerLine}
     const hookContext: HookContext = { session: ctx.session, req: ctx.req };
     try {
       await hooks.beforeDelete(existing, hookContext);
-      await db.delete(${table}).where(eq(${table}.${pk}, id));
+      ${removeStatement(entity, "id") ?? `await db.delete(${table}).where(eq(${table}.${pk}, id));`}
 ${emitLines.join("\n")}
       await hooks.afterDelete(existing, hookContext);
       return null;
@@ -990,7 +1007,7 @@ ${emitLines.join("\n")}
     ...(hasFiles ? [`import { resolveFileRefs } from "../../files";`] : []),
     `import { ${[...presents].sort().join(", ")} } from "../../present";`,
     `import { ${[...validationImports].sort().join(", ")} } from "../../validation";`,
-    ...(actions.length ? [`import { handlers } from "../../actions";`] : []),
+    ...(actions.some(a => !isMove(a)) ? [`import { handlers } from "../../actions";`] : []),
     `import { ${[...accessImports].sort().join(", ")}, type Rule } from "../access";`,
     `import type { Session } from "../auth";`,
     `import { ${[...errorImports].sort().join(", ")} } from "../errors";`,
@@ -1051,7 +1068,11 @@ function actionProcedure(
     if (!current) throw ${row.miss};${row.checks.lines}
     checkRule(${rulesRef}, ctx.session, ${row.checks.arg});
     try {
-      const result = await handlers.${action.handler}({ input, row: current, session: ctx.session, db, now: new Date() });
+      ${
+        isMove(action)
+          ? `const result = await moveRow(current, input.to);\n      if (!result) throw notFound();`
+          : `const result = await handlers.${action.handler}({ input, row: current, session: ctx.session, db, now: new Date() });`
+      }
 ${emitLines.join("\n")}
       return ${resultExpr};
     } catch (err) {

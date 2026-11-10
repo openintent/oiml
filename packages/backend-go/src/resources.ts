@@ -7,7 +7,8 @@ import type {
   OperationIR,
   RelationIR,
   ResourceIR,
-  RuleIR
+  RuleIR,
+  ThroughIR
 } from "@osl/core";
 import {
   actionsOf,
@@ -502,6 +503,8 @@ const PARSE_BODY = (inputExpr: string, target: string) => `\tbody, perr := httpx
 
 interface Include {
   rel: RelationIR;
+  /** Set for a relation through a junction: `rel` then describes it as the many side it is to the row shape */
+  through?: ThroughIR;
   target: EntityIR;
   /** Go type of the map key: the key column's Go type */
   keyType: string;
@@ -522,6 +525,96 @@ function includeOf(ir: IR, entity: EntityIR, name: string): Include {
       ? `map[${keyType}][]*models.${typeName(target)}`
       : `map[${keyType}]*models.${typeName(target)}`;
   return { rel, target, keyType, loader: `load${exported(rel.name)}`, mapVar: `${local(rel.name)}Rows`, mapType };
+}
+
+/** A relation through a junction as an include: to the row shape it is a reverse relation with many rows, keyed by the entity's own key */
+function throughIncludeOf(ir: IR, entity: EntityIR, name: string): Include {
+  const through = entity.through!.find(t => t.name === name)!;
+  const target = entityByName(ir, through.target);
+  const keyType = rowGoType(column(entity, through.sourceColumn));
+  return {
+    rel: {
+      name,
+      kind: "many",
+      direction: "reverse",
+      target: through.target,
+      column: through.from,
+      targetColumn: through.sourceColumn
+    },
+    through,
+    target,
+    keyType,
+    loader: `load${exported(name)}`,
+    mapVar: `${local(name)}Rows`,
+    mapType: `map[${keyType}][]*models.${typeName(target)}`
+  };
+}
+
+/** The loader of a relation through a junction: the links in order, then the far rows they name */
+function throughLoaderMethod(ir: IR, inc: Include, entity: EntityIR, handler: string): string {
+  const through = inc.through!;
+  const { target } = inc;
+  const T = typeName(entity);
+  const junction = entityByName(ir, through.junction);
+  const farKey = rowGoType(column(target, through.targetColumn));
+  const order = through.orderBy
+    ? `j.${quoteIdent(through.orderBy)}, j.${quoteIdent(junction.primaryKey[0])}`
+    : [...new Set([target.display, through.targetColumn])].map(c => `f.${quoteIdent(c)}`).join(", ");
+  return `// ${inc.loader} fetches the ${through.name} of each ${T}: the ${target.name} rows ${through.junction} links it to, ${through.orderBy ? `in the order of ${through.junction}.${through.orderBy}` : `by ${target.display}`}.
+func (h *${handler}) ${inc.loader}(ctx context.Context, items []*models.${T}) (${inc.mapType}, error) {
+	keys := make([]${inc.keyType}, 0, len(items))
+	for _, item := range items {
+		keys = append(keys, item.${exported(through.sourceColumn)})
+	}
+	out := make(${inc.mapType}, len(keys))
+	if len(keys) == 0 {
+		return out, nil
+	}
+	links, err := h.db.Query(ctx, \`SELECT j.${quoteIdent(through.from)}, j.${quoteIdent(through.to)} FROM ${quoteIdent(through.junctionTable)} AS j JOIN ${quoteIdent(target.table)} AS f ON f.${quoteIdent(through.targetColumn)} = j.${quoteIdent(through.to)} WHERE j.${quoteIdent(through.from)} = ANY($1) ORDER BY ${order}\`, keys)
+	if err != nil {
+		return nil, err
+	}
+	type link struct {
+		from ${inc.keyType}
+		to   ${farKey}
+	}
+	var pairs []link
+	farKeys := make([]${farKey}, 0)
+	for links.Next() {
+		var l link
+		if err := links.Scan(&l.from, &l.to); err != nil {
+			links.Close()
+			return nil, err
+		}
+		pairs = append(pairs, l)
+		farKeys = append(farKeys, l.to)
+	}
+	links.Close()
+	if err := links.Err(); err != nil {
+		return nil, err
+	}
+	if len(pairs) == 0 {
+		return out, nil
+	}
+	rows, err := h.db.Query(ctx, \`SELECT \`+models.${columnsConst(target)}+\` FROM \`+models.${tableConst(target)}+\` WHERE ${quoteIdent(through.targetColumn)} = ANY($1)\`, farKeys)
+	if err != nil {
+		return nil, err
+	}
+	related, err := models.Collect(rows, models.${scanFunc(target)})
+	if err != nil {
+		return nil, err
+	}
+	far := make(map[${farKey}]*models.${typeName(target)}, len(related))
+	for _, row := range related {
+		far[row.${exported(through.targetColumn)}] = row
+	}
+	for _, l := range pairs {
+		if row, ok := far[l.to]; ok {
+			out[l.from] = append(out[l.from], row)
+		}
+	}
+	return out, nil
+}`;
 }
 
 /** The struct field for an included relation in a row shape */
@@ -578,7 +671,8 @@ function loaderMethod(inc: Include, entity: EntityIR, handler: string): string {
   const fk = column(target, rel.column);
   const keyField = `item.${exported(rel.targetColumn)}`;
   const groupKey = fk.nullable ? `*row.${exported(rel.column)}` : `row.${exported(rel.column)}`;
-  const order = target.primaryKey.map(quoteIdent).join(", ");
+  // The children of the parent they are ordered within come in their order
+  const order = [...(rel.orderBy ? [rel.orderBy] : []), ...target.primaryKey].map(quoteIdent).join(", ");
   lines.push(`// ${inc.loader} fetches the ${rel.name} of each ${T}, grouped by ${rel.column}.`);
   lines.push(`func (h *${handler}) ${inc.loader}(ctx context.Context, items []*models.${T}) (${inc.mapType}, error) {`);
   lines.push(`\tkeys := make([]${inc.keyType}, 0, len(items))`);
@@ -662,6 +756,28 @@ function actionHandlerMethod(
     args.push("row");
   }
   lines.push(PARSE_BODY(`validation.${actionInputVar(action)}`, "values"));
+  if (action.builtin === "move" && row) {
+    // The compiler's own action: the database puts the row at its new place and renumbers its parent in one
+    // statement; the row is read again as it now is, and a row that went meanwhile answers 404
+    const pk = singlePrimaryKey(row.entity);
+    lines.push(`\tto, _ := values["to"].(int)
+	var place *int
+	if err := h.db.QueryRow(ctx, \`SELECT ${quoteIdent(row.entity.order!.move)}($1, $2)\`, id, to).Scan(&place); err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if place == nil {
+		httpx.Fail(c, httpx.NotFound())
+		return
+	}
+	result, err := models.${scanFunc(row.entity)}(h.db.QueryRow(ctx, \`SELECT \`+models.${columnsConst(row.entity)}+\` FROM \`+models.${tableConst(row.entity)}+\` WHERE ${quoteIdent(pk.name)} = $1\`, id))
+${fail("write")}
+	_ = row`);
+    lines.push(...emitLines(events, `${present}(result)`, "write"));
+    lines.push(`\thttpx.OK(c, ${present}(result))`);
+    lines.push(`}`);
+    return lines.join("\n");
+  }
   lines.push(
     `\tactx := &actions.Context{Gin: c, Ctx: c.Request.Context(), Session: session, DB: h.db, Now: time.Now().UTC()}`
   );
@@ -734,7 +850,7 @@ export function resourceFile(ir: IR, resource: ResourceIR, modulePath: string): 
     imports.add(`${hooksPkg} ${modulePath}/src/extensions/${resource.name}`);
   }
   if (files.length && (create || update)) imports.add(`${modulePath}/generated/files`);
-  if (actions.length) {
+  if (actions.some(a => !a.builtin)) {
     imports.add(`${modulePath}/generated/actions`);
     imports.add("time");
     imports.add(`${modulePath}/generated/actions/handlers`);
@@ -749,8 +865,14 @@ export function resourceFile(ir: IR, resource: ResourceIR, modulePath: string): 
   }
 
   const includes = new Map<string, Include>();
-  const listIncludes = (list?.include ?? []).map(name => includeOf(ir, entity, name));
-  const getIncludes = (get?.include ?? []).map(name => includeOf(ir, entity, name));
+  const listIncludes = [
+    ...(list?.include ?? []).map(name => includeOf(ir, entity, name)),
+    ...(list?.through ?? []).map(name => throughIncludeOf(ir, entity, name))
+  ];
+  const getIncludes = [
+    ...(get?.include ?? []).map(name => includeOf(ir, entity, name)),
+    ...(get?.through ?? []).map(name => throughIncludeOf(ir, entity, name))
+  ];
   for (const inc of [...listIncludes, ...getIncludes]) includes.set(inc.rel.name, inc);
   if (includes.size) imports.add("context");
 
@@ -996,7 +1118,11 @@ ${rowChecks(entity, ruleVar("read"), ruleVar("delete"), entity.rules.delete, "ex
 		httpx.HandleError(c, err, "delete")
 		return
 	}
-	if _, err := h.db.Exec(ctx, \`DELETE FROM \`+${tableC}+\` WHERE ${pkIdent} = $1\`, id); err != nil {
+	if _, err := h.db.Exec(ctx, ${
+    entity.order
+      ? `\`SELECT ${quoteIdent(entity.order.remove)}($1)\``
+      : `\`DELETE FROM \`+${tableC}+\` WHERE ${pkIdent} = $1\``
+  }, id); err != nil {
 		httpx.HandleError(c, err, "delete")
 		return
 	}
@@ -1016,7 +1142,7 @@ ${emits.length ? emits.join("\n") + "\n" : ""}	if err := ${hooksPkg}.AfterDelete
   if (missing) sections.push(missing);
   if (ruleRow) sections.push(ruleRow);
   for (const inc of [...includes.values()].sort((a, b) => a.rel.name.localeCompare(b.rel.name)))
-    sections.push(loaderMethod(inc, entity, handler));
+    sections.push(inc.through ? throughLoaderMethod(ir, inc, entity, handler) : loaderMethod(inc, entity, handler));
 
   return goFile(
     modulePath,

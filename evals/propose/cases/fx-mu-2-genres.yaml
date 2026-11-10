@@ -1,0 +1,31 @@
+id: fx-mu-2-genres
+tags: [fixture, entity, rules, relation, many-to-many, scenario]
+base: { fixture: music, through: MU-1 }
+oracle: fixtures/music/intents/MU-2/diff.yaml
+intent:
+  title: Genres
+  ask: >-
+    Tracks have genres. Any signed-in person can add a genre by name; an artist's owner tags their tracks with
+    genres and removes a tag again. A track shows its genres by name, in lists too, and a genre shows the tracks
+    that carry it.
+  acceptance:
+    - A track read back lists its genres with their names, not ids
+    - Tagging a track twice with one genre is a conflict
+    - Someone who does not own the artist cannot tag its tracks
+    - A genre lists its tracks; removing the tag removes the track from the genre
+expect:
+  entities: [Genre, "TrackGenre|TrackGenres|GenreTrack|TrackTag"]
+  junction: [[Track, Genre]]
+  through: ["Track.* -> Genre", "Genre.* -> Track"]
+  list: { tracks: { include: ["genres|tags"] } }
+  rules:
+    "TrackGenre|TrackGenres|GenreTrack|TrackTag":
+      create: "owner:track_id.album_id.artist_id.owner_id"
+  scenarios: { min: 1, rejections: 2, statuses: [409, 403] }
+  touches: [tracks.get, genres.get]
+  ops: { require: [set_relations] }
+notes: >-
+  Many-to-many through a declared junction: the junction keeps its own rules and resource, and the far rows are
+  named once on each side with a relation through it, so the includes return names. A diff that only adds the
+  junction and includes its rows returns ids where the ask wants names, and one that stores genre names in an array
+  on the track loses the genre's own page.

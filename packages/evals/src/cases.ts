@@ -81,6 +81,10 @@ export const Expect = z
     unique_together: z.record(z.string(), Names).optional(),
     /** Pairs of entities joined by a junction entity: two relation fields that are the primary key or a unique pair */
     junction: z.array(z.tuple([z.string(), z.string()])).optional(),
+    /** "Entity.relation -> Target": a relation through a junction to the far entity; relation may be "*" for any name */
+    through: Names.optional(),
+    /** entity -> the relation field its rows are ordered within (a position field); "*" for any parent */
+    ordered: z.record(z.string(), z.string()).optional(),
     /** entity -> operation -> rule alternatives, compared after defaults are applied */
     rules: z.record(z.string(), z.record(z.string(), z.string())).optional(),
     resources: Names.optional(),

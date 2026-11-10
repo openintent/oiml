@@ -1,0 +1,12 @@
+osl: "1.0"
+title: The catalog and playlist pages
+ask: >-
+  A web app over the catalog. An album's page lists its tracks in order and its owner drags them into another
+  order. The tracks table shows each track's album and its genres by name, and a track's page adds and removes
+  genres. A playlist's page lists its tracks by title in the listener's order, where they add a track, remove one
+  and drag them into another order. Genres and artists have plain pages. Everyone can open the catalog pages;
+  playlists need a signed-in listener.
+acceptance:
+  - The albums page shows an album's tracks in order
+  - The tracks table has a Genres column with names
+  - The playlists page shows a playlist's track titles in its order

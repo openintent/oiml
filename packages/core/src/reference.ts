@@ -19,6 +19,7 @@ Every op has an \`op\` key. Validation runs after all ops, so order within one d
 - \`rename_field\` { entity, from, to }  (updates rules, indexes, resource options; migrations emit RENAME)
 - \`set_rules\` { entity, rules: Rules }
 - \`set_indexes\` { entity, indexes?: Index[], unique?: string[][] }
+- \`set_relations\` { entity, relations: { <name>: { through: <JunctionEntity>, from?, to? } } } (replaces the entity's whole relations block; {} removes it)
 - \`add_resource\` { name: snake_case, resource: Resource }
 - \`update_resource\` { name, resource: Resource }  (replaces the whole resource: repeat the operations, list options and actions you keep)
 - \`remove_resource\` { name }  (also drops the events, scenarios and seed steps that used it; do not remove those separately)
@@ -46,6 +47,7 @@ rules: { read, create, update, delete, hidden }   # each rule: a predicate, or s
 # hidden: forbidden (default) | not_found   # what a row the read rule hides answers when addressed by id
 indexes: [{ fields: [a, b], unique: false, name: optional }]
 unique: [[a, b]]        # multi-column unique constraints
+relations: { genres: { through: TrackGenre } } # many-to-many: the rows a junction entity links this one to (from, to: the junction's two relation fields, when it has more)
 \`\`\`
 
 Default rules: read public; create, update and delete are authenticated when auth exists, public otherwise.
@@ -124,6 +126,7 @@ relation:              # makes this field a foreign key; type must match the tar
 hidden: true           # never returned by or accepted from the API
 read_only: true        # returned by the API but never accepted from it: register, create and update answer 400 when a client sends it
 ranked: true           # enum only: the values rank in declared order, first most privileged, for member:<path>:<value> on a membership entity
+position: { within: album_id } # integer only: the row's place among the rows with the same album_id, kept by the server (see Ordered collections)
 file: { accept: [image/*, application/pdf], max_size: 5242880 }   # file only: what uploads it takes (sizes in bytes)
 \`\`\`
 
@@ -139,8 +142,44 @@ page's columns. Who may upload and read is \`files: { upload, read }\` (defaults
 read public).
 
 Every entity needs a primary key: mark fields \`primary: true\` or include an \`id\` field.
-A junction table is an entity whose two relation fields are both \`primary: true\`.
+A junction table is an entity whose two relation fields are both \`primary: true\`. With that key it has no resource: give it an \`id\` and
+\`unique: [[a_id, b_id]]\` instead when clients add and remove the links.
 Only entities with a single-column primary key can have resources.
+
+Many-to-many goes through a junction entity you declare: an \`id\`, a required relation field to each side,
+\`unique: [[track_id, genre_id]]\` when a pair may exist only once, its own rules and its own resource (\`track_genres\`
+with create and delete is how a genre is put on a track and taken off again, and its rules say who may). What a link
+carries (an added-at stamp, a position, a role) is a field of the junction. Then name the far rows once, on the entity
+that shows them: \`relations: { genres: { through: TrackGenre } }\` on Track, and \`relations: { tracks: { through:
+TrackGenre } }\` on Genre when that side shows them too. \`include: [genres]\` on list or get returns the Genre rows
+themselves (\`genres: [{ id, name }]\`), so a track shows names where it showed ids. The far rows come in the junction's
+order when the junction has a position within the near relation, and by their display column otherwise. \`from\` and \`to\`
+name the junction's two relation fields when it has more than two, or two to one entity (\`following: { through:
+Follow, from: follower_id, to: followee_id }\`). An entity that exists gets its relations with \`set_relations\`.
+A link is a row of the junction, written through the junction's resource, one request each: the parent's create and
+update take no \`genre_ids\`, and a list is not filtered by a far row (the tracks of a genre are \`genres.get\` with
+\`include: [tracks]\`, or the junction's list filtered by \`genre_id\` with \`include: [track]\`). A far row is returned
+whatever its own read rule says, like every included row: do not include rows the reader may not see. Under
+\`isolation: database\` a junction between two tenant tables declares its own required relation to the tenant (M115),
+a link names that tenant (\`team_id\`), and both rows must be that tenant's (a link across tenants is a 400).
+
+Ordered collections: \`position: { within: <relation field> }\` on an integer field gives every row a place among the
+rows with the same parent, 1 for the first, no two alike. The server owns the field; write only \`type: integer\` and
+\`position\` (it is required and read-only already, and takes no default). Create appends the row at the end of its
+parent and answers 400 when a client sends the field. A delete closes the gap. Lists come parent by parent in that
+order unless the resource declares \`list.order\`, and so do the parent's \`include\` of the reverse relation and a
+relation through an ordered junction. A resource over the entity has a \`move\` row action without declaring it:
+\`POST /api/<resource>/{id}/move\` with \`{ to: <place> }\` puts the row at that place and shifts the others (1 is first, a
+place past the end is last, below 1 is a 400), answers the row, and is allowed by the entity's update rule (\`update:
+none\` leaves no move). Scenario steps call it as \`tracks.move\` with \`body: { to: 1 }\`. \`within\` is a required relation
+field to another entity: tracks \`within: album_id\`, playlist entries \`within: playlist_id\` on the junction. A row keeps
+its parent, so that field is not accepted by update. Never declare an action named \`move\` on such a resource (M143)
+and never write a handler that renumbers; concurrent creates, moves and deletes in one parent are safe. When a row
+goes with a cascade from elsewhere (a track deleted from the catalog leaves every playlist), the gap closes too: at
+once when nothing else is writing that parent, and otherwise with its next move or delete, so places are always in
+order and never shared. Not expressible, say so in not_delivered: an order over a whole table, an
+order within an optional or a self relation (a tree of pages, nested blocks), moving a row to another parent in one
+call, creating at a given place (create, then move), an event on move.
 
 ## Resource
 
@@ -159,7 +198,8 @@ actions:                              # operations beyond the five; see Actions
 
 \`sortable\` lets a client pass \`sort=<field>:asc|desc\`; \`search\` lets it pass \`q\` to match those string fields as a
 case-insensitive substring. Writable fields exclude primary keys, hidden and read_only fields, and fields with generated defaults (now, uuid, identity).
-\`include\` names relations: forward ones declared on the entity's fields and reverse ones declared with \`reverse\`.
+\`include\` names relations: forward ones declared on the entity's fields, reverse ones declared with \`reverse\`, and the
+ones through a junction declared under \`relations\` (the far rows, as an array).
 List returns \`{ data: [...], page: { page, page_size, total } }\`; get, create and update return \`{ data }\`; delete returns 204.
 Errors are \`{ error: { code, message } }\` with 400 validation, 401 no session, 403 the rule refuses (also a get of a row
 the read rule hides from this user, unless the entity sets \`hidden: not_found\`), 404 no such row, an id with the wrong
@@ -308,7 +348,11 @@ A resource page is a master/detail view: the list on the left (with a New action
 the selected row on the right with edit and delete when the resource allows them. Hidden and binary fields cannot be
 listed. Removing a resource that a page shows fails; remove the page first.
 Boards show the count of cards in each column header. The detail pane renders the rows of every reverse relation the
-get operation includes. Anonymous visitors see every page whose resource is publicly readable; \`access\` narrows who
+get operation includes, and of every relation through a junction it includes: the far rows by name, with a control to
+add one and to remove one when the junction has a resource whose list filters by the near field, and drag to reorder
+when the junction is ordered. The children of an ordered entity (an album's tracks) are dragged into place the same
+way. \`columns\` may name a relation through a junction that the list includes (\`columns: [title, genres]\`): the cell
+shows the far rows' names. Anonymous visitors see every page whose resource is publicly readable; \`access\` narrows who
 may open a page, it never widens what the API returns, so a public page needs a publicly readable resource (M092) and
 a page filtered by \`{actor.id}\` cannot be public. A dashboard or custom page may take \`path: /\` as the landing
 page; a resource page cannot. Filters are equality only: "due before today" or "starting after now" is not

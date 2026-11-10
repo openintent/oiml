@@ -1,0 +1,154 @@
+osl: "1.0"
+summary: Genres and a TrackGenre junction, with a track's genres and a genre's tracks as relations through it
+ops:
+  - op: add_entity
+    name: Genre
+    entity:
+      fields:
+        id: { type: uuid, primary: true }
+        name: { type: string, max_length: 60, required: true, unique: true }
+      rules: { read: public, create: authenticated, update: none, delete: none }
+      relations:
+        tracks: { through: TrackGenre }
+  - op: add_entity
+    name: TrackGenre
+    entity:
+      fields:
+        id: { type: uuid, primary: true }
+        track_id:
+          type: uuid
+          required: true
+          relation: { entity: Track, name: track, on_delete: cascade }
+        genre_id:
+          type: uuid
+          required: true
+          relation: { entity: Genre, name: genre, on_delete: cascade }
+      unique: [[track_id, genre_id]]
+      rules:
+        read: public
+        create: "owner:track_id.album_id.artist_id.owner_id"
+        update: none
+        delete: "owner:track_id.album_id.artist_id.owner_id"
+  - op: set_relations
+    entity: Track
+    relations:
+      genres: { through: TrackGenre }
+  - op: add_resource
+    name: genres
+    resource:
+      entity: Genre
+      operations: [list, get, create]
+      list: { order: [[name, asc]], search: [name] }
+      get: { include: [tracks] }
+  - op: add_resource
+    name: track_genres
+    resource:
+      entity: TrackGenre
+      operations: [list, get, create, delete]
+      list: { filters: [track_id, genre_id] }
+  - op: update_resource
+    name: tracks
+    resource:
+      entity: Track
+      operations: [list, get, create, update, delete]
+      list: { filters: [album_id], include: [album, genres] }
+      get: { include: [album, genres] }
+      update: { fields: [title, duration_seconds] }
+  - op: add_scenario
+    scenario:
+      name: a track shows its genres by name
+      steps:
+        - as: alice
+          op: artists.create
+          body: { name: Paper Kites }
+          expect: { status: 201 }
+          capture: { artist: data.id }
+        - as: alice
+          op: albums.create
+          body: { artist_id: "{artist}", title: Tide Tables }
+          expect: { status: 201 }
+          capture: { album: data.id }
+        - as: alice
+          op: tracks.create
+          body: { album_id: "{album}", title: Low Water, duration_seconds: 212 }
+          expect: { status: 201 }
+          capture: { low_water: data.id }
+        - as: alice
+          op: tracks.create
+          body: { album_id: "{album}", title: Spring Tide, duration_seconds: 198 }
+          expect: { status: 201 }
+          capture: { spring_tide: data.id }
+        - as: bob
+          op: genres.create
+          body: { name: Shoegaze }
+          expect: { status: 201, body: { data: { name: Shoegaze } } }
+          capture: { shoegaze: data.id }
+        - as: bob
+          op: genres.create
+          body: { name: Ambient }
+          expect: { status: 201 }
+          capture: { ambient: data.id }
+        - op: genres.create
+          body: { name: Anonymous }
+          expect: { status: 401 }
+        - as: alice
+          op: track_genres.create
+          body: { track_id: "{low_water}", genre_id: "{shoegaze}" }
+          expect: { status: 201, body: { data: { track_id: "{low_water}", genre_id: "{shoegaze}" } } }
+          capture: { tag: data.id }
+        - as: alice
+          op: track_genres.create
+          body: { track_id: "{low_water}", genre_id: "{ambient}" }
+          expect: { status: 201 }
+        - as: alice
+          op: track_genres.create
+          body: { track_id: "{low_water}", genre_id: "{shoegaze}" }
+          expect: { status: 409 }
+        - as: bob
+          op: track_genres.create
+          body: { track_id: "{spring_tide}", genre_id: "{ambient}" }
+          expect: { status: 403 }
+        - as: alice
+          op: track_genres.create
+          body: { track_id: "{spring_tide}", genre_id: "{ambient}" }
+          expect: { status: 201 }
+        - op: tracks.get
+          path: { id: "{low_water}" }
+          expect:
+            status: 200
+            body:
+              data:
+                title: Low Water
+                album: { title: Tide Tables }
+                genres: [{ id: "{ambient}", name: Ambient }, { id: "{shoegaze}", name: Shoegaze }]
+        - op: tracks.list
+          query: { album_id: "{album}" }
+          expect:
+            status: 200
+            body:
+              data:
+                - { title: Low Water, genres: [{ name: Ambient }, { name: Shoegaze }] }
+                - { title: Spring Tide, genres: [{ name: Ambient }] }
+              page: { total: 2 }
+        - op: genres.get
+          path: { id: "{ambient}" }
+          expect:
+            status: 200
+            body: { data: { name: Ambient, tracks: [{ title: Low Water }, { title: Spring Tide }] } }
+        - op: genres.get
+          path: { id: "{shoegaze}" }
+          expect: { status: 200, body: { data: { tracks: [{ id: "{low_water}", track_number: 1 }] } } }
+        - as: bob
+          op: track_genres.delete
+          path: { id: "{tag}" }
+          expect: { status: 403 }
+        - as: alice
+          op: track_genres.delete
+          path: { id: "{tag}" }
+          expect: { status: 204 }
+        - op: track_genres.list
+          query: { track_id: "{low_water}" }
+          expect: { status: 200, body: { data: [{ genre_id: "{ambient}" }], page: { total: 1 } } }
+        - op: track_genres.list
+          query: { genre_id: "{shoegaze}" }
+          expect: { status: 200, body: { page: { total: 0 } } }

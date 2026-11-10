@@ -1,5 +1,5 @@
 import type { Backend, GeneratedFile, GenerateInput } from "@osl/core";
-import { globalActions, migrationFiles, openapiDocument } from "@osl/core";
+import { globalActions, migrationFiles, openapiDocument, userActions } from "@osl/core";
 import { actionHandlersFile, actionScaffolds, actionsFile } from "./actions.js";
 import { appFile, mainScaffold, openapiFile, workerScaffold } from "./app.js";
 import { authFile, authProvidersFile, hasProviders } from "./auth.js";
@@ -50,7 +50,7 @@ export function generate(input: GenerateInput): GeneratedFile[] {
     files.push({ path: `${gen}/files/files.go`, content: filesFile(ir, mod) });
     files.push({ path: `${gen}/filesapi/api.go`, content: filesApiFile(ir, mod) });
   }
-  if (ir.actions.length) {
+  if (userActions(ir).length) {
     files.push({ path: `${gen}/actions/actions.go`, content: actionsFile(ir, mod) });
     files.push({ path: `${gen}/actions/handlers/handlers.go`, content: actionHandlersFile(ir, mod) });
     files.push(...actionScaffolds(ir, mod));

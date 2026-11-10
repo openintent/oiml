@@ -154,7 +154,6 @@ var MilestonesCreateInput = Object{Fields: []Field{
 
 // MilestonesUpdateInput validates PATCH /api/milestones/{id} bodies.
 var MilestonesUpdateInput = Object{Fields: []Field{
-	{Name: "project_id", Type: UUID{}},
 	{Name: "title", Type: String{MinLength: 1, MaxLength: 200}},
 	{Name: "due_on", Type: Date{}},
 	{Name: "done", Type: Boolean{}},
@@ -226,8 +225,53 @@ var MessagesUpdateInput = Object{Fields: []Field{
 	{Name: "body", Type: String{}},
 }}
 
+// LabelsID parses a labels id from the path.
+func LabelsID(raw string) (string, bool) {
+	return ParseUUIDID(raw)
+}
+
+// LabelsListQuery validates the GET /api/labels query string.
+var LabelsListQuery = Query{PageSize: 20, Filters: []Filter{
+	{Name: "team_id", Type: UUID{}},
+}}
+
+// LabelsCreateInput validates POST /api/labels bodies.
+var LabelsCreateInput = Object{Fields: []Field{
+	{Name: "team_id", Required: true, Type: UUID{}},
+	{Name: "name", Required: true, Type: String{MaxLength: 60}},
+}}
+
+// LabelsUpdateInput validates PATCH /api/labels/{id} bodies.
+var LabelsUpdateInput = Object{Fields: []Field{
+	{Name: "team_id", Type: UUID{}},
+	{Name: "name", Type: String{MaxLength: 60}},
+}}
+
+// MilestoneLabelsID parses a milestone_labels id from the path.
+func MilestoneLabelsID(raw string) (string, bool) {
+	return ParseUUIDID(raw)
+}
+
+// MilestoneLabelsListQuery validates the GET /api/milestone_labels query string.
+var MilestoneLabelsListQuery = Query{PageSize: 20, Filters: []Filter{
+	{Name: "milestone_id", Type: UUID{}},
+	{Name: "label_id", Type: UUID{}},
+}}
+
+// MilestoneLabelsCreateInput validates POST /api/milestone_labels bodies.
+var MilestoneLabelsCreateInput = Object{Fields: []Field{
+	{Name: "team_id", Required: true, Type: UUID{}},
+	{Name: "milestone_id", Required: true, Type: UUID{}},
+	{Name: "label_id", Required: true, Type: UUID{}},
+}}
+
 // TasksRemindInput validates POST /api/tasks/{id}/remind bodies.
 var TasksRemindInput = Object{}
+
+// MilestonesMoveInput validates POST /api/milestones/{id}/move bodies.
+var MilestonesMoveInput = Object{Fields: []Field{
+	{Name: "to", Required: true, Type: Integer{Min: F(1)}},
+}}
 
 // ChannelsJoinInput validates POST /api/channels/{id}/join bodies.
 var ChannelsJoinInput = Object{}

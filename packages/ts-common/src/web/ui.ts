@@ -287,5 +287,151 @@ export function FileInput({
 }
 `
     : ""
-}`;
+}${
+    ir.entities.some(e => e.order || e.through?.length)
+      ? `
+/**
+ * Rows in an order the server keeps. With onMove, drag a row onto another to move it to that place, or step it
+ * with the arrows; the place is 1 for the first row. Without it the list only shows the order.
+ */
+export function OrderedList<T>({
+  items,
+  keyOf,
+  label,
+  onMove,
+  onRemove,
+  busy
+}: {
+  items: T[];
+  keyOf: (item: T) => string;
+  label: (item: T) => string;
+  onMove?: (item: T, to: number) => void;
+  onRemove?: (item: T) => void;
+  busy?: boolean;
+}) {
+  const [dragged, setDragged] = useState<string | null>(null);
+  if (items.length === 0) return <span>—</span>;
+  return (
+    <ol className="grid gap-1">
+      {items.map((item, index) => {
+        const key = keyOf(item);
+        return (
+          <li
+            key={key}
+            draggable={Boolean(onMove) && !busy}
+            onDragStart={event => {
+              event.dataTransfer.setData("text/plain", key);
+              event.dataTransfer.effectAllowed = "move";
+              setDragged(key);
+            }}
+            onDragEnd={() => setDragged(null)}
+            onDragOver={event => {
+              if (onMove && dragged !== null && dragged !== key) event.preventDefault();
+            }}
+            onDrop={event => {
+              event.preventDefault();
+              const moved = items.find(other => keyOf(other) === dragged);
+              setDragged(null);
+              if (moved && onMove && dragged !== key) onMove(moved, index + 1);
+            }}
+            className={cn(
+              "flex items-center gap-2 rounded-md border border-border bg-card px-2 py-1 text-sm",
+              onMove && !busy && "cursor-grab active:cursor-grabbing",
+              dragged === key && "opacity-50"
+            )}
+          >
+            <span className="w-5 shrink-0 text-right text-xs tabular-nums text-muted-foreground">{index + 1}</span>
+            <span className="min-w-0 flex-1 truncate">{label(item) || "—"}</span>
+            {onMove ? (
+              <span className="flex shrink-0">
+                <Button variant="ghost" size="xs" disabled={busy || index === 0} aria-label="Move up" onClick={() => onMove(item, index)}>
+                  ↑
+                </Button>
+                <Button variant="ghost" size="xs" disabled={busy || index === items.length - 1} aria-label="Move down" onClick={() => onMove(item, index + 2)}>
+                  ↓
+                </Button>
+              </span>
+            ) : null}
+            {onRemove ? (
+              <Button variant="ghost" size="xs" disabled={busy} aria-label={"Remove " + label(item)} onClick={() => onRemove(item)}>
+                ×
+              </Button>
+            ) : null}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/** Rows shown by name, each with a remove control when the viewer may remove it */
+export function NameChips<T>({
+  items,
+  keyOf,
+  label,
+  onRemove,
+  busy
+}: {
+  items: T[];
+  keyOf: (item: T) => string;
+  label: (item: T) => string;
+  onRemove?: (item: T) => void;
+  busy?: boolean;
+}) {
+  if (items.length === 0) return <span>—</span>;
+  return (
+    <span className="flex flex-wrap gap-1">
+      {items.map(item => (
+        <span key={keyOf(item)} className="inline-flex items-center gap-1 rounded-md bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
+          {label(item) || "—"}
+          {onRemove ? (
+            <button type="button" disabled={busy} aria-label={"Remove " + label(item)} className="text-muted-foreground hover:text-foreground" onClick={() => onRemove(item)}>
+              ×
+            </button>
+          ) : null}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/** A select that adds the row picked from it */
+export function AddPicker<T>({
+  options,
+  keyOf,
+  label,
+  placeholder,
+  onAdd,
+  busy
+}: {
+  options: T[];
+  keyOf: (item: T) => string;
+  label: (item: T) => string;
+  placeholder: string;
+  onAdd: (item: T) => void;
+  busy?: boolean;
+}) {
+  return (
+    <select
+      className={cn(selectClass, "mt-2 w-auto")}
+      value=""
+      disabled={busy}
+      aria-label={placeholder}
+      onChange={event => {
+        const picked = options.find(option => keyOf(option) === event.target.value);
+        if (picked) onAdd(picked);
+      }}
+    >
+      <option value="">{placeholder}</option>
+      {options.map(option => (
+        <option key={keyOf(option)} value={keyOf(option)}>
+          {label(option)}
+        </option>
+      ))}
+    </select>
+  );
+}
+`
+      : ""
+  }`;
 }

@@ -1,0 +1,24 @@
+id: empty-course-instructors
+tags: [entity, rules, relation, many-to-many, auth, scenario]
+base: { empty: academy }
+intent:
+  title: Courses and their instructors
+  ask: >-
+    A training site. People sign up; an admin creates courses with a title and a summary and assigns people to a
+    course as its instructors, the same person at most once per course. Anyone reads the courses, and a course shows
+    its instructors' names, in the course list too. A person's profile shows the courses they teach.
+  acceptance:
+    - A course read back lists its instructors with their names
+    - Assigning the same person to a course twice is a conflict
+    - Someone who is not an admin cannot assign an instructor
+expect:
+  entities: [User, Course, "CourseInstructor|CourseInstructors|Instructor|CourseTeacher"]
+  junction: [[Course, User]]
+  through: ["Course.* -> User"]
+  list: { courses: { include: ["instructors|teachers"] } }
+  scenarios: { min: 1, rejections: 2, statuses: [409, 403] }
+  touches: [courses.get]
+notes: >-
+  The ask that opened the gap (round 6): a list could not include a row reached through a junction, so instructors
+  showed as ids. The junction is a declared entity with a unique pair; the course's instructors are a relation
+  through it. A second relation on User for the courses a person teaches is welcome and not required.

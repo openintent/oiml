@@ -24,7 +24,8 @@ import {
 import { quoteIdent, quoteLiteral, sqlType } from "./migrations.js";
 
 export interface IsolationObject {
-  kind: "role" | "grant" | "function" | "trigger" | "rls" | "policy";
+  /** `constraint` is an ordered collection's (order.ts), which shares the planner and the drift check with this layer */
+  kind: "role" | "grant" | "function" | "trigger" | "rls" | "policy" | "constraint";
   /** What the planner matches between two revisions and the drift check with the database */
   key: string;
   name: string;

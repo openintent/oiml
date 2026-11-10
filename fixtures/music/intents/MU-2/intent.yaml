@@ -1,0 +1,11 @@
+osl: "1.0"
+title: Genres
+ask: >-
+  Tracks have genres. Any signed-in person can add a genre by name; an artist's owner tags their tracks with
+  genres and removes a tag again. A track shows its genres by name, in lists too, and a genre shows the tracks
+  that carry it.
+acceptance:
+  - A track read back lists its genres with their names, not ids
+  - Tagging a track twice with one genre is a conflict
+  - Someone who does not own the artist cannot tag its tracks
+  - A genre lists its tracks; removing the tag removes the track from the genre

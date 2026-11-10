@@ -131,13 +131,18 @@ gaps:
       (shape_by: { type: { heading: {...}, code: {...} } }) beside the typed-JSON design's single shape."
   - key: ordering and positions
     kind: not_delivered
-    status: open
+    status: built
     first_seen: r5
     last_seen: r5
     cases: 1
-    note: "Exercise (docs/exercises/spotify.md): playlist tracks with a position; create appends, a move action
-      renumbers, delete closes the gap, the page drags to reorder. Notion (docs/exercises/notion.md): page siblings and
-      blocks, where the scope is a nullable self-relation (within: parent_block_id, falling back to page_id)."
+    construct: "position: { within: <required relation field> } on an integer field (create appends, a compiler-written
+      move { to } row action under the update rule, a delete closes the gap, lists and includes follow the order)"
+    version: unreleased
+    note: "Built 2026-11-10 with the music fixture (MU-1 the tracks of an album, MU-3 playlist entries) and workspace
+      WS-12 (milestones under isolation: database). Exercise (docs/exercises/spotify.md): playlist tracks with a
+      position; create appends, a move action renumbers, delete closes the gap, the page drags to reorder. Notion
+      (docs/exercises/notion.md): page siblings and blocks, where the scope is a nullable self-relation (within:
+      parent_block_id, falling back to page_id): declined with a sentence, and open with tree queries."
   - key: conditions through relations
     kind: not_delivered
     status: built
@@ -177,14 +182,20 @@ gaps:
     cases: 1
   - key: relations beyond many-to-one
     kind: not_delivered
-    status: open
+    status: built
     first_seen: r6
     last_seen: r6
     cases: 1
-    note: "A list cannot include a row reached through a junction (course -> course_instructors -> user), so
+    construct: "relations: { <name>: { through: <Junction>, from?, to? } } on an entity (include on list and get returns
+      the far rows; pages show their names and add and remove them through the junction's resource)"
+    version: unreleased
+    note: "Built 2026-11-10 with the music fixture (MU-2 a track's genres and a genre's tracks, MU-3 a playlist's
+      tracks through an ordered junction) and workspace WS-12 (a milestone's labels, the junction naming its team).
+      A list cannot include a row reached through a junction (course -> course_instructors -> user), so
       many-to-many shows ids where names are wanted. Exercise (docs/exercises/spotify.md): featured artists, genres
       and playlist tracks; proven together with ordering by one playlist fixture. The topic also catches tree and
-      ancestor asks, recorded separately as tree queries (docs/exercises/notion.md) until the topic is split."
+      ancestor asks, which stay open and are recorded separately as tree queries (docs/exercises/notion.md) until
+      the topic is split: a line filed here after 2026-11-10 is a tree ask unless it names a junction."
   - key: hidden rows as not found
     kind: not_delivered
     status: built

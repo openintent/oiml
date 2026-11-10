@@ -2,7 +2,7 @@
 // Do not edit: this file is rewritten on every osl generate.
 
 import { relations } from "drizzle-orm";
-import { boolean, date, index, pgEnum, pgTable, text, timestamp, unique, uuid, varchar } from "drizzle-orm/pg-core";
+import { boolean, date, index, integer, pgEnum, pgTable, text, timestamp, unique, uuid, varchar } from "drizzle-orm/pg-core";
 
 export const teamMemberRoleEnum = pgEnum("team_member_role", ["owner", "admin", "member"]);
 export const projectStatusEnum = pgEnum("project_status", ["active", "archived"]);
@@ -82,7 +82,8 @@ export const milestones = pgTable(
     project_id: uuid().notNull().references(() => projects.id, { onDelete: "cascade" }),
     title: varchar({ length: 200 }).notNull(),
     due_on: date().notNull(),
-    done: boolean().notNull().default(false)
+    done: boolean().notNull().default(false),
+    position: integer().notNull().default(0)
   },
   t => [index("milestones_project_id_idx").on(t.project_id)]
 );
@@ -124,6 +125,27 @@ export const messages = pgTable(
   t => [index("messages_channel_id_idx").on(t.channel_id), index("messages_author_id_idx").on(t.author_id)]
 );
 
+export const labels = pgTable(
+  "labels",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    team_id: uuid().notNull().references(() => teams.id, { onDelete: "cascade" }),
+    name: varchar({ length: 60 }).notNull()
+  },
+  t => [unique("labels_team_id_name_key").on(t.team_id, t.name), index("labels_team_id_idx").on(t.team_id)]
+);
+
+export const milestoneLabels = pgTable(
+  "milestone_labels",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    team_id: uuid().notNull().references(() => teams.id, { onDelete: "cascade" }),
+    milestone_id: uuid().notNull().references(() => milestones.id, { onDelete: "cascade" }),
+    label_id: uuid().notNull().references(() => labels.id, { onDelete: "cascade" })
+  },
+  t => [unique("milestone_labels_milestone_id_label_id_key").on(t.milestone_id, t.label_id), index("milestone_labels_team_id_idx").on(t.team_id), index("milestone_labels_milestone_id_idx").on(t.milestone_id), index("milestone_labels_label_id_idx").on(t.label_id)]
+);
+
 export const oslAuthTokens = pgTable("osl_auth_tokens", {
   id: uuid().primaryKey().defaultRandom(),
   token_hash: varchar({ length: 255 }).notNull().unique(),
@@ -141,7 +163,8 @@ export const usersRelations = relations(users, ({ many }) => ({
 export const teamsRelations = relations(teams, ({ many }) => ({
   members: many(teamMembers, { relationName: "team" }),
   projects: many(projects, { relationName: "team" }),
-  channels: many(channels, { relationName: "team" })
+  channels: many(channels, { relationName: "team" }),
+  labels: many(labels, { relationName: "team" })
 }));
 
 export const teamMembersRelations = relations(teamMembers, ({ one }) => ({
@@ -187,6 +210,16 @@ export const messagesRelations = relations(messages, ({ one }) => ({
   author: one(users, { fields: [messages.author_id], references: [users.id], relationName: "author" })
 }));
 
+export const labelsRelations = relations(labels, ({ one }) => ({
+  team: one(teams, { fields: [labels.team_id], references: [teams.id], relationName: "team" })
+}));
+
+export const milestoneLabelsRelations = relations(milestoneLabels, ({ one }) => ({
+  team: one(teams, { fields: [milestoneLabels.team_id], references: [teams.id], relationName: "team" }),
+  milestone: one(milestones, { fields: [milestoneLabels.milestone_id], references: [milestones.id], relationName: "milestone" }),
+  label: one(labels, { fields: [milestoneLabels.label_id], references: [labels.id], relationName: "label" })
+}));
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Team = typeof teams.$inferSelect;
@@ -207,5 +240,9 @@ export type ChannelMember = typeof channelMembers.$inferSelect;
 export type NewChannelMember = typeof channelMembers.$inferInsert;
 export type Message = typeof messages.$inferSelect;
 export type NewMessage = typeof messages.$inferInsert;
+export type Label = typeof labels.$inferSelect;
+export type NewLabel = typeof labels.$inferInsert;
+export type MilestoneLabel = typeof milestoneLabels.$inferSelect;
+export type NewMilestoneLabel = typeof milestoneLabels.$inferInsert;
 export type OslAuthToken = typeof oslAuthTokens.$inferSelect;
 export type NewOslAuthToken = typeof oslAuthTokens.$inferInsert;

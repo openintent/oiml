@@ -100,10 +100,26 @@ export const Field = z
     read_only: z.boolean().optional(),
     /** Enum fields only: the values rank in declared order, first most privileged, for member:<path>:<value> on a membership entity */
     ranked: z.boolean().optional(),
+    /**
+     * Integer fields only: the row's place among the rows that share `within`, a required relation field of the
+     * entity. The server owns it: create appends, the resource's `move` action reorders, lists follow it.
+     */
+    position: z.object({ within: Identifier }).strict().optional(),
     description: z.string().optional()
   })
   .strict()
   .superRefine((field, ctx) => {
+    if (field.position && field.type !== "integer")
+      ctx.addIssue({ code: "custom", message: "position only applies to integer fields" });
+    if (
+      field.position &&
+      (field.primary || field.unique || field.hidden || field.relation || field.default !== undefined || field.validate)
+    )
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "a position field is a plain integer the server numbers: no primary, unique, hidden, relation, default or validate"
+      });
     if (field.ranked && field.type !== "enum")
       ctx.addIssue({ code: "custom", message: "ranked only applies to enum fields" });
     if (field.read_only && field.hidden)
@@ -427,6 +443,67 @@ export function directOwnerField(rule: string | undefined): string | undefined {
 }
 
 /** What a row the read rule hides answers when addressed by id: a refusal (401 or 403), or the 404 a missing row gets */
+/** The position field of an entity and the relation field its rows are ordered within; undefined without one */
+export function positionOf(entity: Entity | undefined): { field: string; within: string } | undefined {
+  for (const [name, field] of Object.entries(entity?.fields ?? {}))
+    if (field.position) return { field: name, within: field.position.within };
+  return undefined;
+}
+
+/** A relation through a junction, resolved: the junction, its two relation fields and the entity on the far side */
+export interface ThroughLink {
+  junction: string;
+  /** The junction's relation field pointing at the entity the relation is declared on */
+  from: string;
+  /** The junction's relation field pointing at the far entity */
+  to: string;
+  target: string;
+}
+
+/**
+ * The relation `name` declared under `relations` on `entityName`, resolved against its junction. Null when the
+ * entity declares no such relation; a problem when the junction does not link the two sides unambiguously.
+ */
+export function throughRelation(
+  model: Model,
+  entityName: string,
+  name: string
+): ThroughLink | { problem: string } | null {
+  const declared = model.entities[entityName]?.relations?.[name];
+  if (!declared) return null;
+  const junction = model.entities[declared.through];
+  if (!junction) return { problem: `junction ${declared.through} does not exist` };
+  const relationFields = Object.entries(junction.fields).filter(([, f]) => f.relation);
+  let from = declared.from;
+  if (from) {
+    if (junction.fields[from]?.relation?.entity !== entityName)
+      return { problem: `from ${from} is not a relation field of ${declared.through} to ${entityName}` };
+  } else {
+    const near = relationFields.filter(([n, f]) => f.relation!.entity === entityName && n !== declared.to);
+    if (near.length === 0) return { problem: `${declared.through} has no relation field to ${entityName}` };
+    if (near.length > 1)
+      return {
+        problem: `${declared.through} has ${near.length} relation fields to ${entityName} (${near.map(([n]) => n).join(", ")}); name one with from`
+      };
+    from = near[0][0];
+  }
+  let to = declared.to;
+  if (to) {
+    if (!junction.fields[to]?.relation) return { problem: `to ${to} is not a relation field of ${declared.through}` };
+    if (to === from)
+      return { problem: `from and to are both ${to}; a relation through a junction links two of its relation fields` };
+  } else {
+    const far = relationFields.filter(([n]) => n !== from);
+    if (far.length === 0) return { problem: `${declared.through} has no second relation field for the far side` };
+    if (far.length > 1)
+      return {
+        problem: `${declared.through} has ${far.length} relation fields besides ${from} (${far.map(([n]) => n).join(", ")}); name one with to`
+      };
+    to = far[0][0];
+  }
+  return { junction: declared.through, from, to, target: junction.fields[to].relation!.entity };
+}
+
 export const HiddenRows = z.enum(["forbidden", "not_found"]);
 export type HiddenRows = z.infer<typeof HiddenRows>;
 
@@ -449,11 +526,26 @@ export const Index = z
   .strict();
 export type Index = z.infer<typeof Index>;
 
+/** A relation to the rows on the far side of a junction entity: a track's genres through TrackGenre */
+export const ThroughRelation = z
+  .object({
+    /** The junction: an entity with a relation field to this entity and one to the far entity */
+    through: EntityName,
+    /** The junction's relation field pointing at this entity; needed only when it has several */
+    from: Identifier.optional(),
+    /** The junction's relation field pointing at the far entity; needed only when it has several others */
+    to: Identifier.optional()
+  })
+  .strict();
+export type ThroughRelation = z.infer<typeof ThroughRelation>;
+
 export const Entity = z
   .object({
     table: Identifier.optional(),
     description: z.string().optional(),
     fields: z.record(Identifier, Field),
+    /** Many-to-many: relations to the rows a junction entity links this one to, by name */
+    relations: z.record(Identifier, ThroughRelation).optional(),
     rules: Rules.optional(),
     indexes: z.array(Index).optional(),
     /** Multi-column unique constraints */
@@ -909,7 +1001,7 @@ function isWritable(field: Field): boolean {
 
 /** A client may write the field through the API: writable and not read_only */
 function isClientWritable(field: Field): boolean {
-  return isWritable(field) && !field.read_only;
+  return isWritable(field) && !field.read_only && !field.position;
 }
 
 /** Fields auth.register accepts besides email and password: client-writable identity fields, never role */
@@ -1257,6 +1349,7 @@ export function validateModel(model: Model): Diagnostic[] {
       }
       if (
         field.read_only &&
+        !field.position &&
         field.required &&
         field.default === undefined &&
         !field.primary &&
@@ -1266,6 +1359,47 @@ export function validateModel(model: Model): Diagnostic[] {
           "M065",
           `read_only field ${fieldName} is required and has no default, so nothing could ever create a row; give it a default, drop required, or set it from the session with rules.create: owner:${fieldName}`,
           fpath
+        );
+    }
+    const positions = Object.entries(entity.fields).filter(([, f]) => f.position);
+    if (positions.length > 1)
+      error(
+        "M141",
+        `${entityName} has ${positions.length} position fields (${positions.map(([n]) => n).join(", ")}); a row has one place in one parent`,
+        base
+      );
+    for (const [fieldName, field] of positions) {
+      const fpath = `${base}.fields.${fieldName}.position`;
+      const within = entity.fields[field.position!.within];
+      if (!within?.relation || !within.required || within.primary || within.relation.kind === "one_to_one")
+        error(
+          "M140",
+          `position within ${field.position!.within}: it must be a required many_to_one relation field of ${entityName}, the parent whose rows are ordered`,
+          fpath
+        );
+      else if (within.relation.entity === entityName)
+        error(
+          "M140",
+          `position within ${field.position!.within}: an order within the entity's own rows is a tree, which has no construct; order within another entity`,
+          fpath
+        );
+      if (primaries.length > 1 || (primaries.length === 0 && !entity.fields.id))
+        error(
+          "M142",
+          `${entityName} has a position field, so it needs a single-column primary key (an id) to move a row by`,
+          fpath
+        );
+    }
+    const ownRelationNames = new Set(fieldRelationNamesOf(model, entityName));
+    for (const name of Object.keys(entity.relations ?? {})) {
+      const rpath = `${base}.relations.${name}`;
+      const link = throughRelation(model, entityName, name)!;
+      if ("problem" in link) error("M014", `relation ${name}: ${link.problem}`, rpath);
+      if (fieldNames.has(name) || ownRelationNames.has(name))
+        error(
+          "M015",
+          `relation ${name} is already a field or a relation of ${entityName}; give it another name`,
+          rpath
         );
     }
     for (const action of RULE_OPERATIONS) {
@@ -1476,11 +1610,23 @@ export function validateModel(model: Model): Diagnostic[] {
       for (const f of resource[key]?.fields ?? []) {
         if (!fieldNames.has(f)) error("M056", `${key} field ${f} does not exist`, `${base}.${key}.fields`);
         else if (entity.fields[f].hidden) error("M057", `${key} field ${f} is hidden`, `${base}.${key}.fields`);
+        else if (entity.fields[f].position)
+          error(
+            "M064",
+            `${key} field ${f} is a position: the server numbers it and ${resourceName}.move changes it; drop it from ${key}.fields`,
+            `${base}.${key}.fields`
+          );
         else if (entity.fields[f].read_only)
           error(
             "M064",
             `${key} field ${f} is read_only: only server code sets it; drop it from ${key}.fields or the read_only`,
             `${base}.${key}.fields`
+          );
+        else if (key === "update" && positionOf(entity)?.within === f)
+          error(
+            "M144",
+            `update field ${f} is what ${resource.entity} is ordered within: a row keeps its parent; delete it and create it under the other one`,
+            `${base}.update.fields`
           );
       }
       if (resource[key] && !ops.has(key))
@@ -1510,6 +1656,12 @@ export function validateModel(model: Model): Diagnostic[] {
     for (const [actionName, action] of Object.entries(resource.actions ?? {})) {
       const apath = `${base}.actions.${actionName}`;
       if (RESERVED_ACTION_NAMES.has(actionName)) error("M093", `action name ${actionName} is reserved`, apath);
+      if (actionName === MOVE_ACTION && positionOf(entity))
+        error(
+          "M143",
+          `${resource.entity} has a position field, so ${resourceName}.move is the compiler's: it takes { to } under the update rule; give your action another name`,
+          apath
+        );
       checkActionFields(action, apath, error);
       const scope = action.scope ?? "row";
       if (action.rule) checkRule(action.rule, resource.entity, `${apath}.rule`, scope === "row");
@@ -1715,6 +1867,17 @@ export function validateModel(model: Model): Diagnostic[] {
       for (const key of ["columns", "fields"] as const) {
         for (const f of page[key] ?? []) {
           const field = entity.fields[f];
+          if (!field && entity.relations?.[f]) {
+            // A relation through a junction shows the far rows' names, which the operation has to include
+            const op = key === "columns" ? "list" : "get";
+            if (!(resource[op]?.include ?? []).includes(f))
+              error(
+                "M083",
+                `${key} names the relation ${f}, which ${page.resource}.${op} does not include; add it to ${op}.include`,
+                `${base}.${key}`
+              );
+            continue;
+          }
           if (!field) error("M083", `${key} field ${f} does not exist on ${resource.entity}`, `${base}.${key}`);
           else if (field.hidden || field.type === "bytes")
             error("M083", `${key} field ${f} is never returned by the API`, `${base}.${key}`);
@@ -1890,7 +2053,17 @@ export function resolveStepOp(model: Model, op: string): ResolvedStepOp {
     return { kind: "resource", resource: ns, operation: name as Operation };
   }
   if (resource.actions?.[name]) return { kind: "action", resource: ns, action: name };
+  if (name === MOVE_ACTION && hasMoveAction(model, resource)) return { kind: "action", resource: ns, action: name };
   return { kind: "unknown", reason: `resource ${ns} has no operation or action ${name}` };
+}
+
+/** The row action the compiler writes on a resource over an entity with a position field */
+export const MOVE_ACTION = "move";
+
+/** Whether a resource has the compiler's `move` action: its entity has a position field and its update rule is not none */
+export function hasMoveAction(model: Model, resource: Resource): boolean {
+  const entity = model.entities[resource.entity];
+  return Boolean(positionOf(entity)) && entity.rules?.update !== "none";
 }
 
 /** The URL path of a page that declares none: its name with underscores as dashes */
@@ -1907,7 +2080,14 @@ export function primaryKeyFields(entity: Entity): string[] {
 }
 
 /** Forward relation names declared on the entity plus reverse names other entities point at it with. */
+/** The relations an include may name: those of the entity's fields, the reverse sides, and the ones through a junction */
 export function relationNamesOf(model: Model, entityName: string): string[] {
+  const entity = model.entities[entityName];
+  return [...fieldRelationNamesOf(model, entityName), ...Object.keys(entity?.relations ?? {})];
+}
+
+/** The relations that come from relation fields: forward ones on the entity, reverse ones declared on others */
+function fieldRelationNamesOf(model: Model, entityName: string): string[] {
   const names: string[] = [];
   const entity = model.entities[entityName];
   if (!entity) return names;

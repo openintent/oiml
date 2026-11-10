@@ -1,5 +1,5 @@
 import type { ActionIR, ColumnIR, GeneratedFile, IR } from "@osl/core";
-import { toPascalCase } from "@osl/core";
+import { toPascalCase, userActions } from "@osl/core";
 import {
   HEADER,
   SCAFFOLD_HEADER,
@@ -111,7 +111,7 @@ func (c *Context) Context() context.Context {
 	}
 	return context.Background()
 }`);
-  for (const action of ir.actions) {
+  for (const action of userActions(ir)) {
     const input = actionInputType(action);
     sections.push(
       fieldStruct(
@@ -151,9 +151,9 @@ ${parseBody(action.input)}
 /** generated/actions/handlers/handlers.go: the registry of the handlers you own; a wrong signature fails to compile here. */
 export function actionHandlersFile(ir: IR, modulePath: string): string {
   const imports = new Set<string>([`${modulePath}/generated/actions`]);
-  if (ir.actions.some(a => a.scope === "row" || a.returns.kind === "entity"))
+  if (userActions(ir).some(a => a.scope === "row" || a.returns.kind === "entity"))
     imports.add(`${modulePath}/generated/models`);
-  const sections = ir.actions.map(action => {
+  const sections = userActions(ir).map(action => {
     const { pkg, spec } = handlerPackage(action, modulePath);
     imports.add(spec);
     return `// ${exported(action.handler)} handles ${action.method} ${action.path}; its body is src/actions/${action.handler}/handler.go.
@@ -177,7 +177,7 @@ function resultZero(c: ColumnIR): string {
 
 /** src/actions/<handler>/handler.go, created once per action */
 export function actionScaffolds(ir: IR, modulePath: string): GeneratedFile[] {
-  return ir.actions.map(action => {
+  return userActions(ir).map(action => {
     const entity = action.entity ? entityByName(ir, action.entity) : null;
     const T = entity ? typeName(entity) : null;
     const imports = new Set<string>([`${modulePath}/generated/actions`]);

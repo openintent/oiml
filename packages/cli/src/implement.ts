@@ -10,7 +10,16 @@ import path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod/v4";
-import { loadProject, toYaml, type ActionIR, type Backend, type Cmd, type HandlerGuide, type Project } from "@osl/core";
+import {
+  loadProject,
+  toYaml,
+  userActions,
+  type ActionIR,
+  type Backend,
+  type Cmd,
+  type HandlerGuide,
+  type Project
+} from "@osl/core";
 import { DEFAULT_MODEL, type ProposeUsage } from "./propose.js";
 
 /** The compiler output usually names the one thing to fix; a third round rarely helps. */
@@ -196,7 +205,7 @@ export async function planHandlers(
     if (existsSync(full)) context.push({ path: file, content: await readFile(full, "utf8") });
   }
   const handlers: HandlerContext[] = [];
-  for (const action of project.ir.actions) {
+  for (const action of userActions(project.ir)) {
     const pattern = new RegExp(`/actions/${action.handler}(\\.|/)`);
     const scaffold = files.find(f => f.mode === "scaffold" && pattern.test(f.path));
     if (!scaffold) continue;
@@ -274,7 +283,7 @@ export async function implementActions(
   // Handlers already filled in are reported, not rewritten
   if (!options.force) {
     const planned = new Set(plan.handlers.map(h => h.action.handler));
-    for (const action of plan.project.ir.actions) {
+    for (const action of userActions(plan.project.ir)) {
       if (planned.has(action.handler) || (options.only && !options.only.includes(action.handler))) continue;
       const file = `src/actions/${action.handler}`;
       results.push({

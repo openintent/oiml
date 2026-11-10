@@ -1,0 +1,205 @@
+osl: "1.0"
+summary: Users with credentials, artists owned by a user, albums and tracks, tracks ordered within their album
+ops:
+  - op: add_entity
+    name: User
+    entity:
+      fields:
+        id: { type: uuid, primary: true }
+        email: { type: string, max_length: 255, required: true, unique: true, validate: { format: email } }
+        name: { type: string, max_length: 100, required: true, validate: { min_length: 1 } }
+        created_at: { type: datetime, required: true, default: now }
+      rules: { read: public, update: "owner:id", delete: none }
+  - op: set_auth
+    auth: { identity: User, provider: credentials }
+  - op: add_resource
+    name: users
+    resource: { entity: User, operations: [list, get] }
+  - op: set_actors
+    actors:
+      alice: { email: alice@example.com, password: alice-pass-1, name: Alice }
+      bob: { email: bob@example.com, password: bob-pass-1, name: Bob }
+  - op: add_entity
+    name: Artist
+    entity:
+      fields:
+        id: { type: uuid, primary: true }
+        owner_id:
+          type: uuid
+          required: true
+          relation: { entity: User, name: owner, on_delete: cascade }
+        name: { type: string, max_length: 120, required: true }
+        created_at: { type: datetime, required: true, default: now }
+      rules: { read: public, create: "owner:owner_id", update: "owner:owner_id", delete: "owner:owner_id" }
+  - op: add_entity
+    name: Album
+    entity:
+      fields:
+        id: { type: uuid, primary: true }
+        artist_id:
+          type: uuid
+          required: true
+          relation: { entity: Artist, name: artist, reverse: albums, on_delete: cascade }
+        title: { type: string, max_length: 200, required: true }
+        created_at: { type: datetime, required: true, default: now }
+      rules:
+        read: public
+        create: "owner:artist_id.owner_id"
+        update: "owner:artist_id.owner_id"
+        delete: "owner:artist_id.owner_id"
+  - op: add_entity
+    name: Track
+    entity:
+      fields:
+        id: { type: uuid, primary: true }
+        album_id:
+          type: uuid
+          required: true
+          relation: { entity: Album, name: album, reverse: tracks, on_delete: cascade }
+        title: { type: string, max_length: 200, required: true }
+        duration_seconds: { type: integer, required: true, validate: { min: 1 } }
+        track_number: { type: integer, position: { within: album_id } }
+      rules:
+        read: public
+        create: "owner:album_id.artist_id.owner_id"
+        update: "owner:album_id.artist_id.owner_id"
+        delete: "owner:album_id.artist_id.owner_id"
+  - op: add_resource
+    name: artists
+    resource:
+      entity: Artist
+      operations: [list, get, create, update, delete]
+      list: { filters: [owner_id], order: [[name, asc]] }
+      get: { include: [albums] }
+  - op: add_resource
+    name: albums
+    resource:
+      entity: Album
+      operations: [list, get, create, update, delete]
+      list: { filters: [artist_id], order: [[title, asc]], include: [artist] }
+      get: { include: [artist, tracks] }
+  - op: add_resource
+    name: tracks
+    resource:
+      entity: Track
+      operations: [list, get, create, update, delete]
+      list: { filters: [album_id], include: [album] }
+      get: { include: [album] }
+      update: { fields: [title, duration_seconds] }
+  - op: add_scenario
+    scenario:
+      name: the tracks of an album keep their order
+      steps:
+        - as: alice
+          op: artists.create
+          body: { name: The Lanterns }
+          expect: { status: 201, body: { data: { name: The Lanterns, owner_id: "{actor.id}" } } }
+          capture: { artist: data.id }
+        - as: alice
+          op: albums.create
+          body: { artist_id: "{artist}", title: Night Ferry }
+          expect: { status: 201 }
+          capture: { album: data.id }
+        - as: alice
+          op: tracks.create
+          body: { album_id: "{album}", title: Harbour, duration_seconds: 201 }
+          expect: { status: 201, body: { data: { title: Harbour, track_number: 1 } } }
+          capture: { harbour: data.id }
+        - as: alice
+          op: tracks.create
+          body: { album_id: "{album}", title: Crossing, duration_seconds: 187 }
+          expect: { status: 201, body: { data: { track_number: 2 } } }
+          capture: { crossing: data.id }
+        - as: alice
+          op: tracks.create
+          body: { album_id: "{album}", title: Landfall, duration_seconds: 244 }
+          expect: { status: 201, body: { data: { track_number: 3 } } }
+          capture: { landfall: data.id }
+        - as: alice
+          op: tracks.create
+          body: { album_id: "{album}", title: Numbered by hand, duration_seconds: 60, track_number: 1 }
+          expect: { status: 400 }
+        - as: bob
+          op: tracks.create
+          body: { album_id: "{album}", title: Not mine to add, duration_seconds: 60 }
+          expect: { status: 403 }
+        - op: tracks.list
+          query: { album_id: "{album}", page_size: "1" }
+          expect: { status: 200, body: { data: [{ id: "{harbour}", track_number: 1 }], page: { total: 3 } } }
+        - op: tracks.list
+          query: { album_id: "{album}", page_size: "1", page: "3" }
+          expect: { status: 200, body: { data: [{ id: "{landfall}", track_number: 3 }] } }
+        - as: bob
+          op: tracks.move
+          path: { id: "{landfall}" }
+          body: { to: 1 }
+          expect: { status: 403 }
+        - op: tracks.move
+          path: { id: "{landfall}" }
+          body: { to: 1 }
+          expect: { status: 401 }
+        - as: alice
+          op: tracks.move
+          path: { id: "{landfall}" }
+          body: { to: 0 }
+          expect: { status: 400 }
+        - as: alice
+          op: tracks.move
+          path: { id: "{landfall}" }
+          body: { to: 1 }
+          expect: { status: 200, body: { data: { id: "{landfall}", title: Landfall, track_number: 1 } } }
+        - op: tracks.get
+          path: { id: "{harbour}" }
+          expect: { status: 200, body: { data: { track_number: 2 } } }
+        - op: tracks.get
+          path: { id: "{crossing}" }
+          expect: { status: 200, body: { data: { track_number: 3 } } }
+        - op: tracks.list
+          query: { album_id: "{album}", page_size: "1" }
+          expect: { status: 200, body: { data: [{ id: "{landfall}" }] } }
+        - as: alice
+          op: tracks.move
+          path: { id: "{landfall}" }
+          body: { to: 99 }
+          expect: { status: 200, body: { data: { track_number: 3 } } }
+        - op: albums.get
+          path: { id: "{album}" }
+          expect:
+            status: 200
+            body:
+              data:
+                title: Night Ferry
+                artist: { name: The Lanterns }
+                tracks:
+                  - { id: "{harbour}", track_number: 1 }
+                  - { id: "{crossing}", track_number: 2 }
+                  - { id: "{landfall}", track_number: 3 }
+        - as: alice
+          op: tracks.update
+          path: { id: "{crossing}" }
+          body: { title: The Crossing }
+          expect: { status: 200, body: { data: { title: The Crossing, track_number: 2 } } }
+        - as: alice
+          op: tracks.update
+          path: { id: "{crossing}" }
+          body: { track_number: 1 }
+          expect: { status: 400 }
+        - as: bob
+          op: tracks.delete
+          path: { id: "{harbour}" }
+          expect: { status: 403 }
+        - as: alice
+          op: tracks.delete
+          path: { id: "{harbour}" }
+          expect: { status: 204 }
+        - op: tracks.get
+          path: { id: "{crossing}" }
+          expect: { status: 200, body: { data: { track_number: 1 } } }
+        - op: tracks.get
+          path: { id: "{landfall}" }
+          expect: { status: 200, body: { data: { track_number: 2 } } }
+        - as: alice
+          op: tracks.move
+          path: { id: "{harbour}" }
+          body: { to: 1 }
+          expect: { status: 404 }
