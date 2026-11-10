@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { client, sessionUser, type Inputs, type Outputs, type SessionUser } from "../client";
-import { EmptyPane, ErrorNote, FieldRow, FormRow, ListSkeleton, Pagination, Pane, PaneHeader, PaneSkeleton, formatDateTime, selectClass, splitList, text } from "../ui";
+import { EmptyPane, ErrorNote, FieldRow, FormRow, ListSkeleton, Pagination, Pane, PaneHeader, PaneSkeleton, RowError, formatDateTime, selectClass, splitList, text } from "../ui";
 
 type Row = Outputs["notes"]["list"]["data"][number];
 type Detail = Outputs["notes"]["get"];
@@ -338,7 +338,7 @@ function NotesDetailInner() {
   });
 
   if (query.isPending) return <PaneSkeleton />;
-  if (query.error) return <ErrorNote error={query.error} className="m-6" />;
+  if (query.error) return <RowError error={query.error} signIn={<Link to="/login" className={buttonVariants()}>Sign in</Link>} />;
   const row: Detail = query.data;
   return (
     <Pane
@@ -383,7 +383,7 @@ function NotesDetailInner() {
       ) : (
         <dl className="grid gap-3">
         <FieldRow label="Id">{text(row.id) || "—"}</FieldRow>
-        <FieldRow label="Project">{text(row.project_id) || "—"}</FieldRow>
+        <FieldRow label="Project">{user !== null ? <Link to="/projects/$id" params={{ id: text(row.project_id) }} className="hover:underline">{text(row.project_id) || "—"}</Link> : text(row.project_id) || "—"}</FieldRow>
         <FieldRow label="Author">{text(row.author_id) || "—"}</FieldRow>
         <FieldRow label="Body">
           <p className="whitespace-pre-wrap">{text(row.body) || "—"}</p>

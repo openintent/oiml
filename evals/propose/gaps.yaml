@@ -7,7 +7,7 @@ gaps:
     first_seen: run6-rules-opus-5-5
     last_seen: r5
     cases: 6
-    construct: row conditions on rules (when <field> = <value>, a7b0817)
+    construct: row conditions on rules (when <field> = <value>, d052e95)
     version: unreleased
     note: Drafts visible only to their author, approval states, archived rows; built 2026-11-09 with
       todo TODO-5 and workspace WS-4.
@@ -34,13 +34,26 @@ gaps:
       River; scenarios drive the clock through the test hooks.
   - key: invites and onboarding
     kind: not_delivered
-    status: open
+    status: built
     first_seen: run6-rules-opus-5-5
     last_seen: r7
     cases: 3
-    note: "Where the SaaS set starts; needs an invitation that an account not yet registered can accept.
-      Design: docs/designs/invites.md. Slack (docs/exercises/slack.md) also wants a join link not bound to an email,
-      which the design declines."
+    construct: "auth.invites naming a membership: the compiler writes the <Parent>Invite entity and the
+      <parent>_invites resource, a create that mails a link, and acceptance on proof of the email (the accept route,
+      a magic link, a provider's verified email, a password login carrying the token); a landing page at
+      /invite/<token>"
+    version: unreleased
+    note: "Built 2026-11-09 with workspace WS-11 (team invites with a role and a page of the pending ones) and WS-12
+      (invites to a private channel from its page) and blog FEAT-14 (co-authors by invite). An account that does not
+      exist yet is made by the accept. Slack (docs/exercises/slack.md) also wants a join link not bound to an email,
+      which the design declines: see shared secrets and access codes. Verified registration is round A6. Design:
+      docs/designs/invites.md. Round r9 drew four invitation briefs. Three were graded in the round: each declared
+      auth.invites and drove a create and an accept, one of them for a third invited membership beside the workspace
+      fixture's two. The fourth, a reviewer invited to one draft, was cut off at the proposer's cap of 16,000 output
+      tokens and graded on a retry once the cap was 64,000: it kept the blog's invite entry, opened its rule to admins,
+      and gave the co-author junction a ranked role so a reviewer reads and comments where an editor edits. The round's
+      two lines about invitations asked for a reminder on a pending one and for the invite list filtered by role, gaps
+      of their own: see invite reminders and resending and invite list filters."
   - key: rule conjunctions
     kind: not_delivered
     status: built
@@ -56,14 +69,14 @@ gaps:
     kind: not_delivered
     status: declined
     first_seen: run6-rules-opus-5-5
-    last_seen: r6
+    last_seen: r8
     cases: 2
     note: Out of scope for the schema; a handler written with osl implement calls the provider.
   - key: realtime and live updates
     kind: not_delivered
     status: declined
     first_seen: run6-rules-opus-5-5
-    last_seen: r7
+    last_seen: r9
     cases: 2
     note: No push or subscriptions in the model; the reference says so.
   - key: server-owned fields
@@ -87,10 +100,10 @@ gaps:
     kind: not_delivered
     status: open
     first_seen: r2
-    last_seen: r7
+    last_seen: r9
     cases: 2
     note: "The count case is built (2026-11-10, round B3): count_of over a reverse relation on an integer field,
-      with a where, kept by the database (workspace WS-13, blog FEAT-13; docs/designs/archive-and-counts.md). Sums,
+      with a where, kept by the database (workspace WS-15, blog FEAT-15; docs/designs/archive-and-counts.md). Sums,
       averages, a latest value, a count over two relations, a count per viewer and a count grouped by a value stay
       open, which is why the entry does. Exercise (docs/exercises/spotify.md): follower, like, track and play counts
       are count_of; a chart over a window stays a schedule writing a read_only rank. Slack (docs/exercises/slack.md): unread counts compare
@@ -106,23 +119,27 @@ gaps:
     kind: not_delivered
     status: open
     first_seen: r4
-    last_seen: r5
+    last_seen: r9
     cases: 1
     note: "Exercise (docs/exercises/spotify.md): files.read is one rule for every file; audio for signed-in listeners
-      beside public cover art needs a read rule per file field defaulting to the row's read rule, and Range on the
-      local streaming path (the S3 redirect answers Range itself). Slack (docs/exercises/slack.md): a file in a private
-      channel is readable by whoever may read its message, the same default."
+      beside public cover art needs a read rule per file field defaulting to the row's read rule, and Range on the local
+      streaming path (the S3 redirect answers Range itself). Slack (docs/exercises/slack.md): a file in a private
+      channel is readable by whoever may read its message, the same default. Round r9 said it in one case: a draft
+      note's attachment is readable by its URL while the note itself is hidden."
   - key: role changes
     kind: not_delivered
     status: open
     first_seen: run
-    last_seen: r4
+    last_seen: r6
     cases: 2
     note: "Slack (docs/exercises/slack.md): nobody below owner grants owner; what a client may write into a field would
       depend on who they are, which the field-visibility design declines as a write rule. The narrow case is scheduled
       for 1.0.0 as the role ceiling (docs/roadmap.md, round A5): a write of a ranked role may not grant above the
       writer's own, the check the invites design makes on its own path. The workspace fixture's members resource lets
-      an admin write owner today (WS-1, update member:team_id:admin). The general write rule stays for 1.1."
+      an admin write owner today (WS-1, update member:team_id:admin). The general write rule stays for 1.1. The same
+      gap on a field that is not a role: round r2's publication teams brief and round r6's publications brief (graded
+      on a retry, run a4-r6-05-cap) both report that a writer can set published through a plain create or update,
+      while the publish action is kept to editors."
   - key: conditional validation
     kind: not_delivered
     status: built
@@ -133,7 +150,7 @@ gaps:
       required enum field of the same entity, held on every write that touches either), beside shape: for a json
       field with one shape"
     version: unreleased
-    note: "Built 2026-11-10 (round B6, second half) with blog FEAT-16 (an integration's settings by its kind, a
+    note: "Built 2026-11-10 (round B6, second half) with blog FEAT-18 (an integration's settings by its kind, a
       user's preferences with one shape). Notion (docs/exercises/notion.md): a block's content depends on its type.
       A write that misses its shape answers 400 naming the key; an update that changes the enum sends the value
       with it. Declined: an array of shapes, a shape chosen by two fields or by a related row, a key required only
@@ -148,7 +165,7 @@ gaps:
       move { to } row action under the update rule, a delete closes the gap, lists and includes follow the order)"
     version: unreleased
     note: "Built 2026-11-10 with the music fixture (MU-1 the tracks of an album, MU-3 playlist entries) and workspace
-      WS-12 (milestones under isolation: database). Exercise (docs/exercises/spotify.md): playlist tracks with a
+      WS-14 (milestones under isolation: database). Exercise (docs/exercises/spotify.md): playlist tracks with a
       position; create appends, a move action renumbers, delete closes the gap, the page drags to reorder. Notion
       (docs/exercises/notion.md): page siblings and blocks, where the scope is a nullable self-relation (within:
       parent_block_id, falling back to page_id): declined with a sentence, and open with tree queries."
@@ -165,17 +182,20 @@ gaps:
       FEAT-10 (no comments on a locked article).
   - key: pages with parameters
     kind: not_delivered
-    status: open
+    status: built
     first_seen: r5
     last_seen: r6
     cases: 2
-    note:
-      "Exercise (docs/exercises/spotify.md): every Spotify screen but Home, Search and Library is one (artist, album,
-      playlist, profile, show), each composed of sections from several resources filtered by the parameter. Slack
-      (docs/exercises/slack.md) adds the tenant context: a chosen workspace that scopes the sidebar and every list
-      ({tenant.id} beside {actor.id}, a switcher in the shell); the rounds file that ask under this topic. Notion
-      (docs/exercises/notion.md): the page address the sidebar tree links to, and the public reader. All three
-      exercises hit it."
+    construct: "kind: detail pages at a path ending /:id with sections filtered by {row.id}; {tenant.id} in page,
+      tile, section and recent filters with a tenant switcher in the shell; a public detail page as a share link"
+    version: unreleased
+    note: "Built 2026-11-09 with workspace WS-10 (a channel page with its messages and members, a team switcher, a
+      home dashboard for the chosen team) and blog FEAT-13 (a public author page, an article page with its comments,
+      a share link per announcement). All three exercises hit it: every Spotify screen but Home, Search and Library,
+      Slack's chosen workspace, Notion's page address and public reader (docs/exercises). Round r8 drew three
+      page-per-row briefs, each answered with a detail page, and no longer reported the cluster; what it said of
+      detail pages instead is sections beyond lists and list filters through a relation. Design:
+      docs/designs/pages-with-parameters.md."
   - key: sequences and reference numbers
     kind: not_delivered
     status: built
@@ -185,14 +205,14 @@ gaps:
     construct: "type: sequence on a field, with prefix, scope: [<required fields>] and width (a read-only string the
       database assigns on insert from a counter per scope, unique within the scope, never accepted from a client)"
     version: unreleased
-    note: "Built 2026-11-10 (round B6, first half) with workspace WS-16 (invoices numbered per team, under isolation:
+    note: "Built 2026-11-10 (round B6, first half) with workspace WS-18 (invoices numbered per team, under isolation:
       database). A create that fails takes no number; a deleted row leaves a hole. Declined: a number that restarts
       each year, a prefix from another field, a number assigned after create. Design: docs/designs/field-kinds.md."
   - key: sign-in flow settings
     kind: not_delivered
     status: open
     first_seen: r5
-    last_seen: r5
+    last_seen: r8
     cases: 1
   - key: relations beyond many-to-one
     kind: not_delivered
@@ -204,7 +224,7 @@ gaps:
       the far rows; pages show their names and add and remove them through the junction's resource)"
     version: unreleased
     note: "Built 2026-11-10 with the music fixture (MU-2 a track's genres and a genre's tracks, MU-3 a playlist's
-      tracks through an ordered junction) and workspace WS-12 (a milestone's labels, the junction naming its team).
+      tracks through an ordered junction) and workspace WS-14 (a milestone's labels, the junction naming its team).
       A list cannot include a row reached through a junction (course -> course_instructors -> user), so
       many-to-many shows ids where names are wanted. Exercise (docs/exercises/spotify.md): featured artists, genres
       and playlist tracks; proven together with ordering by one playlist fixture. The topic also catches tree and
@@ -234,7 +254,7 @@ gaps:
     kind: not_delivered
     status: declined
     first_seen: r6
-    last_seen: r6
+    last_seen: r8
     cases: 2
     note: By design, an action's body is a handler osl implement writes; a scenario checks what the
       handler did, not how. Not a gap in the model.
@@ -256,6 +276,87 @@ gaps:
     first_seen: r7
     last_seen: r7
     cases: 1
+  - key: provider sign-in in scenarios
+    kind: not_delivered
+    status: open
+    first_seen: r8
+    last_seen: r9
+    cases: 3
+    note: "A scenario signs in as a password actor; no step drives an OAuth sign-in, so a first sign-in through a
+      provider, the account it creates and linking by email are declared but not covered by the contract. Three cases of
+      round r8; rounds r1 and r4 said the same once each before the topic existed. A provider the harness plays would
+      cover it. Invites added a call site in the same place: the callback accepts the pending invites of a verified
+      email, which the blog fixture compiles and snapshots and no scenario drives. One case of round r9 said it again."
+  - key: sections beyond lists
+    kind: not_delivered
+    status: open
+    first_seen: r8
+    last_seen: r9
+    cases: 2
+    note: "A detail page's sections are lists of rows: no counts or tiles beside them, no image or file shown inline, no
+      section nested under each row of another (a reply's attachments under the reply). The A3 design left these out
+      (docs/designs/pages-with-parameters.md, Declined); two cases of round r8 asked for them. One case of round r9
+      wanted an article's images as an inline gallery under its text."
+  - key: write checks on related rows
+    kind: not_delivered
+    status: open
+    first_seen: r8
+    last_seen: r9
+    cases: 2
+    note: "A rule checks the caller against the row; nothing checks the row a written relation names. Round r8's
+      two-membership briefs wanted the user added to a project or collection to be on its team or studio already, a
+      watcher to be a project member, and a task moved to another project to land in one the editor belongs to. No
+      design yet. Two cases of round r9 added a collaborator who must already be a member of the collection's studio,
+      and a booking whose practitioner must offer the chosen treatment, which compares two relations of the written
+      row."
+  - key: ignoring input to read-only fields
+    kind: not_delivered
+    status: open
+    first_seen: r8
+    last_seen: r8
+    cases: 2
+    note: "A read_only field refuses a value a client sends with 400. Two cases of round r8 had a criterion asking
+      for the value to be ignored and the server's kept. A choice per field, or a decline with the reason; no design
+      yet."
+  - key: list filters through a relation
+    kind: not_delivered
+    status: open
+    first_seen: r8
+    last_seen: r9
+    cases: 2
+    note: "List and page filters are equalities on the row's own fields, so no page lists rows reached through a
+      relation or a junction: tasks of the projects I follow, every listing of a studio through its collections. The A3
+      design left it out as a list construct (docs/designs/pages-with-parameters.md, Declined); two cases of round r8
+      asked. Rules follow relations in a when; filters do not. One case of round r9 wanted a task board limited to the
+      chosen workspace, where tasks reach their workspace only through their project."
+  - key: schedules per tenant
+    kind: not_delivered
+    status: open
+    first_seen: r8
+    last_seen: r8
+    cases: 1
+    note: "A scheduled action runs once as the system over every tenant's rows; a job per team, or at a team's own
+      hour, has no construct. One case of round r8, as a note on what the system job does."
+  - key: invite reminders and resending
+    kind: not_delivered
+    status: open
+    first_seen: r9
+    last_seen: r9
+    cases: 1
+    note: "The invite entity is the compiler's, so it carries no timer and no action. One case of round r9, which used
+      auth.invites for everything else, asked for a reminder mail three days after an invite nobody accepted. The
+      reference says to revoke and invite again, and the design declines a resend operation (docs/designs/invites.md,
+      Declined). A reminder setting on the auth.invites entry would be the construct; no design yet."
+  - key: invite list filters
+    kind: not_delivered
+    status: open
+    first_seen: r9
+    last_seen: r9
+    cases: 1
+    note: "The generated invite list filters by the parent alone: the team, the channel, the article. One case of round
+      r9 put reviewers and editors on one junction with a ranked role and wanted the admins' page to list the reviewer
+      invitations only; the page lists both, each with its role. The invite's role as a second filter would be the
+      construct; no design yet. The case was graded on a retry, after the proposer's cap was raised."
   # Entries below came from design notes rather than a round (docs/designs/*.md, 2026-11-09): constructs that
   # hand-written applications of this shape build for themselves. cases is 0 until a round reports them.
   - key: tenant isolation backstop
@@ -269,36 +370,41 @@ gaps:
       alternatives)"
     version: unreleased
     note: "Row-level security derived from relations, composite tenant keys, two database roles, and the cross-tenant
-      walk. Design: docs/designs/tenant-isolation-backstop.md. Built 2026-11-10 with workspace WS-11; the walk's
+      walk. Design: docs/designs/tenant-isolation-backstop.md. Built 2026-11-10 with workspace WS-13; the walk's
       second pass runs with the rule checks off."
   - key: field-level visibility
     kind: not_delivered
     status: built
     first_seen: designs-2026-11-09
-    last_seen: designs-2026-11-09
-    cases: 0
+    last_seen: r8
+    cases: 2
     construct: "read: on a field: a rule over the row and the caller in the entity rules' spelling; the key is
       absent from every answer for a caller it refuses, the caller's own row included, and expect.absent says so
       in a scenario"
     version: unreleased
-    note: "Built 2026-11-10 (round B5) with workspace WS-15 (a budget and a count for a team's admins, an estimate
-      for signed-in callers, under isolation: database) and blog FEAT-15 (a phone for the person and the admins,
+    note: "Built 2026-11-10 (round B5) with workspace WS-17 (a budget and a count for a team's admins, an estimate
+      for signed-in callers, under isolation: database) and blog FEAT-17 (a phone for the person and the admins,
       an editor note only admins read). Declined: a rule per field for writing, masking, a field rule through a
-      relation. Design: docs/designs/field-visibility.md."
+      relation. Design: docs/designs/field-visibility.md. Round r8, before it was built: two cases gave up a public
+      profile page or a follower's name because the users resource would return every email; round r6 said the
+      same once."
   - key: state machines and transitions
     kind: not_delivered
     status: built
     first_seen: designs-2026-11-09
-    last_seen: designs-2026-11-09
-    cases: 0
+    last_seen: r6
+    cases: 1
     construct: "transitions on an entity: one read_only enum field and, per transition, from, to, rule and an
       optional stamp; each a row action the compiler writes (one conditional update, 409 invalid_transition from
       another state), run by a timer too, and the moves of a board grouped by the field"
     version: unreleased
-    note: "Built 2026-11-10 (round B4) with blog FEAT-14 (an editorial review, timers that retire and archive),
-      todo TODO-8 (the task flow and its board) and workspace WS-14 (requests and approvals under isolation:
+    note: "Built 2026-11-10 (round B4) with blog FEAT-16 (an editorial review, timers that retire and archive),
+      todo TODO-8 (the task flow and its board) and workspace WS-16 (requests and approvals under isolation:
       database, an expiry only a timer runs). Declined: input on a transition, two state machines on one entity, a
-      history of transitions. Design: docs/designs/state-machines.md."
+      history of transitions. Design: docs/designs/state-machines.md. Round r6's publications brief, before it was
+      built (graded on a retry, run a4-r6-05-cap): the publish action alone stamps published_at, so an article
+      written with published: true directly never gets the stamp and its comments never lock. The stamp on a
+      transition answers it where the state is a read_only enum; the blog's published is a writable boolean."
   - key: money and currency
     kind: not_delivered
     status: built
@@ -308,7 +414,7 @@ gaps:
     construct: "type: money on a field, with currency: <ISO 4217 code> or currency_field: <a required enum field of
       codes> (numeric(19, 4) at rest, a decimal string on the wire in both directions, a JSON number refused)"
     version: unreleased
-    note: "Built 2026-11-10 (round B6, first half) with workspace WS-16 (a total in the row's currency, a fee in
+    note: "Built 2026-11-10 (round B6, first half) with workspace WS-18 (a total in the row's currency, a fee in
       dollars). An update that changes the currency sends the amounts with it. Declined: sums over amounts,
       conversion, a currency through a relation, minor-unit integers on the wire. Design:
       docs/designs/field-kinds.md."
@@ -322,7 +428,7 @@ gaps:
       format on every backend; returned to the callers read: names and to nobody without it; a handler opens it by
       name)"
     version: unreleased
-    note: "Built 2026-11-10 (round B6, second half) with blog FEAT-16 (an integration's signing secret that only a
+    note: "Built 2026-11-10 (round B6, second half) with blog FEAT-18 (an integration's signing secret that only a
       handler opens, a token for its owner, a recovery code on the identity). Never in an event payload, a filter,
       a sort, a search or a rule; the app does not start without the key. Declined: key rotation, searching a
       sealed value, a sealed number or JSON value, a key per tenant, renaming a sealed field. Webhooks and audit
@@ -336,8 +442,8 @@ gaps:
     construct: "archive: true on an entity (or { field, rule }): a server-owned archived_at, lists that leave
       archived rows out unless asked with ?archived=true, the compiler's archive and restore row actions"
     version: unreleased
-    note: "Built 2026-11-10 (round B3) with workspace WS-13 (milestones and labels, under isolation: database) and
-      blog FEAT-13 (articles, with a queued event on posts.archive). Declined: a cascading archive, a list of live
+    note: "Built 2026-11-10 (round B3) with workspace WS-15 (milestones and labels, under isolation: database) and
+      blog FEAT-15 (articles, with a queued event on posts.archive). Declined: a cascading archive, a list of live
       and archived rows together. A timer runs archive and restore since round B4. Design:
       docs/designs/archive-and-counts.md."
   - key: history, versions and audit
@@ -413,12 +519,13 @@ gaps:
     kind: not_delivered
     status: open
     first_seen: exercise-slack
-    last_seen: exercise-slack
-    cases: 0
+    last_seen: r8
+    cases: 2
     note: "Nothing compares a field against now in rules or filters (the reference says to decline due before today
       and upcoming); Slack needs an edit window (owner for fifteen minutes) and a date range in search. Sketch in
       docs/exercises/slack.md: when created_at > now-15m on any predicate and a range filter on lists, spelled as the
-      scenarios spell time; row checks compare with ctx.now, lists with the request clock."
+      scenarios spell time; row checks compare with ctx.now, lists with the request clock. Rounds r2, r3, r5 and r8
+      (two cases) asked for overdue, upcoming and today's rows in filters and tiles."
   - key: search and ranking
     kind: not_delivered
     status: open
@@ -447,7 +554,8 @@ gaps:
     cases: 0
     note: "The sidebar lists declared pages (a name, a label, an icon), never rows; Notion's sidebar is a tree of pages
       per section plus recents. Sketch in docs/exercises/notion.md: a sidebar item kind tree { resource, parent, label,
-      filter } linking to a parameterized page, and a recent kind. Needs pages with parameters first."
+      filter } linking to a parameterized page, and a recent kind. The detail pages it links to were built in
+      round A3 (docs/designs/pages-with-parameters.md)."
   - key: tree queries
     kind: not_delivered
     status: open
@@ -468,3 +576,15 @@ gaps:
       and formulas. Out by construction; recommended declined with the sentence a schema the users define is data,
       with properties and values as rows and their typing, filters and formulas a handler or a custom page
       (docs/exercises/notion.md)."
+  # Entries below came from building a round (its design note says where): what the build could not say. cases is 0
+  # until a round reports them.
+  - key: scenarios replaced in place
+    kind: not_delivered
+    status: open
+    first_seen: build-a3
+    last_seen: build-a3
+    cases: 0
+    note: "No op replaces a scenario where it stands. A later intent that changes a rule (hidden: not_found on
+      Project) turns steps of earlier scenarios false, and a scenario removed and added again runs last, where its
+      list totals no longer hold; evals/propose/cases/ws2-public-project-pages.yaml is graded on the model only for
+      this reason. A replace_scenario op, or steps addressed by name."

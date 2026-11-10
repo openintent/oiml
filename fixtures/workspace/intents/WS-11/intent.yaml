@@ -1,13 +1,16 @@
 osl: "1.0"
-title: No team ever sees another team's data, enforced in the database
+title: Invite a colleague by email
 ask: >-
-  The rules already keep one team's projects, tasks, notes, milestones and channels from another team. Make the
-  database refuse it too, whatever the code above it does: a request reads and writes only rows of the teams its
-  caller belongs to, plus what a public project deliberately opens to everyone. Nothing a caller sees or may do
-  today changes, except that being a task's assignee or a note's author no longer reaches a team's rows once the
-  person has left the team.
+  A team's owners and admins should be able to bring someone in by email address, whether or not that person has an
+  account yet. The person gets a mail with a link, and joining through the link, or simply signing in with that
+  address, puts them in the team with the role they were given. An admin cannot hand out a role above their own. The
+  team needs a page that lists the invites still waiting, where one can be sent or withdrawn.
 acceptance:
-  - Every earlier scenario passes unchanged
-  - An assignee removed from the team gets 403 for their task and may not update it, lists none of the team's tasks, and still reads a public project's task like anyone else
-  - Someone who belongs to two teams lists the tasks of both in one request
-  - The cross-tenant walk passes a second time with the generated rule checks switched off, and the app's database role without a bound team reads no row of any team table except the tasks of public projects
+  - An owner or admin invites an email address to their team with a role, and the address gets a mail with a link
+  - Someone outside the team, or a plain member of it, can neither invite nor see who was invited
+  - An admin cannot invite someone as owner
+  - The invited person joins by accepting the link while signed in under that address, and nobody else can use it
+  - Someone without an account creates one from the link and lands in the team
+  - Signing in by magic link with the invited address joins the team without the invite's link
+  - An address that is already in the team, or already has an invite waiting, cannot be invited again
+  - A withdrawn invite stops working

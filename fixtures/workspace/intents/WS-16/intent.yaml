@@ -1,16 +1,14 @@
 osl: "1.0"
-title: Invoices
+title: Requests and approvals
 ask: >-
-  A team sends invoices. Each one gets a number its people can quote on the phone: INV-000001 for the team's first,
-  then the next, counted per team, so that no team can tell from its numbers how many the others sent. Nobody types
-  the number and nobody can change it. An invoice has a total in dollars, euros or yen, and the amounts must be
-  exact: 0.30 is 0.30, and a total with fifteen digits before the point comes back as it was sent. There is an
-  optional handling fee, always in dollars. A team shows how many invoices it has.
+  Members of a team file purchase requests: a title and an amount. A request starts pending. The team's admins
+  approve or decline a pending request, and the time of the decision is recorded; the member who filed a declined
+  request can reopen it. People see and edit their own requests while they are pending, and admins see every
+  request of the team. A request nobody decided expires on its own after fourteen days; nobody can expire one by
+  hand. A team shows how many of its requests are pending. Give the team a board of requests by status.
 acceptance:
-  - Two teams each create two invoices and each sees INV-000001 and INV-000002
-  - A create that is refused takes no number, so the team's next invoice is the next number
-  - A total of 19.99 comes back as the string "19.9900"; a total sent as a JSON number, with five fraction digits or below zero is refused
-  - A total of 999999999999999.9999 comes back digit for digit
-  - The list is filtered by number and by total, searched by number and sorted by number
-  - Changing the currency without sending the total is refused; sending both is accepted
-  - A deleted invoice leaves a hole, and its number is not given again
+  - A member who is not an admin is refused when approving, and so is someone from another team
+  - Approving a request that is not pending is a conflict
+  - A declined request can be reopened by the member who filed it, and by nobody else
+  - A request can be edited by its author only while it is pending
+  - The team's count of pending requests follows every step, the expiry included

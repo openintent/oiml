@@ -832,6 +832,128 @@ func PresentInvoices(rows []*Invoice) []PublicInvoice {
 	return out
 }
 
+// TeamInviteTable is the quoted table of TeamInvite.
+const TeamInviteTable = `"team_invites"`
+
+// TeamInviteColumns lists the columns of TeamInvite in model order, for SELECT and RETURNING.
+const TeamInviteColumns = `"id", "team_id", "email", "role", "invited_by", "token_hash", "expires_at", "created_at"`
+
+// TeamInvite is a row of team_invites.
+type TeamInvite struct {
+	ID        string    `json:"id"`
+	TeamID    string    `json:"team_id"`
+	Email     string    `json:"email"`
+	Role      string    `json:"role"`
+	InvitedBy string    `json:"invited_by"`
+	TokenHash string    `json:"-"`
+	ExpiresAt time.Time `json:"expires_at"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// PublicTeamInvite is TeamInvite as the API returns it: hidden columns removed, dates rendered.
+type PublicTeamInvite struct {
+	ID        string `json:"id"`
+	TeamID    string `json:"team_id"`
+	Email     string `json:"email"`
+	Role      string `json:"role"`
+	InvitedBy string `json:"invited_by"`
+	ExpiresAt string `json:"expires_at"`
+	CreatedAt string `json:"created_at"`
+}
+
+// ScanTeamInvite reads one TeamInvite from a row selected with TeamInviteColumns.
+func ScanTeamInvite(row Scanner) (*TeamInvite, error) {
+	var r TeamInvite
+	if err := row.Scan(&r.ID, &r.TeamID, &r.Email, &r.Role, &r.InvitedBy, &r.TokenHash, &r.ExpiresAt, &r.CreatedAt); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// PresentTeamInvite returns the public shape of a TeamInvite.
+func PresentTeamInvite(row *TeamInvite) PublicTeamInvite {
+	return PublicTeamInvite{ID: row.ID, TeamID: row.TeamID, Email: row.Email, Role: row.Role, InvitedBy: row.InvitedBy, ExpiresAt: FormatDateTime(row.ExpiresAt), CreatedAt: FormatDateTime(row.CreatedAt)}
+}
+
+// PresentTeamInvitePtr presents an optional TeamInvite; nil stays nil.
+func PresentTeamInvitePtr(row *TeamInvite) *PublicTeamInvite {
+	if row == nil {
+		return nil
+	}
+	out := PresentTeamInvite(row)
+	return &out
+}
+
+// PresentTeamInvites presents a list of TeamInvite, never nil.
+func PresentTeamInvites(rows []*TeamInvite) []PublicTeamInvite {
+	out := make([]PublicTeamInvite, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, PresentTeamInvite(row))
+	}
+	return out
+}
+
+// ChannelInviteTable is the quoted table of ChannelInvite.
+const ChannelInviteTable = `"channel_invites"`
+
+// ChannelInviteColumns lists the columns of ChannelInvite in model order, for SELECT and RETURNING.
+const ChannelInviteColumns = `"id", "channel_id", "email", "role", "invited_by", "token_hash", "expires_at", "created_at"`
+
+// ChannelInvite is a row of channel_invites.
+type ChannelInvite struct {
+	ID        string    `json:"id"`
+	ChannelID string    `json:"channel_id"`
+	Email     string    `json:"email"`
+	Role      string    `json:"role"`
+	InvitedBy string    `json:"invited_by"`
+	TokenHash string    `json:"-"`
+	ExpiresAt time.Time `json:"expires_at"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// PublicChannelInvite is ChannelInvite as the API returns it: hidden columns removed, dates rendered.
+type PublicChannelInvite struct {
+	ID        string `json:"id"`
+	ChannelID string `json:"channel_id"`
+	Email     string `json:"email"`
+	Role      string `json:"role"`
+	InvitedBy string `json:"invited_by"`
+	ExpiresAt string `json:"expires_at"`
+	CreatedAt string `json:"created_at"`
+}
+
+// ScanChannelInvite reads one ChannelInvite from a row selected with ChannelInviteColumns.
+func ScanChannelInvite(row Scanner) (*ChannelInvite, error) {
+	var r ChannelInvite
+	if err := row.Scan(&r.ID, &r.ChannelID, &r.Email, &r.Role, &r.InvitedBy, &r.TokenHash, &r.ExpiresAt, &r.CreatedAt); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// PresentChannelInvite returns the public shape of a ChannelInvite.
+func PresentChannelInvite(row *ChannelInvite) PublicChannelInvite {
+	return PublicChannelInvite{ID: row.ID, ChannelID: row.ChannelID, Email: row.Email, Role: row.Role, InvitedBy: row.InvitedBy, ExpiresAt: FormatDateTime(row.ExpiresAt), CreatedAt: FormatDateTime(row.CreatedAt)}
+}
+
+// PresentChannelInvitePtr presents an optional ChannelInvite; nil stays nil.
+func PresentChannelInvitePtr(row *ChannelInvite) *PublicChannelInvite {
+	if row == nil {
+		return nil
+	}
+	out := PresentChannelInvite(row)
+	return &out
+}
+
+// PresentChannelInvites presents a list of ChannelInvite, never nil.
+func PresentChannelInvites(rows []*ChannelInvite) []PublicChannelInvite {
+	out := make([]PublicChannelInvite, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, PresentChannelInvite(row))
+	}
+	return out
+}
+
 // OslAuthTokenTable is the quoted table of OslAuthToken.
 const OslAuthTokenTable = `"osl_auth_tokens"`
 

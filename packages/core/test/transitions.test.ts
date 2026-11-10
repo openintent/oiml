@@ -231,7 +231,7 @@ describe("transitions in the model", () => {
     expect(messages(bare, "M087")[0]).toContain("is read_only and has no transitions");
   });
 
-  it("refuses a public transition on a tenant table under isolation: database (M117)", () => {
+  it("refuses a public transition on a tenant table under isolation: database (M126)", () => {
     const isolated = (rule: string) =>
       Model.parse({
         osl: "1.0",
@@ -283,7 +283,7 @@ describe("transitions in the model", () => {
     const errors = (m: Model) => validateModel(m).filter(d => d.level === "error");
     expect(errors(isolated("member:team_id:admin"))).toEqual([]);
     const open = errors(isolated("public"));
-    expect(open.map(d => d.code)).toEqual(["M117"]);
+    expect(open.map(d => d.code)).toEqual(["M126"]);
     expect(open[0].path).toBe("entities.Request.transitions.approve.rule");
   });
 });

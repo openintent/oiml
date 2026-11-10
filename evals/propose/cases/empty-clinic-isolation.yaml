@@ -25,4 +25,4 @@ notes: >-
   Isolation from the first intent, over an empty model. Appointment reaches the clinic through its patient, a
   required relation: the compiler derives the tenant column and the composite key, so a diff that copies clinic_id
   onto Appointment by hand fails on purpose (absent_fields). The patient relation on Appointment and the clinic
-  relation on Patient must be required, or the entities stay shared (M116).
+  relation on Patient must be required, or the entities stay shared (M125).

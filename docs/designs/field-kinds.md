@@ -12,7 +12,7 @@ not an entity; the fields of a scope are required and left out of update; a sequ
 not `text`; a `currency_field` is a required enum of ISO 4217 codes, not "a string or enum"; an update that
 changes a currency must send the amounts in it; the Go backend carries an amount as a `string` read through
 `::text`, not as `pgtype.Numeric`; a rule's `when` and a count's `where` do not test an amount; the workspace
-intent is WS-16, since WS-12 was taken. Sealed fields and typed JSON: a sealed field without `read:` is returned
+intent is WS-18, since WS-14 was taken. Sealed fields and typed JSON: a sealed field without `read:` is returned
 to nobody (the design left the default open); the stored layout has a version byte and is bound to the table and
 the column, so a sealed field cannot be renamed and no field becomes sealed or stops being sealed; the key is 64
 hexadecimal characters; a value that does not open answers 500 for a caller the rule allows, never an absent key;
@@ -20,7 +20,7 @@ a shape takes neither money nor an array of shapes, which the design allowed ("a
 read does not check a stored value against its shape, and the Go row keeps the JSON as it is stored, with a struct
 per shape beside it for handlers, where the design said "typed on read (a Go struct)"; the roadmap's shape per
 enum value is `shape_by`, held on every write by the handlers on the loaded row; the fixture is one blog intent,
-FEAT-16, around a new `Integration` entity, where the design named FEAT-14 and `User.webhook_secret`. Since then:
+FEAT-18, around a new `Integration` entity, where the design named FEAT-16 and `User.webhook_secret`. Since then:
 the hardening pass of 2026-11-10 refuses, with M189, a required sealed field and a required field with `shape_by`
 on the identity (and every other field of the identity that must hold a value and that no sign-up fills):
 `auth.register` takes neither, so nobody could have registered.
@@ -155,7 +155,7 @@ names either, and the presenter that opens a value runs in the app for a row the
 
 ## Proof
 
-- Fixtures (as proposed; the first half's proof as built is below): workspace WS-12 "invoices": `Invoice` with `number` as a sequence scoped by `team_id`, `total` as
+- Fixtures (as proposed; the first half's proof as built is below): workspace WS-14 "invoices": `Invoice` with `number` as a sequence scoped by `team_id`, `total` as
   money in the team's currency, and a scenario in which two teams each create two invoices and see `INV-000001`
   and `INV-000002` apiece, a list filtered by number, and a `total` of `"19.9900"` echoed as a string. Blog FEAT-14
   "integrations": `User.webhook_secret` sealed and `hidden`, read by an overlay handler, and `User.preferences` as a
@@ -163,14 +163,14 @@ names either, and the presenter that opens a value runs in the app for a row the
 - Eval cases: `fx-ws-12-invoices`, `fx-blog-14-integrations`, and the r5 reference-number ask promoted.
 - Gate: as every round, then `built` for "sequences and reference numbers" and the three new entries.
 
-As built for the first half: workspace WS-16 "invoices" (`Invoice.number` a sequence scoped by `team_id`, `total`
+As built for the first half: workspace WS-18 "invoices" (`Invoice.number` a sequence scoped by `team_id`, `total`
 money in the row's `currency`, `fee` money in USD, `Team.invoice_count`), under `isolation: database`, with the
 scenario above extended (refused creates that take no number, a nineteen-digit total, the currency without the
 amount, a hole after a delete); `packages/core/test/sequence.database.test.ts`; `packages/cli/test/money.test.ts`;
-eval cases `fx-ws-16-invoices`, `empty-order-numbers` (the r5 reference-number ask) and `empty-quotes-money`. The
-blog intent of the second half takes the next free number there (FEAT-14 and FEAT-15 are taken).
+eval cases `fx-ws-18-invoices`, `empty-order-numbers` (the r5 reference-number ask) and `empty-quotes-money`. The
+blog intent of the second half takes the next free number there (FEAT-16 and FEAT-17 are taken).
 
-As built for the second half: blog FEAT-16 "integrations, preferences and sealed secrets": `Integration` with
+As built for the second half: blog FEAT-18 "integrations, preferences and sealed secrets": `Integration` with
 `config` as `shape_by` over `kind` (webhook, slack, email), `secret` sealed without `read:`, `token` sealed and
 read by its owner, a `sign` action whose overlay handler opens the secret on all three backends, an
 `Integration.created` event whose overlay handler fails if a sealed value reaches its payload;
@@ -182,7 +182,7 @@ that misses its shape straight into the database and wants the read to answer it
 harness starts the app without the key and with a short one and wants it to stop.
 `packages/core/test/sealed-and-shapes.test.ts`; `packages/conformance/test/sealed.test.ts` (the generated
 TypeScript and Go seal code run against the vectors and against each other, through a `bytea` column of a real
-database); eval cases `fx-blog-16-integrations`, `empty-blocks-by-type` (the Notion ask) and
+database); eval cases `fx-blog-18-integrations`, `empty-blocks-by-type` (the Notion ask) and
 `empty-service-credentials`.
 
 ## Decisions of the first half (sequences and money), 2026-11-10
@@ -413,7 +413,7 @@ Both:
     binding, a silent absence, a shape not held, a path not named) each fail the check they aim at. One harness
     bug was found by the fixture and fixed: the "longer than" probe used 255 for a string whose `max_length` is
     larger.
-25. **One intent, FEAT-16**, with a new entity, where the design had two fields on `User`: an integration has a
+25. **One intent, FEAT-18**, with a new entity, where the design had two fields on `User`: an integration has a
     kind, settings that follow it and secrets, so the three constructs meet in one place, and the identity still
     gets a shaped and a sealed field of its own. `hidden` with `sealed` is covered by a unit test of the model
     and the IR, not by the fixture.
@@ -423,3 +423,10 @@ Both:
 Core: two types, nine keys, the counter table in migrations, nine diagnostic codes, two small modules (the seal
 format, the shapes), the reference. Validation, presentation and form work in the shared TypeScript generators and
 the Go packages. Together about the size of the pages round; each piece can ship alone, sequences first.
+
+## At the merge with rounds A3 and A4 (2026-11-10)
+
+The accept route of round A4 makes an account from register's own fields, which leave out sealed fields and a value
+whose shape follows an enum: it takes no sealed field, and M189's refusals cover it as they cover register. A detail
+page (round A3) shows money and sequences and offers sealed inputs and shape groups in its form as the detail pane
+did: blog FEAT-18's `integration` page and workspace WS-18's `invoice` page.

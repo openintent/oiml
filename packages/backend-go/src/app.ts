@@ -1,5 +1,6 @@
 import type { GeneratedFile, IR } from "@osl/core";
 import { globalActions, hasFieldRules, hasSealed } from "@osl/core";
+import { inviteEventWiring } from "./invites.js";
 import { hasScheduling } from "./scheduling.js";
 import { HEADER, SCAFFOLD_HEADER, exported, goFile } from "./util.js";
 
@@ -47,7 +48,10 @@ export function appFile(ir: IR, modulePath: string): string {
     ? "\t// Sealed fields: no key, no server. Both the server and the worker start here.\n\tif err := seal.Load(); err != nil {\n\t\treturn err\n\t}\n"
     : "";
   const requests = isolated ? "requests" : "pool";
-  const registrations: string[] = [];
+  // An accepted invite makes a membership inside the auth package, which cannot import the events it then owes
+  const inviteEvents = inviteEventWiring(ir);
+  if (inviteEvents.length) imports.push(`${modulePath}/generated/events`, `${modulePath}/generated/models`);
+  const registrations: string[] = [...inviteEvents];
   if (scheduling) registrations.push(`\tscheduling.Use(pool)`);
   if (ir.files) registrations.push(`\tfilesapi.New(${requests}, a).Routes(r)`);
   for (const resource of ir.resources)

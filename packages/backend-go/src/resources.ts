@@ -30,6 +30,7 @@ import { sealConst } from "./seal.js";
 import { shapeGuard } from "./shapes.js";
 import { fileSpecsLiteral } from "./auth.js";
 import { eventFunc } from "./events.js";
+import { issueFunc } from "./invites.js";
 import { isStatementAction, statementCall } from "./rowactions.js";
 import {
   columnsConst,
@@ -919,7 +920,8 @@ export function resourceFile(ir: IR, resource: ResourceIR, modulePath: string): 
     `${modulePath}/generated/models`,
     `${modulePath}/generated/validation`
   ]);
-  if (list || create || update) imports.add(`${modulePath}/generated/db`);
+  if (list || (create && !create.invite) || update) imports.add(`${modulePath}/generated/db`);
+  if (create?.invite) imports.add("net/http");
   const missing =
     get || update || remove || actions.some(a => a.scope === "row") ? missingMethod(entity, handler) : null;
   if (missing) {
@@ -1160,22 +1162,37 @@ ${fail("write")}
         : `	sql, args := db.Insert(${tableC}, values, ${columnsC})
 	row, err := ${scan}(h.db.QueryRow(ctx, sql, args...))
 ${fail("write")}`;
-    sections.push(`// Create handles ${create.method} ${create.path}.
+    // An invite is stored and mailed by the auth package, which stamps the columns no body may set
+    const store = create.invite
+      ? `	if session == nil {
+		access.Deny(c, &access.Verdict{Status: http.StatusUnauthorized})
+		return
+	}
+	hookCtx := &hooks.Context{Gin: c, Session: session}
+	row, debug, err := h.auth.${issueFunc(entity)}(ctx, session, values, func(input models.Values) (models.Values, error) {
+		return ${hooksPkg}.BeforeCreate(hookCtx, input)
+	})
+${fail("write")}`
+      : `	hookCtx := &hooks.Context{Gin: c, Session: session}
+	values, err = ${hooksPkg}.BeforeCreate(hookCtx, values)
+${fail("write")}
+${insert}`;
+    const reply = create.invite
+      ? `httpx.JSON(c, http.StatusCreated, auth.Issued{Data: ${present("row", VIEWER)}, Debug: debug})`
+      : `httpx.Created(c, ${present("row", isTenant && tenancy ? `access.CreatorViewer(session, row.${exported(pk.name)}, ${q(tenancy.creatorRole)})` : VIEWER)})`;
+    sections.push(`// Create handles ${create.method} ${create.path}.${create.invite ? " It sends an invite: the token is answered only when emails are captured." : ""}
 func (h *${handler}) Create(c *gin.Context) {
 	ctx := c.Request.Context()
 	session, err := h.auth.Session(c)
 ${fail("write")}
 ${DENY(ruleVar("create"))}
 ${PARSE_BODY(`validation.${inputVar(resource, "create")}`, "values")}
-${shapeLines("create", create.fields, "values")}${bodyCheck}${sealLines(create.fields, "values")}${resolveFiles("values")}${create.ownerField ? `\tvalues[${q(create.ownerField)}] = session.User.${identityPk}\n` : ""}	hookCtx := &hooks.Context{Gin: c, Session: session}
-	values, err = ${hooksPkg}.BeforeCreate(hookCtx, values)
-${fail("write")}
-${insert}
+${shapeLines("create", create.fields, "values")}${bodyCheck}${sealLines(create.fields, "values")}${resolveFiles("values")}${create.ownerField ? `\tvalues[${q(create.ownerField)}] = session.User.${identityPk}\n` : ""}${store}
 ${emits.length ? emits.join("\n") + "\n" : ""}${timerLines}	if err := ${hooksPkg}.AfterCreate(hookCtx, row); err != nil {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	httpx.Created(c, ${present("row", isTenant && tenancy ? `access.CreatorViewer(session, row.${exported(pk.name)}, ${q(tenancy.creatorRole)})` : VIEWER)})
+	${reply}
 }`);
   }
 

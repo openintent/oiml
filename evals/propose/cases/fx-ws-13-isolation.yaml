@@ -1,0 +1,29 @@
+id: fx-ws-13-isolation
+tags: [fixture, auth, tenancy, isolation, rules, scenario]
+base: { fixture: workspace, through: WS-12 }
+oracle: fixtures/workspace/intents/WS-13/diff.yaml
+intent:
+  title: No team ever sees another team's data, enforced in the database
+  ask: >-
+    The rules already keep one team's projects, tasks, notes, milestones and channels from another team. Make the
+    database refuse it too, whatever the code above it does: a request reads and writes only rows of the teams its
+    caller belongs to, plus what a public project deliberately opens to everyone. Nothing a caller sees or may do
+    today changes, except that being a task's assignee or a note's author no longer reaches a team's rows once the
+    person has left the team.
+  acceptance:
+    - Every earlier scenario passes unchanged
+    - An assignee removed from the team gets 403 for their task and may not update it, lists none of the team's tasks, and still reads a public project's task like anyone else
+    - Someone who belongs to two teams lists the tasks of both in one request
+    - The cross-tenant walk passes a second time with the generated rule checks switched off, and the app's database role without a bound team reads no row of any team table except the tasks of public projects
+expect:
+  auth: { tenancy: { entity: Team, membership: TeamMember, isolation: database } }
+  rules:
+    Task:
+      read: "public when project_id.public = true or owner:assignee_id or member:project_id.team_id:admin"
+  scenarios: { min: 1, rejections: 2, statuses: [403] }
+  ops: { max: 4 }
+notes: >-
+  One key, auth.tenancy.isolation, and a scenario for the one thing a caller can observe: an owner who is no longer
+  a member. The rules stay as written (the expectation reads them as the model declares them; the compiler adds the
+  tenant's membership to the alternatives that lack it). A diff that rewrites the rules by hand, moves the public
+  alternative off Task, or adds a tenant column to Task has misread the construct. Since the merge with round A4 the base declares auth.invites, so the set_auth restates them; a block without them is refused for the invite resources, pages and steps it would drop.

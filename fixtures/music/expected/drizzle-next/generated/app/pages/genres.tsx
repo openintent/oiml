@@ -11,7 +11,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { client, sessionUser, type Inputs, type Outputs, type SessionUser } from "../client";
-import { AddPicker, EmptyPane, ErrorNote, FieldRow, FormRow, ListSkeleton, NameChips, Pagination, Pane, PaneHeader, PaneSkeleton, splitList, text } from "../ui";
+import { AddPicker, EmptyPane, ErrorNote, FieldRow, FormRow, ListSkeleton, NameChips, Pagination, Pane, PaneHeader, PaneSkeleton, RowError, splitList, text } from "../ui";
 
 type Row = Outputs["genres"]["list"]["data"][number];
 type Detail = Outputs["genres"]["get"];
@@ -243,7 +243,7 @@ export function GenresDetail() {
   void user;
 
   if (query.isPending) return <PaneSkeleton />;
-  if (query.error) return <ErrorNote error={query.error} className="m-6" />;
+  if (query.error) return <RowError error={query.error} signIn={<Link href="/login" className={buttonVariants()}>Sign in</Link>} />;
   const row: Detail = query.data;
   void row;
   return (

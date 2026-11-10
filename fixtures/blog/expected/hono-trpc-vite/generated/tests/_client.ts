@@ -6,7 +6,7 @@ import { Client as PgClient } from "pg";
 export const BASE_URL = process.env.OSL_BASE_URL ?? "http://localhost:3111";
 
 /** Columns that must never appear in any response */
-const HIDDEN = new Set<string>(["password_hash"]);
+const HIDDEN = new Set<string>(["password_hash", "token_hash"]);
 
 /** Query-string values a scenario sends to a list, by the type its filter expects */
 const COERCE: Record<string, Record<string, "int" | "number" | "boolean" | "string">> = {
@@ -44,10 +44,21 @@ const COERCE: Record<string, Record<string, "int" | "number" | "boolean" | "stri
     "page_size": "int",
     "author_id": "string"
   },
+  "article_editors.list": {
+    "page": "int",
+    "page_size": "int",
+    "article_id": "string",
+    "user_id": "string"
+  },
   "integrations.list": {
     "page": "int",
     "page_size": "int",
     "kind": "string"
+  },
+  "article_invites.list": {
+    "page": "int",
+    "page_size": "int",
+    "article_id": "string"
   }
 };
 
@@ -56,8 +67,8 @@ export interface Reply {
   body: unknown;
 }
 
-/** What the contract's body looks like for a procedure's result */
-export type Shape = "list" | "data" | "none";
+/** What the contract's body looks like for a procedure's result; "body" is a result that is the body already */
+export type Shape = "list" | "data" | "none" | "body";
 
 export class Client {
   cookie = "";
@@ -99,7 +110,7 @@ export class Client {
     }
     const data = (json as { result?: { data?: unknown } } | null)?.result?.data;
     assertNoHidden(data, procedure);
-    const body = shape === "list" ? data : shape === "data" ? { data } : null;
+    const body = shape === "list" || shape === "body" ? data : shape === "data" ? { data } : null;
     return { status: response.status, body };
   }
 
@@ -167,6 +178,7 @@ export const ACTORS: Record<string, { email: string; password: string; fields: R
   alice: { email: "alice@example.com", password: "alice-pass-1", fields: {"name":"Alice"}, provisioned: {} },
   bob: { email: "bob@example.com", password: "bob-pass-1", fields: {"name":"Bob"}, provisioned: {} },
   dave: { email: "dave@example.com", password: "dave-pass-1", fields: {"name":"Dave"}, provisioned: {} },
+  erin: { email: "erin@example.com", password: "erin-pass-1", fields: {"name":"Erin"}, provisioned: {} },
   admin: { email: "admin@example.com", password: "admin-pass-1", fields: {"name":"Admin"}, provisioned: {"role":"admin"} }
 };
 
@@ -229,7 +241,7 @@ export async function actor(name: string): Promise<ActorSession> {
   if (!definition) throw new Error("unknown actor " + name);
   await register(name);
   const client = new Client();
-  const login = await client.call("auth.login", { email: definition.email, password: definition.password }, "mutation", "data");
+  const login = await client.call("auth.login", { email: definition.email, password: definition.password }, "mutation", "body");
   if (login.status !== 200) throw new Error("could not sign in " + name + ": " + login.status + " " + JSON.stringify(login.body));
   return { client, id: pick(login.body, "data.id") };
 }

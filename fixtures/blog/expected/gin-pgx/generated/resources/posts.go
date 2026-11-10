@@ -5,10 +5,12 @@ package resources
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"blog/generated/access"
@@ -61,7 +63,7 @@ var postsReadRule = access.Rule{Kind: "public"}
 
 var postsCreateRule = access.Rule{Kind: "owner", Field: "author_id"}
 
-var postsUpdateRule = access.Rule{Kind: "any", Any: []access.Rule{{Kind: "owner", Field: "author_id"}, {Kind: "role", Value: "admin"}}}
+var postsUpdateRule = access.Rule{Kind: "any", Any: []access.Rule{{Kind: "owner", Field: "author_id"}, {Kind: "member", Field: "editors", Through: true}, {Kind: "role", Value: "admin"}}}
 
 var postsDeleteRule = access.Rule{Kind: "any", Any: []access.Rule{{Kind: "owner", Field: "author_id"}, {Kind: "role", Value: "admin"}}}
 
@@ -279,7 +281,12 @@ func (h *Posts) Update(c *gin.Context) {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	if verdict := access.CheckRow(postsUpdateRule, session, access.Row{"author_id": existing.AuthorID}); verdict != nil {
+	ruleRow, err := h.ruleRow(ctx, session, access.Row{"author_id": existing.AuthorID, "id": existing.ID})
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if verdict := access.CheckRow(postsUpdateRule, session, ruleRow); verdict != nil {
 		access.Deny(c, verdict)
 		return
 	}
@@ -859,6 +866,20 @@ func (h *Posts) ActionRetire(c *gin.Context) {
 		return
 	}
 	httpx.OK(c, models.PresentArticle(result, access.Viewer(session)))
+}
+
+// ruleRow adds to row the values the rules reach through relations, under their dotted keys, and the caller's memberships.
+func (h *Posts) ruleRow(ctx context.Context, session *auth.Session, row access.Row) (access.Row, error) {
+	{
+		var held0 *int
+		if row["id"] != nil && session != nil {
+			if err := h.db.QueryRow(ctx, `SELECT 1 FROM `+models.ArticleEditorTable+` WHERE "article_id" = $1 AND "user_id" = $2`, row["id"], session.UserID()).Scan(&held0); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				return nil, err
+			}
+		}
+		row["editors"] = held0 != nil
+	}
+	return row, nil
 }
 
 // loadAuthor fetches the author of each Article, keyed by id.

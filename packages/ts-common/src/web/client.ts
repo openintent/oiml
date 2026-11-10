@@ -6,6 +6,7 @@
 import type { ActionIR, EntityIR, IR, OperationIR, ResourceIR } from "@osl/core";
 import { actionsOf, anonymousCouldRead, globalActions, hasFieldRules, ruledColumns } from "@osl/core";
 import { entityByName, q, typeName, type TsConventions } from "../conventions.js";
+import { hasInvites } from "../invites.js";
 import { actionInputName } from "../validation.js";
 
 function isIntegerKey(entity: EntityIR): boolean {
@@ -71,7 +72,10 @@ export function trpcClientFile(ir: IR, conv: TsConventions): string {
         case "get":
           return `    get: (input: Inputs[${q(r.name)}]["get"]) => trpc.${r.name}.get.query(input)`;
         case "create":
-          return `    create: (input: Inputs[${q(r.name)}]["create"]) => trpc.${r.name}.create.mutate(input)`;
+          // An invite's create answers the row beside what a test reads; the pages get the row
+          return op.invite
+            ? `    create: (input: Inputs[${q(r.name)}]["create"]) => trpc.${r.name}.create.mutate(input).then(reply => reply.data)`
+            : `    create: (input: Inputs[${q(r.name)}]["create"]) => trpc.${r.name}.create.mutate(input)`;
         case "update":
           return `    update: (input: Inputs[${q(r.name)}]["update"]) => trpc.${r.name}.update.mutate(input)`;
         case "delete":
@@ -104,6 +108,12 @@ export function trpcClientFile(ir: IR, conv: TsConventions): string {
                 `    magic_link: (input: Inputs["auth"]["magic_link"]) => trpc.auth.magic_link.mutate(input)`,
                 `    magic_link_verify: (input: Inputs["auth"]["magic_link_verify"]) => trpc.auth.magic_link_verify.mutate(input)`
               ]
+            : []),
+          ...(hasInvites(ir)
+            ? [
+                `    invite: (input: Inputs["auth"]["invite"]) => trpc.auth.invite.query(input)`,
+                `    invite_accept: (input: Inputs["auth"]["invite_accept"]) => trpc.auth.invite_accept.mutate(input)`
+              ]
             : [])
         ]
       : [])
@@ -114,10 +124,16 @@ import { createTRPCClient, httpBatchLink } from "@trpc/client";
 import type { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "../server/router";
 ${hasFieldRules(ir) ? `import type { VisibleFields } from "../present";\n` : ""}
+/** The HTTP status the API answered a failed call with, when it answered */
+export function errorStatus(error: unknown): number | undefined {
+  const status = (error as { data?: { httpStatus?: unknown } } | null)?.data?.httpStatus;
+  return typeof status === "number" ? status : undefined;
+}
+
 /** A request the server refused as asked: the same request would fail again, so it is not retried. */
 function isRefused(error: unknown): boolean {
-  const status = (error as { data?: { httpStatus?: unknown } } | null)?.data?.httpStatus;
-  return typeof status === "number" && status >= 400 && status < 500 && status !== 408 && status !== 429;
+  const status = errorStatus(error);
+  return status !== undefined && status >= 400 && status < 500 && status !== 408 && status !== 429;
 }
 
 export const queryClient = new QueryClient({
@@ -307,11 +323,15 @@ export function restClientFile(ir: IR, conv: TsConventions): string {
   const credentials = auth?.providers.some(p => p.kind === "credentials");
   const magic = auth?.providers.some(p => p.kind === "magic_link");
   const registerFields = identity ? auth!.registerFields.map(f => `${f}?: unknown`).join("; ") : "";
+  // With invites a sign-in that proves the address answers what it accepted beside the user
+  const invites = hasInvites(ir);
+  const signedIn = invites ? `{ data: ${U}; accepted?: Accepted[] }` : U;
+  const whole = invites ? ", whole: true" : "";
 
   return `${conv.header("The typed client the pages call. Same call surface on every backend; this one speaks the REST contract.")}
 import { QueryClient } from "@tanstack/react-query";
 import type { z } from "zod";
-${ir.files ? `import type { FileRecord } from "../files";\n` : ""}import type { ${[...presentTypes, ...(hasFieldRules(ir) ? ["VisibleFields"] : [])].sort().join(", ")} } from "../present";
+${invites ? `import type { Accepted, InviteLookup } from "../auth-providers";\n` : ""}${ir.files ? `import type { FileRecord } from "../files";\n` : ""}import type { ${[...presentTypes, ...(hasFieldRules(ir) ? ["VisibleFields"] : [])].sort().join(", ")} } from "../present";
 ${validationTypes.size ? `import type { ${[...validationTypes].sort().join(", ")} } from "../validation";` : ""}
 
 export class ApiError extends Error {
@@ -325,9 +345,15 @@ export class ApiError extends Error {
   }
 }
 
+/** The HTTP status the API answered a failed call with, when it answered */
+export function errorStatus(error: unknown): number | undefined {
+  return error instanceof ApiError ? error.status : undefined;
+}
+
 /** A request the server refused as asked: the same request would fail again, so it is not retried. */
 function isRefused(error: unknown): boolean {
-  return error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 408 && error.status !== 429;
+  const status = errorStatus(error);
+  return status !== undefined && status >= 400 && status < 500 && status !== 408 && status !== 429;
 }
 
 export const queryClient = new QueryClient({
@@ -359,10 +385,16 @@ async function call<T>(method: string, path: string, options: { query?: Record<s
 
 export type Inputs = {
   auth: {
-    login: { ${auth?.emailColumn ?? "email"}: string; password: string };
+    login: { ${auth?.emailColumn ?? "email"}: string; password: string${invites ? "; invite?: string" : ""} };
     register: { ${auth?.emailColumn ?? "email"}: string; password: string${registerFields ? "; " + registerFields : ""} };
     magic_link: { email: string };
-    magic_link_verify: { token: string };
+    magic_link_verify: { token: string };${
+      invites
+        ? `
+    invite: { token: string };
+    invite_accept: { token: string; data?: Record<string, unknown> };`
+        : ""
+    }
   };${
     ir.files
       ? `
@@ -387,12 +419,18 @@ export type Outputs = {
   auth: {
     session: { user: ${U}${auth && hasFieldRules(ir) ? "; fields: VisibleFields" : ""} } | null;
     me: ${U};
-    login: ${U};
+    login: ${signedIn};
     register: ${U};
     logout: null;
     magic_link: { sent: boolean; debug?: { token: string; url: string } };
-    magic_link_verify: ${U};
-    providers: { kind: string; name: string }[];
+    magic_link_verify: ${signedIn};
+    providers: { kind: string; name: string }[];${
+      invites
+        ? `
+    invite: InviteLookup;
+    invite_accept: { data: ${U}; accepted: Accepted[] };`
+        : ""
+    }
   };${
     ir.files
       ? `
@@ -436,14 +474,21 @@ ${
     logout: () => call<null>("POST", "/api/auth/logout")${
       credentials
         ? `,
-    login: (input: Inputs["auth"]["login"]) => call<Outputs["auth"]["login"]>("POST", "/api/auth/login", { body: input }),
+    login: (input: Inputs["auth"]["login"]) => call<Outputs["auth"]["login"]>("POST", "/api/auth/login", { body: input${whole} }),
     register: (input: Inputs["auth"]["register"]) => call<Outputs["auth"]["register"]>("POST", "/api/auth/register", { body: input })`
         : ""
     }${
       magic
         ? `,
     magic_link: (input: Inputs["auth"]["magic_link"]) => call<Outputs["auth"]["magic_link"]>("POST", "/api/auth/magic-link", { body: input }),
-    magic_link_verify: (input: Inputs["auth"]["magic_link_verify"]) => call<Outputs["auth"]["magic_link_verify"]>("POST", "/api/auth/magic-link/verify", { body: input })`
+    magic_link_verify: (input: Inputs["auth"]["magic_link_verify"]) => call<Outputs["auth"]["magic_link_verify"]>("POST", "/api/auth/magic-link/verify", { body: input${whole} })`
+        : ""
+    }${
+      invites
+        ? `,
+    invite: ({ token }: Inputs["auth"]["invite"]) => call<Outputs["auth"]["invite"]>("GET", "/api/auth/invites/" + encodeURIComponent(token)),
+    invite_accept: ({ token, data }: Inputs["auth"]["invite_accept"]) =>
+      call<Outputs["auth"]["invite_accept"]>("POST", "/api/auth/invites/" + encodeURIComponent(token) + "/accept", { body: data ?? {}, whole: true })`
         : ""
     }`
         : ""

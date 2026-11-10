@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * pnpm evals:round [--round name] [--count n] [--seed n] [--model id] [--no-full] [--no-implement]
- *                  [--backend name] [--previous round] [--max-cost usd] [--jobs n] [--full-jobs n]
+ * pnpm evals:round [--round name] [--count n] [--seed n] [--model id] [--max-tokens n] [--no-full]
+ *                  [--no-implement] [--backend name] [--previous round] [--max-cost usd] [--jobs n]
+ *                  [--full-jobs n]
  *
  * One turn of the loop: generate a round of intents, run them with handlers written by the model, write the
  * gap report, update the backlog and compare with the previous round. Exit code 1 when a built gap reappears.
@@ -30,6 +31,11 @@ const round = (valueOf("--round") ?? `r${stamp}`).toLowerCase().replace(/[^a-z0-
 const full = !has("--no-full");
 const databaseUrl = process.env.OSL_TEST_DATABASE_URL;
 if (full && !databaseUrl) console.error("OSL_TEST_DATABASE_URL is not set; full runs will fail at the database step");
+const maxTokens = valueOf("--max-tokens") ? Number(valueOf("--max-tokens")) : undefined;
+if (maxTokens !== undefined && (!Number.isInteger(maxTokens) || maxTokens < 1)) {
+  console.error(`--max-tokens must be a whole number above zero, not ${valueOf("--max-tokens")}`);
+  process.exit(2);
+}
 
 const summary = await runRound({
   repoRoot,
@@ -37,6 +43,7 @@ const summary = await runRound({
   count: Number(valueOf("--count") ?? 10),
   seed: Number(valueOf("--seed") ?? Date.now() % 1_000_000),
   model: valueOf("--model") ?? DEFAULT_MODEL,
+  maxTokens,
   full,
   implement: full && !has("--no-implement"),
   backend: valueOf("--backend") ?? "hono-trpc-vite",

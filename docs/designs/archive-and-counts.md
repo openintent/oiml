@@ -10,8 +10,8 @@ Project, which already archives by hand with a `status` enum (the sentence about
 corrected); the count is kept by statement triggers that write each parent once in key order, with a fourth
 trigger for TRUNCATE; where the counted rows are ordered within the row that counts them, an append takes the
 parent the way a move does, which a test against a real database showed to be needed; a count under
-`isolation: database` runs with its owner's rights; a timer cannot run `archive` itself; the intents are WS-13 and
-FEAT-13. Proof: workspace WS-13 under `isolation: database` (45 scenario steps) and blog FEAT-13 (32 steps),
+`isolation: database` runs with its owner's rights; a timer cannot run `archive` itself; the intents are WS-15 and
+FEAT-15. Proof: workspace WS-15 under `isolation: database` (45 scenario steps) and blog FEAT-15 (32 steps),
 conformance 12/12 with six walks, the rule walk and the order walk now comparing every count with the rows it
 counts, 195 unit tests with the database (182 and 13 skipped without), the order's own load of round B2 run with a
 count in place at 400 writes per connection, the oracle gate 34/34. Since then: the hardening pass of 2026-11-10
@@ -129,7 +129,7 @@ or than the round was recommended to do.
    the statement's role, under the policies. Between two tenant tables that would do: the composite keys of round
    B1 put the counted row and the counting row in one tenant, and the caller who may write the one is bound to the
    tenant of the other. It would not do in the two other cases, and a count must not depend on who writes. A
-   shared table's row counted on a tenant's row (a relation that is optional, so the table stays shared, M116) is
+   shared table's row counted on a tenant's row (a relation that is optional, so the table stays shared, M125) is
    written by callers who are not bound to that tenant: under the caller's rights the policy hides the counting
    row from the count's own write, and the number is wrong without a word. And on an ordered table the count calls
    the order's `hold`, which nobody but the owner may. The functions read nothing and return nothing; they add to
@@ -198,7 +198,7 @@ or than the round was recommended to do.
     counted entity; M155 (warning) `read_only: false` or `required: false` on a count; M156 (warning) a count on a
     shared row over a tenant table; M157 a list filter named `archived` on an archiving entity. A count in a
     resource's write fields is the existing M064, a timer that runs archive the existing M133.
-18. **Intents WS-13 and FEAT-13**, the next free numbers; the design named FEAT-15.
+18. **Intents WS-15 and FEAT-15**, the next free numbers; the design named FEAT-17.
 19. **Eval corpus.** The four cases based on the whole blog fixture are pinned `through: FEAT-12`, the model they
     were written against. Three asks the construct now answers expect it (`archive: [Article]`), two asks are new,
     and `archive` and `counts` are new expectation keys.
@@ -236,7 +236,7 @@ or than the round was recommended to do.
 | the backfill                            | run by the migrating role, which the policies do not bind (row security is enabled, not forced)                                                                                                                                    |
 | drift                                   | compares the functions (body and definer rights) and the triggers with the live database, with the isolation layer's and the order's                                                                                               |
 
-Proven three ways: the workspace fixture as a non-superuser owner (WS-13's scenario has a user in two teams counted
+Proven three ways: the workspace fixture as a non-superuser owner (WS-15's scenario has a user in two teams counted
 as two for a caller of only one of them, and the walks compare every count with its rows after every create,
 update, action, burst and delete); `count.database.test.ts` as the app role with the right tenant, another one and
 none bound, with a control that gives the function the caller's rights and finds the count short; and the unit
@@ -259,7 +259,7 @@ tests of the rendered objects.
 
 ## Proof
 
-- Fixtures: workspace WS-13 "archived milestones and labels, and what a project counts": `Milestone` with
+- Fixtures: workspace WS-15 "archived milestones and labels, and what a project counts": `Milestone` with
   `archive: { rule: "member:project_id.team_id:admin" }`, `Label` with `archive: true`, `Project.milestone_count`
   and `Project.open_milestones` (`where: "done = false and archived_at = null"`), `User.team_count`. The scenario
   creates milestones (both counts rise), marks one done (the open count falls), a member archives one (403), an
@@ -267,7 +267,7 @@ tests of the rendered objects.
   and 3, `?archived=true` finds it, the plain count stays and the open one falls, a move still counts it, a member
   restores it (403), the admin (200) and again (409); a delete lowers both counts; an archived label leaves the
   label list and is still named on its milestone; a user added to two teams counts two for a member of one. Blog
-  FEAT-13 "comment counts and archived articles": `Article.comment_count` in `sortable`, `Article` with
+  FEAT-15 "comment counts and archived articles": `Article.comment_count` in `sortable`, `Article` with
   `archive: { rule: "owner:author_id" }` and a queued event on `posts.archive`, `User.post_count`
   (`where: "published = true and archived_at = null"`), a tile of archived articles; the scenario sorts by the
   count both ways, lowers it with a delete, raises `post_count` through the user's own publish handler, and lowers
@@ -278,7 +278,7 @@ tests of the rendered objects.
   arrives on a table with rows, is counted again when its condition changes and is found by the drift check; the
   isolation case with its control) and `order.database.test.ts` run twice, the second time with a count on the
   ordered table.
-- Eval cases: `fx-ws-13-archive-and-counts`, `fx-blog-13-comment-counts`, and the asks `empty-forum-reply-counts`
+- Eval cases: `fx-ws-15-archive-and-counts`, `fx-blog-15-comment-counts`, and the asks `empty-forum-reply-counts`
   and `empty-docs-archive`. The design named "the r6 comment-count ask promoted"; no such case is in the
   repository, so the forum ask was written instead.
 - Gate: as every round, then `built` for "soft delete and archiving" and a note on "computed and aggregate
@@ -302,3 +302,10 @@ larger part.
 - A timer on `archived_at` is scheduled by archive on all three backends (the blog fixture's Article has a timer,
   so the call is generated and runs), but no scenario waits on one.
 - Sums and the other aggregates; a count per viewer.
+
+## At the merge with rounds A3 and A4 (2026-11-10)
+
+A detail page (round A3) offers Archive or Restore by the row's state as the detail pane did, and a section over
+an archiving entity lists the live rows, the list's own default. An accepted invite (round A4) inserts a
+membership, and `User.team_count` follows it through the count's definer function with nothing from the accept
+path. WS-15's scenario registers `ivan@example.com` where it registered `dana@example.com`, an actor since WS-10.

@@ -31,8 +31,8 @@ export function ok(data: unknown, extra: Record<string, unknown> = {}): Response
   return json(200, { data, ...extra });
 }
 
-export function created(data: unknown): Response {
-  return json(201, { data });
+export function created(data: unknown, extra: Record<string, unknown> = {}): Response {
+  return json(201, { data, ...extra });
 }
 
 export function noContent(): Response {

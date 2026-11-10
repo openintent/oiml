@@ -6,6 +6,7 @@
 import type { ActionIR, EntityIR, GeneratedFile, IR, OperationIR, RelationIR, ResourceIR, RuleIR } from "@osl/core";
 import { actionsOf, globalActions, hasFieldRules, hasSealed, sealedColumns } from "@osl/core";
 import {
+  hasInvites,
   hasVia,
   actionInputName,
   fileSpecsLiteral,
@@ -65,8 +66,15 @@ export function trpcFile(ir?: IR): string {
 import { initTRPC } from "@trpc/server";
 import { withTenants } from "../db/client";
 import type { Context } from "./context";
+import { statusOf } from "./errors";
 
-const t = initTRPC.context<Context>().create();
+const t = initTRPC.context<Context>().create({
+  /** A refusal keeps the contract's status in the error's data, also where tRPC has no code for it (410, say) */
+  errorFormatter({ shape, error }) {
+    const status = statusOf(error);
+    return status === undefined ? shape : { ...shape, data: { ...shape.data, httpStatus: status } };
+  }
+});
 
 /**
  * One transaction per procedure call, bound to the session's memberships: the procedure reaches the rows of those
@@ -84,8 +92,15 @@ export type { Context };
   return `${HEADER("tRPC initialisation.")}
 import { initTRPC } from "@trpc/server";
 import type { Context } from "./context";
+import { statusOf } from "./errors";
 
-const t = initTRPC.context<Context>().create();
+const t = initTRPC.context<Context>().create({
+  /** A refusal keeps the contract's status in the error's data, also where tRPC has no code for it (410, say) */
+  errorFormatter({ shape, error }) {
+    const status = statusOf(error);
+    return status === undefined ? shape : { ...shape, data: { ...shape.data, httpStatus: status } };
+  }
+});
 
 export const router = t.router;
 export const publicProcedure = t.procedure;
@@ -128,12 +143,33 @@ const CODES: Record<number, TRPC_ERROR_CODE_KEY> = {
   401: "UNAUTHORIZED",
   403: "FORBIDDEN",
   404: "NOT_FOUND",
-  409: "CONFLICT"
+  409: "CONFLICT",
+  410: "NOT_FOUND"
 };
 
-/** Refuse the request with the contract's status and code */
+/** What a refusal carries as the tRPC error's cause: the contract's status and code */
+class Refusal extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    message: string
+  ) {
+    super(message);
+  }
+}
+
+/**
+ * Refuse the request with the contract's status and code. tRPC has no code for every status (410, say), so the
+ * status travels on the error and the transport answers with it.
+ */
 export function fail(status: number, code: string, message: string): never {
-  throw new TRPCError({ code: CODES[status] ?? "INTERNAL_SERVER_ERROR", message, cause: { code } });
+  const fallback = status >= 400 && status < 500 ? "BAD_REQUEST" : "INTERNAL_SERVER_ERROR";
+  throw new TRPCError({ code: CODES[status] ?? fallback, message, cause: new Refusal(status, code, message) });
+}
+
+/** The status a refusal made with fail() carries; undefined for every other error */
+export function statusOf(err: unknown): number | undefined {
+  return err instanceof TRPCError && err.cause instanceof Refusal ? err.cause.status : undefined;
 }
 
 export function notFound(): TRPCError {
@@ -271,7 +307,9 @@ export const authRouter = router({
   const fileSpecs = identity.columns.some(c => c.type.kind === "file");
   // A field with a read rule on the identity: the caller's own row is presented to the caller, as any row is
   const ruled = takesViewer(identity);
-  const shown = ruled ? `shownUser(await sessionOf(user))` : `present${T}(user)`;
+  const shownOf = (userExpr: string) =>
+    ruled ? `shownUser(await sessionOf(${userExpr}))` : `present${T}(${userExpr})`;
+  const shown = shownOf("user");
   const fields = hasFieldRules(ir);
   const presentImports = [
     ...(ruled ? ["SERVER"] : []),
@@ -279,6 +317,32 @@ export const authRouter = router({
     `type Public${T}`,
     ...(fields ? ["visibleFields"] : [])
   ];
+  const oauth = auth.providers.some(p => p.kind === "oauth");
+  const invites = hasInvites(ir);
+  const providerImports = [
+    ...(magic ? ["issueMagicLink", "verifyMagicLink"] : []),
+    ...(magic || oauth ? ["PROVIDERS"] : []),
+    ...(invites ? ["acceptInvite", "lookupInvite", ...(credentials ? ["acceptWithToken"] : []), "type Accepted"] : [])
+  ];
+  // The account an invite creates: register's fields without the email, which the token has proven. A password is
+  // required where passwords are the only way in, optional beside another provider, and refused without them.
+  const acceptShape = [
+    ...(credentials ? [`  password: z.string().min(8).max(200)${magic || oauth ? ".optional()" : ""}`] : []),
+    ...registerFields.map(c => `  ${c.name}: ${fillEnums(zodForColumn(c, "create"), ir, identity)}`)
+  ].join(",\n");
+  // File fields arrive as references to uploads, as they do at registration
+  const acceptFields = credentials ? "fields" : "input.data";
+  const acceptSpread = fileSpecs
+    ? `(await resolveFileRefs(${acceptFields}, ${fileSpecsLiteral(identity)}))`
+    : acceptFields;
+  const acceptValues = !credentials
+    ? `{ ...${acceptSpread}, ${auth.emailColumn}: email }`
+    : magic || oauth
+      ? `{ ...${acceptSpread}, ${auth.emailColumn}: email, ...(password ? { ${auth.passwordColumn}: hashPassword(password) } : {}) }`
+      : `{ ...${acceptSpread}, ${auth.emailColumn}: email, ${auth.passwordColumn}: hashPassword(password) }`;
+  /** With invites declared a sign-in answers the user as \`data\` beside what it accepted */
+  const signedIn = (userExpr: string) =>
+    invites ? `{ data: ${shownOf(userExpr)}, ...(accepted.length ? { accepted } : {}) }` : shownOf(userExpr);
 
   return `${HEADER("Auth: cookie sessions and the auth router (passwords, magic links, sign-out, the session).")}
 import { createHmac, randomBytes${credentials ? ", scryptSync" : ""}, timingSafeEqual } from "node:crypto";
@@ -287,9 +351,9 @@ import { eq${isolated ? ", sql" : ""} } from "drizzle-orm";
 import { z } from "zod";
 ${registerValidators(registerFields).length ? `import { ${registerValidators(registerFields).join(", ")} } from "../validation";\n` : ""}import { db } from "../db/client";
 import { ${schemaImports.join(", ")} } from "../db/schema";
-import { toTRPCError } from "./errors";
+import { ${invites ? "fail, " : ""}toTRPCError } from "./errors";
 import { ${presentImports.join(", ")} } from "../present";
-${fileSpecs ? `import { resolveFileRefs } from "../files";\n` : ""}${magic ? `import { issueMagicLink, verifyMagicLink, PROVIDERS } from "../auth-providers";\n` : auth.providers.some(p => p.kind === "oauth") ? `import { PROVIDERS } from "../auth-providers";\n` : ""}import { publicProcedure, router } from "./trpc";
+${fileSpecs ? `import { resolveFileRefs } from "../files";\n` : ""}${providerImports.length ? `import { ${providerImports.join(", ")} } from "../auth-providers";\n` : ""}import { publicProcedure, router } from "./trpc";
 
 export type Membership = { tenant: string | number; role: string };
 export type Session = { user: Public${T}; memberships: ${membershipType(ir)} };
@@ -382,10 +446,49 @@ ${registerShape}
   })
   .strict();
 
-const loginInput = z.object({ ${auth.emailColumn}: z.string(), password: z.string() }).strict();
+const loginInput = z.object({ ${auth.emailColumn}: z.string(), password: z.string()${invites ? ", invite: z.string().optional()" : ""} }).strict();
 `
     : ""
+}${
+    invites
+      ? `
+const inviteAcceptInput = z
+  .object({${acceptShape ? `\n${acceptShape}\n  ` : ""}})
+  .strict();
+
+/**
+ * Accept an invite. A session under the invited address joins. Without a session and without an account for the
+ * address, \`raw\` creates the account, and the cookie in the answer signs it in.
+ */
+export async function acceptInviteAs(
+  session: Session | null,
+  token: string,
+  raw: unknown
+): Promise<{ data: Public${T}; accepted: Accepted[]; cookie?: string }> {
+  try {
+    const result = await acceptInvite(token, session?.user.${pk} ?? null, async email => {
+      const input = inviteAcceptInput.safeParse(raw ?? {});
+      if (!input.success) {
+        const issues = input.error.issues.map(i => (i.path.length ? i.path.map(String).join(".") + ": " : "") + i.message);
+        fail(400, "validation", "Request body is invalid: " + issues.join("; "));
+      }
+${credentials ? "      const { password, ...fields } = input.data;\n" : ""}      const [user] = await db
+        .insert(${tableAlias})
+        .values(${acceptValues})
+        .returning();
+      return user;
+    });
+    const { accepted } = result;
+    if (result.created) return { data: ${shownOf("result.created")}, accepted, cookie: sessionCookie(result.created.${pk}) };
+    // The caller's own row as their session may read it, never the whole row the server holds
+    return { data: ${ruled ? "shownUser(session!)" : "session!.user"}, accepted };
+  } catch (err) {
+    throw toTRPCError(err, "write");
+  }
 }
+`
+      : ""
+  }
 export const authRouter = router({${
     credentials
       ? `
@@ -412,8 +515,14 @@ export const authRouter = router({${
     if (!user || !verifyPassword(input.password, user.${auth.passwordColumn})) {
       throw new TRPCError({ code: "UNAUTHORIZED", message: "Email or password is wrong" });
     }
-    ctx.resHeaders.append("set-cookie", sessionCookie(user.${pk}));
-    return ${shown};
+${
+  invites
+    ? `    // A password proves the address only together with an invite's token for it; anything else joins nothing
+    const accepted = input.invite ? await acceptWithToken(user, input.invite) : [];
+`
+    : ""
+}    ctx.resHeaders.append("set-cookie", sessionCookie(user.${pk}));
+    return ${signedIn("user")};
   }),
 `
       : ""
@@ -429,10 +538,26 @@ export const authRouter = router({${
   }),
 
   magic_link_verify: publicProcedure.input(z.object({ token: z.string().min(1) }).strict()).mutation(async ({ ctx, input }) => {
-    const user = await verifyMagicLink(input.token);
+    const ${invites ? "{ user, accepted }" : "user"} = await verifyMagicLink(input.token);
     ctx.resHeaders.append("set-cookie", sessionCookie(user.${pk}));
-    return ${shown};
+    return ${signedIn("user")};
   }),
+`
+      : ""
+  }${
+    invites
+      ? `
+  /** What an invite offers, for its landing page. It never accepts: mail scanners open links. */
+  invite: publicProcedure.input(z.object({ token: z.string() }).strict()).query(({ input }) => lookupInvite(input.token)),
+
+  /** Accept an invite; \`data\` is read only where the call creates the account */
+  invite_accept: publicProcedure
+    .input(z.object({ token: z.string(), data: z.unknown().optional() }).strict())
+    .mutation(async ({ ctx, input }) => {
+      const { cookie, ...reply } = await acceptInviteAs(ctx.session, input.token, input.data);
+      if (cookie) ctx.resHeaders.append("set-cookie", cookie);
+      return reply;
+    }),
 `
       : ""
   }
@@ -460,7 +585,7 @@ export const authRouter = router({${
 
   /** How users may sign in, for the sign-in page */
   providers: publicProcedure.query((): { kind: string; name: string }[] => ${
-    magic || auth.providers.some(p => p.kind === "oauth")
+    magic || oauth
       ? "PROVIDERS"
       : `[${auth.providers.map(p => `{ kind: ${q(p.kind)}, name: ${q(p.kind)} }`).join(", ")}]`
   })
@@ -525,6 +650,7 @@ export type AppRouter = typeof appRouter;
 export function appFile(ir: IR): string {
   const oauth = ir.auth?.providers.some(p => p.kind === "oauth");
   const isolated = Boolean(ir.auth?.tenancy?.isolation);
+  const invites = hasInvites(ir);
   const restRoutes: string[] = [];
   if (isolated)
     restRoutes.push(`  // REST routes answer within their caller's tenants, as the procedures do
@@ -594,6 +720,35 @@ export function appFile(ir: IR): string {
     }
   });`);
   }
+  if (invites) {
+    restRoutes.push(`  // Invites: what a token offers and its acceptance, the same two calls the auth router has
+  app.get("/api/auth/invites/:token", async c => {
+    try {
+      return c.json({ data: await lookupInvite(c.req.param("token")) });
+    } catch (err) {
+      return restError(c, err);
+    }
+  });
+  app.post("/api/auth/invites/:token/accept", async c => {
+    try {
+      const raw: unknown = await c.req.json().catch(() => ({}));
+      const { cookie, ...reply } = await acceptInviteAs(await getSession(c.req.raw), c.req.param("token"), raw);
+      if (cookie) c.header("set-cookie", cookie);
+      return c.json(reply, cookie ? 201 : 200);
+    } catch (err) {
+      return restError(c, err);
+    }
+  });`);
+  }
+  const authProviderImports = [
+    ...(oauth ? ["APP_URL", "oauthCallback", "oauthStart"] : []),
+    ...(invites ? ["lookupInvite"] : [])
+  ];
+  const authImports = [
+    ...(invites ? ["acceptInviteAs"] : []),
+    ...(invites || isolated ? ["getSession"] : []),
+    ...(oauth ? ["sessionCookie"] : [])
+  ];
   return `${HEADER("The Hono app: tRPC at /trpc, a health check, REST routes for file bytes and OAuth, and the built web app from dist/ when it exists.")}
 import { existsSync } from "node:fs";
 ${ir.files ? `import { Readable } from "node:stream";\n` : ""}import { serveStatic } from "@hono/node-server/serve-static";
@@ -601,9 +756,9 @@ import { trpcServer } from "@hono/trpc-server";
 import { TRPCError } from "@trpc/server";
 import { getHTTPStatusCodeFromError } from "@trpc/server/http";
 import { Hono, type Context as HonoContext } from "hono";
-${ir.files ? `import { fileContent, receiveContent } from "../files";\n` : ""}${oauth ? `import { APP_URL, oauthCallback, oauthStart } from "../auth-providers";\nimport { sessionCookie } from "./auth";\n` : ""}${ir.jobs ? `import { startWorker } from "../jobs";\n` : ""}${isolated ? `import { withTenants } from "../db/client";\n` : ""}import { emailsSent, ${isolated ? "rulesSwitch, " : ""}schedulesRun, ${isolated ? "tenancyUnbound, " : ""}testHooksEnabled, timersRun } from "../test-hooks";
-${isolated ? `import { getSession } from "./auth";\n` : ""}import { createContext } from "./context";
-import { isBusy } from "./errors";
+${ir.files ? `import { fileContent, receiveContent } from "../files";\n` : ""}${authProviderImports.length ? `import { ${authProviderImports.join(", ")} } from "../auth-providers";\n` : ""}${authImports.length ? `import { ${authImports.join(", ")} } from "./auth";\n` : ""}${ir.jobs ? `import { startWorker } from "../jobs";\n` : ""}${isolated ? `import { withTenants } from "../db/client";\n` : ""}import { emailsSent, ${isolated ? "rulesSwitch, " : ""}schedulesRun, ${isolated ? "tenancyUnbound, " : ""}testHooksEnabled, timersRun } from "../test-hooks";
+import { createContext } from "./context";
+import { isBusy, statusOf } from "./errors";
 import { appRouter } from "./router";
 ${hasSealed(ir) ? `import { sealKey } from "../seal";\n\n// Sealed fields: the server does not start without OSL_SEAL_KEY, or with one that is not a key\nsealKey();\n` : ""}
 /** Errors from the shared modules are tRPC errors; REST routes answer them in the contract's shape. */
@@ -611,7 +766,7 @@ function restError(c: HonoContext, err: unknown): Response {
   if (err instanceof TRPCError) {
     const code = (err.cause as { code?: string } | undefined)?.code ?? err.code.toLowerCase();
     if (isBusy(err)) c.header("Retry-After", "1");
-    return c.json({ error: { code, message: err.message } }, getHTTPStatusCodeFromError(err) as 400);
+    return c.json({ error: { code, message: err.message } }, (statusOf(err) ?? getHTTPStatusCodeFromError(err)) as 400);
   }
   console.error(err);
   return c.json({ error: { code: "internal", message: "Something went wrong" } }, 500);
@@ -621,10 +776,20 @@ export function createApp(): Hono {
   const app = new Hono();
   app.get("/healthz", c => c.json({ ok: true }));
   app.get("/health", c => c.json({ ok: true }));
-  // A busy answer (503) tells the caller when to send the request again
-  const responseMeta = ({ errors }: { errors: unknown[] }) =>
-    errors.some(isBusy) ? { headers: new Headers({ "Retry-After": "1" }) } : {};
-  app.use("/trpc/*", trpcServer({ router: appRouter, createContext, responseMeta }));
+  app.use(
+    "/trpc/*",
+    trpcServer({
+      router: appRouter,
+      createContext,
+      // A single call answers with the status its refusal carries; a batch keeps tRPC's own. A busy answer (503)
+      // tells the caller when to send the request again.
+      responseMeta: ({ errors, paths }) => {
+        const status = errors.length === 1 && paths?.length === 1 ? statusOf(errors[0]) : undefined;
+        const busy = errors.some(isBusy) ? { headers: new Headers({ "Retry-After": "1" }) } : {};
+        return status === undefined ? busy : { status, ...busy };
+      }
+    })
+  );
 ${restRoutes.join("\n")}
   // After \`vite build\`, the API also serves the web app, with the SPA fallback for its routes.
   // In development Vite serves it instead and proxies /trpc and /api here.
@@ -1004,15 +1169,30 @@ ${
     );
     if (createShape.length) useShapes(create.fields);
     const createShapeLines = createShape.length ? `\n${createShape.join("\n")}` : "";
+    // An invite is issued, not inserted: the role ceiling, the token, the mail and the row are one function
+    if (create.invite) errorImports.add("fail");
+    const write = create.invite
+      ? `      const { row, debug } = await issue${T}(input, session, values => hooks.beforeCreate(values, hookContext));`
+      : `      const values = await hooks.beforeCreate(${atRestCall(entity, `{ ...${resolveFiles("input")}${owner} }`)}, hookContext);
+${insert}`;
+    const presented = presentCall(
+      entity,
+      "row",
+      isTenant && tenancy ? creatorViewer(ir, "ctx.session", `row.${pk}`) : "ctx.session"
+    );
     procedures.push(`  create: publicProcedure.input(${resource.name}CreateInput).mutation(async ({ ctx, input }) => {
-    checkRule(RULES.create, ctx.session);${createShapeLines}${bodyCheck}
+    checkRule(RULES.create, ctx.session);${createShapeLines}${bodyCheck}${
+      create.invite
+        ? `
+    const session = ctx.session ?? fail(401, "unauthenticated", "Sign in to continue");`
+        : ""
+    }
     const hookContext: HookContext = { session: ctx.session, req: ctx.req };
     try {
-      const values = await hooks.beforeCreate(${atRestCall(entity, `{ ...${resolveFiles("input")}${owner} }`)}, hookContext);
-${insert}
+${write}
 ${emitLines.join("\n")}${timerLine}
       await hooks.afterCreate(row, hookContext);
-      return ${presentCall(entity, "row", isTenant && tenancy ? creatorViewer(ir, "ctx.session", `row.${pk}`) : "ctx.session")};
+      return ${create.invite ? `{ data: ${presented}, ...(debug ? { debug } : {}) }` : presented};
     } catch (err) {
       throw toTRPCError(err, "write");
     }
@@ -1133,6 +1313,7 @@ ${emitLines.join("\n")}
     ...(hasTimers ? [`import { scheduleTimers } from "../../scheduling";`] : []),
     ...(hasFiles ? [`import { resolveFileRefs } from "../../files";`] : []),
     ...(sealedColumns(entity).length && (create || update) ? [`import { atRest } from "../../seal";`] : []),
+    ...(create?.invite ? [`import { issue${T} } from "../../auth-providers";`] : []),
     `import { ${[...presents].sort().join(", ")} } from "../../present";`,
     `import { ${[...validationImports].sort().join(", ")} } from "../../validation";`,
     ...(actions.some(a => !a.builtin) ? [`import { handlers } from "../../actions";`] : []),

@@ -86,7 +86,7 @@ export class FieldWatch {
           many: false
         });
     if (this.identity)
-      for (const kind of ["register", "login", "me", "magic_link_verify"])
+      for (const kind of ["register", "login", "me", "magic_link_verify", "invite_accept"])
         this.shapes.set(`auth.${kind}`, { entity: this.identity, nested: new Map(), many: false });
   }
 
@@ -102,8 +102,9 @@ export class FieldWatch {
     const pk = this.identity?.primaryKey[0] ?? "id";
     const data = (reply.body as { data?: unknown } | null)?.data;
     if (label === "auth.logout") this.signedIn.delete(client);
-    if ((label === "auth.login" || label === "auth.register") && reply.status < 300 && data && typeof data === "object")
-      this.signedIn.set(client, (data as Row)[pk]);
+    // An accept that makes the account signs it in, as a registration does
+    const signsIn = label === "auth.login" || label === "auth.register" || label === "auth.invite_accept";
+    if (signsIn && reply.status < 300 && data && typeof data === "object") this.signedIn.set(client, (data as Row)[pk]);
     if (reply.status >= 300 || !this.active) return;
     const shape = this.shapes.get(label);
     if (!shape || data == null) return;

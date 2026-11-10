@@ -1,0 +1,147 @@
+osl: "1.0"
+summary: "read: on fields: Project.budget and Team.pending_requests for the team's admins, Task.estimate for signed-in callers; the projects table gains a budget column only its readers get, and a public share page per task shows the estimate only to them"
+ops:
+  - op: add_field
+    entity: Project
+    name: budget
+    field: { type: integer, validate: { min: 0 }, read: "member:team_id:admin" }
+  - op: update_field
+    entity: Team
+    name: pending_requests
+    field: { type: integer, count_of: requests, where: "status = pending", read: "member:id:admin" }
+  - op: add_field
+    entity: Task
+    name: estimate
+    field: { type: integer, validate: { min: 0 }, read: authenticated, description: Hours of work }
+  - op: update_page
+    name: projects
+    page:
+      resource: projects
+      layout: table
+      columns: [name, status, budget, created_at]
+      filter: { team_id: "{tenant.id}" }
+  - op: add_page
+    name: shared_task
+    page:
+      kind: detail
+      resource: tasks
+      path: /shared/tasks/:id
+      access: public
+      title: Shared task
+      fields: [title, done, estimate, project_id]
+  - op: add_scenario
+    scenario:
+      name: budgets and estimates
+      steps:
+        - as: alice
+          op: teams.create
+          body: { name: Hooli }
+          expect: { status: 201, body: { data: { name: Hooli, pending_requests: 0 } } }
+          capture: { team: data.id }
+        - as: bob
+          op: auth.me
+          expect: { status: 200 }
+          capture: { bob_id: data.id }
+        - as: alice
+          op: members.create
+          body: { team_id: "{team}", user_id: "{bob_id}" }
+          expect: { status: 201, body: { data: { role: member } } }
+        - as: alice
+          op: projects.create
+          body: { team_id: "{team}", name: Launch, budget: 9000 }
+          expect: { status: 201, body: { data: { name: Launch, budget: 9000 } } }
+          capture: { project: data.id }
+        - as: bob
+          op: projects.get
+          path: { id: "{project}" }
+          expect: { status: 200, body: { data: { name: Launch } }, absent: [data.budget] }
+        - as: alice
+          op: projects.get
+          path: { id: "{project}" }
+          expect: { status: 200, body: { data: { name: Launch, budget: 9000 } } }
+        - as: bob
+          op: projects.list
+          query: { team_id: "{team}" }
+          expect: { status: 200, body: { data: [{ name: Launch }], page: { total: 1 } }, absent: [data.budget] }
+        - as: alice
+          op: projects.list
+          query: { team_id: "{team}" }
+          expect: { status: 200, body: { data: [{ name: Launch, budget: 9000 }] } }
+        - as: bob
+          op: projects.update
+          path: { id: "{project}" }
+          body: { budget: 12000 }
+          expect: { status: 200, body: { data: { name: Launch } }, absent: [data.budget] }
+        - as: alice
+          op: projects.get
+          path: { id: "{project}" }
+          expect: { status: 200, body: { data: { budget: 12000 } } }
+        - as: bob
+          op: projects.create
+          body: { team_id: "{team}", name: Side project, budget: 50 }
+          expect: { status: 201, body: { data: { name: Side project } }, absent: [data.budget] }
+        - as: bob
+          op: projects.list
+          query: { team_id: "{team}", budget: "50" }
+          expect: { status: 400 }
+        - as: carol
+          op: projects.get
+          path: { id: "{project}" }
+          expect: { status: 403 }
+        - as: bob
+          op: teams.get
+          path: { id: "{team}" }
+          expect: { status: 200, body: { data: { name: Hooli } }, absent: [data.pending_requests] }
+        - as: bob
+          op: requests.create
+          body: { team_id: "{team}", title: Whiteboards, amount: 300 }
+          expect: { status: 201, body: { data: { status: pending } } }
+        - as: alice
+          op: teams.get
+          path: { id: "{team}" }
+          expect: { status: 200, body: { data: { pending_requests: 1 } } }
+        - as: bob
+          op: teams.list
+          expect: { status: 200, body: { data: [{ name: Hooli }] } }
+        - as: alice
+          op: projects.update
+          path: { id: "{project}" }
+          body: { public: true }
+          expect: { status: 200, body: { data: { public: true, budget: 12000 } } }
+        - as: alice
+          op: tasks.create
+          body: { project_id: "{project}", title: Ship it, estimate: 8, assignee_id: "{bob_id}" }
+          expect: { status: 201, body: { data: { title: Ship it, estimate: 8 } } }
+          capture: { task: data.id }
+        - op: tasks.get
+          path: { id: "{task}" }
+          expect: { status: 200, body: { data: { title: Ship it } }, absent: [data.estimate] }
+        - op: tasks.list
+          query: { project_id: "{project}" }
+          expect: { status: 200, body: { data: [{ title: Ship it }] }, absent: [data.estimate] }
+        - as: carol
+          op: tasks.get
+          path: { id: "{task}" }
+          expect: { status: 200, body: { data: { title: Ship it, estimate: 8 } } }
+        - as: bob
+          op: tasks.get
+          path: { id: "{task}" }
+          expect: { status: 200, body: { data: { estimate: 8 } } }
+        # A share link opens a public project's task to anyone, as tasks.get answers it; a private project's asks for a sign-in
+        - as: alice
+          op: projects.create
+          body: { team_id: "{team}", name: Internal }
+          expect: { status: 201, body: { data: { public: false } } }
+          capture: { internal: data.id }
+        - as: alice
+          op: tasks.create
+          body: { project_id: "{internal}", title: Payroll, estimate: 3 }
+          expect: { status: 201 }
+          capture: { private_task: data.id }
+        - op: tasks.get
+          path: { id: "{private_task}" }
+          expect: { status: 401 }
+        - as: carol
+          op: tasks.get
+          path: { id: "{private_task}" }
+          expect: { status: 403 }

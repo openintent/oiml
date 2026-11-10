@@ -48,6 +48,12 @@ var messagesUpdateRule = access.Rule{Kind: "all", All: []access.Rule{{Kind: "own
 
 var messagesDeleteRule = access.Rule{Kind: "any", Any: []access.Rule{{Kind: "all", All: []access.Rule{{Kind: "owner", Field: "author_id"}, {Kind: "member", Field: "channel_id.team_id"}}}, {Kind: "all", All: []access.Rule{{Kind: "member", Field: "channel_id.members", Role: "admin", Through: true, Roles: []string{"admin", "member"}}, {Kind: "member", Field: "channel_id.team_id"}}}}}
 
+// messagesListRow is a list item with its includes.
+type messagesListRow struct {
+	models.PublicMessage
+	Author *models.PublicUser `json:"author"`
+}
+
 // List handles GET /api/messages.
 func (h *Messages) List(c *gin.Context) {
 	ctx := c.Request.Context()
@@ -78,7 +84,7 @@ func (h *Messages) List(c *gin.Context) {
 			alternatives = append(alternatives, `("channel_id" IN (SELECT "id" FROM `+models.ChannelTable+` WHERE "team_id" = ANY(`+where.Param(tenants2)+`)) AND "channel_id" IN (SELECT "id" FROM `+models.ChannelTable+` WHERE "private" = `+where.Param(false)+`))`)
 		}
 		if len(alternatives) == 0 {
-			httpx.List(c, models.PresentMessages(nil), httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: 0})
+			httpx.List(c, []messagesListRow{}, httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: 0})
 			return
 		}
 		where.AnyOf(alternatives)
@@ -89,6 +95,10 @@ func (h *Messages) List(c *gin.Context) {
 		return
 	}
 	orderBy := `"created_at" ASC`
+	if query.Sort != "" {
+		field, direction := validation.SortColumn(query.Sort)
+		orderBy = db.Quote(field) + " " + direction
+	}
 	listSQL := `SELECT ` + models.MessageColumns + ` FROM ` + models.MessageTable + where.SQL() + ` ORDER BY ` + orderBy + ` LIMIT ` + where.Param(query.PageSize) + ` OFFSET ` + where.Param(query.Offset())
 	rows, err := h.db.Query(ctx, listSQL, where.Args()...)
 	if err != nil {
@@ -100,7 +110,16 @@ func (h *Messages) List(c *gin.Context) {
 		httpx.HandleError(c, err, "read")
 		return
 	}
-	httpx.List(c, models.PresentMessages(items), httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: total})
+	authorRows, err := h.loadAuthor(ctx, items)
+	if err != nil {
+		httpx.HandleError(c, err, "read")
+		return
+	}
+	data := make([]messagesListRow, 0, len(items))
+	for _, item := range items {
+		data = append(data, messagesListRow{PublicMessage: models.PresentMessage(item), Author: models.PresentUserPtr(authorRows[item.AuthorID])})
+	}
+	httpx.List(c, data, httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: total})
 }
 
 // Get handles GET /api/messages/{id}.
@@ -337,4 +356,28 @@ func (h *Messages) ruleRow(ctx context.Context, session *auth.Session, row acces
 		row["channel_id.private"] = v2
 	}
 	return row, nil
+}
+
+// loadAuthor fetches the author of each Message, keyed by id.
+func (h *Messages) loadAuthor(ctx context.Context, items []*models.Message) (map[string]*models.User, error) {
+	keys := make([]string, 0, len(items))
+	for _, item := range items {
+		keys = append(keys, item.AuthorID)
+	}
+	out := make(map[string]*models.User, len(keys))
+	if len(keys) == 0 {
+		return out, nil
+	}
+	rows, err := h.db.Query(ctx, `SELECT `+models.UserColumns+` FROM `+models.UserTable+` WHERE "id" = ANY($1)`, keys)
+	if err != nil {
+		return nil, err
+	}
+	related, err := models.Collect(rows, models.ScanUser)
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range related {
+		out[row.ID] = row
+	}
+	return out, nil
 }

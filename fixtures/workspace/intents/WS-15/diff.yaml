@@ -1,29 +1,32 @@
 osl: "1.0"
-summary: "read: on fields: Project.budget and Team.pending_requests for the team's admins, Task.estimate for signed-in callers; the projects table gains a budget column only its readers get"
+summary: Milestone and Label archive, a project counts its milestones and the open ones, a user counts their teams
 ops:
+  - op: set_archive
+    entity: Milestone
+    archive: { rule: "member:project_id.team_id:admin" }
+  - op: set_archive
+    entity: Label
+    archive: true
   - op: add_field
     entity: Project
-    name: budget
-    field: { type: integer, validate: { min: 0 }, read: "member:team_id:admin" }
-  - op: update_field
-    entity: Team
-    name: pending_requests
-    field: { type: integer, count_of: requests, where: "status = pending", read: "member:id:admin" }
+    name: milestone_count
+    field: { type: integer, count_of: milestones }
   - op: add_field
-    entity: Task
-    name: estimate
-    field: { type: integer, validate: { min: 0 }, read: authenticated, description: Hours of work }
-  - op: update_page
-    name: projects
-    page: { resource: projects, layout: table, columns: [name, status, budget, created_at] }
+    entity: Project
+    name: open_milestones
+    field: { type: integer, count_of: milestones, where: "done = false and archived_at = null" }
+  - op: add_field
+    entity: User
+    name: team_count
+    field: { type: integer, count_of: memberships }
   - op: add_scenario
     scenario:
-      name: budgets and estimates
+      name: archived milestones and what a project counts
       steps:
         - as: alice
           op: teams.create
           body: { name: Hooli }
-          expect: { status: 201, body: { data: { name: Hooli, pending_requests: 0 } } }
+          expect: { status: 201 }
           capture: { team: data.id }
         - as: bob
           op: auth.me
@@ -35,82 +38,186 @@ ops:
           expect: { status: 201, body: { data: { role: member } } }
         - as: alice
           op: projects.create
-          body: { team_id: "{team}", name: Launch, budget: 9000 }
-          expect: { status: 201, body: { data: { name: Launch, budget: 9000 } } }
+          body: { name: Nucleus, team_id: "{team}" }
+          expect: { status: 201, body: { data: { milestone_count: 0, open_milestones: 0 } } }
           capture: { project: data.id }
-        - as: bob
-          op: projects.get
-          path: { id: "{project}" }
-          expect: { status: 200, body: { data: { name: Launch } }, absent: [data.budget] }
         - as: alice
-          op: projects.get
-          path: { id: "{project}" }
-          expect: { status: 200, body: { data: { name: Launch, budget: 9000 } } }
+          op: milestones.create
+          body: { project_id: "{project}", title: Design, due_on: "2027-01-10" }
+          expect: { status: 201, body: { data: { position: 1, archived_at: null } } }
+          capture: { design: data.id }
         - as: bob
-          op: projects.list
-          query: { team_id: "{team}" }
-          expect: { status: 200, body: { data: [{ name: Launch }], page: { total: 1 } }, absent: [data.budget] }
-        - as: alice
-          op: projects.list
-          query: { team_id: "{team}" }
-          expect: { status: 200, body: { data: [{ name: Launch, budget: 9000 }] } }
+          op: milestones.create
+          body: { project_id: "{project}", title: Build, due_on: "2027-02-10" }
+          expect: { status: 201, body: { data: { position: 2 } } }
+          capture: { build: data.id }
         - as: bob
-          op: projects.update
-          path: { id: "{project}" }
-          body: { budget: 12000 }
-          expect: { status: 200, body: { data: { name: Launch } }, absent: [data.budget] }
-        - as: alice
-          op: projects.get
-          path: { id: "{project}" }
-          expect: { status: 200, body: { data: { budget: 12000 } } }
+          op: milestones.create
+          body: { project_id: "{project}", title: Ship, due_on: "2027-03-10" }
+          expect: { status: 201, body: { data: { position: 3 } } }
+          capture: { ship: data.id }
         - as: bob
-          op: projects.create
-          body: { team_id: "{team}", name: Side project, budget: 50 }
-          expect: { status: 201, body: { data: { name: Side project } }, absent: [data.budget] }
-        - as: bob
-          op: projects.list
-          query: { team_id: "{team}", budget: "50" }
+          op: milestones.create
+          body:
+            {
+              project_id: "{project}",
+              title: Archived by hand,
+              due_on: "2027-04-10",
+              archived_at: "2027-01-01T00:00:00Z"
+            }
           expect: { status: 400 }
-        - as: carol
-          op: projects.get
-          path: { id: "{project}" }
-          expect: { status: 403 }
         - as: bob
-          op: teams.get
-          path: { id: "{team}" }
-          expect: { status: 200, body: { data: { name: Hooli } }, absent: [data.pending_requests] }
-        - as: bob
-          op: requests.create
-          body: { team_id: "{team}", title: Whiteboards, amount: 300 }
-          expect: { status: 201, body: { data: { status: pending } } }
-        - as: alice
-          op: teams.get
-          path: { id: "{team}" }
-          expect: { status: 200, body: { data: { pending_requests: 1 } } }
-        - as: bob
-          op: teams.list
-          expect: { status: 200, body: { data: [{ name: Hooli }] } }
-        - as: alice
           op: projects.update
           path: { id: "{project}" }
-          body: { public: true }
-          expect: { status: 200, body: { data: { public: true, budget: 12000 } } }
-        - as: alice
-          op: tasks.create
-          body: { project_id: "{project}", title: Ship it, estimate: 8, assignee_id: "{bob_id}" }
-          expect: { status: 201, body: { data: { title: Ship it, estimate: 8 } } }
-          capture: { task: data.id }
-        - op: tasks.get
-          path: { id: "{task}" }
-          expect: { status: 200, body: { data: { title: Ship it } }, absent: [data.estimate] }
-        - op: tasks.list
-          query: { project_id: "{project}" }
-          expect: { status: 200, body: { data: [{ title: Ship it }] }, absent: [data.estimate] }
-        - as: carol
-          op: tasks.get
-          path: { id: "{task}" }
-          expect: { status: 200, body: { data: { title: Ship it, estimate: 8 } } }
+          body: { milestone_count: 9 }
+          expect: { status: 400 }
         - as: bob
-          op: tasks.get
-          path: { id: "{task}" }
-          expect: { status: 200, body: { data: { estimate: 8 } } }
+          op: projects.get
+          path: { id: "{project}" }
+          expect: { status: 200, body: { data: { milestone_count: 3, open_milestones: 3 } } }
+        - as: bob
+          op: milestones.update
+          path: { id: "{design}" }
+          body: { done: true }
+          expect: { status: 200 }
+        - as: bob
+          op: projects.get
+          path: { id: "{project}" }
+          expect: { status: 200, body: { data: { milestone_count: 3, open_milestones: 2 } } }
+        - op: milestones.archive
+          path: { id: "{build}" }
+          expect: { status: 401 }
+        - as: carol
+          op: milestones.archive
+          path: { id: "{build}" }
+          expect: { status: 404 }
+        - as: bob
+          op: milestones.archive
+          path: { id: "{build}" }
+          expect: { status: 403 }
+        - as: alice
+          op: milestones.archive
+          path: { id: "{build}" }
+          expect: { status: 200, body: { data: { id: "{build}", title: Build, position: 2 } } }
+        - as: alice
+          op: milestones.archive
+          path: { id: "{build}" }
+          expect: { status: 409 }
+        - as: bob
+          op: milestones.list
+          query: { project_id: "{project}" }
+          expect:
+            status: 200
+            body: { data: [{ title: Design, position: 1 }, { title: Ship, position: 3 }], page: { total: 2 } }
+        - as: bob
+          op: milestones.list
+          query: { project_id: "{project}", archived: "true" }
+          expect: { status: 200, body: { data: [{ title: Build, position: 2 }], page: { total: 1 } } }
+        - as: bob
+          op: milestones.get
+          path: { id: "{build}" }
+          expect: { status: 200, body: { data: { title: Build } } }
+        - as: bob
+          op: projects.get
+          path: { id: "{project}" }
+          expect: { status: 200, body: { data: { milestone_count: 3, open_milestones: 1 } } }
+        - as: bob
+          op: milestones.move
+          path: { id: "{ship}" }
+          body: { to: 1 }
+          expect: { status: 200, body: { data: { position: 1 } } }
+        - as: bob
+          op: milestones.get
+          path: { id: "{build}" }
+          expect: { status: 200, body: { data: { position: 3 } } }
+        - as: bob
+          op: milestones.restore
+          path: { id: "{build}" }
+          expect: { status: 403 }
+        - as: alice
+          op: milestones.restore
+          path: { id: "{build}" }
+          expect: { status: 200, body: { data: { title: Build, archived_at: null } } }
+        - as: alice
+          op: milestones.restore
+          path: { id: "{build}" }
+          expect: { status: 409 }
+        - as: bob
+          op: milestones.list
+          query: { project_id: "{project}" }
+          expect: { status: 200, body: { page: { total: 3 } } }
+        - as: bob
+          op: projects.get
+          path: { id: "{project}" }
+          expect: { status: 200, body: { data: { milestone_count: 3, open_milestones: 2 } } }
+        - as: alice
+          op: milestones.delete
+          path: { id: "{ship}" }
+          expect: { status: 204 }
+        - as: bob
+          op: projects.get
+          path: { id: "{project}" }
+          expect: { status: 200, body: { data: { milestone_count: 2, open_milestones: 1 } } }
+        - as: alice
+          op: labels.create
+          body: { team_id: "{team}", name: Urgent }
+          expect: { status: 201 }
+          capture: { urgent: data.id }
+        - as: bob
+          op: milestone_labels.create
+          body: { team_id: "{team}", milestone_id: "{design}", label_id: "{urgent}" }
+          expect: { status: 201 }
+        - as: bob
+          op: labels.archive
+          path: { id: "{urgent}" }
+          expect: { status: 403 }
+        - as: alice
+          op: labels.archive
+          path: { id: "{urgent}" }
+          expect: { status: 200, body: { data: { name: Urgent } } }
+        - as: bob
+          op: labels.list
+          query: { team_id: "{team}" }
+          expect: { status: 200, body: { page: { total: 0 } } }
+        - as: bob
+          op: labels.list
+          query: { team_id: "{team}", archived: "true" }
+          expect: { status: 200, body: { data: [{ name: Urgent }], page: { total: 1 } } }
+        - as: carol
+          op: labels.list
+          query: { team_id: "{team}", archived: "true" }
+          expect: { status: 200, body: { page: { total: 0 } } }
+        - as: bob
+          op: milestones.get
+          path: { id: "{design}" }
+          expect: { status: 200, body: { data: { title: Design, labels: [{ name: Urgent }] } } }
+        - op: auth.register
+          body: { email: ivan@example.com, password: ivan-pass-1, name: Ivan }
+          expect: { status: 201, body: { data: { name: Ivan, team_count: 0 } } }
+          capture: { ivan: data.id }
+        - as: alice
+          op: members.create
+          body: { team_id: "{team}", user_id: "{ivan}" }
+          expect: { status: 201 }
+        - as: carol
+          op: teams.create
+          body: { name: Endframe }
+          expect: { status: 201 }
+          capture: { other_team: data.id }
+        - as: carol
+          op: members.create
+          body: { team_id: "{other_team}", user_id: "{ivan}" }
+          expect: { status: 201 }
+          capture: { other_membership: data.id }
+        - as: alice
+          op: users.get
+          path: { id: "{ivan}" }
+          expect: { status: 200, body: { data: { name: Ivan, team_count: 2 } } }
+        - as: carol
+          op: members.delete
+          path: { id: "{other_membership}" }
+          expect: { status: 204 }
+        - as: bob
+          op: users.get
+          path: { id: "{ivan}" }
+          expect: { status: 200, body: { data: { team_count: 1 } } }

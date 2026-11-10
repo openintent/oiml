@@ -1,0 +1,239 @@
+osl: "1.0"
+summary: "A channel page with its messages and members as sections, a team switcher that filters the projects, channels and members pages, and a home dashboard for the current team"
+ops:
+  - op: update_resource
+    name: messages
+    resource:
+      entity: Message
+      operations: [list, get, create, update, delete]
+      list: { filters: [channel_id], order: [[created_at, asc]], sortable: [created_at], include: [author] }
+  - op: add_page
+    name: channel
+    page:
+      kind: detail
+      resource: channels
+      path: /channels/:id
+      fields: [name, private, team_id, created_by, created_at]
+      sections:
+        - resource: messages
+          filter: { channel_id: "{row.id}" }
+          columns: [body, author_id, created_at]
+          order: [[created_at, desc]]
+          limit: 50
+          create: true
+        - resource: channel_members
+          title: Members
+          filter: { channel_id: "{row.id}" }
+          columns: [user_id, role]
+  - op: update_page
+    name: projects
+    page:
+      resource: projects
+      layout: table
+      columns: [name, status, created_at]
+      filter: { team_id: "{tenant.id}" }
+  - op: update_page
+    name: channels
+    page:
+      resource: channels
+      layout: table
+      columns: [name, private]
+      filter: { team_id: "{tenant.id}" }
+  - op: update_page
+    name: members
+    page:
+      resource: members
+      layout: table
+      columns: [user_id, role]
+      filter: { team_id: "{tenant.id}" }
+  - op: add_page
+    name: home
+    page:
+      kind: dashboard
+      path: /
+      title: Home
+      tiles:
+        - resource: projects
+          label: Active projects
+          filter: { team_id: "{tenant.id}", status: active }
+          icon: folder-kanban
+        - { resource: channels, filter: { team_id: "{tenant.id}" }, icon: hash }
+        - { resource: members, filter: { team_id: "{tenant.id}" }, icon: users }
+      recent:
+        - { resource: projects, limit: 5, filter: { team_id: "{tenant.id}" } }
+  - op: set_sidebar
+    sidebar:
+      items:
+        - { page: home, icon: house }
+        - { page: teams, icon: building }
+        - { page: projects, icon: folder-kanban }
+        - { page: tasks, icon: list-checks }
+        - { page: milestones, icon: flag }
+        - { page: notes, icon: sticky-note }
+        - { page: members, icon: users }
+        - { page: channels, icon: hash }
+        - { page: messages, icon: message-square }
+      footer: { user: true, settings: true }
+  - op: set_actors
+    actors:
+      alice: { email: alice@example.com, password: alice-pass-1, name: Alice }
+      bob: { email: bob@example.com, password: bob-pass-1, name: Bob }
+      carol: { email: carol@example.com, password: carol-pass-1, name: Carol }
+      dana: { email: dana@example.com, password: dana-pass-1, name: Dana }
+  - op: add_scenario
+    scenario:
+      name: channel page and team home
+      steps:
+        - as: dana
+          op: auth.me
+          expect: { status: 200 }
+          capture: { dana_id: data.id }
+        - as: bob
+          op: auth.me
+          expect: { status: 200 }
+          capture: { bob_id: data.id }
+        - as: dana
+          op: teams.create
+          body: { name: North }
+          expect: { status: 201 }
+          capture: { north: data.id }
+        - as: dana
+          op: teams.create
+          body: { name: South }
+          expect: { status: 201 }
+          capture: { south: data.id }
+        - as: dana
+          op: teams.list
+          query: { page_size: "200" }
+          expect: { status: 200, body: { data: [{ name: North }, { name: South }], page: { total: 2 } } }
+        - as: dana
+          op: projects.create
+          body: { team_id: "{north}", name: Atlas }
+          expect: { status: 201 }
+        - as: dana
+          op: projects.create
+          body: { team_id: "{north}", name: Beacon }
+          expect: { status: 201 }
+          capture: { beacon: data.id }
+        - as: dana
+          op: projects.update
+          path: { id: "{beacon}" }
+          body: { status: archived }
+          expect: { status: 200, body: { data: { status: archived } } }
+        - as: dana
+          op: projects.create
+          body: { team_id: "{south}", name: Compass }
+          expect: { status: 201 }
+        - as: dana
+          op: projects.list
+          query: { team_id: "{north}", page: "1", page_size: "20" }
+          expect: { status: 200, body: { data: [{ name: Atlas }, { name: Beacon }], page: { total: 2 } } }
+        - as: dana
+          op: projects.list
+          query: { team_id: "{south}", page: "1", page_size: "20" }
+          expect: { status: 200, body: { data: [{ name: Compass }], page: { total: 1 } } }
+        - as: dana
+          op: projects.list
+          query: { team_id: "{north}", status: active, page: "1", page_size: "1" }
+          expect: { status: 200, body: { page: { total: 1 } } }
+        - as: dana
+          op: projects.list
+          query: { team_id: "{north}", page: "1", page_size: "5" }
+          expect: { status: 200, body: { data: [{ name: Atlas }, { name: Beacon }] } }
+        - as: dana
+          op: members.create
+          body: { team_id: "{north}", user_id: "{bob_id}" }
+          expect: { status: 201 }
+        - as: dana
+          op: members.list
+          query: { team_id: "{north}", page: "1", page_size: "20" }
+          expect:
+            status: 200
+            body:
+              {
+                data: [{ role: owner, user: { name: Dana } }, { role: member, user: { name: Bob } }],
+                page: { total: 2 }
+              }
+        - as: dana
+          op: members.list
+          query: { team_id: "{south}", page: "1", page_size: "1" }
+          expect: { status: 200, body: { page: { total: 1 } } }
+        - as: bob
+          op: projects.list
+          query: { team_id: "{south}", page: "1", page_size: "20" }
+          expect: { status: 200, body: { data: [], page: { total: 0 } } }
+        - as: dana
+          op: channels.create
+          body: { team_id: "{north}", name: general }
+          expect: { status: 201 }
+          capture: { general: data.id }
+        - as: dana
+          op: channels.create
+          body: { team_id: "{north}", name: leads, private: true }
+          expect: { status: 201 }
+          capture: { leads: data.id }
+        - as: dana
+          op: channel_members.create
+          body: { channel_id: "{general}", user_id: "{dana_id}", role: admin }
+          expect: { status: 201 }
+        - as: dana
+          op: channel_members.create
+          body: { channel_id: "{leads}", user_id: "{dana_id}", role: admin }
+          expect: { status: 201 }
+        - as: bob
+          op: channels.join
+          path: { id: "{general}" }
+          expect: { status: 200 }
+        - as: dana
+          op: channels.list
+          query: { team_id: "{north}", page: "1", page_size: "20" }
+          expect: { status: 200, body: { data: [{ name: general }, { name: leads }], page: { total: 2 } } }
+        - as: dana
+          op: channels.list
+          query: { team_id: "{south}", page: "1", page_size: "1" }
+          expect: { status: 200, body: { page: { total: 0 } } }
+        - as: dana
+          op: messages.create
+          body: { channel_id: "{general}", body: First }
+          expect: { status: 201, body: { data: { channel_id: "{general}", author_id: "{actor.id}" } } }
+        - as: bob
+          op: messages.create
+          body: { channel_id: "{general}", body: Second }
+          expect: { status: 201 }
+        - as: bob
+          op: channels.get
+          path: { id: "{general}" }
+          expect: { status: 200, body: { data: { name: general, private: false } } }
+        - as: bob
+          op: messages.list
+          query: { channel_id: "{general}", sort: "created_at:desc", page: "1", page_size: "50" }
+          expect:
+            status: 200
+            body:
+              data: [{ body: Second, author: { name: Bob } }, { body: First, author: { name: Dana } }]
+              page: { total: 2 }
+        - as: bob
+          op: messages.list
+          query: { channel_id: "{general}", sort: "created_at:desc", page: "1", page_size: "1" }
+          expect: { status: 200, body: { data: [{ body: Second }], page: { total: 2 } } }
+        - as: bob
+          op: channel_members.list
+          query: { channel_id: "{general}", page: "1", page_size: "10" }
+          expect:
+            status: 200
+            body:
+              {
+                data: [{ role: admin, user: { name: Dana } }, { role: member, user: { name: Bob } }],
+                page: { total: 2 }
+              }
+        - as: bob
+          op: channels.get
+          path: { id: "{leads}" }
+          expect: { status: 404 }
+        - as: bob
+          op: messages.list
+          query: { channel_id: "{leads}", sort: "created_at:desc", page: "1", page_size: "50" }
+          expect: { status: 200, body: { data: [], page: { total: 0 } } }
+        - op: channels.get
+          path: { id: "{general}" }
+          expect: { status: 401 }

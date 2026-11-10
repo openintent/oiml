@@ -434,7 +434,12 @@ export function openapiDocument(ir: IR): Record<string, unknown> {
         case "create":
           item.post = {
             ...base,
-            summary: `Create one of ${resource.name}`,
+            ...(op.invite
+              ? {
+                  description: `${base.description} Mails the address a link; proving the address makes the ${op.invite}. A live invite to the address answers 409 invite_exists, a member's address 409 already_member.`
+                }
+              : {}),
+            summary: op.invite ? `Invite an address (${resource.name})` : `Create one of ${resource.name}`,
             requestBody: {
               required: true,
               content: { "application/json": { schema: inputSchema(entity, op.fields, ir, "create") } }
@@ -506,14 +511,39 @@ export function openapiDocument(ir: IR): Record<string, unknown> {
     tags.push({ name: "auth", description: "Sign-in" });
     const identity = ir.entities.find(e => e.name === ir.auth!.identity)!;
     const user = { $ref: `#/components/schemas/${identity.name}` };
-    const authPath = (p: string, op: string, summary: string, body: Schema | null, ok: Schema, status = "200") => {
+    const invites = ir.auth.invites ?? [];
+    /** What a sign-in that proved an invited email answers beside the user */
+    const accepted: Record<string, Schema> = invites.length
+      ? {
+          accepted: {
+            type: "array",
+            description: "The invites this sign-in accepted, the one whose token was used first",
+            items: { $ref: "#/components/schemas/AcceptedInvite" }
+          }
+        }
+      : {};
+    /** A reply's content with properties that are only sometimes there */
+    const withOptional = (content: Schema, optional: Record<string, Schema>): Schema => {
+      const schema = (content["application/json"] as Schema).schema as Schema;
+      Object.assign(schema.properties as Schema, optional);
+      return content;
+    };
+    const authPath = (
+      p: string,
+      op: string,
+      summary: string,
+      body: Schema | null,
+      ok: Schema,
+      status = "200",
+      optional: Record<string, Schema> = {}
+    ) => {
       paths[p] = {
         post: {
           tags: ["auth"],
           operationId: `auth_${op}`,
           summary,
           ...(body ? { requestBody: { required: true, content: { "application/json": { schema: body } } } } : {}),
-          responses: writeResponses(data(ok), status)
+          responses: writeResponses(withOptional(data(ok), optional), status)
         }
       };
     };
@@ -538,10 +568,18 @@ export function openapiDocument(ir: IR): Record<string, unknown> {
         "Sign in",
         {
           type: "object",
-          properties: { [ir.auth.emailColumn]: { type: "string" }, password: { type: "string" } },
+          properties: {
+            [ir.auth.emailColumn]: { type: "string" },
+            password: { type: "string" },
+            ...(invites.length
+              ? { invite: { type: "string", description: "An invite's token: the sign-in accepts it" } }
+              : {})
+          },
           required: [ir.auth.emailColumn, "password"]
         },
-        user
+        user,
+        "200",
+        accepted
       );
     }
     if (ir.auth.providers.some(p => p.kind === "magic_link")) {
@@ -557,8 +595,91 @@ export function openapiDocument(ir: IR): Record<string, unknown> {
         "magic_link_verify",
         "Sign in with a link's token",
         { type: "object", properties: { token: { type: "string" } }, required: ["token"] },
-        user
+        user,
+        "200",
+        accepted
       );
+    }
+    if (invites.length) {
+      const credentials = ir.auth.providers.some(p => p.kind === "credentials");
+      const keyOf = (entityName: string): Schema => {
+        const entity = ir.entities.find(e => e.name === entityName)!;
+        return columnSchema({ ...entity.columns.find(c => c.name === entity.primaryKey[0])!, nullable: false }, ir);
+      };
+      const oneOf = (all: Schema[]): Schema => {
+        const distinct = [...new Map(all.map(s => [JSON.stringify(s), s])).values()];
+        return distinct.length === 1 ? distinct[0] : { oneOf: distinct };
+      };
+      const parents = [...new Set(invites.map(i => i.parent))];
+      const roles = [...new Set(invites.flatMap(i => i.roles ?? []))];
+      schemas.AcceptedInvite = {
+        type: "object",
+        description: "A membership an invite made: the row joined, the role given and the tenant it belongs to",
+        required: ["entity", "id", "tenant"],
+        properties: {
+          entity: { type: "string", enum: parents },
+          id: oneOf(parents.map(keyOf)),
+          ...(roles.length ? { role: { type: "string", enum: roles } } : {}),
+          tenant: ir.auth.tenancy ? { oneOf: [keyOf(ir.auth.tenancy.entity), { type: "null" }] } : { type: "null" }
+        }
+      };
+      const token = { name: "token", in: "path", required: true, schema: { type: "string" } };
+      const gone = { "410": { $ref: "#/components/responses/Gone" } };
+      paths["/api/auth/invites/{token}"] = {
+        get: {
+          tags: ["auth"],
+          operationId: "auth_invite",
+          summary: "What an invite's link is for",
+          description: "Never accepts. A token that is unknown, used or revoked answers 404, a lapsed one 410.",
+          parameters: [token],
+          responses: {
+            ...responses(
+              data({
+                type: "object",
+                required: ["entity", "name", "inviter", "email", "expires_at", "account"],
+                properties: {
+                  entity: { type: "string", enum: parents },
+                  name: { type: "string", description: "The display value of the row the invite is to" },
+                  ...(roles.length ? { role: { type: "string", enum: roles } } : {}),
+                  inviter: { type: "string", description: "The display value of who invited" },
+                  email: { type: "string", description: "The address invited, masked" },
+                  expires_at: { type: "string", format: "date-time" },
+                  account: { type: "boolean", description: "Whether the address already has an account" }
+                }
+              })
+            ),
+            ...gone
+          }
+        }
+      };
+      const accountProps: Record<string, Schema> = {};
+      for (const f of ir.auth.registerFields)
+        accountProps[f] = columnSchema(identity.columns.find(c => c.name === f)!, ir);
+      if (credentials) accountProps.password = { type: "string", minLength: 8 };
+      paths["/api/auth/invites/{token}/accept"] = {
+        post: {
+          tags: ["auth"],
+          operationId: "auth_invite_accept",
+          summary: "Accept an invite",
+          description:
+            "A session under the invite's email accepts, 200. A session under another email answers 403 " +
+            "invite_email_mismatch. Without a session, an address that has an account answers 401 sign_in_required, " +
+            "and one that has none gets an account made from the body, signed in, 201. One proof accepts every live " +
+            "invite to the address.",
+          security: session,
+          parameters: [token],
+          requestBody: {
+            required: false,
+            description: "Only read when the account is made here",
+            content: { "application/json": { schema: { type: "object", properties: accountProps } } }
+          },
+          responses: {
+            ...writeResponses(data(user, accepted)),
+            "201": { description: "Account made, signed in and accepted", content: data(user, accepted) },
+            ...gone
+          }
+        }
+      };
     }
     for (const p of ir.auth.providers) {
       if (p.kind !== "oauth") continue;
@@ -735,7 +856,15 @@ export function openapiDocument(ir: IR): Record<string, unknown> {
           "Retry-After": { description: "Seconds to wait before sending it again", schema: { type: "integer" } }
         },
         content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } }
-      }
+      },
+      ...(ir.auth?.invites?.length
+        ? {
+            Gone: {
+              description: "The invite has lapsed",
+              content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } }
+            }
+          }
+        : {})
     }
   };
   if (ir.auth) components.securitySchemes = { cookieAuth: { type: "apiKey", in: "cookie", name: "osl_session" } };
@@ -934,6 +1063,14 @@ function subjectOf(change: OpenApiChange, ir: IR): ChangeSubject {
   if (ir.auth && (subject.auth || subject.entities.has(ir.auth.identity))) {
     subject.auth = true;
     subject.entities.add(ir.auth.identity);
+  }
+  // An invite's entity and resource are written from auth.invites over a membership and its parent, so a change to
+  // the auth block or to either of those is what explains a change to them
+  for (const invite of ir.auth?.invites ?? []) {
+    if (!subject.entities.has(invite.entity) && !subject.resources.has(invite.resource)) continue;
+    subject.auth = true;
+    subject.entities.add(invite.membership);
+    subject.entities.add(invite.parent);
   }
   return subject;
 }

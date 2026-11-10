@@ -1,5 +1,5 @@
 /**
- * Money never touches a float, backend by backend, on the files generated for the workspace fixture (WS-16: an
+ * Money never touches a float, backend by backend, on the files generated for the workspace fixture (WS-18: an
  * invoice with a total in the row's currency and a fee in dollars).
  *
  * The TypeScript side is run: the amount validator generated/validation.ts carries is evaluated against real Zod,

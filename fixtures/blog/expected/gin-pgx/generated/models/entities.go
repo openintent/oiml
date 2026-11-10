@@ -397,6 +397,60 @@ func PresentBulletins(rows []*Bulletin) []PublicBulletin {
 	return out
 }
 
+// ArticleEditorTable is the quoted table of ArticleEditor.
+const ArticleEditorTable = `"article_editors"`
+
+// ArticleEditorColumns lists the columns of ArticleEditor in model order, for SELECT and RETURNING.
+const ArticleEditorColumns = `"id", "article_id", "user_id", "created_at"`
+
+// ArticleEditor is a row of article_editors.
+type ArticleEditor struct {
+	ID        string    `json:"id"`
+	ArticleID string    `json:"article_id"`
+	UserID    string    `json:"user_id"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// PublicArticleEditor is ArticleEditor as the API returns it: hidden columns removed, dates rendered.
+type PublicArticleEditor struct {
+	ID        string `json:"id"`
+	ArticleID string `json:"article_id"`
+	UserID    string `json:"user_id"`
+	CreatedAt string `json:"created_at"`
+}
+
+// ScanArticleEditor reads one ArticleEditor from a row selected with ArticleEditorColumns.
+func ScanArticleEditor(row Scanner) (*ArticleEditor, error) {
+	var r ArticleEditor
+	if err := row.Scan(&r.ID, &r.ArticleID, &r.UserID, &r.CreatedAt); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// PresentArticleEditor returns the public shape of a ArticleEditor.
+func PresentArticleEditor(row *ArticleEditor) PublicArticleEditor {
+	return PublicArticleEditor{ID: row.ID, ArticleID: row.ArticleID, UserID: row.UserID, CreatedAt: FormatDateTime(row.CreatedAt)}
+}
+
+// PresentArticleEditorPtr presents an optional ArticleEditor; nil stays nil.
+func PresentArticleEditorPtr(row *ArticleEditor) *PublicArticleEditor {
+	if row == nil {
+		return nil
+	}
+	out := PresentArticleEditor(row)
+	return &out
+}
+
+// PresentArticleEditors presents a list of ArticleEditor, never nil.
+func PresentArticleEditors(rows []*ArticleEditor) []PublicArticleEditor {
+	out := make([]PublicArticleEditor, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, PresentArticleEditor(row))
+	}
+	return out
+}
+
 // IntegrationTable is the quoted table of Integration.
 const IntegrationTable = `"integrations"`
 
@@ -462,6 +516,65 @@ func PresentIntegrations(rows []*Integration, viewer Viewer) []PublicIntegration
 	out := make([]PublicIntegration, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, PresentIntegration(row, viewer))
+	}
+	return out
+}
+
+// ArticleInviteTable is the quoted table of ArticleInvite.
+const ArticleInviteTable = `"article_invites"`
+
+// ArticleInviteColumns lists the columns of ArticleInvite in model order, for SELECT and RETURNING.
+const ArticleInviteColumns = `"id", "article_id", "email", "invited_by", "token_hash", "expires_at", "created_at"`
+
+// ArticleInvite is a row of article_invites.
+type ArticleInvite struct {
+	ID        string    `json:"id"`
+	ArticleID string    `json:"article_id"`
+	Email     string    `json:"email"`
+	InvitedBy string    `json:"invited_by"`
+	TokenHash string    `json:"-"`
+	ExpiresAt time.Time `json:"expires_at"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// PublicArticleInvite is ArticleInvite as the API returns it: hidden columns removed, dates rendered.
+type PublicArticleInvite struct {
+	ID        string `json:"id"`
+	ArticleID string `json:"article_id"`
+	Email     string `json:"email"`
+	InvitedBy string `json:"invited_by"`
+	ExpiresAt string `json:"expires_at"`
+	CreatedAt string `json:"created_at"`
+}
+
+// ScanArticleInvite reads one ArticleInvite from a row selected with ArticleInviteColumns.
+func ScanArticleInvite(row Scanner) (*ArticleInvite, error) {
+	var r ArticleInvite
+	if err := row.Scan(&r.ID, &r.ArticleID, &r.Email, &r.InvitedBy, &r.TokenHash, &r.ExpiresAt, &r.CreatedAt); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// PresentArticleInvite returns the public shape of a ArticleInvite.
+func PresentArticleInvite(row *ArticleInvite) PublicArticleInvite {
+	return PublicArticleInvite{ID: row.ID, ArticleID: row.ArticleID, Email: row.Email, InvitedBy: row.InvitedBy, ExpiresAt: FormatDateTime(row.ExpiresAt), CreatedAt: FormatDateTime(row.CreatedAt)}
+}
+
+// PresentArticleInvitePtr presents an optional ArticleInvite; nil stays nil.
+func PresentArticleInvitePtr(row *ArticleInvite) *PublicArticleInvite {
+	if row == nil {
+		return nil
+	}
+	out := PresentArticleInvite(row)
+	return &out
+}
+
+// PresentArticleInvites presents a list of ArticleInvite, never nil.
+func PresentArticleInvites(rows []*ArticleInvite) []PublicArticleInvite {
+	out := make([]PublicArticleInvite, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, PresentArticleInvite(row))
 	}
 	return out
 }

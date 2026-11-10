@@ -1,175 +1,102 @@
 osl: "1.0"
-summary: comment_count on Article kept by the database, Article archive under the author's rule with a queued event, a count of live published articles on User, a tile of archived articles
+summary: A public page per author with their published articles, an article page with its comments, and a public share link per announcement
 ops:
-  - op: add_field
-    entity: Article
-    name: comment_count
-    field: { type: integer, count_of: comments }
-  - op: set_archive
-    entity: Article
-    archive: { rule: "owner:author_id" }
-  - op: add_field
-    entity: User
-    name: post_count
-    field: { type: integer, count_of: posts, where: "published = true and archived_at = null" }
-  - op: update_resource
-    name: posts
-    resource:
-      entity: Article
-      operations: [list, get, create, update, delete]
-      list:
-        filters: [published, author_id]
-        order: [[posted_at, desc]]
-        include: [author]
-        sortable: [title, posted_at, comment_count]
-        search: [title, content]
-      get: { include: [author] }
-      actions:
-        publish: { description: Mark the article published, rule: "owner:author_id" }
-        unpublish_all:
-          description: Unpublish every article
-          scope: collection
-          rule: "role:admin"
-          returns: { count: { type: integer, required: true } }
-        lock: { description: Close the article to new comments, rule: "role:admin" }
-        unlock: { description: Reopen the article to comments, rule: "role:admin" }
-  - op: add_event
-    event: { on: posts.archive, handler: post_archived, delivery: queue }
-  - op: update_page
-    name: overview
+  - op: add_page
+    name: author
     page:
-      kind: dashboard
-      path: /
-      title: Home
+      kind: detail
+      resource: users
+      path: /authors/:id
       access: public
-      refresh: 30
-      tiles:
-        - { resource: posts, label: Articles, icon: file-text }
-        - { resource: posts, label: Published, filter: { published: true }, icon: check }
-        - { resource: posts, label: Archived, filter: { archived: true }, icon: archive }
-        - { resource: posts, label: By author, icon: users, group_by: author_id }
-        - { resource: users, label: Users, icon: users }
-      recent:
-        - { resource: posts, limit: 5 }
+      fields: [name]
+      sections:
+        - resource: posts
+          title: Articles
+          filter: { author_id: "{row.id}", published: true }
+          columns: [title, posted_at]
+          order: [[posted_at, desc]]
+  - op: add_page
+    name: post
+    page:
+      kind: detail
+      resource: posts
+      path: /posts/:id
+      title: Article
+      fields: [title, content, published, locked, cover, tags, posted_at, author_id]
+      sections:
+        - resource: comments
+          filter: { article_id: "{row.id}" }
+          columns: [body, author_id, created_at]
+          create: true
+  - op: add_page
+    name: announcement
+    page:
+      kind: detail
+      resource: announcements
+      path: /news/:id
+      access: public
+      fields: [title, body, author_id, created_at]
+  - op: set_actors
+    actors:
+      alice: { email: alice@example.com, password: alice-pass-1, name: Alice }
+      bob: { email: bob@example.com, password: bob-pass-1, name: Bob }
+      dave: { email: dave@example.com, password: dave-pass-1, name: Dave }
+      erin: { email: erin@example.com, password: erin-pass-1, name: Erin }
+      admin: { email: admin@example.com, password: admin-pass-1, name: Admin, role: admin }
   - op: add_scenario
     scenario:
-      name: comment counts and archived articles
+      name: author and article pages
       steps:
-        - as: dave
+        - as: erin
           op: auth.me
-          expect: { status: 200, body: { data: { post_count: 0 } } }
-          capture: { dave_id: data.id }
-        - as: dave
-          op: posts.create
-          body: { title: Counting, content: How many of you are reading }
-          expect: { status: 201, body: { data: { comment_count: 0, archived_at: null } } }
-          capture: { counting: data.id }
-        - as: dave
-          op: posts.create
-          body: { title: Quiet, content: Nobody answers this one }
-          expect: { status: 201 }
-          capture: { quiet: data.id }
-        - as: dave
-          op: posts.create
-          body: { title: Counted by hand, content: Not mine to say, comment_count: 7 }
-          expect: { status: 400 }
-        - as: bob
-          op: comments.create
-          body: { article_id: "{counting}", body: One }
-          expect: { status: 201 }
-          capture: { one: data.id }
-        - as: alice
-          op: comments.create
-          body: { article_id: "{counting}", body: Two }
-          expect: { status: 201 }
-        - as: bob
-          op: comments.create
-          body: { article_id: "{quiet}", body: Somebody after all }
-          expect: { status: 201 }
-        - op: posts.get
-          path: { id: "{counting}" }
-          expect: { status: 200, body: { data: { title: Counting, comment_count: 2 } } }
-        - op: posts.list
-          query: { author_id: "{dave_id}", sort: "comment_count:desc", page_size: 1 }
-          expect: { status: 200, body: { data: [{ title: Counting, comment_count: 2 }], page: { total: 2 } } }
-        - op: posts.list
-          query: { author_id: "{dave_id}", sort: "comment_count:asc", page_size: 1 }
-          expect: { status: 200, body: { data: [{ title: Quiet, comment_count: 1 }] } }
-        - as: bob
-          op: comments.delete
-          path: { id: "{one}" }
-          expect: { status: 204 }
-        - op: posts.get
-          path: { id: "{counting}" }
-          expect: { status: 200, body: { data: { comment_count: 1 } } }
-        - as: dave
-          op: posts.publish
-          path: { id: "{counting}" }
-          expect: { status: 200, body: { data: { published: true } } }
-        - as: dave
-          op: posts.publish
-          path: { id: "{quiet}" }
           expect: { status: 200 }
-        - op: users.get
-          path: { id: "{dave_id}" }
-          expect: { status: 200, body: { data: { post_count: 2 } } }
-        - op: posts.archive
-          path: { id: "{quiet}" }
-          expect: { status: 401 }
+          capture: { erin_id: data.id }
+        - as: erin
+          op: posts.create
+          body: { title: First light, content: The first one, published: true }
+          expect: { status: 201 }
+          capture: { first: data.id }
+        - as: erin
+          op: posts.create
+          body: { title: Second wind, content: The second one, published: true }
+          expect: { status: 201 }
+          capture: { second: data.id }
+        - as: erin
+          op: posts.create
+          body: { title: Unfinished, content: Not yet }
+          expect: { status: 201, body: { data: { published: false } } }
         - as: bob
-          op: posts.archive
-          path: { id: "{quiet}" }
-          expect: { status: 403 }
-        - as: admin
-          op: posts.archive
-          path: { id: "{quiet}" }
-          expect: { status: 403 }
-        - as: dave
-          op: posts.archive
-          path: { id: "{quiet}" }
-          expect: { status: 200, body: { data: { title: Quiet, published: true } } }
-        - as: dave
-          op: posts.archive
-          path: { id: "{quiet}" }
-          expect: { status: 409 }
-        - op: posts.list
-          query: { author_id: "{dave_id}" }
-          expect: { status: 200, body: { data: [{ title: Counting }], page: { total: 1 } } }
-        - op: posts.list
-          query: { author_id: "{dave_id}", archived: "true" }
-          expect: { status: 200, body: { data: [{ title: Quiet }], page: { total: 1 } } }
-        - op: posts.get
-          path: { id: "{quiet}" }
-          expect: { status: 200, body: { data: { title: Quiet, comment_count: 1 } } }
+          op: posts.create
+          body: { title: Elsewhere, content: By someone else, published: true }
+          expect: { status: 201 }
         - op: users.get
-          path: { id: "{dave_id}" }
-          expect: { status: 200, body: { data: { post_count: 1 } } }
+          path: { id: "{erin_id}" }
+          expect: { status: 200, body: { data: { name: Erin } } }
+        - op: posts.list
+          query: { author_id: "{erin_id}", published: "true", sort: "posted_at:desc", page: "1", page_size: "10" }
+          expect: { status: 200, body: { data: [{ title: Second wind }, { title: First light }], page: { total: 2 } } }
         - as: bob
           op: comments.create
-          body: { article_id: "{quiet}", body: Still talking }
-          expect: { status: 201 }
-        - op: posts.get
-          path: { id: "{quiet}" }
-          expect: { status: 200, body: { data: { comment_count: 2 } } }
-        - as: admin
-          op: posts.restore
-          path: { id: "{quiet}" }
-          expect: { status: 403 }
-        - as: dave
-          op: posts.restore
-          path: { id: "{quiet}" }
-          expect: { status: 200, body: { data: { title: Quiet, archived_at: null } } }
-        - as: dave
-          op: posts.restore
-          path: { id: "{quiet}" }
-          expect: { status: 409 }
-        - op: users.get
-          path: { id: "{dave_id}" }
-          expect: { status: 200, body: { data: { post_count: 2 } } }
-        - as: dave
-          op: posts.delete
-          path: { id: "{quiet}" }
-          expect: { status: 204 }
-        - op: users.get
-          path: { id: "{dave_id}" }
-          expect: { status: 200, body: { data: { post_count: 1 } } }
+          body: { article_id: "{first}", body: Lovely }
+          expect: { status: 201, body: { data: { article_id: "{first}", author_id: "{actor.id}" } } }
+        - op: comments.list
+          query: { article_id: "{first}", page: "1", page_size: "10" }
+          expect: { status: 200, body: { data: [{ body: Lovely, author: { name: Bob } }], page: { total: 1 } } }
+        - op: comments.list
+          query: { article_id: "{second}", page: "1", page_size: "10" }
+          expect: { status: 200, body: { data: [], page: { total: 0 } } }
+        - as: erin
+          op: announcements.create
+          body: { title: Launch day, body: We are live }
+          expect: { status: 201, body: { data: { published: false } } }
+          capture: { news: data.id }
+        - op: announcements.get
+          path: { id: "{news}" }
+          expect: { status: 404 }
+        - as: erin
+          op: announcements.publish
+          path: { id: "{news}" }
+          expect: { status: 200, body: { data: { published: true } } }
+        - op: announcements.get
+          path: { id: "{news}" }
+          expect: { status: 200, body: { data: { title: Launch day, published: true, author: { name: Erin } } } }

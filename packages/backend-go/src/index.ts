@@ -4,6 +4,7 @@ import { actionHandlersFile, actionScaffolds, actionsFile } from "./actions.js";
 import { appFile, mainScaffold, openapiFile, workerScaffold } from "./app.js";
 import { authFile, authProvidersFile, hasProviders } from "./auth.js";
 import { emailFile } from "./email.js";
+import { hasInvites } from "./invites.js";
 import { hasRowActions, rowActionsFile } from "./rowactions.js";
 import { hasScheduling, schedulingFile, testHooksFile } from "./scheduling.js";
 import { eventHandlerScaffolds, eventsFile } from "./events.js";
@@ -53,7 +54,7 @@ export function generate(input: GenerateInput): GeneratedFile[] {
   files.push({ path: `${gen}/auth/auth.go`, content: authFile(ir, mod) });
   if (hasProviders(ir)) {
     files.push({ path: `${gen}/auth/providers.go`, content: authProvidersFile(ir, mod) });
-    files.push({ path: `${gen}/email/email.go`, content: emailFile(mod) });
+    files.push({ path: `${gen}/email/email.go`, content: emailFile(mod, { invite: hasInvites(ir) }) });
   }
   files.push({ path: `${gen}/access/access.go`, content: accessFile(ir, mod) });
   files.push({ path: `${gen}/hooks/hooks.go`, content: hooksFile(mod) });

@@ -38,7 +38,11 @@ export const CONSTRAINTS = [
   "a many-to-many relationship",
   "public reading with private writing",
   "something that happens on a schedule or after a delay",
-  "a total or count kept up to date as things change"
+  "a total or count kept up to date as things change",
+  "a page for one thing at its own address, listing what belongs to it",
+  "two kinds of membership at once, such as a team and a project inside it",
+  "people join by an emailed invitation, including people who have no account yet",
+  "one person invited by email to a single thing in the app, such as one project or one document"
 ];
 
 /** The fixtures a brief may extend, or a new app */

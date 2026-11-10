@@ -1,5 +1,5 @@
 /**
- * Sealed fields across backends, on the files generated for the blog fixture (FEAT-16: an integration's secret
+ * Sealed fields across backends, on the files generated for the blog fixture (FEAT-18: an integration's secret
  * and token, a person's recovery code).
  *
  * The format is the contract: a database moves between backends with its key. So the generated code is run, not

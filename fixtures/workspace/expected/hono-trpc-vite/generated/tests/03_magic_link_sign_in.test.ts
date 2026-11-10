@@ -26,7 +26,7 @@ describe("magic link sign-in", () => {
   it("2. auth.magic_link_verify", async () => {
     const client = new Client();
     const scope = { ...vars, actor: { id: null } };
-    const reply = await client.call("auth.magic_link_verify", resolve({"token":"{token}"}, scope), "mutation", "data");
+    const reply = await client.call("auth.magic_link_verify", resolve({"token":"{token}"}, scope), "mutation", "body");
     expect(reply.status, JSON.stringify(reply.body)).toBe(200);
     const expected = resolve({"data":{"email":"alice@example.com"}}, scope);
     expect(matches(expected, reply.body), "expected " + JSON.stringify(expected) + " within " + JSON.stringify(reply.body)).toBe(true);
@@ -36,7 +36,7 @@ describe("magic link sign-in", () => {
   it("3. auth.magic_link_verify", async () => {
     const client = new Client();
     const scope = { ...vars, actor: { id: null } };
-    const reply = await client.call("auth.magic_link_verify", resolve({"token":"nope"}, scope), "mutation", "data");
+    const reply = await client.call("auth.magic_link_verify", resolve({"token":"nope"}, scope), "mutation", "body");
     expect(reply.status, JSON.stringify(reply.body)).toBe(400);
 
 

@@ -7,6 +7,7 @@ import type { GeneratedFile, IR, OperationIR, SeedStepIR, StepIR } from "@osl/co
 import { slugify } from "@osl/core";
 import {
   actorsDecl,
+  hasInvites,
   assertNoHiddenSource,
   bodyCheck,
   carriesImport,
@@ -46,6 +47,9 @@ function coercions(ir: IR): Record<string, Record<string, Coercion>> {
 
 /** generated/tests/_client.ts */
 export function testClientFile(ir: IR): string {
+  // With invites declared, a sign-in and an invite's create answer a body of their own ({ data, accepted } and
+  // { data, debug }), which the client hands on as it is
+  const invites = hasInvites(ir);
   return `${HEADER("Contract test client over tRPC's HTTP transport.")}
 ${needsProvisioning(ir) ? 'import { Client as PgClient } from "pg";\n' : ""}
 export const BASE_URL = process.env.OSL_BASE_URL ?? "http://localhost:3111";
@@ -60,8 +64,8 @@ export interface Reply {
   body: unknown;
 }
 
-/** What the contract's body looks like for a procedure's result */
-export type Shape = "list" | "data" | "none";
+/** What the contract's body looks like for a procedure's result${invites ? `; "body" is a result that is the body already` : ""} */
+export type Shape = "list" | "data" | "none"${invites ? ` | "body"` : ""};
 
 export class Client {
   cookie = "";
@@ -103,7 +107,7 @@ export class Client {
     }
     const data = (json as { result?: { data?: unknown } } | null)?.result?.data;
     assertNoHidden(data, procedure);
-    const body = shape === "list" ? data : shape === "data" ? { data } : null;
+    const body = shape === "list"${invites ? ` || shape === "body"` : ""} ? data : shape === "data" ? { data } : null;
     return { status: response.status, body };
   }
 
@@ -192,7 +196,7 @@ export async function actor(name: string): Promise<ActorSession> {
   if (!definition) throw new Error("unknown actor " + name);
   await register(name);
   const client = new Client();
-  const login = await client.call("auth.login", { email: definition.email, password: definition.password }, "mutation", "data");
+  const login = await client.call("auth.login", { email: definition.email, password: definition.password }, "mutation", ${invites ? `"body"` : `"data"`});
   if (login.status !== 200) throw new Error("could not sign in " + name + ": " + login.status + " " + JSON.stringify(login.body));
   return { client, id: pick(login.body, "data.id") };
 }
@@ -236,8 +240,18 @@ function callExpr(ir: IR, step: SeedStepIR): string {
     return `resolve(${q(raw)}, scope)`;
   };
   const body = step.body === undefined ? "{}" : `resolve(${JSON.stringify(step.body)}, scope)`;
-  const call = (procedure: string, input: string, kind: "query" | "mutation", shape: "list" | "data" | "none") =>
-    `client.call(${q(procedure)}, ${input}, ${q(kind)}, ${q(shape)})`;
+  const call = (
+    procedure: string,
+    input: string,
+    kind: "query" | "mutation",
+    shape: "list" | "data" | "none" | "body"
+  ) => `client.call(${q(procedure)}, ${input}, ${q(kind)}, ${q(shape)})`;
+  const invites = hasInvites(ir);
+  const tokenExpr = () => {
+    const raw = step.pathParams.token;
+    if (raw === undefined) throw new Error(`step ${step.op} needs path.token`);
+    return `resolve(${q(raw)}, scope)`;
+  };
   switch (step.kind) {
     case "resource": {
       const procedure = `${step.resource}.${step.operation}`;
@@ -253,8 +267,12 @@ function callExpr(ir: IR, step: SeedStepIR): string {
           );
         case "get":
           return call(procedure, `{ id: ${idExpr()} }`, "query", "data");
-        case "create":
-          return call(procedure, body, "mutation", "data");
+        case "create": {
+          // An invite's create answers { data, debug } itself: the token rides beside the row, never in it
+          const resource = ir.resources.find(r => r.name === step.resource);
+          const create = resource?.operations.find(o => o.kind === "create");
+          return call(procedure, body, "mutation", create?.kind === "create" && create.invite ? "body" : "data");
+        }
         case "update":
           return call(procedure, `{ id: ${idExpr()}, data: ${body} }`, "mutation", "data");
         case "delete":
@@ -272,10 +290,15 @@ function callExpr(ir: IR, step: SeedStepIR): string {
     case "auth":
       switch (step.operation) {
         case "register":
-        case "login":
         case "magic_link":
-        case "magic_link_verify":
           return call(`auth.${step.operation}`, body, "mutation", "data");
+        case "login":
+        case "magic_link_verify":
+          return call(`auth.${step.operation}`, body, "mutation", invites ? "body" : "data");
+        case "invite":
+          return call("auth.invite", `{ token: ${tokenExpr()} }`, "query", "data");
+        case "invite_accept":
+          return call("auth.invite_accept", `{ token: ${tokenExpr()}, data: ${body} }`, "mutation", "body");
         case "logout":
           return call("auth.logout", "undefined", "mutation", "none");
         case "me":

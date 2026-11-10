@@ -8,6 +8,7 @@ import {
   SHADCN_DEPENDENCIES,
   SHADCN_DEV_DEPENDENCIES,
   SHADCN_VERSION,
+  hasProviders,
   shadcnFiles,
   shadcnGlobalsCss
 } from "@osl/ts-common";
@@ -251,7 +252,7 @@ ${isolationReadme(ir, "pg-boss")}${sealReadme(ir, "@/generated/seal")}`
 /** Environment the model's features read, with their defaults */
 export function envExtras(ir: IR, webPort: number): string {
   const lines: string[] = [];
-  if (ir.auth?.providers.some(p => p.kind !== "credentials"))
+  if (hasProviders(ir))
     lines.push(
       `OSL_APP_URL=http://localhost:${webPort}`,
       "# OSL_EMAIL=log|resend|capture (default: resend when RESEND_API_KEY is set, else log)",

@@ -6,10 +6,16 @@ import { createTRPCClient, httpBatchLink } from "@trpc/client";
 import type { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "../server/router";
 
+/** The HTTP status the API answered a failed call with, when it answered */
+export function errorStatus(error: unknown): number | undefined {
+  const status = (error as { data?: { httpStatus?: unknown } } | null)?.data?.httpStatus;
+  return typeof status === "number" ? status : undefined;
+}
+
 /** A request the server refused as asked: the same request would fail again, so it is not retried. */
 function isRefused(error: unknown): boolean {
-  const status = (error as { data?: { httpStatus?: unknown } } | null)?.data?.httpStatus;
-  return typeof status === "number" && status >= 400 && status < 500 && status !== 408 && status !== 429;
+  const status = errorStatus(error);
+  return status !== undefined && status >= 400 && status < 500 && status !== 408 && status !== 429;
 }
 
 export const queryClient = new QueryClient({

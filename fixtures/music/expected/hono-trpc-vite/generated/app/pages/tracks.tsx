@@ -10,7 +10,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { client, sessionUser, type Inputs, type Outputs, type SessionUser } from "../client";
-import { AddPicker, EmptyPane, ErrorNote, FieldRow, FormRow, ListSkeleton, NameChips, Pagination, Pane, PaneHeader, PaneSkeleton, selectClass, splitList, text } from "../ui";
+import { AddPicker, EmptyPane, ErrorNote, FieldRow, FormRow, ListSkeleton, NameChips, Pagination, Pane, PaneHeader, PaneSkeleton, RowError, selectClass, splitList, text } from "../ui";
 
 type Row = Outputs["tracks"]["list"]["data"][number];
 type Detail = Outputs["tracks"]["get"];
@@ -443,7 +443,7 @@ export function TracksDetail() {
     }
   });
   if (query.isPending) return <PaneSkeleton />;
-  if (query.error) return <ErrorNote error={query.error} className="m-6" />;
+  if (query.error) return <RowError error={query.error} signIn={<Link to="/login" className={buttonVariants()}>Sign in</Link>} />;
   const row: Detail = query.data;
   void row;
   return (
@@ -498,7 +498,7 @@ export function TracksDetail() {
       ) : (
         <dl className="grid gap-3">
         <FieldRow label="Title">{text(row.title) || "—"}</FieldRow>
-        <FieldRow label="Album">{(row.album ? text(row.album.title) : text(row.album_id)) || "—"}</FieldRow>
+        <FieldRow label="Album">{<Link to="/albums/$id" params={{ id: text(row.album_id) }} className="hover:underline">{(row.album ? text(row.album.title) : text(row.album_id)) || "—"}</Link>}</FieldRow>
         <FieldRow label="Duration Seconds">{text(row.duration_seconds) || "—"}</FieldRow>
         <FieldRow label="Track Number">{text(row.track_number) || "—"}</FieldRow>
         <FieldRow label="Genres">

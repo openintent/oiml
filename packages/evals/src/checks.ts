@@ -514,7 +514,8 @@ export function checkExpectations(expect: Expect, checked: Checked): string[] {
   if (expect.auth) {
     const want = expect.auth;
     if (want.none && model.auth) fail("auth should not be configured");
-    if (!want.none && !model.auth && (want.identity || want.providers || want.tenancy)) fail("auth missing");
+    if (!want.none && !model.auth && (want.identity || want.providers || want.tenancy || want.invites))
+      fail("auth missing");
     if (model.auth) {
       if (want.identity && !alts(want.identity).includes(model.auth.identity))
         fail(`auth.identity is ${model.auth.identity}, expected ${want.identity}`);
@@ -533,6 +534,10 @@ export function checkExpectations(expect: Expect, checked: Checked): string[] {
             fail(`tenancy isolation is ${isolation}, expected ${want.tenancy.isolation}`);
         }
       }
+      const invited = Object.keys(model.auth.invites ?? {});
+      for (const name of want.invites ?? [])
+        if (!pick(name, invited))
+          fail(`auth.invites has no entry for ${name}${invited.length ? ` (it has ${invited.join(", ")})` : ""}`);
     }
   }
 
@@ -561,6 +566,21 @@ export function checkExpectations(expect: Expect, checked: Checked): string[] {
     if (want.path && page.path !== want.path) fail(`page ${pageName} path is ${page.path}, expected ${want.path}`);
     for (const key of want.filter ?? [])
       if (!pick(key, Object.keys(page.filter ?? {}))) fail(`page ${pageName} lacks filter ${key}`);
+    for (const resource of want.sections ?? [])
+      if (
+        !pick(
+          resource,
+          page.sections.map(s => s.resource)
+        )
+      )
+        fail(`page ${pageName} has no section over ${resource}`);
+    if (want.tenant) {
+      const filters = [page.filter, ...[...page.tiles, ...page.recent, ...page.sections].map(part => part.filter)];
+      const byTenant = filters.some(filter =>
+        Object.values(filter ?? {}).some(value => typeof value === "object" && "tenant" in value)
+      );
+      if (!byTenant) fail(`page ${pageName} has no filter by {tenant.id}`);
+    }
     if (want.refresh && !page.refresh) fail(`page ${pageName} has no refresh`);
   }
   if (expect.sidebar) {

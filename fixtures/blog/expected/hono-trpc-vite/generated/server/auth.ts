@@ -8,9 +8,9 @@ import { z } from "zod";
 import { unknownKey } from "../validation";
 import { db } from "../db/client";
 import { users as usersTable } from "../db/schema";
-import { toTRPCError } from "./errors";
+import { fail, toTRPCError } from "./errors";
 import { SERVER, presentUser, type PublicUser, visibleFields } from "../present";
-import { issueMagicLink, verifyMagicLink, PROVIDERS } from "../auth-providers";
+import { issueMagicLink, verifyMagicLink, PROVIDERS, acceptInvite, lookupInvite, acceptWithToken, type Accepted } from "../auth-providers";
 import { publicProcedure, router } from "./trpc";
 
 export type Membership = { tenant: string | number; role: string };
@@ -119,7 +119,59 @@ const registerInput = z
   })
   .strict();
 
-const loginInput = z.object({ email: z.string(), password: z.string() }).strict();
+const loginInput = z.object({ email: z.string(), password: z.string(), invite: z.string().optional() }).strict();
+
+const inviteAcceptInput = z
+  .object({
+  password: z.string().min(8).max(200).optional(),
+  name: z.string().min(1).max(100),
+  phone: z.string().max(40).nullish(),
+  preferences: z
+      .object({
+        theme: z.enum(["light", "dark"]).default("light"),
+        digest: z.boolean().default(true),
+        quiet_hours: z
+          .object({
+            from: z.number().int().min(0).max(23),
+            to: z.number().int().min(0).max(23)
+          })
+          .catchall(unknownKey).optional()
+      })
+      .catchall(unknownKey).nullish()
+  })
+  .strict();
+
+/**
+ * Accept an invite. A session under the invited address joins. Without a session and without an account for the
+ * address, `raw` creates the account, and the cookie in the answer signs it in.
+ */
+export async function acceptInviteAs(
+  session: Session | null,
+  token: string,
+  raw: unknown
+): Promise<{ data: PublicUser; accepted: Accepted[]; cookie?: string }> {
+  try {
+    const result = await acceptInvite(token, session?.user.id ?? null, async email => {
+      const input = inviteAcceptInput.safeParse(raw ?? {});
+      if (!input.success) {
+        const issues = input.error.issues.map(i => (i.path.length ? i.path.map(String).join(".") + ": " : "") + i.message);
+        fail(400, "validation", "Request body is invalid: " + issues.join("; "));
+      }
+      const { password, ...fields } = input.data;
+      const [user] = await db
+        .insert(usersTable)
+        .values({ ...fields, email: email, ...(password ? { password_hash: hashPassword(password) } : {}) })
+        .returning();
+      return user;
+    });
+    const { accepted } = result;
+    if (result.created) return { data: shownUser(await sessionOf(result.created)), accepted, cookie: sessionCookie(result.created.id) };
+    // The caller's own row as their session may read it, never the whole row the server holds
+    return { data: shownUser(session!), accepted };
+  } catch (err) {
+    throw toTRPCError(err, "write");
+  }
+}
 
 export const authRouter = router({
   register: publicProcedure.input(registerInput).mutation(async ({ ctx, input }) => {
@@ -145,8 +197,10 @@ export const authRouter = router({
     if (!user || !verifyPassword(input.password, user.password_hash)) {
       throw new TRPCError({ code: "UNAUTHORIZED", message: "Email or password is wrong" });
     }
+    // A password proves the address only together with an invite's token for it; anything else joins nothing
+    const accepted = input.invite ? await acceptWithToken(user, input.invite) : [];
     ctx.resHeaders.append("set-cookie", sessionCookie(user.id));
-    return shownUser(await sessionOf(user));
+    return { data: shownUser(await sessionOf(user)), ...(accepted.length ? { accepted } : {}) };
   }),
 
   /** Email a one-time sign-in link; always answers sent so addresses cannot be probed (tests get the token when emails are captured) */
@@ -158,10 +212,22 @@ export const authRouter = router({
   }),
 
   magic_link_verify: publicProcedure.input(z.object({ token: z.string().min(1) }).strict()).mutation(async ({ ctx, input }) => {
-    const user = await verifyMagicLink(input.token);
+    const { user, accepted } = await verifyMagicLink(input.token);
     ctx.resHeaders.append("set-cookie", sessionCookie(user.id));
-    return shownUser(await sessionOf(user));
+    return { data: shownUser(await sessionOf(user)), ...(accepted.length ? { accepted } : {}) };
   }),
+
+  /** What an invite offers, for its landing page. It never accepts: mail scanners open links. */
+  invite: publicProcedure.input(z.object({ token: z.string() }).strict()).query(({ input }) => lookupInvite(input.token)),
+
+  /** Accept an invite; `data` is read only where the call creates the account */
+  invite_accept: publicProcedure
+    .input(z.object({ token: z.string(), data: z.unknown().optional() }).strict())
+    .mutation(async ({ ctx, input }) => {
+      const { cookie, ...reply } = await acceptInviteAs(ctx.session, input.token, input.data);
+      if (cookie) ctx.resHeaders.append("set-cookie", cookie);
+      return reply;
+    }),
 
   logout: publicProcedure.mutation(({ ctx }) => {
     ctx.resHeaders.append("set-cookie", clearedCookie());

@@ -102,12 +102,22 @@ export function presentBulletin(row: schema.Bulletin): PublicBulletin {
   return { id: row.id, author_id: row.author_id, body: row.body, created_at: row.created_at };
 }
 
+export type PublicArticleEditor = Pick<schema.ArticleEditor, "id" | "article_id" | "user_id" | "created_at">;
+export function presentArticleEditor(row: schema.ArticleEditor): PublicArticleEditor {
+  return { id: row.id, article_id: row.article_id, user_id: row.user_id, created_at: row.created_at };
+}
+
 export type PublicIntegration = Pick<schema.Integration, "id" | "owner_id" | "name" | "kind" | "config" | "created_at"> & { secret?: string | null; token?: string | null };
 export function presentIntegration(row: schema.Integration, viewer: Viewer): PublicIntegration {
   const out: PublicIntegration = { id: row.id, owner_id: row.owner_id, name: row.name, kind: row.kind, config: row.config, created_at: row.created_at };
   if (viewer !== SERVER && reads(FIELD_RULES.Integration.secret, viewer, row)) out.secret = row.secret === null ? null : unseal("integrations.secret", row.secret);
   if (viewer !== SERVER && reads(FIELD_RULES.Integration.token, viewer, row)) out.token = row.token === null ? null : unseal("integrations.token", row.token);
   return out;
+}
+
+export type PublicArticleInvite = Pick<schema.ArticleInvite, "id" | "article_id" | "email" | "invited_by" | "expires_at" | "created_at">;
+export function presentArticleInvite(row: schema.ArticleInvite): PublicArticleInvite {
+  return { id: row.id, article_id: row.article_id, email: row.email, invited_by: row.invited_by, expires_at: row.expires_at, created_at: row.created_at };
 }
 
 export type PublicOslFile = Pick<schema.OslFile, "id" | "key" | "name" | "size" | "type" | "status" | "owner_id" | "created_at">;

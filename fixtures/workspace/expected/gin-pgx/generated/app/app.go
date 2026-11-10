@@ -55,6 +55,8 @@ func New(pool *pgxpool.Pool) *gin.Engine {
 	resources.NewMilestoneLabels(requests, a).Routes(r)
 	resources.NewRequests(requests, a).Routes(r)
 	resources.NewInvoices(requests, a).Routes(r)
+	resources.NewTeamInvites(requests, a).Routes(r)
+	resources.NewChannelInvites(requests, a).Routes(r)
 	if os.Getenv("OSL_TEST_HOOKS") == "1" {
 		testhooks.Routes(r, requests)
 	}

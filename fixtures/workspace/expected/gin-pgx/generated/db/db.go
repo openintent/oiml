@@ -179,6 +179,8 @@ var TenantTables = []TenantTable{
 	{Table: "milestone_labels", Key: "id", PublicRead: false},
 	{Table: "requests", Key: "id", PublicRead: false},
 	{Table: "invoices", Key: "id", PublicRead: false},
+	{Table: "team_invites", Key: "id", PublicRead: false},
+	{Table: "channel_invites", Key: "id", PublicRead: false},
 }
 
 // Scope is what request code reads and writes through under isolation: database. Its methods are the pool's.
@@ -246,12 +248,17 @@ func Bind(ctx context.Context, tenants []string) {
 }
 
 // BindTenant adds a tenant the request is about to create, so that its creator can insert it and become its
-// first member.
+// first member, or one an invite leads into. It stays bound whatever Bind later says of the session's own.
 func BindTenant(ctx context.Context, tenant string) {
 	if b, ok := ctx.Value(bindingKey{}).(*binding); ok {
 		b.mu.Lock()
+		defer b.mu.Unlock()
+		for _, bound := range b.created {
+			if bound == tenant {
+				return
+			}
+		}
 		b.created = append(b.created, tenant)
-		b.mu.Unlock()
 	}
 }
 

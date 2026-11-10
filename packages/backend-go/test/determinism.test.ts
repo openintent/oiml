@@ -96,10 +96,12 @@ describe("gin-pgx backend", () => {
       "generated/tests/12_locked_articles_test.go",
       "generated/tests/13_private_drafts_test.go",
       "generated/tests/14_followers_read_bulletins_test.go",
-      "generated/tests/15_comment_counts_and_archived_articles_test.go",
-      "generated/tests/16_editorial_review_test.go",
-      "generated/tests/17_contact_details_and_editor_notes_test.go",
-      "generated/tests/18_integrations_and_sealed_secrets_test.go",
+      "generated/tests/15_author_and_article_pages_test.go",
+      "generated/tests/16_co_authors_by_invite_test.go",
+      "generated/tests/17_comment_counts_and_archived_articles_test.go",
+      "generated/tests/18_editorial_review_test.go",
+      "generated/tests/19_contact_details_and_editor_notes_test.go",
+      "generated/tests/20_integrations_and_sealed_secrets_test.go",
       "generated/tests/support_test.go"
     ]);
     const runtime = ginPgxBackend.runtime(project.config);

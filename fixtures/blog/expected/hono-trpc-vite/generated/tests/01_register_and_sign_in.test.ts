@@ -44,7 +44,7 @@ describe("register and sign in", () => {
   it("4. auth.login", async () => {
     const client = new Client();
     const scope = { ...vars, actor: { id: null } };
-    const reply = await client.call("auth.login", resolve({"email":"carol@example.com","password":"wrong-pass-1"}, scope), "mutation", "data");
+    const reply = await client.call("auth.login", resolve({"email":"carol@example.com","password":"wrong-pass-1"}, scope), "mutation", "body");
     expect(reply.status, JSON.stringify(reply.body)).toBe(401);
 
 

@@ -3,8 +3,9 @@
 
 import { QueryClient } from "@tanstack/react-query";
 import type { z } from "zod";
-import type { PublicChannel, PublicChannelMember, PublicInvoice, PublicLabel, PublicMessage, PublicMilestone, PublicMilestoneLabel, PublicNote, PublicProject, PublicRequest, PublicTask, PublicTeam, PublicTeamMember, PublicUser, VisibleFields } from "../present";
-import type { channel_membersCreateInput, channel_membersListQuery, channelsCreateInput, channelsJoinInput, channelsListQuery, channelsUpdateInput, invoicesCreateInput, invoicesListQuery, invoicesUpdateInput, labelsArchiveInput, labelsCreateInput, labelsListQuery, labelsRestoreInput, labelsUpdateInput, membersCreateInput, membersListQuery, membersUpdateInput, messagesCreateInput, messagesListQuery, messagesUpdateInput, milestone_labelsCreateInput, milestone_labelsListQuery, milestonesArchiveInput, milestonesCreateInput, milestonesListQuery, milestonesMoveInput, milestonesRestoreInput, milestonesUpdateInput, notesCreateInput, notesListQuery, notesUpdateInput, projectsCreateInput, projectsListQuery, projectsUpdateInput, requestsApproveInput, requestsCreateInput, requestsDeclineInput, requestsListQuery, requestsReopenInput, requestsUpdateInput, tasksCreateInput, tasksListQuery, tasksRemindInput, tasksUpdateInput, teamsCreateInput, teamsListQuery, teamsUpdateInput, usersListQuery } from "../validation";
+import type { Accepted, InviteLookup } from "../auth-providers";
+import type { PublicChannel, PublicChannelInvite, PublicChannelMember, PublicInvoice, PublicLabel, PublicMessage, PublicMilestone, PublicMilestoneLabel, PublicNote, PublicProject, PublicRequest, PublicTask, PublicTeam, PublicTeamInvite, PublicTeamMember, PublicUser, VisibleFields } from "../present";
+import type { channel_invitesCreateInput, channel_invitesListQuery, channel_membersCreateInput, channel_membersListQuery, channelsCreateInput, channelsJoinInput, channelsListQuery, channelsUpdateInput, invoicesCreateInput, invoicesListQuery, invoicesUpdateInput, labelsArchiveInput, labelsCreateInput, labelsListQuery, labelsRestoreInput, labelsUpdateInput, membersCreateInput, membersListQuery, membersUpdateInput, messagesCreateInput, messagesListQuery, messagesUpdateInput, milestone_labelsCreateInput, milestone_labelsListQuery, milestonesArchiveInput, milestonesCreateInput, milestonesListQuery, milestonesMoveInput, milestonesRestoreInput, milestonesUpdateInput, notesCreateInput, notesListQuery, notesUpdateInput, projectsCreateInput, projectsListQuery, projectsUpdateInput, requestsApproveInput, requestsCreateInput, requestsDeclineInput, requestsListQuery, requestsReopenInput, requestsUpdateInput, tasksCreateInput, tasksListQuery, tasksRemindInput, tasksUpdateInput, team_invitesCreateInput, team_invitesListQuery, teamsCreateInput, teamsListQuery, teamsUpdateInput, usersListQuery } from "../validation";
 
 export class ApiError extends Error {
   constructor(
@@ -17,9 +18,15 @@ export class ApiError extends Error {
   }
 }
 
+/** The HTTP status the API answered a failed call with, when it answered */
+export function errorStatus(error: unknown): number | undefined {
+  return error instanceof ApiError ? error.status : undefined;
+}
+
 /** A request the server refused as asked: the same request would fail again, so it is not retried. */
 function isRefused(error: unknown): boolean {
-  return error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 408 && error.status !== 429;
+  const status = errorStatus(error);
+  return status !== undefined && status >= 400 && status < 500 && status !== 408 && status !== 429;
 }
 
 export const queryClient = new QueryClient({
@@ -51,10 +58,12 @@ async function call<T>(method: string, path: string, options: { query?: Record<s
 
 export type Inputs = {
   auth: {
-    login: { email: string; password: string };
+    login: { email: string; password: string; invite?: string };
     register: { email: string; password: string; name?: unknown };
     magic_link: { email: string };
     magic_link_verify: { token: string };
+    invite: { token: string };
+    invite_accept: { token: string; data?: Record<string, unknown> };
   };
   users: {
     list: z.input<typeof usersListQuery>;
@@ -159,18 +168,32 @@ export type Inputs = {
     update: { id: string; data: z.input<typeof invoicesUpdateInput> };
     delete: { id: string };
   };
+  team_invites: {
+    list: z.input<typeof team_invitesListQuery>;
+    get: { id: string };
+    create: z.input<typeof team_invitesCreateInput>;
+    delete: { id: string };
+  };
+  channel_invites: {
+    list: z.input<typeof channel_invitesListQuery>;
+    get: { id: string };
+    create: z.input<typeof channel_invitesCreateInput>;
+    delete: { id: string };
+  };
 };
 
 export type Outputs = {
   auth: {
     session: { user: PublicUser; fields: VisibleFields } | null;
     me: PublicUser;
-    login: PublicUser;
+    login: { data: PublicUser; accepted?: Accepted[] };
     register: PublicUser;
     logout: null;
     magic_link: { sent: boolean; debug?: { token: string; url: string } };
-    magic_link_verify: PublicUser;
+    magic_link_verify: { data: PublicUser; accepted?: Accepted[] };
     providers: { kind: string; name: string }[];
+    invite: InviteLookup;
+    invite_accept: { data: PublicUser; accepted: Accepted[] };
   };
   users: {
     list: { data: (PublicUser)[]; page: Page };
@@ -237,7 +260,7 @@ export type Outputs = {
     delete: null;
   };
   messages: {
-    list: { data: (PublicMessage)[]; page: Page };
+    list: { data: (PublicMessage & { author: PublicUser | null })[]; page: Page };
     get: PublicMessage;
     create: PublicMessage;
     update: PublicMessage;
@@ -275,6 +298,18 @@ export type Outputs = {
     update: PublicInvoice;
     delete: null;
   };
+  team_invites: {
+    list: { data: (PublicTeamInvite & { inviter: PublicUser | null })[]; page: Page };
+    get: PublicTeamInvite;
+    create: PublicTeamInvite;
+    delete: null;
+  };
+  channel_invites: {
+    list: { data: (PublicChannelInvite & { inviter: PublicUser | null })[]; page: Page };
+    get: PublicChannelInvite;
+    create: PublicChannelInvite;
+    delete: null;
+  };
 };
 
 export const client = {
@@ -292,10 +327,13 @@ export const client = {
     providers: () => call<Outputs["auth"]["providers"]>("GET", "/api/auth/providers"),
     me: () => call<Outputs["auth"]["me"]>("GET", "/api/auth/me"),
     logout: () => call<null>("POST", "/api/auth/logout"),
-    login: (input: Inputs["auth"]["login"]) => call<Outputs["auth"]["login"]>("POST", "/api/auth/login", { body: input }),
+    login: (input: Inputs["auth"]["login"]) => call<Outputs["auth"]["login"]>("POST", "/api/auth/login", { body: input, whole: true }),
     register: (input: Inputs["auth"]["register"]) => call<Outputs["auth"]["register"]>("POST", "/api/auth/register", { body: input }),
     magic_link: (input: Inputs["auth"]["magic_link"]) => call<Outputs["auth"]["magic_link"]>("POST", "/api/auth/magic-link", { body: input }),
-    magic_link_verify: (input: Inputs["auth"]["magic_link_verify"]) => call<Outputs["auth"]["magic_link_verify"]>("POST", "/api/auth/magic-link/verify", { body: input })
+    magic_link_verify: (input: Inputs["auth"]["magic_link_verify"]) => call<Outputs["auth"]["magic_link_verify"]>("POST", "/api/auth/magic-link/verify", { body: input, whole: true }),
+    invite: ({ token }: Inputs["auth"]["invite"]) => call<Outputs["auth"]["invite"]>("GET", "/api/auth/invites/" + encodeURIComponent(token)),
+    invite_accept: ({ token, data }: Inputs["auth"]["invite_accept"]) =>
+      call<Outputs["auth"]["invite_accept"]>("POST", "/api/auth/invites/" + encodeURIComponent(token) + "/accept", { body: data ?? {}, whole: true })
   },
   users: {
     list: (input: Inputs["users"]["list"]) => call<Outputs["users"]["list"]>("GET", "/api/users", { query: input as Record<string, unknown>, whole: true }),
@@ -399,6 +437,18 @@ export const client = {
     create: (input: Inputs["invoices"]["create"]) => call<PublicInvoice>("POST", "/api/invoices", { body: input }),
     update: ({ id, data }: Inputs["invoices"]["update"]) => call<PublicInvoice>("PATCH", "/api/invoices" + "/" + id, { body: data }),
     delete: ({ id }: Inputs["invoices"]["delete"]) => call<null>("DELETE", "/api/invoices" + "/" + id)
+  },
+  team_invites: {
+    list: (input: Inputs["team_invites"]["list"]) => call<Outputs["team_invites"]["list"]>("GET", "/api/team_invites", { query: input as Record<string, unknown>, whole: true }),
+    get: ({ id }: Inputs["team_invites"]["get"]) => call<Outputs["team_invites"]["get"]>("GET", "/api/team_invites" + "/" + id),
+    create: (input: Inputs["team_invites"]["create"]) => call<PublicTeamInvite>("POST", "/api/team_invites", { body: input }),
+    delete: ({ id }: Inputs["team_invites"]["delete"]) => call<null>("DELETE", "/api/team_invites" + "/" + id)
+  },
+  channel_invites: {
+    list: (input: Inputs["channel_invites"]["list"]) => call<Outputs["channel_invites"]["list"]>("GET", "/api/channel_invites", { query: input as Record<string, unknown>, whole: true }),
+    get: ({ id }: Inputs["channel_invites"]["get"]) => call<Outputs["channel_invites"]["get"]>("GET", "/api/channel_invites" + "/" + id),
+    create: (input: Inputs["channel_invites"]["create"]) => call<PublicChannelInvite>("POST", "/api/channel_invites", { body: input }),
+    delete: ({ id }: Inputs["channel_invites"]["delete"]) => call<null>("DELETE", "/api/channel_invites" + "/" + id)
   }
 };
 

@@ -1,13 +1,14 @@
 osl: "1.0"
-title: Budgets and estimates
+title: Archived milestones and labels, and what a project counts
 ask: >-
-  A project has a budget that only the admins of its team see: an ordinary member reads the project without it,
-  in the list too, and the projects table shows them no budget column. A team's number of pending requests is for
-  its admins as well. A task has an estimate in hours for people who are signed in: a visitor reading the tasks of
-  a public project does not get it.
+  A team's admins archive a milestone that is out of the way and restore it later; a plain member cannot. An archived
+  milestone leaves the list unless the archived ones are asked for, still opens by its id, and keeps its place among
+  the project's milestones. Labels can be archived by whoever may edit them, and a milestone still shows an archived
+  label it carries. A project says how many milestones it has and how many of them are still open (not done and not
+  archived). A user says how many teams they are in.
 acceptance:
-  - A member reads a project and its budget is not in the answer, alone or in a list; an admin gets it
-  - A member who changes the budget is not told the budget back, and the admin then reads the new one
-  - The creator of a team reads its count of pending requests in the answer to creating it
-  - A member reads the team without the count of pending requests, which still follows the requests
-  - A visitor reads a public project's task without its estimate; someone signed in reads it with it
+  - A member is refused when archiving a milestone; an admin archives it, and a second archive is a conflict
+  - The archived milestone is missing from the project's list and is the only one in the list of archived ones
+  - The project's milestone count stays while its count of open milestones falls, and rises again on restore
+  - An archived label is out of the label list and still named on the milestone that carries it
+  - A user in two teams counts two, whoever asks

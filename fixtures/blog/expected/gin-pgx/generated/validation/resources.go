@@ -146,6 +146,23 @@ var BulletinsUpdateInput = Object{Fields: []Field{
 	{Name: "body", Type: String{}},
 }}
 
+// ArticleEditorsID parses a article_editors id from the path.
+func ArticleEditorsID(raw string) (string, bool) {
+	return ParseUUIDID(raw)
+}
+
+// ArticleEditorsListQuery validates the GET /api/article_editors query string.
+var ArticleEditorsListQuery = Query{PageSize: 20, Filters: []Filter{
+	{Name: "article_id", Type: UUID{}},
+	{Name: "user_id", Type: UUID{}},
+}}
+
+// ArticleEditorsCreateInput validates POST /api/article_editors bodies.
+var ArticleEditorsCreateInput = Object{Fields: []Field{
+	{Name: "article_id", Required: true, Type: UUID{}},
+	{Name: "user_id", Required: true, Type: UUID{}},
+}}
+
 // IntegrationsID parses a integrations id from the path.
 func IntegrationsID(raw string) (string, bool) {
 	return ParseUUIDID(raw)
@@ -190,6 +207,22 @@ var IntegrationsUpdateInput = Object{Fields: []Field{
 	{Name: "config", Type: JSON{}},
 	{Name: "secret", Nullable: true, Type: String{MaxLength: 200}},
 	{Name: "token", Nullable: true, Type: String{MaxLength: 200}},
+}}
+
+// ArticleInvitesID parses a article_invites id from the path.
+func ArticleInvitesID(raw string) (string, bool) {
+	return ParseUUIDID(raw)
+}
+
+// ArticleInvitesListQuery validates the GET /api/article_invites query string.
+var ArticleInvitesListQuery = Query{PageSize: 20, Filters: []Filter{
+	{Name: "article_id", Type: UUID{}},
+}}
+
+// ArticleInvitesCreateInput validates POST /api/article_invites bodies.
+var ArticleInvitesCreateInput = Object{Fields: []Field{
+	{Name: "article_id", Required: true, Type: UUID{}},
+	{Name: "email", Required: true, Type: String{MaxLength: 255, Format: "email"}},
 }}
 
 // UsersBanInput validates POST /api/users/{id}/ban bodies.

@@ -13,7 +13,7 @@ relation field, a position, the archive field and the field of `transitions`); t
 what a form sends, so an edit never overwrites it blind; the property leaves `required` in the OpenAPI schema and
 the contract walk reports that as a breaking change an `update_field` explains; the proof is the harness's leak
 walk, which now holds every row of every answer to the read rules of its fields, with a negative control, beside
-the scenarios; the intents are workspace WS-15 and blog FEAT-15 (WS-11 and FEAT-12 were taken), and the eval ask is
+the scenarios; the intents are workspace WS-17 and blog FEAT-17 (WS-13 and FEAT-12 were taken), and the eval ask is
 new (no "manager cost" ask of an earlier round exists in the repository).
 
 A field today is returned to everyone the read rule lets in, or to nobody (`hidden`). Hand-written applications of
@@ -119,7 +119,7 @@ round's recommendations; "Addition" what neither named.
    predicate, a higher role of the same membership, any predicate that needs a session against `authenticated`).
    `read: none` is allowed and means written, never returned, which `hidden` (never accepted either) does not say.
 8. **Under `isolation: database` a field rule is compiled as written and nothing is added to the database**
-   (point 5). B1's narrowing (M119) makes an entity rule agree with the policy behind it; no policy stands behind
+   (point 5). B1's narrowing (M128) makes an entity rule agree with the policy behind it; no policy stands behind
    a field, and the field rule runs on a row the narrowed read rule already let through. For a row a member
    reads, the membership it would add is already true. For a row that came through the public-read policy,
    `public` in a field rule means every reader of the row, those the policy let in included, and an alternative
@@ -150,7 +150,7 @@ round's recommendations; "Addition" what neither named.
     tenant walk's second pass too, with the rule checks off.
 14. **Diagnostics M170 to M176**, the round's block: the rules family (M02x, M03x) has no free code above the
     ones in use.
-15. **Intents WS-15 and FEAT-15** (point 8), the next free numbers. The design's fixture grew: workspace hides a
+15. **Intents WS-17 and FEAT-17** (point 8), the next free numbers. The design's fixture grew: workspace hides a
     count that exists (`update_field`, so the contract walk has its change) and a field on a table with public
     rows; blog hides a field of the identity, one of an existing column and one only admins read on an entity
     with transitions, archive, a handler-backed action and events.
@@ -182,7 +182,7 @@ round's recommendations; "Addition" what neither named.
 | Tables, columns    | none added: a field rule has no column of its own                                             |
 | Policies, triggers | none: row-level security decides rows, and a field rule runs after the row is read            |
 | Functions          | none: the rule reads the row and the session, so nothing is looked up under the policy        |
-| The field rule     | compiled as written, not narrowed by M119; M176 warns on a table with public rows             |
+| The field rule     | compiled as written, not narrowed by M128; M176 warns on a table with public rows             |
 | A public row       | `public` in a field rule is every reader of it; a session alternative is any signed-in caller |
 | Rule checks off    | field rules stay on (`judge`): the tenant walk's second pass is predicted like the first      |
 | A count with read  | its `SECURITY DEFINER` trigger writes it as before                                            |
@@ -202,12 +202,12 @@ round's recommendations; "Addition" what neither named.
 
 ## Proof
 
-- **Fixtures.** Workspace WS-15 "budgets and estimates" under `isolation: database`: `Project.budget` and the
+- **Fixtures.** Workspace WS-17 "budgets and estimates" under `isolation: database`: `Project.budget` and the
   existing count `Team.pending_requests` for the team's admins, `Task.estimate` for signed-in callers on a table
   with public rows. A member reads the project, alone and in the list, without the budget; changes it and is not
   told it back; the admin reads the new one; the creator reads the count in the answer to creating the team; a
   member does not, while it goes on counting; a visitor reads a public task without the estimate and a signed-in
-  outsider with it (M176 says so); a filter by the budget is a 400. Blog FEAT-15 "contact details and editor
+  outsider with it (M176 says so); a filter by the budget is a 400. Blog FEAT-17 "contact details and editor
   notes": `User.phone` and the existing `User.banned_at` for the person and the admins, `Article.editor_note` for
   admins. `auth.me` answers the caller's own phone; another user, a visitor and the list do not get it, nor
   beside an article (`data.author.phone`) or under a user (`data.posts.editor_note`); the author creates, edits,
@@ -224,9 +224,9 @@ round's recommendations; "Addition" what neither named.
 - **Pages**, in a browser on both web backends as two users (a scratch script, 16 checks each): the owner's
   projects table has a Budget column, the member's has none; the member's detail pane, edit form and new-row form
   have no budget, and saving the edit sends none and leaves the budget as it was.
-- **A model without a field rule**: blog through FEAT-14 and workspace through WS-14 generate, with the round's
+- **A model without a field rule**: blog through FEAT-16 and workspace through WS-16 generate, with the round's
   code, byte for byte the snapshots committed before it, on all three backends.
-- **Eval cases**: `fx-ws-15-budgets`, `fx-blog-15-author-contact`, and two asks over empty models,
+- **Eval cases**: `fx-ws-17-budgets`, `fx-blog-17-author-contact`, and two asks over empty models,
   `empty-product-costs` (a role) and `empty-staff-salaries` (an owner on the identity, with a write rule per field
   to decline).
 
@@ -235,3 +235,13 @@ round's recommendations; "Addition" what neither named.
 Core: the key, the IR column, seven diagnostics, the OpenAPI change kind, the reference. The viewer through every
 presenter site on the three backends, the `fields` answer, the page filters in the shared page generator, the
 `absent` matcher, the harness's field watch. About the size of the hidden-rows round.
+
+## At the merge with rounds A3 and A4 (2026-11-10)
+
+Every way out rounds A3 and A4 added goes through the presenter: the invite resources, the answers of the accept
+route and of a sign-in that accepted (the caller's own row through `shownUser`, or `models.Present<User>(session.row,
+viewer)` in Go), detail pages and sections. A detail page shows a field only where the row carries it and its form
+offers and sends only those, and a section leaves out a column and an input its viewer cannot read, as a table page
+does. The leak walk treats the accept as a sign-in. Proof: WS-17's public `shared_task` page leaves the estimate out
+for a visitor, and FEAT-17's article page shows the editor note to admins only (`designs/invites.md`,
+`designs/pages-with-parameters.md`).

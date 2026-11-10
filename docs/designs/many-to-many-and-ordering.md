@@ -12,9 +12,9 @@ foreign key check was waiting for. The third is what is built: an append takes n
 writer waits for a row while it holds rows of the parent. The other changes: a junction that declares its tenant
 has three relation fields, so `to` is needed there (the workspace fixture uses it); the list order check of the new
 walk applies only where the resource lists in the entity's own order; a position added to an entity that exists
-takes its parent field out of update, which the contract walk reports as a breaking change (workspace WS-12,
+takes its parent field out of update, which the contract walk reports as a breaking change (workspace WS-14,
 `milestones.update` loses `project_id`). Proof: a fourth fixture, `music` (MU-1 to MU-4, 74 scenario steps), and
-workspace WS-12 under `isolation: database` (31 steps), conformance 12/12 with six walks, 160 unit tests with the
+workspace WS-14 under `isolation: database` (31 steps), conformance 12/12 with six walks, 160 unit tests with the
 database (156 and 4 skipped without), the oracle gate 32/32. Since then: the hardening pass of 2026-11-10 made
 the `lock_not_available` of a move or a remove that gives up a 503 `busy` with `Retry-After: 1` on every backend,
 where "What it leaves open" below says 500.
@@ -161,8 +161,8 @@ Each with its reason. "Departure" marks where the round did something other than
 19. **The `music` fixture has no tenancy.** Departure from the exercise, which makes Artist the tenancy entity. Under
     B1 every alternative that needs a session also needs membership of the row's tenant, and a playlist entry with a
     required relation to a track would be the artist's tenant row, which no listener could write. The constructs
-    need owners, not teams. Isolation is proven where it already is on: workspace WS-12.
-20. **M115 stays as B1 built it.** A junction between two tenant tables declares its own required relation to the
+    need owners, not teams. Isolation is proven where it already is on: workspace WS-14.
+20. **M124 stays as B1 built it.** A junction between two tenant tables declares its own required relation to the
     tenant. Deriving the tenant through the first of two relations would have changed a diagnostic B1 tests.
 21. **A sixth walk, `order`**, rather than scenario steps, proves the concurrency on every backend: a scenario is
     sequential by construction.
@@ -180,14 +180,14 @@ Each with its reason. "Departure" marks where the round did something other than
 | Web            | both TypeScript backends, from `packages/ts-common/src/web`: a page column that names a relation shows the far rows' names; the detail pane has a component per relation it includes (`OrderedList`, `NameChips`, `AddPicker` in the generated `ui.tsx`, present only when the model has the constructs); the children of an ordered entity (an album's tracks) are dragged in the parent's pane; `move` also shows as a row action with a form |
 | OpenAPI        | the far rows as an array property of the list and get responses; `move` as a path                                                                                                                                                                                                                                                                                                                                                               |
 | Harness        | the `order` walk; nothing else: the rule, tenant, fuzz and leak walks reached `move` and the new includes through the IR                                                                                                                                                                                                                                                                                                                        |
-| Evals          | expectation keys `through` and `ordered`; `fx-mu-1-catalog`, `fx-mu-2-genres`, `fx-mu-3-playlists`, `fx-ws-12-milestone-order`; the asks `empty-course-instructors` (the round 6 case) and `empty-checklist-order`                                                                                                                                                                                                                              |
+| Evals          | expectation keys `through` and `ordered`; `fx-mu-1-catalog`, `fx-mu-2-genres`, `fx-mu-3-playlists`, `fx-ws-14-milestone-order`; the asks `empty-course-instructors` (the round 6 case) and `empty-checklist-order`                                                                                                                                                                                                                              |
 | Reference      | two paragraphs after the junction sentence ("Many-to-many goes through a junction entity you declare", "Ordered collections"), the ops line, the Entity and Field keys, the include sentence, the App paragraph; `docs/model.md` says the same                                                                                                                                                                                                  |
 
 ## Under `isolation: database`
 
 - **A junction is a tenant table like any other.** With one required relation to a tenant table (TrackGenre, where
   Genre is shared) its tenant is derived through it. Between two tenant tables it declares its own required
-  relation to the tenant (M115, unchanged): a link names the tenant, its rule is a member rule on that field, and
+  relation to the tenant (M124, unchanged): a link names the tenant, its rule is a member rule on that field, and
   B1's composite keys hold both ends to it, so a label of another team on a milestone is refused by the database
   (a 400) even where the rules would let a member of both teams through. Such a junction has three relation
   fields, so the relation through it names `to`.
@@ -232,7 +232,7 @@ Each with its reason. "Departure" marks where the round did something other than
   pair, the same track twice, private and public reads, move as owner, the playlist's tracks by title in order, a
   track deleted from the catalog leaving the playlist with its places closed, append after it, delete, clamp).
   MU-4 the pages. No overlay: the fixture has no handler of its own.
-- **Workspace WS-12**, under `isolation: database`: a position added to Milestone, team labels, a junction that
+- **Workspace WS-14**, under `isolation: database`: a position added to Milestone, team labels, a junction that
   names its team, `labels: { through: MilestoneLabel, to: label_id }`; an outsider's move is the 404 of
   `hidden: not_found`, another team's label is a 400.
 - **The `order` walk** on every backend: 8 creates at once, a move of every row at once, then creates, moves and
@@ -245,8 +245,8 @@ Each with its reason. "Departure" marks where the round did something other than
   lock from the append trigger and the constraint refuses. A fourth case migrates an isolated model and calls
   `osl_move` and `osl_remove` as the app role: with no tenant bound, or another one, they answer as for a missing
   row and change nothing, and the lock helper is not the role's to call.
-- Every earlier scenario passes unchanged, and the snapshots of blog, todo and of workspace through WS-11 are byte
-  for byte what they were until WS-12 is applied: the IR additions are optional and no shared module changed for
+- Every earlier scenario passes unchanged, and the snapshots of blog, todo and of workspace through WS-13 are byte
+  for byte what they were until WS-14 is applied: the IR additions are optional and no shared module changed for
   a model without the constructs.
 
 ## Size
@@ -265,3 +265,10 @@ web generator 430, Go 150, the walk 150, the tests 900.
   transactions in opposite orders can deadlock, as any two-lock code can.
 - A move costs the size of its parent (every row is locked, and the ones whose place changes are written).
 - The live evals have not met the constructs: the two ask cases have no oracle.
+
+## At the merge with rounds A3 and A4 (2026-11-10)
+
+A detail page (round A3) at `/:id` shows a relation through a junction in the same pane, and the drag of an
+ordered reverse relation, as the resource page's detail did; a detail page whose sections replace its reverse
+relations keeps the ordered ones, since a section cannot reorder. Music MU-4 gained `album` and `playlist` detail
+pages, and the milestone page of WS-14 shows a milestone's labels (`designs/pages-with-parameters.md`).

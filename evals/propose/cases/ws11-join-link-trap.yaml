@@ -1,0 +1,18 @@
+id: ws11-join-link-trap
+tags: [trap, auth, tenancy]
+base: { fixture: workspace, through: WS-11 }
+intent:
+  title: A link anyone can use to join
+  ask: >-
+    Besides inviting people one by one, a team's owner should be able to switch on a join link for the team: one
+    link the owner can paste anywhere, and anyone who opens it while signed in becomes a member. The owner can
+    switch it off or replace it with a new one.
+expect:
+  outcome: any
+  flags_limit: true
+notes: >-
+  The second half of the Slack exercise's SL-2. An invite names one email; a link anyone may use is a shared secret,
+  which the model does not have (the open entry `shared secrets and access codes`), and the reference says so. A
+  correct answer declines, or builds what it can (a token on the team and an action with a handler that compares
+  it) and says in not_delivered that the secret is checked by hand-written code. The grader holds the answer to the
+  flag alone: a diff that builds something and stays silent fails, whatever it built.

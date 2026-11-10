@@ -3,6 +3,7 @@ import { hasFieldRules } from "@osl/core";
 import {
   fileSpecsLiteral,
   fillEnums,
+  hasInvites,
   membershipType,
   membershipsLoader,
   registerValidators,
@@ -57,11 +58,29 @@ export async function getSession(_request: Request): Promise<Session | null> {
     `type Public${T}`,
     ...(fields ? ["visibleFields"] : [])
   ];
+  const invites = hasInvites(ir);
   const providerImports = [
     ...(magic ? ["issueMagicLink", "verifyMagicLink"] : []),
     ...(oauth ? ["APP_URL", "oauthCallback", "oauthStart"] : []),
-    ...(magic || oauth ? ["PROVIDERS"] : [])
+    ...(magic || oauth ? ["PROVIDERS"] : []),
+    ...(invites ? ["acceptInvite", "lookupInvite", ...(credentials ? ["acceptWithToken"] : [])] : [])
   ];
+  // The account an invite creates: register's fields without the email, which the token has proven. A password is
+  // required where passwords are the only way in, optional beside another provider, and refused without them.
+  const acceptShape = [
+    ...(credentials ? [`  password: z.string().min(8).max(200)${magic || oauth ? ".optional()" : ""}`] : []),
+    ...registerFields.map(c => `  ${c.name}: ${fillEnums(zodForColumn(c, "create"), ir, identity)}`)
+  ].join(",\n");
+  // File fields arrive as references to uploads, as they do at registration
+  const acceptFields = credentials ? "fields" : "input.data";
+  const acceptSpread = fileSpecs
+    ? `(await resolveFileRefs(${acceptFields}, ${fileSpecsLiteral(identity)} as const))`
+    : acceptFields;
+  const acceptValues = !credentials
+    ? `{ ...${acceptSpread}, ${auth.emailColumn}: email }`
+    : magic || oauth
+      ? `{ ...${acceptSpread}, ${auth.emailColumn}: email, ...(password ? { ${auth.passwordColumn}: hashPassword(password) } : {}) }`
+      : `{ ...${acceptSpread}, ${auth.emailColumn}: email, ${auth.passwordColumn}: hashPassword(password) }`;
 
   return `${HEADER("Auth: cookie sessions and the auth handlers (passwords, magic links, OAuth, sign-out, me).")}
 import { createHmac, randomBytes${credentials ? ", scryptSync" : ""}, timingSafeEqual } from "node:crypto";
@@ -69,7 +88,7 @@ import { eq${isolated ? ", sql" : ""} } from "drizzle-orm";
 import { z } from "zod";
 ${registerValidators(registerFields).length ? `import { ${registerValidators(registerFields).join(", ")} } from "./validation";\n` : ""}import { db${isolated ? ", withTenants" : ""} } from "./db/client";
 import { ${schemaImports.join(", ")} } from "./db/schema";
-import { created, error, handleError, noContent, ok, parseBody } from "./http";
+import { ${invites ? "HttpError, " : ""}created, error, handleError, noContent, ok, parseBody } from "./http";
 import { ${presentImports.join(", ")} } from "./present";
 ${fileSpecs ? `import { resolveFileRefs } from "./files";\n` : ""}${providerImports.length ? `import { ${providerImports.sort().join(", ")} } from "./auth-providers";\n` : ""}
 export type Membership = { tenant: string | number; role: string };
@@ -194,7 +213,15 @@ ${registerShape}
   })
   .strict();
 
-const loginInput = z.object({ ${auth.emailColumn}: z.string(), password: z.string() }).strict();
+const loginInput = z.object({ ${auth.emailColumn}: z.string(), password: z.string()${invites ? ", invite: z.string().optional()" : ""} }).strict();
+`
+      : ""
+  }${
+    invites
+      ? `
+const inviteAcceptInput = z
+  .object({${acceptShape ? `\n${acceptShape}\n  ` : ""}})
+  .strict();
 `
       : ""
   }${magic ? `\nconst magicLinkInput = z.object({ email: z.string().email() }).strict();\nconst magicLinkVerifyInput = z.object({ token: z.string().min(1) }).strict();\n` : ""}
@@ -230,7 +257,13 @@ export const auth = {${
       if (!user || !verifyPassword(body.data.password, user.${auth.passwordColumn})) {
         return error(401, "invalid_credentials", "Email or password is wrong");
       }
-      return withCookie(ok(${shown}), sessionCookie(user.${pk}));
+${
+  invites
+    ? `      // A password proves the address only together with an invite's token for it; anything else joins nothing
+      const accepted = body.data.invite ? await acceptWithToken(user, body.data.invite) : [];
+      return withCookie(ok(${shown}, accepted.length ? { accepted } : {}), sessionCookie(user.${pk}));`
+    : `      return withCookie(ok(${shown}), sessionCookie(user.${pk}));`
+}
     } catch (err) {
       return handleError(err, "read");
     }
@@ -256,8 +289,13 @@ export const auth = {${
     try {
       const body = await parseBody(magicLinkVerifyInput, request);
       if (!body.ok) return body.response;
-      const user = await verifyMagicLink(body.data.token);
-      return withCookie(ok(${shown}), sessionCookie(user.${pk}));
+${
+  invites
+    ? `      const { user, accepted } = await verifyMagicLink(body.data.token);
+      return withCookie(ok(${shown}, accepted.length ? { accepted } : {}), sessionCookie(user.${pk}));`
+    : `      const user = await verifyMagicLink(body.data.token);
+      return withCookie(ok(${shown}), sessionCookie(user.${pk}));`
+}
     } catch (err) {
       return handleError(err, "write");
     }
@@ -283,6 +321,50 @@ export const auth = {${
       const params = Object.fromEntries(new URL(request.url).searchParams);
       const { user, redirectTo } = await oauthCallback(name, params);
       return withCookie(Response.redirect(APP_URL + redirectTo, 302), sessionCookie(user.${pk}));
+    } catch (err) {
+      return handleError(err, "write");
+    }
+  },
+`
+      : ""
+  }${
+    invites
+      ? `
+  /** What an invite offers, for its landing page. It never accepts: mail scanners open links. */
+  async invite(_request: Request, token: string): Promise<Response> {
+    try {
+      return ok(await lookupInvite(token));
+    } catch (err) {
+      return handleError(err, "read");
+    }
+  },
+
+  /**
+   * Accept an invite. A session under the invited address joins. Without a session and without an account for the
+   * address, the body creates the account, and the reply signs it in.
+   */
+  async inviteAccept(request: Request, token: string): Promise<Response> {
+    try {
+      const session = await getSession(request);
+      const result = await acceptInvite(token, session?.user.${pk} ?? null, async email => {
+        const raw: unknown = await request.json().catch(() => ({}));
+        const input = inviteAcceptInput.safeParse(raw ?? {});
+        if (!input.success) {
+          const issues = input.error.issues.map(i => ({ path: i.path.map(String).join("."), message: i.message }));
+          throw new HttpError(400, "validation", "Request body is invalid", issues);
+        }
+${credentials ? "        const { password, ...fields } = input.data;\n" : ""}        const [user] = await db
+          .insert(${tableAlias})
+          .values(${acceptValues})
+          .returning();
+        return user;
+      });
+      const { accepted } = result;
+      if (result.created) {
+        return withCookie(created(${ruled ? "shownUser(await sessionOf(result.created))" : `present${T}(result.created)`}, { accepted }), sessionCookie(result.created.${pk}));
+      }
+      // The caller's own row as their session may read it, never the whole row the server holds
+      return ok(${ruled ? "shownUser(session!)" : "session!.user"}, { accepted });
     } catch (err) {
       return handleError(err, "write");
     }
@@ -315,24 +397,25 @@ export const auth = {${
 export function authRouteFiles(ir: IR): GeneratedFile[] {
   if (!ir.auth) return [];
   const isolated = Boolean(ir.auth.tenancy?.isolation);
-  const make = (folder: string, action: string, method: "GET" | "POST", withName = false) => {
-    const call = `auth.${action}(request${withName ? ", name" : ""})`;
-    const name = withName ? "  const name = (await ctx.params).name;\n" : "";
+  const make = (folder: string, action: string, method: "GET" | "POST", param?: "name" | "token") => {
+    const call = `auth.${action}(request${param ? `, ${param}` : ""})`;
+    const read = param ? `  const ${param} = (await ctx.params).${param};\n` : "";
+    const signature = `request: Request${param ? `, ctx: { params: Promise<{ ${param}: string }> }` : ""}`;
     return {
       path: `app/api/auth/${folder}/route.ts`,
       content: isolated
         ? `${HEADER(`Route for auth.${action}.`)}
 import { auth, withRequest } from "@/generated/auth";
 
-export async function ${method}(request: Request${withName ? ", ctx: { params: Promise<{ name: string }> }" : ""}): Promise<Response> {
-${name}  return withRequest(request, () => ${call});
+export async function ${method}(${signature}): Promise<Response> {
+${read}  return withRequest(request, () => ${call});
 }
 `
         : `${HEADER(`Route for auth.${action}.`)}
 import { auth } from "@/generated/auth";
 
-export async function ${method}(request: Request${withName ? ", ctx: { params: Promise<{ name: string }> }" : ""}): Promise<Response> {
-  return auth.${action}(request${withName ? ", (await ctx.params).name" : ""});
+export async function ${method}(${signature}): Promise<Response> {
+  return auth.${action}(request${param ? `, (await ctx.params).${param}` : ""});
 }
 `
     };
@@ -344,8 +427,13 @@ export async function ${method}(request: Request${withName ? ", ctx: { params: P
     files.push(make("magic-link", "magicLink", "POST"), make("magic-link/verify", "magicLinkVerify", "POST"));
   if (ir.auth.providers.some(p => p.kind === "oauth"))
     files.push(
-      make("oauth/[name]", "oauthStart", "GET", true),
-      make("oauth/[name]/callback", "oauthCallback", "GET", true)
+      make("oauth/[name]", "oauthStart", "GET", "name"),
+      make("oauth/[name]/callback", "oauthCallback", "GET", "name")
+    );
+  if (hasInvites(ir))
+    files.push(
+      make("invites/[token]", "invite", "GET", "token"),
+      make("invites/[token]/accept", "inviteAccept", "POST", "token")
     );
   files.push(make("logout", "logout", "POST"), make("me", "me", "GET"), make("providers", "providers", "GET"));
   return files;

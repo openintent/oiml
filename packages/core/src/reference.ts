@@ -106,7 +106,8 @@ binds the author as usual. Choose it when the ask shares or adds people to one r
 tenancy when every row of the app belongs to a team. Whoever creates the parent adds themselves through an owner path:
 \`create: "owner:channel_id.created_by or member:channel_id.members:admin"\`. A membership relation ends a path: a right
 granted through a second junction (a page shared with a team, read by the team's members) is not expressible, say so in
-not_delivered; a membership counts as soon as its row exists (keep pending invites in their own entity); a role ranks
+not_delivered; a membership counts as soon as its row exists (to add someone by email before they have an account,
+declare \`auth.invites\` for the junction, never an invite entity of your own); a role ranks
 within one junction, and two junctions rank through alternatives.
 
 ## Field
@@ -214,7 +215,7 @@ A link is a row of the junction, written through the junction's resource, one re
 update take no \`genre_ids\`, and a list is not filtered by a far row (the tracks of a genre are \`genres.get\` with
 \`include: [tracks]\`, or the junction's list filtered by \`genre_id\` with \`include: [track]\`). A far row is returned
 whatever its own read rule says, like every included row: do not include rows the reader may not see. Under
-\`isolation: database\` a junction between two tenant tables declares its own required relation to the tenant (M115),
+\`isolation: database\` a junction between two tenant tables declares its own required relation to the tenant (M124),
 a link names that tenant (\`team_id\`), and both rows must be that tenant's (a link across tenants is a 400).
 
 Ordered collections: \`position: { within: <relation field> }\` on an integer field gives every row a place among the
@@ -296,7 +297,7 @@ take the name of an action the resource declares (M162), \`move\` on an entity w
 a lifecycle is a transition; an entity with both names its step otherwise (\`retire\`, \`close\`). An archived row
 still takes its transitions (archive only takes a row out of the lists): write \`when archived_at = null\` on a
 transition's rule to stop that. A \`count_of\` with \`where: "status = open"\` follows the transitions by itself.
-Under \`isolation: database\` a transition's rule is a row action's (no public alternative on a tenant table, M117),
+Under \`isolation: database\` a transition's rule is a row action's (no public alternative on a tenant table, M126),
 and another tenant's row answers what every operation on it answers, never 409. On an entity that exists, make the
 status \`read_only\` with \`update_field\` (scenarios and seed steps that sent it now answer 400: remove and re-add
 them without it), then \`set_transitions\`. An action whose handler sets the status may stay beside the
@@ -484,6 +485,9 @@ tenancy:                      # optional: teams, workspaces, organisations
   role_field: role            # roles rank in the enum's order, first is most privileged
   creator_role: owner         # whoever creates a Team through its resource gets this membership
   isolation: database         # optional: none (default) | database: row-level security on every tenant table, behind the rules
+invites:                      # optional: invite people by email into a membership
+  TeamMember: {}              # the tenancy's membership, or a junction a member path can end in
+  ChannelMember: { rule: "owner:channel_id.created_by", expires: 14d }   # who may invite; how long a link lasts
 \`\`\`
 
 \`provider: credentials\` is the 1.0 spelling of \`providers: [credentials]\`. Credentials add \`POST /api/auth/register\`
@@ -503,16 +507,58 @@ belongs to, whatever a handler forgets. A tenant table is the tenant entity, the
 reaches the tenant through required relations (Task -> project_id -> Project -> team_id). The compiler derives the
 tenant column and the composite keys of a table that does not declare its tenant: never add \`team_id\` by hand to an
 entity that already has a required relation to a tenant table. An entity with two required relations that reach the
-tenant declares a required relation to the tenant itself (M115); one that reaches it only through an optional relation
-stays shared, with no policy (M116); the identity stays shared and the tenant's key is a uuid (M118). Under isolation a
+tenant declares a required relation to the tenant itself (M124); one that reaches it only through an optional relation
+stays shared, with no policy (M125); the identity stays shared and the tenant's key is a uuid (M127). Under isolation a
 signed-in caller reaches a tenant table's rows only as a member of the row's tenant: \`owner:assignee_id\` on Task
-compiles as \`owner:assignee_id and member:project_id.team_id\` (M119 says where), so an assignee who left the team no
+compiles as \`owner:assignee_id and member:project_id.team_id\` (M128 says where), so an assignee who left the team no
 longer reads the task; write the rules as before. A public alternative (\`public\`, \`public when project_id.public =
 true\`) is allowed on the read rule of a tenant table and compiled into its policy; on create, update, delete or a row
-action it is an error (M117): a public write on a tenant table needs \`isolation: none\`. Statuses do not change:
+action it is an error (M126): a public write on a tenant table needs \`isolation: none\`. Statuses do not change:
 another tenant's row still answers 403, or 404 under \`hidden: not_found\`. Turn it on with \`set_auth\`, repeating the
-auth block with the key. In an action handler the database is bound to the caller's tenants: do outbound calls after
+auth block with the key (its \`invites\` too). An invite is a row of the tenant it leads into, under its policy like
+any tenant table; its token and the proven email are what let the token routes and the sign-ins read it, so invites
+work under isolation as they do without it. In an action handler the database is bound to the caller's tenants: do outbound calls after
 the write, not in the middle of the transaction the handler was given.
+
+\`invites\` lets someone be invited by email into a membership, with or without an account. Each key is a
+membership entity: the tenancy's membership, or a junction with one relation to the identity and one relation
+with a \`reverse\` name to the entity people join, its parent. For each key OSL writes an entity \`<Parent>Invite\`
+and a resource \`<parent>_invites\` (\`TeamInvite\` and \`team_invites\` for \`TeamMember\` of \`Team\`). Never declare,
+change or remove them with an op: they follow the \`invites\` key, which \`set_auth\` carries with the rest of the
+block. The resource has \`list\` (filtered by the parent relation), \`get\`, \`create\` and \`delete\`.
+\`POST /api/team_invites\` { team_id, email, role? } mails the address a link and answers 201 with the row
+(\`email\`, \`role\`, \`invited_by\`, \`expires_at\`, \`created_at\`, never the token). A live invite to the address
+answers 409 and so does a member's address, and the role may not rank above the inviter's own membership (403).
+Delete revokes; there is no update. \`rule\` is who may invite, revoke and read the pending list. It defaults to
+the membership's own \`create\` rule and is read on the invite, whose fields are the parent relation and the role
+under the membership's names, \`email\` and \`invited_by\`: declare \`rule\` when the membership's create rule is
+\`public\` or names another field (\`owner:user_id\`). \`expires\` is how long a link lasts (15m, 48h, 30d; default
+7d). The membership needs a unique pair over its two relations and no other required field without a default, and
+a junction that is a membership in both directions takes no invites.
+
+An invite becomes a membership only when the invited email is proven, and only in the account that has that
+email: by \`POST /api/auth/invites/{token}/accept\`, by a magic-link sign-in, by a provider sign-in whose email is
+verified, or by \`POST /api/auth/login\` with \`invite: <token>\` in the body. Registering with a password does not
+prove the email, so it accepts nothing. The accept route answers 200 to a session under the invited email, 403 to
+a session under another, 401 without a session when the address has an account, and 201 when it has none: it then
+makes the account from the body (the fields register takes, without the email; a password where credentials are
+declared), signs it in and accepts. An unknown, used or revoked token is 404 and a lapsed one 410. One proof
+accepts every live invite to the address, the reply carries \`accepted: [{ entity, id, role, tenant }]\` beside
+\`data\`, and the invite's row is gone afterwards. \`GET /api/auth/invites/{token}\` says what a link is for and
+never accepts. The app shell serves the link at \`/invite/<token>\`, so no page path may be \`/invite\` or start with
+it. The pending list and the invite form are pages the model declares over the invite resource: a resource page
+with \`filter: { team_id: "{tenant.id}" }\`, or a section on the parent's detail page with
+\`filter: { channel_id: "{row.id}" }\` and \`create: true\`. The generated app offers a control to any signed-in
+viewer where the rule is a membership; the API decides.
+
+What invites leave out; say so in not_delivered when an ask needs it. An invite names one email. A link anyone
+may use to join is a shared secret, which the model does not have. No list shows a person the invites waiting for
+them. To send an invite again, revoke it and invite again. A new invite replaces a lapsed one. One invite, one
+membership. Invite to the team and to the channel; one link accepts both. An accepted or revoked invite is gone.
+A seat limit is a before-create hook on the invite resource, an onboarding wizard is a custom page opened after
+the invite, and the mail is the email adapter's plain text. Someone can register an invited address with a
+password before its owner arrives: they join nothing by doing so, but they hold that account, and an invite the
+owner later accepts there serves them both.
 
 ## Events
 
@@ -555,7 +601,7 @@ The web app: pages and the sidebar that links them. Backends with a web app rend
 title: Blog                        # sidebar header and document title; default: the model name
 pages:
   posts:                           # page name, snake_case
-    kind: resource                 # resource (default) | custom
+    kind: resource                 # resource (default) | dashboard | detail | custom
     resource: posts                # resource pages: a resource with list and get operations
     path: /posts                   # default /<name>; /login and /settings are reserved; one dashboard or custom page may take /
     title: Posts                   # default: the name in Title Case
@@ -563,7 +609,7 @@ pages:
     columns: [title, published]    # master list columns; default: the first few short columns
     fields: [title, content, published]   # detail pane fields; default: every output field (read_only ones show here, never in the form)
     access: authenticated          # public | authenticated | role:<value>: who may open the page (sidebar and route); default authenticated with auth, else public
-    filter: { author_id: "{actor.id}" }   # resource pages: equality filters the list always carries, from list.filters; "{actor.id}" is the signed-in user (not on a public page)
+    filter: { author_id: "{actor.id}" }   # resource pages: equality filters the list always carries, from list.filters; "{actor.id}" is the signed-in user, "{tenant.id}" the current tenant (neither on a public page)
     refresh: 15                    # seconds; the page refetches its data on this interval while open (polling; there is no push)
   tasks:
     resource: tasks
@@ -575,7 +621,29 @@ pages:
       - { resource: posts, label: Published, filter: { published: true }, icon: file-text }
       - { resource: posts, label: By author, group_by: author_id }
       - { resource: tasks, label: Mine, filter: { assignee_id: "{actor.id}" } }
-    recent: [{ resource: posts, limit: 5 }]                                                         # newest rows, linked
+      - { resource: projects, label: Active projects, filter: { team_id: "{tenant.id}", status: active } }   # the current team's
+    recent: [{ resource: posts, limit: 5, filter: { published: true } }]                            # newest rows, linked; filter as on a tile
+  post:
+    kind: detail                   # one row at its own address, loaded with get: its fields, edit, delete and row actions, then its sections
+    resource: posts                # a resource with a get operation
+    path: /posts/:id               # ends in /:id, the row's key whatever its field is called; default /<page name with dashes>/:id
+    fields: [title, content, published]   # shown and edited, as on a resource page
+    sections:                      # lists from other resources about this row
+      - resource: comments         # a resource with a list operation
+        title: Comments            # default: the resource's name in Title Case
+        filter: { article_id: "{row.id}" }   # from that resource's list.filters; at least one key takes "{row.id}", on a relation to the page's entity
+        columns: [body, author_id, created_at]
+        order: [[created_at, desc]]          # exactly one pair, over a sortable field; default: the resource's own order
+        limit: 50                  # rows per page of the section, 1 to 200; default 10
+        create: true               # the section ends with the create form, article_id preset from the row; default false
+  author:
+    kind: detail
+    resource: users
+    path: /authors/:id             # no page sits at /authors, so the page stands alone and takes its own access
+    access: public
+    fields: [name]
+    sections:
+      - { resource: posts, title: Articles, filter: { author_id: "{row.id}", published: true }, columns: [title, posted_at] }
   about:
     kind: custom                   # scaffolded once as a route for you to fill in
     title: About
@@ -598,8 +666,66 @@ shows the far rows' names. Anonymous visitors see every page whose resource is p
 may open a page, it never widens what the API returns, so a public page needs a publicly readable resource (M092) and
 a page filtered by \`{actor.id}\` cannot be public. A dashboard or custom page may take \`path: /\` as the landing
 page; a resource page cannot. Filters are equality only: "due before today" or "starting after now" is not
-expressible in a page, a tile or a list filter; say so in not_delivered. Pages scoped to one team, live push and
-charts have no construct either (use \`refresh\` for polling; a custom page for the rest).
+expressible in a page, a tile, a section or a list filter; say so in not_delivered. Live push and charts have no
+construct either (use \`refresh\` for polling; a custom page for the rest).
+
+A detail page (\`kind: detail\`) is one row at an address of its own. Its path takes the only parameter a path may
+have: \`:id\`, the last segment, after at least one literal segment (\`/channels/:id\`, \`/library/albums/:id\`); a page of
+another kind takes none. When the path is a resource page's path plus \`/:id\` and both pages are over the same
+resource, the detail page takes the place of that page's own detail: the list's rows open it, it opens for whoever
+the list opens for and takes no \`access\`. Any other path stands alone with its own \`access\`, and one resource may
+have several detail pages (the one inside its list and a public one elsewhere). A detail page takes \`resource\`,
+\`path\`, \`title\`, \`description\`, \`fields\`, \`refresh\`, \`sections\` and \`access\`; \`layout\`, \`group_by\`, \`columns\`,
+\`filter\`, \`tiles\` and \`recent\` belong to the other kinds. A sidebar item names a page without a parameter, so
+never a detail page. Where a row opens: a list's rows open that page's own detail; a row shown anywhere else (a
+section, a dashboard's recent list, a relation's value) opens the first detail page declared over its resource, else
+the detail of the first resource page over it, else it is not a link.
+
+Each section is a list its resource already serves: every filter key must be in that resource's \`list.filters\` and
+the \`order\` field in its \`sortable\`, so widen the resource with \`update_resource\` in the same diff when they are
+not. A section's filter must name the page's row with \`"{row.id}"\`; its other keys take literals. \`{row.<field>}\`
+for another field of the row is not accepted, and \`{row.id}\` is only for sections. A detail page's sections replace
+the reverse relations the generated detail renders. A create form opened from a filtered list (a section with
+\`create: true\`, or New on a filtered resource page) sends the filter's context values (\`{row.id}\`, \`{tenant.id}\`,
+\`{actor.id}\`) with the create and leaves their fields out of the form; literal filters preset nothing. For a
+many-to-many, list the junction's resource in a section with the far side in its \`list.include\`.
+
+\`"{tenant.id}"\` in a page, tile, section or recent filter is the current tenant: the row of \`auth.tenancy.entity\`
+the user has switched to. Using it anywhere turns on a switcher in the sidebar header that lists the user's tenants;
+nothing else declares it. It needs \`auth.tenancy\`, a resource that lists the tenancy entity and a sidebar. The choice
+lives in the browser, not in the address: filtered queries wait for it, and a user in no tenant sees an empty state.
+It goes on a field that is a relation to the tenancy entity (or that entity's own key) and is in the resource's
+\`list.filters\`, so only a resource that carries the tenant relation itself can be scoped: projects by \`team_id\`
+can, tasks that reach the team through \`project_id\` cannot (say so in not_delivered). It is a filter, never a
+permission: the rules still decide what the API returns, and a page without it shows every tenant the user is in.
+The sidebar is scaffolded once, so a project whose sidebar was written before the switcher existed adds one line
+inside its \`<SidebarHeader>\`: \`<TenantSwitcher />\`, imported from \`generated/app/tenant\`.
+
+\`access\` says who may open a page; the row's read rule says which row they see, and the page renders the API's
+answer (404 as "Not found" for a missing row and a hidden one alike, 403 as "No access", 401 as "Sign in required").
+A public detail page needs a public alternative in the read rule of its resource and of each section's resource,
+and cannot use \`{actor.id}\` or \`{tenant.id}\` (\`{row.id}\` is fine). A public detail page over a resource whose read
+rule has a \`public when\` alternative is a share link; with \`rules.hidden: not_found\` a row that is not shared
+answers like a missing one. Under \`isolation: database\` the read rule's public alternative is the table's
+public-read policy, so a share link shows a visitor exactly the rows that alternative opens and nothing else of
+the tenant. A public detail page over the tenancy entity is a public address per tenant. A detail
+page inside a members' list cannot be the share link: declare a second detail page that stands alone at another
+address.
+
+Pages do not express these; say so in not_delivered, or use a custom page where one is named:
+- the tenant in the address (\`/t/:tenant/projects\`): the choice lives in the browser, and a page that needs the
+  tenant in its address is a detail page over the tenancy entity
+- parameters other than a trailing \`:id\`: slugs and handles, two parameters, a parameter in the middle of a path
+- \`{row.<field>}\` beyond the key (the other tasks of this task's project)
+- sections that are not lists: counts and tiles on a detail page, charts, and a form whose list the visitor may not
+  read (a public request form): a custom page
+- sections with their own \`access\`: a public page lists only publicly readable resources; the members' view is a
+  second detail page over the same resource
+- chat and thread layouts, block editors and public readers: custom pages
+- loading older rows on scroll: sections page by number
+- list filters through a relation (tasks by their project's team), and sections that reach through a junction to
+  the far side without listing the junction
+- navigation built from rows (a sidebar tree of pages, recents), and switching the current tenant by opening a row
 
 ## Examples
 
@@ -644,7 +770,28 @@ contain a comma or a colon (\`body: "Use the barrel first, then the tap"\`), or 
 Steps may also call actions (\`posts.publish\`, \`actions.send_digest\`, with the action's input as \`body\`),
 \`files.get\`, \`auth.magic_link\` { email } (200 with { data: { sent: true } }; under test the reply also carries
 \`data.debug.token\`, so capture it) and \`auth.magic_link_verify\` { token } (200 and a session; an unknown or used
-token is a 400), and upload a file:
+token is a 400), and upload a file. With \`auth.invites\`, the invite resource takes the steps of any resource
+(\`team_invites.create\`, \`.list\`, \`.get\`, \`.delete\`); under test the create's reply carries
+\`debug: { token, url }\` beside \`data\`, so \`capture: { token: debug.token }\`. \`auth.invite\` with
+\`path: { token: "{token}" }\` is the lookup and \`auth.invite_accept\` with the same path accepts: \`as:\` the actor
+whose email was invited it is 200, as another actor 403, and without \`as:\` it is 401 for an actor's address and
+201 for an address no actor has, with the new account's fields and password as \`body\`. That account is not an
+actor, so prove it with a later \`auth.login\` and the inviter's list of members. An \`auth.login\` body may carry
+\`invite: "{token}"\`. No step moves the clock, so a scenario cannot show a lapsed invite.
+
+\`\`\`yaml
+- as: alice
+  op: team_invites.create
+  body: { team_id: "{team}", email: bob@example.com, role: member }
+  expect: { status: 201, body: { data: { email: bob@example.com, role: member } } }
+  capture: { token: debug.token }
+- as: bob                            # bob@example.com is bob's own address
+  op: auth.invite_accept
+  path: { token: "{token}" }
+  expect: { status: 200, body: { accepted: [{ entity: Team, id: "{team}", role: member }] } }
+\`\`\`
+
+A file upload:
 
 \`\`\`yaml
 - as: alice

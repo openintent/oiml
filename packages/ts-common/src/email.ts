@@ -1,7 +1,22 @@
 import type { ServerConventions } from "./server-conventions.js";
 
-/** generated/email.ts: one send function, three adapters. */
-export function emailFile(conv: ServerConventions): string {
+/** generated/email.ts: one send function, three adapters, and the invite mail where the model sends invites. */
+export function emailFile(conv: ServerConventions, options: { invite?: boolean } = {}): string {
+  const invite = options.invite
+    ? `
+/** The mail an invite sends: who invites, to what, as what, the link, and the day the link stops working */
+export function inviteEmail(invite: { to: string; name: string; inviter: string; role?: string | null; url: string; expires: Date }): Email {
+  return {
+    to: invite.to,
+    subject: "You are invited to " + invite.name,
+    text:
+      (invite.inviter || "Someone") + " invited you to " + invite.name + (invite.role ? " as " + invite.role : "") + ".\\n\\n" +
+      "Accept the invite: " + invite.url + "\\n\\n" +
+      "The link works until " + invite.expires.toISOString().slice(0, 10) + "."
+  };
+}
+`
+    : "";
   return `${conv.header("Email: logged to the console, sent through Resend, or captured in memory for tests.")}
 export type Email = { to: string; subject: string; text: string; html?: string };
 export type EmailMode = "log" | "resend" | "capture";
@@ -36,5 +51,5 @@ export async function sendEmail(email: Email): Promise<void> {
     }
   }
 }
-`;
+${invite}`;
 }

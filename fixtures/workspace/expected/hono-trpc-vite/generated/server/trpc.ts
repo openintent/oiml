@@ -4,8 +4,15 @@
 import { initTRPC } from "@trpc/server";
 import { withTenants } from "../db/client";
 import type { Context } from "./context";
+import { statusOf } from "./errors";
 
-const t = initTRPC.context<Context>().create();
+const t = initTRPC.context<Context>().create({
+  /** A refusal keeps the contract's status in the error's data, also where tRPC has no code for it (410, say) */
+  errorFormatter({ shape, error }) {
+    const status = statusOf(error);
+    return status === undefined ? shape : { ...shape, data: { ...shape.data, httpStatus: status } };
+  }
+});
 
 /**
  * One transaction per procedure call, bound to the session's memberships: the procedure reaches the rows of those

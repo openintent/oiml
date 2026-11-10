@@ -6,9 +6,12 @@ import { hashValue, sha256 } from "./canonical.js";
 import {
   AUTH_STEP_OPS,
   conjunctionParts,
-  defaultPagePath,
+  pagePathOf,
+  takenOverPage,
   durationSeconds,
   EVENT_ON_PATTERN,
+  expandInvites,
+  invitePlans,
   loadModel,
   OAUTH_PRESETS,
   predicateParts,
@@ -565,7 +568,16 @@ export type OperationIR =
       through?: string[];
     }
   | { kind: "get"; method: "GET"; path: string; include: string[]; rule: RuleIR; through?: string[] }
-  | { kind: "create"; method: "POST"; path: string; fields: string[]; ownerField?: string; rule: RuleIR }
+  | {
+      kind: "create";
+      method: "POST";
+      path: string;
+      fields: string[];
+      ownerField?: string;
+      rule: RuleIR;
+      /** On an invite resource: the membership entity its invites are for. The create sends an invite (see InviteIR) */
+      invite?: string;
+    }
   | { kind: "update"; method: "PATCH"; path: string; fields: string[]; rule: RuleIR }
   | { kind: "delete"; method: "DELETE"; path: string; rule: RuleIR };
 
@@ -638,6 +650,43 @@ export interface IsolationIR {
   memberships: string;
 }
 
+/**
+ * Invites to one membership entity (auth.invites). Creating a row of the invite resource mails a link to an address;
+ * whoever proves the address becomes a member, and the invite is deleted.
+ */
+export interface InviteIR {
+  /** The membership entity an accepted invite becomes a row of */
+  membership: string;
+  membershipTable: string;
+  /** The entity people join (the tenant, a channel, an article), its table and its key column */
+  parent: string;
+  parentTable: string;
+  parentKey: string;
+  /** The membership's columns pointing at the parent and at the identity; the invite names its parent the same way */
+  parentColumn: string;
+  userColumn: string;
+  /** The role column, on the membership and on the invite, and its values from most to least privileged; absent where memberships have no rank */
+  roleColumn?: string;
+  roles?: string[];
+  /** Who may invite, revoke and read the pending list */
+  rule: RuleIR;
+  /** Seconds a link lasts */
+  expires: number;
+  /** The entity, table and resource the compiler wrote for the invite */
+  entity: string;
+  table: string;
+  resource: string;
+  /** With tenancy: the required relations from the parent to its tenant, none when the parent is the tenant; absent when it reaches no tenant */
+  tenantPath?: ForeignKeyIR[];
+  /**
+   * Under `isolation: database`, where the invite is a tenant table: the two functions that see past its policy.
+   * An invite belongs to a tenant its invitee is not a member of yet. `byToken(token_hash)` answers the tenant of
+   * the invite holding that hash, which a token route binds before it reads the invite; `byEmail(email, at)` the
+   * tenants of the invites to that address live at that time, which acceptance binds once the address is proven.
+   */
+  isolation?: { byToken: string; byEmail: string };
+}
+
 export interface AuthIR {
   identity: string;
   identityTable: string;
@@ -655,6 +704,8 @@ export interface AuthIR {
   /** A string `name` column on the identity, filled from an OAuth profile */
   nameColumn?: string;
   tenancy?: TenancyIR;
+  /** Present when auth.invites is declared */
+  invites?: InviteIR[];
 }
 
 export interface FilesIR {
@@ -740,7 +791,36 @@ export interface ExamplesIR {
 }
 
 /** A fixed filter value on a page or tile; `{ actor: "id" }` is the signed-in user's id, resolved by the page */
-export type PageFilterValue = string | number | boolean | { actor: "id" };
+/**
+ * A fixed filter value: a literal, or a value the page takes from its context. actor: the signed-in user's key.
+ * row: the key of the row a detail page shows (sections only). tenant: the key of the tenant chosen in the shell.
+ */
+export type PageFilterValue = string | number | boolean | { actor: "id" } | { row: "id" } | { tenant: "id" };
+
+/** A list from another resource on a detail page, filtered by the page's row */
+export interface SectionIR {
+  resource: string;
+  entity: string;
+  title: string;
+  /** At least one value is { row: "id" } */
+  filter: Record<string, PageFilterValue>;
+  columns: string[];
+  /** The one sortable field the list is sorted by; absent: the resource's own order */
+  order?: [string, "asc" | "desc"];
+  /** Rows per page of the section */
+  limit: number;
+  /** End the section with the resource's create form, the filter's context values preset */
+  create: boolean;
+}
+
+/** The tenant context: present when any page filter uses { tenant: "id" } */
+export interface TenantContextIR {
+  /** The resource whose list gives the signed-in user's tenants */
+  resource: string;
+  entity: string;
+  /** The column the switcher shows a tenant by */
+  labelColumn: string;
+}
 
 /** One tile per value of an enum, or per row of a related resource, each counting with that filter */
 export type TileGroupIR =
@@ -757,14 +837,15 @@ export interface TileIR {
 
 export interface PageIR {
   name: string;
-  kind: "resource" | "dashboard" | "custom";
-  /** Resource pages: the resource and its entity */
+  kind: "resource" | "dashboard" | "custom" | "detail";
+  /** Resource and detail pages: the resource and its entity */
   resource?: string;
   entity?: string;
   /** Resource pages: how the rows are shown */
   layout?: "split" | "table" | "board";
   /** board layout: the enum column whose values are the columns */
   groupBy?: string;
+  /** A detail page's path ends in the parameter, spelled /:id; each target writes its own spelling */
   path: string;
   title: string;
   description?: string;
@@ -772,12 +853,18 @@ export interface PageIR {
   columns: string[];
   /** Resource pages: relations through a junction the master list shows after its columns, by the far rows' names */
   relations?: string[];
-  /** Resource pages: fields of the detail pane, in order */
+  /** Resource and detail pages: fields of the detail, in order */
   fields: string[];
   /** Dashboard pages */
   tiles: TileIR[];
-  recent: { resource: string; limit: number }[];
-  /** Who may open the page: public, authenticated or role */
+  recent: { resource: string; limit: number; filter: Record<string, PageFilterValue> }[];
+  /** Detail pages: the lists under the row; they replace the included reverse relations */
+  sections: SectionIR[];
+  /** Detail pages: the resource page whose generated detail this page takes over; it renders inside that page */
+  listPage?: string;
+  /** Resource pages: the detail page that takes over this page's generated detail */
+  detailPage?: string;
+  /** Who may open the page: public, authenticated or role. A detail page inside a list carries the list's. */
   access: RuleIR;
   /** Resource pages: filters the list always carries */
   filter?: Record<string, PageFilterValue>;
@@ -805,6 +892,7 @@ export interface AppIR {
   title: string;
   pages: PageIR[];
   sidebar?: SidebarIR;
+  tenant?: TenantContextIR;
 }
 
 export interface IR {
@@ -1056,9 +1144,34 @@ export function systemEntities(model: Model): Record<string, Entity> {
   return out;
 }
 
+/**
+ * The chain of required relations from an entity to the tenant, none for the tenant itself, or null when the entity
+ * never reaches it. An invite's parent is placed in its tenant by it, and the conformance walks find a row's tenant.
+ */
+export function tenantChain(
+  entities: EntityIR[],
+  tenant: string,
+  entity: EntityIR,
+  seen = new Set<string>()
+): ForeignKeyIR[] | null {
+  if (entity.name === tenant) return [];
+  seen.add(entity.name);
+  for (const fk of entity.foreignKeys) {
+    const column = entity.columns.find(c => c.name === fk.column);
+    if (!column || column.nullable || seen.has(fk.targetEntity)) continue;
+    if (fk.targetEntity === tenant) return [fk];
+    const target = entities.find(e => e.name === fk.targetEntity);
+    if (!target) continue;
+    const rest = tenantChain(entities, tenant, target, new Set(seen));
+    if (rest) return [fk, ...rest];
+  }
+  return null;
+}
+
 /** Compile a validated model into IR. Throws ModelError on an invalid model. */
 export function compile(input: Model): IR {
-  const model = loadModel(input);
+  // The stored model never holds what auth.invites stands for; from here on the invite entities are entities
+  const model = expandInvites(loadModel(input));
   const enums: EnumIR[] = [];
   const entities: EntityIR[] = [];
   const system = systemEntities(model);
@@ -1658,6 +1771,37 @@ export function compile(input: Model): IR {
         };
       }
     }
+    const plans = invitePlans(model);
+    if (plans.length)
+      auth.invites = plans.map(plan => {
+        const parent = entityByName(plan.parent);
+        const invite: InviteIR = {
+          membership: plan.membership,
+          membershipTable: tableOf(plan.membership),
+          parent: plan.parent,
+          parentTable: parent.table,
+          parentKey: parent.primaryKey[0],
+          parentColumn: plan.parentField,
+          userColumn: plan.memberField,
+          rule: entityByName(plan.entity).rules.create,
+          expires: durationSeconds(plan.expires),
+          entity: plan.entity,
+          table: plan.table,
+          resource: plan.resource
+        };
+        if (plan.roleField) {
+          invite.roleColumn = plan.roleField;
+          invite.roles = plan.roles;
+        }
+        const path = auth!.tenancy ? tenantChain(entities, auth!.tenancy.entity, parent) : null;
+        if (path) invite.tenantPath = path;
+        if (auth!.tenancy?.isolation && entityByName(plan.entity).tenant)
+          invite.isolation = {
+            byToken: sqlName(`osl_invite_${plan.table}`),
+            byEmail: sqlName(`osl_invites_${plan.table}`)
+          };
+        return invite;
+      });
   }
 
   let files: FilesIR | undefined;
@@ -1772,7 +1916,16 @@ export function compile(input: Model): IR {
           const rule = entity.rules.create;
           const ownerField = directOwnerOf(rule);
           const fields = (resource.create?.fields ?? writable).filter(f => f !== ownerField);
-          operations.push({ kind, method: "POST", path, fields, ownerField, rule });
+          const invite = auth?.invites?.find(i => i.resource === resourceName);
+          operations.push({
+            kind,
+            method: "POST",
+            path,
+            fields,
+            ownerField,
+            rule,
+            ...(invite ? { invite: invite.membership } : {})
+          });
           break;
         }
         case "update": {
@@ -1926,12 +2079,14 @@ export function compile(input: Model): IR {
           logout: "/api/auth/logout",
           me: "/api/auth/me",
           magic_link: "/api/auth/magic-link",
-          magic_link_verify: "/api/auth/magic-link/verify"
+          magic_link_verify: "/api/auth/magic-link/verify",
+          invite: "/api/auth/invites/{token}",
+          invite_accept: "/api/auth/invites/{token}/accept"
         };
         resolved = {
           kind: "auth",
           operation: target.operation,
-          method: target.operation === "me" ? "GET" : "POST",
+          method: target.operation === "me" || target.operation === "invite" ? "GET" : "POST",
           pathTemplate: paths[target.operation]
         };
         break;
@@ -1990,18 +2145,26 @@ export function compile(input: Model): IR {
       Object.fromEntries(
         Object.entries(filter ?? {}).map(([k, v]): [string, PageFilterValue] => [
           k,
-          v === "{actor.id}" ? { actor: "id" } : v
+          v === "{actor.id}"
+            ? { actor: "id" }
+            : v === "{row.id}"
+              ? { row: "id" }
+              : v === "{tenant.id}"
+                ? { tenant: "id" }
+                : v
         ])
       );
+    const modelPages = model.app.pages;
     const pages: PageIR[] = Object.entries(model.app.pages).map(([name, page]) => {
       const common = {
         name,
         kind: page.kind,
-        path: page.path ?? defaultPagePath(name),
+        path: pagePathOf(name, page),
         title: page.title ?? toTitleCase(name),
         description: page.description,
         tiles: [] as TileIR[],
         recent: [] as PageIR["recent"],
+        sections: [] as SectionIR[],
         access: parseRule(page.access ?? (model.auth ? "authenticated" : "public"), { kind: "public" }),
         ...(page.refresh ? { refresh: page.refresh } : {})
       };
@@ -2047,12 +2210,45 @@ export function compile(input: Model): IR {
             }
             return tile;
           }),
-          recent: (page.recent ?? []).map(r => ({ resource: r.resource, limit: r.limit }))
+          recent: (page.recent ?? []).map(r => ({ resource: r.resource, limit: r.limit, filter: filterIR(r.filter) }))
         };
       }
       const resource = resources.find(r => r.name === page.resource)!;
       const entity = entityByName(resource.entity);
       const isThrough = (name: string) => Boolean(entity.through?.some(t => t.name === name));
+      if (page.kind === "detail") {
+        const out: PageIR = {
+          ...common,
+          resource: resource.name,
+          entity: entity.name,
+          columns: [],
+          fields: page.fields ?? resource.outputFields,
+          sections: (page.sections ?? []).map(s => {
+            const listed = resources.find(r => r.name === s.resource)!;
+            const listedEntity = entityByName(listed.entity);
+            const section: SectionIR = {
+              resource: listed.name,
+              entity: listedEntity.name,
+              title: s.title ?? titleOf(s.resource),
+              filter: filterIR(s.filter),
+              columns: s.columns ?? sectionColumns(listedEntity, listed.outputFields, Object.keys(s.filter)),
+              limit: s.limit ?? 10,
+              create: s.create ?? false
+            };
+            if (s.order?.length) section.order = s.order[0];
+            return section;
+          })
+        };
+        // Inside a list the page is behind the list's gate: it opens for whoever the list opens for
+        const listPage = takenOverPage(modelPages, name);
+        if (listPage) {
+          out.listPage = listPage;
+          out.access = parseRule(modelPages[listPage].access ?? (model.auth ? "authenticated" : "public"), {
+            kind: "public"
+          });
+        }
+        return out;
+      }
       const out: PageIR = {
         ...common,
         resource: resource.name,
@@ -2064,9 +2260,26 @@ export function compile(input: Model): IR {
       };
       if (page.group_by) out.groupBy = page.group_by;
       if (page.filter && Object.keys(page.filter).length) out.filter = filterIR(page.filter);
+      const detailPage = Object.keys(modelPages).find(other => takenOverPage(modelPages, other) === name);
+      if (detailPage) out.detailPage = detailPage;
       return out;
     });
     app = { title: model.app.title ?? model.name, pages };
+    const tenancyEntity = model.auth?.tenancy?.entity;
+    const usesTenant = pages.some(page =>
+      [
+        page.filter,
+        ...page.tiles.map(t => t.filter),
+        ...page.recent.map(r => r.filter),
+        ...page.sections.map(s => s.filter)
+      ]
+        .flatMap(filter => Object.values(filter ?? {}))
+        .some(value => typeof value === "object" && "tenant" in value)
+    );
+    if (usesTenant && tenancyEntity) {
+      const listing = resources.find(r => r.entity === tenancyEntity && r.operations.some(o => o.kind === "list"))!;
+      app.tenant = { resource: listing.name, entity: tenancyEntity, labelColumn: entityByName(tenancyEntity).display };
+    }
     if (model.app.sidebar) {
       app.sidebar = {
         items: model.app.sidebar.items.map(item => {
@@ -2190,6 +2403,13 @@ function displayColumn(columns: ColumnIR[], primaryKey: string[], foreignKeys: F
 }
 
 /** Master list columns when a page declares none: the display column, then up to three more short columns. */
+/** A section's columns when it declares none: a list's default columns without the fields its filter fixes. */
+function sectionColumns(entity: EntityIR, outputFields: string[], fixed: string[]): string[] {
+  const free = outputFields.filter(f => !fixed.includes(f));
+  const out = defaultColumns(entity, free).filter(c => !fixed.includes(c));
+  return out.length ? out : [entity.primaryKey[0]];
+}
+
 function defaultColumns(entity: EntityIR, outputFields: string[]): string[] {
   const shorts = entity.columns.filter(
     c =>

@@ -1,0 +1,34 @@
+id: fx-ws-14-milestone-order
+tags: [fixture, entity, rules, relation, tenancy, isolation, many-to-many, ordering, scenario]
+base: { fixture: workspace, through: WS-13 }
+oracle: fixtures/workspace/intents/WS-14/diff.yaml
+intent:
+  title: Milestones in order, with labels
+  ask: >-
+    A project's milestones are in an order its team keeps: a new milestone goes last, any member moves one to another
+    place, and removing one closes the gap. A team has labels, and a member puts labels on a milestone; a milestone
+    shows its labels by name. A label and a milestone belong to one team: a label of another team cannot be put on a
+    milestone. Nobody outside the team sees or moves any of it.
+  acceptance:
+    - Milestones added to a project are numbered in order; a member moves the last one first and the others follow
+    - Someone outside the team gets the 404 a missing milestone gets when they try to move one
+    - A milestone read back lists its labels with their names
+    - Putting another team's label on a milestone is refused
+expect:
+  entities: [Label, "MilestoneLabel|MilestoneLabels|LabelMilestone"]
+  ordered: { Milestone: project_id }
+  through: ["Milestone.* -> Label"]
+  relations:
+    - "Label.* -> Team"
+    - "MilestoneLabel|MilestoneLabels|LabelMilestone.* -> Team"
+    - "MilestoneLabel|MilestoneLabels|LabelMilestone.* -> Milestone"
+    - "MilestoneLabel|MilestoneLabels|LabelMilestone.* -> Label"
+  rules:
+    Label: { read: "member:team_id" }
+  scenarios: { min: 1, rejections: 3, statuses: [404, 400] }
+  touches: [milestones.move]
+  ops: { require: [add_field, set_relations] }
+notes: >-
+  The two constructs under isolation: database. A position is added to an entity that exists, and the junction
+  between two tenant tables declares its own relation to the team (M124), so the relation through it names its far
+  field with `to`. The composite keys are what refuses another team's label; the rules alone would not.

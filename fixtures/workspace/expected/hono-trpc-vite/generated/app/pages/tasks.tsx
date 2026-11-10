@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { client, fieldsOf, sessionUser, type Inputs, type Outputs, type SessionUser } from "../client";
-import { EmptyPane, ErrorNote, FieldRow, FormRow, ListSkeleton, Pagination, Pane, PaneHeader, PaneSkeleton, formatDateTime, selectClass, splitList, text, toDateTimeInput, yesNo } from "../ui";
+import { EmptyPane, ErrorNote, FieldRow, FormRow, ListSkeleton, Pagination, Pane, PaneHeader, PaneSkeleton, RowError, formatDateTime, selectClass, splitList, text, toDateTimeInput, yesNo } from "../ui";
 
 type Row = Outputs["tasks"]["list"]["data"][number];
 type Detail = Outputs["tasks"]["get"];
@@ -447,7 +447,7 @@ function TasksDetailInner() {
     }
   });
   if (query.isPending) return <PaneSkeleton />;
-  if (query.error) return <ErrorNote error={query.error} className="m-6" />;
+  if (query.error) return <RowError error={query.error} signIn={<Link to="/login" className={buttonVariants()}>Sign in</Link>} />;
   const row: Detail = query.data;
   return (
     <Pane
@@ -497,7 +497,7 @@ function TasksDetailInner() {
       ) : (
         <dl className="grid gap-3">
         <FieldRow label="Id">{text(row.id) || "—"}</FieldRow>
-        <FieldRow label="Project">{text(row.project_id) || "—"}</FieldRow>
+        <FieldRow label="Project">{user !== null ? <Link to="/projects/$id" params={{ id: text(row.project_id) }} className="hover:underline">{text(row.project_id) || "—"}</Link> : text(row.project_id) || "—"}</FieldRow>
         <FieldRow label="Title">{text(row.title) || "—"}</FieldRow>
         <FieldRow label="Done">{row.done == null ? "—" : <Badge variant={row.done ? "default" : "outline"}>{yesNo(row.done)}</Badge>}</FieldRow>
         <FieldRow label="Assignee">{text(row.assignee_id) || "—"}</FieldRow>

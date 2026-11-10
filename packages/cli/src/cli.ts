@@ -30,7 +30,7 @@ import {
 import { BACKENDS, backendNamed } from "./backends.js";
 import { loadDotEnv, requireDatabaseUrl } from "./env.js";
 import { implementActions } from "./implement.js";
-import { DEFAULT_MODEL, ProposeDeclinedError, propose } from "./propose.js";
+import { DEFAULT_MAX_TOKENS, DEFAULT_MODEL, ProposeDeclinedError, propose } from "./propose.js";
 import { startMcp } from "./mcp.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -124,8 +124,12 @@ program
   .command("propose <id>")
   .description("Ask Claude for a model diff that delivers the intent, validated against the current model")
   .option("-m, --model <model>", "Claude model id", DEFAULT_MODEL)
+  .option("--max-tokens <n>", "cap on the answer's output tokens, thinking included", String(DEFAULT_MAX_TOKENS))
   .option("--print", "print the diff instead of writing diff.yaml")
-  .action(async (id: string, options: { model: string; print?: boolean }) => {
+  .action(async (id: string, options: { model: string; maxTokens: string; print?: boolean }) => {
+    const maxTokens = Number(options.maxTokens);
+    if (!Number.isInteger(maxTokens) || maxTokens < 1)
+      throw new ProjectError(`--max-tokens must be a whole number above zero, not ${options.maxTokens}`);
     const root = projectRoot();
     const project = await loadProject(root);
     const folder = await readIntent(root, id);
@@ -137,6 +141,7 @@ program
     try {
       result = await propose(id, folder.intent, project.model, {
         model: options.model,
+        maxTokens,
         onAttempt: (attempt, _yaml, problems) => {
           if (problems.length)
             warn(`attempt ${attempt} rejected: ${problems.length} problem(s), retrying with feedback`);
@@ -188,7 +193,7 @@ program
       // not only in the generated code
       if (outcome.status !== "noop" && outcome.model.auth?.tenancy?.isolation === "database")
         for (const d of validateModel(outcome.model))
-          if (d.code === "M116" || d.code === "M119" || d.code === "M156") warn(`${d.code} ${d.path}: ${d.message}`);
+          if (d.code === "M125" || d.code === "M128" || d.code === "M156") warn(`${d.code} ${d.path}: ${d.message}`);
     }
     info("next: osl generate");
   });

@@ -16,6 +16,9 @@ calls and 600 fuzz probes per backend, workspace 317 and 676 with ten home-team 
 todo 15 and 79), the blog's eleven revisions show one breaking change (the Post to Article rename) explained by
 its op, and the oracle eval corpus runs through the walks. The first run's only findings were the harness's own:
 an update probe that left a required field out, which a partial body may, and the conflicting membership above.
+Round A3 (2026-11-09) gave the cross-tenant walk one exception: a row the read rule opens to a caller with no
+session may be read and listed by the outsider, since the model says so, and is still checked for every write;
+the step's detail counts those rows (`pages-with-parameters.md`, a public page over the tenancy entity).
 Not a construct: five checks the harness runs over every fixture and every backend without a scenario naming
 them; nothing here changes the grammar. Since 2026-11-10 (round B1, `tenant-isolation-backstop.md`) the tenant
 walk has its second pass and the two hooks: on a fixture with `isolation: database` it runs again with the
@@ -106,3 +109,8 @@ unbound`) exist only under `OSL_TEST_HOOKS=1`.
 
 The harness only: five functions, two hooks, the OpenAPI diff and the lock query in core, flags and docs. Smaller
 than any construct round, and it raises what every later round proves.
+
+## At the merge with rounds A3 and A4 (2026-11-10)
+
+Since the merge of rounds A3 and A4 with milestone B (2026-11-10) the harness runs seven walks: rule, tenant,
+order, leak, fuzz, contract and invite.

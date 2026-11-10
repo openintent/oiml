@@ -10,7 +10,7 @@ import { Hono, type Context as HonoContext } from "hono";
 import { startWorker } from "../jobs";
 import { emailsSent, schedulesRun, testHooksEnabled, timersRun } from "../test-hooks";
 import { createContext } from "./context";
-import { isBusy } from "./errors";
+import { isBusy, statusOf } from "./errors";
 import { appRouter } from "./router";
 
 /** Errors from the shared modules are tRPC errors; REST routes answer them in the contract's shape. */
@@ -18,7 +18,7 @@ function restError(c: HonoContext, err: unknown): Response {
   if (err instanceof TRPCError) {
     const code = (err.cause as { code?: string } | undefined)?.code ?? err.code.toLowerCase();
     if (isBusy(err)) c.header("Retry-After", "1");
-    return c.json({ error: { code, message: err.message } }, getHTTPStatusCodeFromError(err) as 400);
+    return c.json({ error: { code, message: err.message } }, (statusOf(err) ?? getHTTPStatusCodeFromError(err)) as 400);
   }
   console.error(err);
   return c.json({ error: { code: "internal", message: "Something went wrong" } }, 500);
@@ -28,10 +28,20 @@ export function createApp(): Hono {
   const app = new Hono();
   app.get("/healthz", c => c.json({ ok: true }));
   app.get("/health", c => c.json({ ok: true }));
-  // A busy answer (503) tells the caller when to send the request again
-  const responseMeta = ({ errors }: { errors: unknown[] }) =>
-    errors.some(isBusy) ? { headers: new Headers({ "Retry-After": "1" }) } : {};
-  app.use("/trpc/*", trpcServer({ router: appRouter, createContext, responseMeta }));
+  app.use(
+    "/trpc/*",
+    trpcServer({
+      router: appRouter,
+      createContext,
+      // A single call answers with the status its refusal carries; a batch keeps tRPC's own. A busy answer (503)
+      // tells the caller when to send the request again.
+      responseMeta: ({ errors, paths }) => {
+        const status = errors.length === 1 && paths?.length === 1 ? statusOf(errors[0]) : undefined;
+        const busy = errors.some(isBusy) ? { headers: new Headers({ "Retry-After": "1" }) } : {};
+        return status === undefined ? busy : { status, ...busy };
+      }
+    })
+  );
   // Test hooks: a clock for timers and schedules, and the captured mailbox. Only with OSL_TEST_HOOKS=1.
   if (testHooksEnabled()) {
     app.post("/api/osl-hooks/timers/run", async c => c.json({ data: await timersRun(await c.req.json().catch(() => ({}))) }));

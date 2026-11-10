@@ -1,0 +1,46 @@
+id: fx-ws-18-invoices
+tags: [fixture, entity, fields, sequence, money, tenancy, isolation, counts, app, scenario]
+base: { fixture: workspace, through: WS-17 }
+oracle: fixtures/workspace/intents/WS-18/diff.yaml
+intent:
+  title: Invoices
+  ask: >-
+    A team sends invoices. Each one gets a number its people can quote on the phone: INV-000001 for the team's first,
+    then the next, counted per team, so that no team can tell from its numbers how many the others sent. Nobody types
+    the number and nobody can change it. An invoice has a total in dollars, euros or yen, and the amounts must be
+    exact: 0.30 is 0.30, and a total with fifteen digits before the point comes back as it was sent. There is an
+    optional handling fee, always in dollars. A team shows how many invoices it has.
+  acceptance:
+    - Two teams each create two invoices and each sees INV-000001 and INV-000002
+    - A create that is refused takes no number, so the team's next invoice is the next number
+    - A total of 19.99 comes back as the string "19.9900"; a total sent as a JSON number, with five fraction digits or below zero is refused
+    - A total of 999999999999999.9999 comes back digit for digit
+    - The list is filtered by number and by total, searched by number and sorted by number
+    - Changing the currency without sending the total is refused; sending both is accepted
+    - A deleted invoice leaves a hole, and its number is not given again
+expect:
+  entities: [Invoice]
+  types:
+    "Invoice.number|invoice_number|reference": sequence
+    "Invoice.total|amount|total_amount": money
+    "Invoice.fee|handling_fee": money
+    "Invoice.currency|currency_code": enum
+  field_props:
+    "Invoice.number|invoice_number|reference": { prefix: "INV-", scope: [team_id], width: 6 }
+    "Invoice.total|amount|total_amount": { currency_field: currency, validate: { min: "0" } }
+    "Invoice.fee|handling_fee": { currency: USD }
+  counts: ["Team.* -> Invoice"]
+  rules: { Invoice: { read: "member:team_id", create: "member:team_id" } }
+  list: { invoices: { filters: ["number|invoice_number|reference", "total|amount|total_amount"] } }
+  pages: { invoices: { kind: resource } }
+  scenarios: { min: 1, rejections: 3, statuses: [400] }
+  touches: [invoices.create, invoices.update]
+  ops: { require: [add_entity], forbid: [add_action] }
+notes: >-
+  The two field kinds of round B6's first half on a tenant table under isolation: database. The number is `type:
+  sequence` with the team in its scope, so the counter is the team's and M181 stays quiet; a `read_only` string a
+  handler fills, an integer with `unique`, or a uuid shown to people has not used the construct, and an action to
+  assign the number is forbidden. The amounts are `type: money`: the total reads its currency from the row's enum
+  field, the fee names USD. A decimal, a float or an integer of cents is the answer the construct replaces. The
+  scenario has to write amounts as strings and expect them back with four fraction digits, and the refusals (a
+  JSON number, a fifth digit, a negative total, the currency without the total) are its 400s. Since the merge with rounds A3 and A4 the sidebar has the home dashboard and the invites page, which a set_sidebar restates.

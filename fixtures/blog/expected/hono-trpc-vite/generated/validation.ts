@@ -174,6 +174,22 @@ export const bulletinsUpdateInput = z
   })
   .strict();
 
+export const article_editorsId = z.string().uuid();
+export const article_editorsListQuery = z
+  .object({
+    page: z.number().int().min(1).default(1),
+    page_size: z.number().int().min(1).max(200).default(20),
+    article_id: z.string().uuid().optional(),
+    user_id: z.string().uuid().optional()
+  })
+  .strict();
+export const article_editorsCreateInput = z
+  .object({
+    article_id: z.string().uuid(),
+    user_id: z.string().uuid()
+  })
+  .strict();
+
 export const integrationsId = z.string().uuid();
 /** The shape of Integration.config for each value of kind */
 export const integrationsConfigShapes = {
@@ -219,6 +235,21 @@ export const integrationsUpdateInput = z
     config: shaped<IntegrationConfig, z.input<(typeof integrationsConfigShapes)[keyof typeof integrationsConfigShapes]>>().optional(),
     secret: z.string().max(200).nullish(),
     token: z.string().max(200).nullish()
+  })
+  .strict();
+
+export const article_invitesId = z.string().uuid();
+export const article_invitesListQuery = z
+  .object({
+    page: z.number().int().min(1).default(1),
+    page_size: z.number().int().min(1).max(200).default(20),
+    article_id: z.string().uuid().optional()
+  })
+  .strict();
+export const article_invitesCreateInput = z
+  .object({
+    article_id: z.string().uuid(),
+    email: z.string().email().max(255)
   })
   .strict();
 

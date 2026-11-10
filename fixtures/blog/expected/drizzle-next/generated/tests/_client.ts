@@ -6,7 +6,7 @@ import { Client as PgClient } from "pg";
 export const BASE_URL = process.env.OSL_BASE_URL ?? "http://localhost:3000";
 
 /** Columns that must never appear in any response */
-const HIDDEN = new Set<string>(["password_hash"]);
+const HIDDEN = new Set<string>(["password_hash", "token_hash"]);
 
 export interface Reply {
   status: number;
@@ -74,6 +74,7 @@ export const ACTORS: Record<string, { email: string; password: string; fields: R
   alice: { email: "alice@example.com", password: "alice-pass-1", fields: {"name":"Alice"}, provisioned: {} },
   bob: { email: "bob@example.com", password: "bob-pass-1", fields: {"name":"Bob"}, provisioned: {} },
   dave: { email: "dave@example.com", password: "dave-pass-1", fields: {"name":"Dave"}, provisioned: {} },
+  erin: { email: "erin@example.com", password: "erin-pass-1", fields: {"name":"Erin"}, provisioned: {} },
   admin: { email: "admin@example.com", password: "admin-pass-1", fields: {"name":"Admin"}, provisioned: {"role":"admin"} }
 };
 

@@ -1,14 +1,13 @@
 osl: "1.0"
-title: Archived milestones and labels, and what a project counts
+title: No team ever sees another team's data, enforced in the database
 ask: >-
-  A team's admins archive a milestone that is out of the way and restore it later; a plain member cannot. An archived
-  milestone leaves the list unless the archived ones are asked for, still opens by its id, and keeps its place among
-  the project's milestones. Labels can be archived by whoever may edit them, and a milestone still shows an archived
-  label it carries. A project says how many milestones it has and how many of them are still open (not done and not
-  archived). A user says how many teams they are in.
+  The rules already keep one team's projects, tasks, notes, milestones and channels from another team. Make the
+  database refuse it too, whatever the code above it does: a request reads and writes only rows of the teams its
+  caller belongs to, plus what a public project deliberately opens to everyone. Nothing a caller sees or may do
+  today changes, except that being a task's assignee or a note's author no longer reaches a team's rows once the
+  person has left the team.
 acceptance:
-  - A member is refused when archiving a milestone; an admin archives it, and a second archive is a conflict
-  - The archived milestone is missing from the project's list and is the only one in the list of archived ones
-  - The project's milestone count stays while its count of open milestones falls, and rises again on restore
-  - An archived label is out of the label list and still named on the milestone that carries it
-  - A user in two teams counts two, whoever asks
+  - Every earlier scenario passes unchanged
+  - An assignee removed from the team gets 403 for their task and may not update it, lists none of the team's tasks, and still reads a public project's task like anyone else
+  - Someone who belongs to two teams lists the tasks of both in one request
+  - The cross-tenant walk passes a second time with the generated rule checks switched off, and the app's database role without a bound team reads no row of any team table except the tasks of public projects

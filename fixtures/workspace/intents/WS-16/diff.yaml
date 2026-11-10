@@ -1,190 +1,226 @@
 osl: "1.0"
-summary: "Invoice under a team: a number from a sequence counted per team (INV-000001), a total as money in the row's currency and a fee as money in USD, a count of invoices on Team, a table page"
+summary: "Request under a team with a status state machine (approve, decline, reopen, and an expire only a timer runs), a count of pending requests on Team, a board by status; a request page at /requests/:id with the transitions"
 ops:
   - op: add_entity
-    name: Invoice
+    name: Request
     entity:
       fields:
         id: { type: uuid, primary: true }
         team_id:
           type: uuid
           required: true
-          relation: { entity: Team, name: team, reverse: invoices, on_delete: cascade }
-        number: { type: sequence, prefix: "INV-", scope: [team_id], width: 6 }
-        customer: { type: string, max_length: 160, required: true, validate: { min_length: 1 } }
-        currency: { type: enum, enum_values: [USD, EUR, JPY], required: true, default: USD }
-        total: { type: money, currency_field: currency, required: true, validate: { min: "0" } }
-        fee: { type: money, currency: USD, description: Handling fee }
+          relation: { entity: Team, name: team, reverse: requests, on_delete: cascade }
+        requester_id:
+          type: uuid
+          required: true
+          relation: { entity: User, name: requester, on_delete: cascade }
+        title: { type: string, max_length: 160, required: true, validate: { min_length: 1 } }
+        amount: { type: integer, required: true, validate: { min: 1 } }
+        status:
+          type: enum
+          enum_values: [pending, approved, declined, expired]
+          required: true
+          default: pending
+          read_only: true
+        decided_at: { type: datetime, read_only: true }
         created_at: { type: datetime, required: true, default: now }
       rules:
-        read: "member:team_id"
-        create: "member:team_id"
-        update: "member:team_id:admin"
+        read: "owner:requester_id or member:team_id:admin"
+        create: "member:team_id and owner:requester_id"
+        update: "owner:requester_id when status = pending"
         delete: "member:team_id:admin"
+      transitions:
+        field: status
+        approve: { from: [pending], to: approved, rule: "member:team_id:admin", stamp: decided_at }
+        decline: { from: [pending], to: declined, rule: "member:team_id:admin", stamp: decided_at }
+        reopen: { from: [declined], to: pending, rule: "owner:requester_id" }
+        expire: { from: [pending], to: expired, rule: none }
   - op: add_field
     entity: Team
-    name: invoice_count
-    field: { type: integer, count_of: invoices }
+    name: pending_requests
+    field: { type: integer, count_of: requests, where: "status = pending" }
   - op: add_resource
-    name: invoices
+    name: requests
     resource:
-      entity: Invoice
+      entity: Request
       operations: [list, get, create, update, delete]
-      list:
-        filters: [team_id, number, currency, total]
-        sortable: [number, total, created_at]
-        search: [number, customer]
+      list: { filters: [team_id, status, requester_id], order: [[created_at, asc]] }
+      update: { fields: [title, amount] }
+  - op: set_timers
+    timers:
+      - { on: Task, at: due_at, run: tasks.remind, when: "done = false" }
+      - { on: Request, at: created_at, after: 14d, run: requests.expire }
   - op: add_page
-    name: invoices
+    name: requests
     page:
-      resource: invoices
-      layout: table
-      columns: [number, customer, total, fee, created_at]
+      resource: requests
+      layout: board
+      group_by: status
+      columns: [title, amount, status]
   - op: set_sidebar
     sidebar:
       items:
+        - { page: home, icon: house }
         - { page: teams, icon: building }
         - { page: projects, icon: folder-kanban }
         - { page: tasks, icon: list-checks }
         - { page: milestones, icon: flag }
         - { page: requests, icon: kanban }
-        - { page: invoices, icon: receipt }
         - { page: notes, icon: sticky-note }
         - { page: members, icon: users }
+        - { page: invites, icon: mail-plus }
         - { page: channels, icon: hash }
         - { page: messages, icon: message-square }
       footer: { user: true, settings: true }
+  - op: add_page
+    name: request
+    page:
+      kind: detail
+      resource: requests
+      path: /requests/:id
+      fields: [title, amount, status, requester_id, decided_at, created_at]
   - op: add_scenario
     scenario:
-      name: numbered invoices and exact amounts
+      name: requests and approvals
       steps:
         - as: alice
           op: teams.create
           body: { name: Initech }
-          expect: { status: 201, body: { data: { name: Initech, invoice_count: 0 } } }
-          capture: { team_a: data.id }
+          expect: { status: 201, body: { data: { pending_requests: 0 } } }
+          capture: { team: data.id }
         - as: bob
-          op: teams.create
-          body: { name: Globex }
-          expect: { status: 201 }
-          capture: { team_b: data.id }
+          op: auth.me
+          expect: { status: 200 }
+          capture: { bob_id: data.id }
         - as: alice
-          op: invoices.create
-          body: { team_id: "{team_a}", customer: Acme, total: "19.99" }
-          expect:
-            status: 201
-            body: { data: { number: INV-000001, customer: Acme, currency: USD, total: "19.9900", fee: null } }
-          capture: { first: data.id }
-        - as: alice
-          op: invoices.create
-          body: { team_id: "{team_a}", customer: Bolt, currency: EUR, total: "0.3", fee: "0.1" }
-          expect: { status: 201, body: { data: { number: INV-000002, currency: EUR, total: "0.3000", fee: "0.1000" } } }
+          op: members.create
+          body: { team_id: "{team}", user_id: "{bob_id}" }
+          expect: { status: 201, body: { data: { role: member } } }
         - as: bob
-          op: invoices.create
-          body: { team_id: "{team_b}", customer: Cyberdyne, currency: JPY, total: "999999999999999.9999" }
-          expect: { status: 201, body: { data: { number: INV-000001, currency: JPY, total: "999999999999999.9999" } } }
+          op: requests.create
+          body: { team_id: "{team}", title: Standing desk, amount: 450 }
+          expect: { status: 201, body: { data: { status: pending, decided_at: null, requester_id: "{bob_id}" } } }
+          capture: { desk: data.id }
         - as: bob
-          op: invoices.create
-          body: { team_id: "{team_b}", customer: Dunder, total: "123456789012345.6789", fee: "0.0001" }
-          expect:
-            status: 201
-            body: { data: { number: INV-000002, total: "123456789012345.6789", fee: "0.0001" } }
-        - as: alice
-          op: invoices.create
-          body: { team_id: "{team_a}", customer: Float, total: 19.99 }
-          expect: { status: 400 }
-        - as: alice
-          op: invoices.create
-          body: { team_id: "{team_a}", customer: Digits, total: "1.23456" }
-          expect: { status: 400 }
-        - as: alice
-          op: invoices.create
-          body: { team_id: "{team_a}", customer: Below, total: "-0.0001" }
-          expect: { status: 400 }
-        - as: alice
-          op: invoices.create
-          body: { team_id: "{team_a}", customer: Numbered, total: "1", number: INV-000009 }
-          expect: { status: 400 }
-        - as: bob
-          op: invoices.create
-          body: { team_id: "{team_a}", customer: Intruder, total: "1" }
-          expect: { status: 403 }
-        - as: alice
-          op: invoices.create
-          body: { team_id: "{team_a}", customer: Cog, total: "5" }
-          expect: { status: 201, body: { data: { number: INV-000003, total: "5.0000" } } }
-          capture: { third: data.id }
-        - as: alice
-          op: invoices.list
-          query: { team_id: "{team_a}", number: INV-000002 }
-          expect: { status: 200, body: { data: [{ customer: Bolt, total: "0.3000" }], page: { total: 1 } } }
-        - as: alice
-          op: invoices.list
-          query: { team_id: "{team_a}", total: "19.99" }
-          expect: { status: 200, body: { data: [{ number: INV-000001 }], page: { total: 1 } } }
-        - as: alice
-          op: invoices.list
-          query: { team_id: "{team_a}", total: "19.990001" }
-          expect: { status: 400 }
-        - as: alice
-          op: invoices.list
-          query: { team_id: "{team_a}", q: "inv-000003" }
-          expect: { status: 200, body: { data: [{ customer: Cog }], page: { total: 1 } } }
-        - as: alice
-          op: invoices.list
-          query: { team_id: "{team_a}", sort: "number:desc" }
-          expect:
-            status: 200
-            body: { data: [{ number: INV-000003 }, { number: INV-000002 }, { number: INV-000001 }], page: { total: 3 } }
-        - as: alice
-          op: invoices.list
-          query: { team_id: "{team_a}", currency: USD, sort: "total:desc" }
-          expect: { status: 200, body: { data: [{ total: "19.9900" }, { total: "5.0000" }], page: { total: 2 } } }
-        - as: bob
-          op: invoices.list
-          expect: { status: 200, body: { data: [{ customer: Dunder }, { customer: Cyberdyne }], page: { total: 2 } } }
-        - as: bob
-          op: invoices.get
-          path: { id: "{first}" }
-          expect: { status: 403 }
-        - as: alice
-          op: invoices.update
-          path: { id: "{first}" }
-          body: { currency: EUR }
-          expect: { status: 400 }
-        - as: alice
-          op: invoices.update
-          path: { id: "{first}" }
-          body: { currency: EUR, total: "18.5" }
-          expect: { status: 200, body: { data: { number: INV-000001, currency: EUR, total: "18.5000" } } }
-        - as: alice
-          op: invoices.update
-          path: { id: "{first}" }
-          body: { currency: EUR, customer: Acme Europe }
-          expect: { status: 200, body: { data: { customer: Acme Europe, currency: EUR, total: "18.5000" } } }
-        - as: alice
-          op: invoices.update
-          path: { id: "{first}" }
-          body: { number: INV-000042 }
-          expect: { status: 400 }
-        - as: alice
-          op: invoices.update
-          path: { id: "{first}" }
-          body: { team_id: "{team_b}" }
+          op: requests.create
+          body: { team_id: "{team}", title: Approved by hand, amount: 1, status: approved }
           expect: { status: 400 }
         - as: alice
           op: teams.get
-          path: { id: "{team_a}" }
-          expect: { status: 200, body: { data: { invoice_count: 3 } } }
+          path: { id: "{team}" }
+          expect: { status: 200, body: { data: { pending_requests: 1 } } }
+        - as: bob
+          op: requests.update
+          path: { id: "{desk}" }
+          body: { amount: 480 }
+          expect: { status: 200, body: { data: { amount: 480, status: pending } } }
+        - as: bob
+          op: requests.update
+          path: { id: "{desk}" }
+          body: { status: approved }
+          expect: { status: 400 }
+        - op: requests.approve
+          path: { id: "{desk}" }
+          expect: { status: 401 }
+        - as: carol
+          op: requests.approve
+          path: { id: "{desk}" }
+          expect: { status: 403 }
+        - as: carol
+          op: requests.reopen
+          path: { id: "{desk}" }
+          expect: { status: 403 }
+        - as: bob
+          op: requests.approve
+          path: { id: "{desk}" }
+          expect: { status: 403 }
         - as: alice
-          op: invoices.delete
-          path: { id: "{third}" }
-          expect: { status: 204 }
+          op: requests.reopen
+          path: { id: "{desk}" }
+          expect: { status: 403 }
+        - as: bob
+          op: requests.reopen
+          path: { id: "{desk}" }
+          expect: { status: 409 }
         - as: alice
-          op: invoices.create
-          body: { team_id: "{team_a}", customer: Dyne, total: "7.5" }
-          expect: { status: 201, body: { data: { number: INV-000004 } } }
+          op: requests.decline
+          path: { id: "{desk}" }
+          expect: { status: 200, body: { data: { title: Standing desk, status: declined } } }
+          capture: { declined_at: data.decided_at }
+        - as: alice
+          op: requests.decline
+          path: { id: "{desk}" }
+          expect: { status: 409 }
+        - as: alice
+          op: requests.approve
+          path: { id: "{desk}" }
+          expect: { status: 409 }
         - as: alice
           op: teams.get
-          path: { id: "{team_a}" }
-          expect: { status: 200, body: { data: { invoice_count: 3 } } }
+          path: { id: "{team}" }
+          expect: { status: 200, body: { data: { pending_requests: 0 } } }
+        - as: bob
+          op: requests.update
+          path: { id: "{desk}" }
+          body: { amount: 500 }
+          expect: { status: 403 }
+        - as: bob
+          op: requests.reopen
+          path: { id: "{desk}" }
+          expect: { status: 200, body: { data: { status: pending, decided_at: "{declined_at}" } } }
+        - as: bob
+          op: requests.update
+          path: { id: "{desk}" }
+          body: { amount: 500 }
+          expect: { status: 200, body: { data: { amount: 500 } } }
+        - as: alice
+          op: requests.approve
+          path: { id: "{desk}" }
+          expect: { status: 200, body: { data: { status: approved, amount: 500 } } }
+        - as: bob
+          op: requests.create
+          body: { team_id: "{team}", title: Team offsite, amount: 1200 }
+          expect: { status: 201, body: { data: { status: pending } } }
+          capture: { offsite: data.id }
+        - as: alice
+          op: teams.get
+          path: { id: "{team}" }
+          expect: { status: 200, body: { data: { pending_requests: 1 } } }
+        - op: timers.run
+          body: { now: "{now+13d}" }
+          expect: { status: 200 }
+        - as: bob
+          op: requests.get
+          path: { id: "{offsite}" }
+          expect: { status: 200, body: { data: { status: pending } } }
+        - op: timers.run
+          body: { now: "{now+15d}" }
+          expect: { status: 200 }
+        - as: bob
+          op: requests.get
+          path: { id: "{offsite}" }
+          expect: { status: 200, body: { data: { status: expired, decided_at: null } } }
+        - as: bob
+          op: requests.get
+          path: { id: "{desk}" }
+          expect: { status: 200, body: { data: { status: approved } } }
+        - as: alice
+          op: teams.get
+          path: { id: "{team}" }
+          expect: { status: 200, body: { data: { pending_requests: 0 } } }
+        - as: alice
+          op: requests.approve
+          path: { id: "{offsite}" }
+          expect: { status: 409 }
+        - as: alice
+          op: requests.list
+          query: { team_id: "{team}", status: expired }
+          expect: { status: 200, body: { data: [{ title: Team offsite }], page: { total: 1 } } }
+        - as: carol
+          op: requests.get
+          path: { id: "{desk}" }
+          expect: { status: 403 }
+        - as: carol
+          op: requests.list
+          query: { team_id: "{team}" }
+          expect: { status: 200, body: { data: [], page: { total: 0 } } }

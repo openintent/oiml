@@ -5,7 +5,7 @@
 export const BASE_URL = process.env.OSL_BASE_URL ?? "http://localhost:3000";
 
 /** Columns that must never appear in any response */
-const HIDDEN = new Set<string>(["password_hash"]);
+const HIDDEN = new Set<string>(["password_hash", "token_hash"]);
 
 export interface Reply {
   status: number;
@@ -72,7 +72,8 @@ function assertNoHidden(value: unknown, path: string): void {
 export const ACTORS: Record<string, { email: string; password: string; fields: Record<string, unknown>; provisioned: Record<string, unknown> }> = {
   alice: { email: "alice@example.com", password: "alice-pass-1", fields: {"name":"Alice"}, provisioned: {} },
   bob: { email: "bob@example.com", password: "bob-pass-1", fields: {"name":"Bob"}, provisioned: {} },
-  carol: { email: "carol@example.com", password: "carol-pass-1", fields: {"name":"Carol"}, provisioned: {} }
+  carol: { email: "carol@example.com", password: "carol-pass-1", fields: {"name":"Carol"}, provisioned: {} },
+  dana: { email: "dana@example.com", password: "dana-pass-1", fields: {"name":"Dana"}, provisioned: {} }
 };
 
 /** No actor sets a column register refuses, so there is nothing to provision after registering. */

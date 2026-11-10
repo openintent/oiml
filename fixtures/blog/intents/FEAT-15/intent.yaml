@@ -1,13 +1,13 @@
 osl: "1.0"
-title: Author contact and editor notes
+title: Comment counts and archived articles
 ask: >-
-  People can add a phone number to their profile. Only the person and the admins see it: everyone else reads the
-  profile without it, in lists and beside an article too. The time someone was banned is theirs and the admins'
-  as well. An article has a note for the editors that only admins read: the author who wrote it does not get it
-  back, whatever they do with the article.
+  An article shows how many comments it has, and the list of articles can be sorted by that number. An author can
+  archive one of their own articles: it leaves the list of articles, still opens by its link, and the author can
+  restore it. Archiving notifies in the background. The home page says how many articles are archived. A user shows
+  how many published articles they have that are not archived.
 acceptance:
-  - Someone sees their own phone number in their profile and when they ask who they are; another user and a visitor do not
-  - An admin sees everyone's phone number, in the list of users too
-  - An article's author is shown beside it without the phone number, except to the author and to admins
-  - The author creates, edits, submits, publishes, archives and restores an article and never gets the editor note back
-  - An admin reads the editor note, also in the answer to approving the article
+  - An article's comment count rises with each comment and falls when one is deleted
+  - Sorted by comment count, the most discussed article of an author comes first
+  - Only the author archives an article; an admin who may edit it is refused
+  - An archived article is missing from the list, opens by its id and is in the list of archived ones
+  - An author's count of published articles falls when one of them is archived and rises again when it is restored

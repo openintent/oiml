@@ -18,4 +18,4 @@ notes: >-
   The resource is still called posts although the entity is Article; the event must be posts.archive. Since round
   B3 the answer is `archive:` on Article with `rule: "owner:author_id"` (the update rule also lets an admin in) and
   the event on the compiler's posts.archive; an action with a handler that sets a flag has not used the construct.
-  The case is pinned to FEAT-12: FEAT-13 gives the fixture its own archive.
+  The case is pinned to FEAT-12: FEAT-15 gives the fixture its own archive.

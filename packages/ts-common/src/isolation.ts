@@ -118,10 +118,14 @@ export async function withTenants<T>(tenants: (string | number)[], work: () => P
   return result;
 }
 
-/** Bind a tenant the request is about to create: its creator becomes its first member in the same transaction */
+/**
+ * Bind a tenant the request is about to create (its creator becomes its first member in the same transaction), or
+ * one an invite leads into. A tenant bound already is left as it is.
+ */
 export async function bindTenant(tenant: string | number): Promise<void> {
   const scope = scopes.getStore();
   if (!scope?.tenants) throw new Error("bindTenant needs a request scope (withTenants)");
+  if (scope.tenants.some(t => String(t) === String(tenant))) return;
   scope.tenants.push(tenant);
   await scope.db.execute(sql\`select set_config(\${SETTING}, \${arrayLiteral(scope.tenants)}, true)\`);
 }

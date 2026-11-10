@@ -7,8 +7,8 @@
  *   tenants the request bound) and, where the read rule has public alternatives, a second policy for SELECT only;
  * - a trigger that keeps a derived tenant column equal to the parent's;
  * - functions that see past the policies, each for one named thing: a user's memberships (read before any tenant is
- *   bound), whether a row exists (so another tenant's row answers as the rule says and not as a missing row), and
- *   the value a public alternative tests on a row of another table.
+ *   bound), whether a row exists (so another tenant's row answers as the rule says and not as a missing row), the
+ *   value a public alternative tests on a row of another table, and the tenant an invite leads into.
  *
  * Row security is enabled, not forced: the tables' owner (the role that migrates, and that the worker and the
  * functions above run as) is not bound, so it need not be a superuser.
@@ -181,6 +181,41 @@ export function isolationObjects(ir: IR): IsolationObject[] {
       isolation.appRole
     )
   );
+
+  // An invite is a row of the tenant it leads into, which its invitee does not belong to yet: whoever holds its token
+  // learns its tenant, and a proven address the tenants of the invites to it, so that a request can bind them
+  for (const invite of ir.auth?.invites ?? []) {
+    if (!invite.isolation) continue;
+    const entity = ir.entities.find(e => e.name === invite.entity)!;
+    const column = quoteIdent(entity.tenant!.column);
+    const table = quoteIdent(entity.table);
+    out.push(
+      functionObject(
+        {
+          name: invite.isolation.byToken,
+          args: ["text"],
+          returns: isolation.tenantType,
+          language: "sql",
+          stable: true,
+          body: `  SELECT ${column} FROM ${table} WHERE "token_hash" = $1`,
+          callable: true
+        },
+        isolation.appRole
+      ),
+      functionObject(
+        {
+          name: invite.isolation.byEmail,
+          args: ["text", "timestamptz"],
+          returns: `SETOF ${isolation.tenantType}`,
+          language: "sql",
+          stable: true,
+          body: `  SELECT DISTINCT ${column} FROM ${table} WHERE "email" = $1 AND "expires_at" > $2`,
+          callable: true
+        },
+        isolation.appRole
+      )
+    );
+  }
 
   const tenants = ir.entities.filter(e => e.tenant);
   for (const entity of tenants) {

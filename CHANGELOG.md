@@ -5,6 +5,19 @@ fixture intent on all three backends before it is listed here.
 
 ## Unreleased
 
+- Rounds A3 and A4 merged with milestone B (2026-11-10; no new construct). Invites work under `isolation: database`:
+  an invite is a row of the tenant it leads into, and two definer functions per invite table see past its policy,
+  `osl_invite_<table>` (the tenant a token leads into, which the token routes and a login carrying the token bind
+  before reading the invite) and `osl_invites_<table>` (the tenants of the live invites to a proven address, which
+  acceptance binds before it makes the memberships); under isolation the invite create reads the parent after its
+  insert, so another tenant's parent is the policy's 403. The accept route and a sign-in that accepted answer the
+  caller's own row through the field-rule presenter, the accept takes register's fields (so M189 covers it and no
+  sealed field is taken), and the leak walk counts the accept as a sign-in. A detail page takes over a resource
+  page's detail with milestone B on it: relation panes and drag, Archive and Restore, transitions, field rules,
+  money, sequences, sealed inputs and shape groups; a section leaves out the columns and inputs its viewer cannot
+  read. Renumbered: milestone B's isolation diagnostics are M124 to M128 (were M115 to M119), and its intents are
+  workspace WS-13 to WS-18 and blog FEAT-15 to FEAT-18 (were WS-11 to WS-16 and FEAT-13 to FEAT-16), with their
+  eval cases. The harness runs seven walks.
 - Hardening after milestone B (2026-11-10; no construct, one diagnostic). A lock another request holds is no
   longer a server error: `lock_not_available` (55P03, a move or a remove on an ordered table that gave up after
   about ten seconds of a held row), `deadlock_detected` (40P01, as a delete of a counting row against a write of
@@ -48,7 +61,7 @@ row.<column>)`, `seal.Open(...)` in Go). The stored bytes are one format on ever
   fuzz walk bends every key of every shape and wants a 400 that names it. New keys: `Field.sealed`, `shape`,
   `shape_by`; diagnostics M185 to M188; `sealed` and `shapes` in eval expectations. Not built: key rotation, a
   check of the key at start, a sealed number or JSON value, an array of shapes, a shape on a transitions field.
-  Fixture: blog FEAT-16 (integrations whose settings follow their kind, a signing secret a handler opens, a
+  Fixture: blog FEAT-18 (integrations whose settings follow their kind, a signing secret a handler opens, a
   token for its owner, preferences and a recovery code on the user). Design: `docs/designs/field-kinds.md`.
 - Field kinds, first half: sequences and money (round B6 of the road to 1.0.0; sealed fields and typed JSON
   follow). `type: sequence` is a number people quote: `number: { type: sequence, prefix: "INV-", scope: [team_id],
@@ -74,7 +87,7 @@ type: money, currency_field: currency }` beside a required enum of ISO 4217 code
   scope of every numbered entity and wants eight numbers in a row. New keys: field types `money` and `sequence`;
   `Field.currency`, `currency_field`, `prefix`, `scope`, `width`; decimal strings in `validate.min` and `max`;
   diagnostics M180 to M184. Not built: sums over amounts, currency conversion, a currency through a relation, a
-  number that restarts each year, a number assigned after create. Fixture: workspace WS-16 (invoices numbered per
+  number that restarts each year, a number assigned after create. Fixture: workspace WS-18 (invoices numbered per
   team with a total in the row's currency and a fee in dollars, under `isolation: database`). Design:
   `docs/designs/field-kinds.md`.
 - Field-level visibility (round B5 of the road to 1.0.0). `read:` on a field is a rule in the spelling of the
@@ -93,7 +106,7 @@ type: money, currency_field: currency }` beside a required enum of ISO 4217 code
   carry it. Writes follow the entity's rules as before: M174 warns when the create or update rule lets someone
   write a field its `read:` refuses them, M175 when a field with `read:` is unique (a repeated value still answers
   409). Under `isolation: database` nothing is added to the database and the rule is compiled as written, without
-  the membership M119 adds to an entity's rules; M176 warns where `authenticated` or `role:` lets a signed-in
+  the membership M128 adds to an entity's rules; M176 warns where `authenticated` or `role:` lets a signed-in
   caller who is not a member read the field on rows a public read alternative shows. `auth.me` answers `fields`
   beside `data` (`auth.session` under tRPC): per resource, whether the caller could read each such field on some
   row. The pages leave out the column and the new-row input of a field its viewer could never read, the detail row
@@ -103,8 +116,8 @@ type: money, currency_field: currency }` beside a required enum of ISO 4217 code
   Scenarios say a key must be missing with `expect.absent: [data.budget]`. The leak walk now holds every row of
   every answer to the read rules of its fields, as its caller, and compares what each session is told of its
   fields. New keys: `Field.read`, `expect.absent`; diagnostics M170 to M176. Not built: a rule per field for
-  writing, masking instead of leaving out, a field rule through a relation. Fixtures: workspace WS-15 (a budget and
-  a count for a team's admins, an estimate for signed-in callers, under `isolation: database`) and blog FEAT-15 (a
+  writing, masking instead of leaving out, a field rule through a relation. Fixtures: workspace WS-17 (a budget and
+  a count for a team's admins, an estimate for signed-in callers, under `isolation: database`) and blog FEAT-17 (a
   phone for the person and the admins on the identity, an editor note only admins read on an entity with
   transitions, archive and events). Design: `docs/designs/field-visibility.md`.
 - State machines (round B4 of the road to 1.0.0). `transitions` on an entity names one `read_only` enum field and,
@@ -129,10 +142,10 @@ type: money, currency_field: currency }` beside a required enum of ISO 4217 code
   M160 to M163, M151 for a transition named `archive` or `restore` on an archiving entity, and M087 for a board
   over a read-only enum without transitions. Not built: input on a transition, two state machines on one entity,
   a history of transitions; on the tRPC backend the code `invalid_transition` is the cause of a `CONFLICT` error
-  and is not on the wire, like every code there. Fixtures: blog FEAT-14 (an editorial review beside the `publish`
+  and is not on the wire, like every code there. Fixtures: blog FEAT-16 (an editorial review beside the `publish`
   action, a timer that retires and one that archives, a count of approved articles), todo TODO-8 (the task flow
   beside the `complete` action, which keeps its handler, and the board) and workspace
-  WS-14 (requests and approvals under `isolation: database`, with an expiry only a timer runs). Design:
+  WS-16 (requests and approvals under `isolation: database`, with an expiry only a timer runs). Design:
   `docs/designs/state-machines.md`.
 - Archive and counts (round B3 of the road to 1.0.0). `archive: true` on an entity (or `{ field, rule }`) gives it
   a server-owned `archived_at`: lists leave archived rows out unless asked with `?archived=true`, every resource
@@ -150,8 +163,8 @@ type: money, currency_field: currency }` beside a required enum of ISO 4217 code
   request fails and the count stays exact. The rule walk predicts the archive's list filter and its 409s, and the
   rule and order walks compare every count with the rows it counts. New ops and keys: `set_archive`,
   `Entity.archive`, `Field.count_of`, `Field.where`; diagnostics M150 to M157. A timer cannot run `archive` itself
-  (M133 says what to run); sums and other aggregates stay a handler's. Fixtures: workspace WS-13 (archived
-  milestones and labels, a project's counts, a user's teams, under `isolation: database`) and blog FEAT-13 (comment
+  (M133 says what to run); sums and other aggregates stay a handler's. Fixtures: workspace WS-15 (archived
+  milestones and labels, a project's counts, a user's teams, under `isolation: database`) and blog FEAT-15 (comment
   counts, archived articles with a queued event, an author's count of live published articles). Design:
   `docs/designs/archive-and-counts.md`.
 - PostgreSQL 18: the `docker-compose.yml` a new project gets starts `postgres:18`, with its volume at
@@ -172,7 +185,7 @@ type: money, currency_field: currency }` beside a required enum of ISO 4217 code
   moves and deletes into one parent on every backend. New ops and keys: `set_relations`, `Field.position`,
   `Entity.relations`; diagnostics M014, M015 and M140 to M144. Adding a position to an entity that exists takes its
   parent field out of update (a row keeps its parent), which the contract walk reports as a breaking change the op
-  explains. Fixtures: music MU-1 to MU-4 and workspace WS-12 (ordered milestones and labels under
+  explains. Fixtures: music MU-1 to MU-4 and workspace WS-14 (ordered milestones and labels under
   `isolation: database`). Design: `docs/designs/many-to-many-and-ordering.md`.
 - The tenant isolation backstop (round B1 of the road to 1.0.0): `auth.tenancy.isolation: database` puts row-level
   security behind the rules on every tenant table (the tenant entity, the membership, and every entity that reaches
@@ -187,9 +200,39 @@ type: money, currency_field: currency }` beside a required enum of ISO 4217 code
   statuses are unchanged, another tenant's row still answers 403 or 401 through an existence probe. Row security is
   enabled, not forced, so the owner role (migrations, the worker) need not be a superuser. `osl drift` compares row
   security, policies, the functions that see past them and the triggers. The tenant walk runs a second pass with
-  the generated rule checks switched off by a test hook, and an unbound probe of the app role. Diagnostics M115 to
-  M119; workspace WS-11; eval cases `fx-ws-11-isolation`, `ws2-database-isolation`, `empty-clinic-isolation`.
+  the generated rule checks switched off by a test hook, and an unbound probe of the app role. Diagnostics M124 to
+  M128; workspace WS-13; eval cases `fx-ws-13-isolation`, `ws2-database-isolation`, `empty-clinic-isolation`.
   Models without the key generate byte-identical output.
+- The proposer's output cap: `osl propose` streams its request and caps one answer at 64,000 output tokens,
+  thinking included, where it stopped at 16,000. `--max-tokens` sets the cap on `osl propose`, `pnpm evals` and
+  `pnpm evals:round`, and a live run records it in `results.json`. An answer that reaches the cap is reported as
+  cut off, once, with the tokens it spent; it used to be retried as a broken answer and recorded at no cost. Round
+  6's brief that had been recorded `invalid` was graded under it; the clusterer files a write that depends on the
+  caller under role changes whatever the field, and a stamp only one action sets under state machines and
+  transitions.
+- Invites (round A4 of the road to 1.0.0): `auth.invites` names a membership (the tenancy's, or a junction with a
+  relation to the identity and one to the entity people join) and the compiler writes the `<Parent>Invite` entity
+  and the `<parent>_invites` resource for it: list, get, delete and a create that mails a link, with `rule` and
+  `expires` per entry. An invite becomes a membership only when its email is proven, in one function every proof
+  calls: the accept route, a magic-link sign-in, a provider sign-in with a verified email, and a password login
+  that carries the invite's token. `GET /api/auth/invites/{token}` says what a link is for and
+  `POST /api/auth/invites/{token}/accept` accepts, making the account where the address has none; a role may not
+  rank above the inviter's own. The two TypeScript backends serve the link at `/invite/<token>`, and `/login` takes
+  `next`. Scenario steps `auth.invite` and `auth.invite_accept`, `invite` on `auth.login`, and `debug.token` on the
+  create while emails are captured. Diagnostics M115 to M118, with M072, M084, M121 and M123 grown; `set_auth`
+  carries `invites`, and `rename_entity` and `rename_field` follow them. Workspace WS-11 (team invites and a page
+  of the pending ones) and WS-12 (invites to a private channel from its page) and blog FEAT-14 (co-authors by
+  invite); a sixth conformance walk, `walk:invite`; eval cases `fx-ws-11-invites`, `fx-ws-12-channel-invites`,
+  `fx-feat-14-coauthor-invites` and `ws11-join-link-trap`, and `ws1-invites-gap` promoted from a gap to a case with
+  expectations; the clusterer's topics for reminders on pending invites and filters on the invite list.
+- Pages with parameters (round A3 of the road to 1.0.0): `kind: detail` pages at a path ending `/:id`, which take
+  over a resource page's detail when the path is that page's plus `/:id` and stand alone with their own `access`
+  otherwise, with `sections` that list other resources filtered by `{row.id}`; and `{tenant.id}` in page, tile,
+  section and recent filters, with a switcher in the shell. Diagnostics M095 to M098; workspace WS-10 (a channel
+  page, a home dashboard for the chosen team) and blog FEAT-13 (a public author page, an article page whose
+  comments section creates); eval cases `fx-ws-10-channel-page-and-team-home`,
+  `fx-blog-13-author-and-article-pages`, `ws2-public-project-pages`, `ws2-team-dashboard-files` and
+  `empty-org-public-roadmap`.
 - Membership through any relation (round A2 of the road to 1.0.0): a `member:` path may end in a membership
   relation, a reverse relation to a junction whose entity has a relation to the identity (`member:members` on a
   channel, `member:channel_id.members` on a message, `member:author_id.followers` on a bulletin); `:role` ranks an

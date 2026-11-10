@@ -1,16 +1,15 @@
 osl: "1.0"
-title: Integrations, preferences and sealed secrets
+title: Editorial review
 ask: >-
-  People connect the blog to other systems. An integration is a webhook, a Slack channel or an email list, and what
-  it needs depends on which: a webhook has a URL and a number of retries, a Slack integration a channel and whether
-  to mention it, an email list its addresses. Each has a signing secret that is stored encrypted and never shown
-  again, not even to its owner; the server signs payloads with it. It can also hold an access token, encrypted too,
-  which only the owner gets back. People also keep preferences (a theme, whether they want the digest, quiet
-  hours) and a recovery code that is encrypted and theirs alone.
+  Articles go through a review. An author submits a draft; an admin approves it or sends it back; an approved
+  article can be retired by its author or an admin. Nobody sets the status by hand. Record when an article was
+  approved and when it was retired. Thirty days after approval an article retires on its own, and thirty days after
+  that it is archived. A user shows how many approved articles they have. Publishing stays what it is. Give the
+  editors a board of articles by status where a card can only be dragged along a step its viewer may take, and tell
+  the newsroom when an article is approved.
 acceptance:
-  - A webhook without a URL, a Slack integration with a webhook's settings and an unknown setting are all refused, naming the setting
-  - Changing an integration's kind without sending the settings of the new kind is refused
-  - The signing secret is never in any answer; signing a payload gives the signature the secret implies
-  - The owner reads the token back exactly as written; an admin sees the integration without it
-  - Someone's recovery code is in their own profile and nobody else's, also beside an integration they own
-  - A theme that does not exist, a wrong quiet hour and an unknown preference are refused; the digest defaults to on
+  - Only the author submits a draft, and submitting twice is a conflict
+  - Only an admin approves or rejects, and only an article in review; approving records when
+  - Setting the status in a create or an update is refused
+  - A user's count of approved articles follows the review
+  - An approved article retires by itself after thirty days, and one retired by hand is left as it was

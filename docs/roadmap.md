@@ -24,8 +24,9 @@ What alpha.2 proved is that OSL generates a working application of one shape: on
 CRUD with actions, auth with providers, files, jobs. What the research says, in one line each:
 
 - **The rounds** ask for the next construct one at a time, and the five built on 2026-11-09 each emptied its
-  cluster within a round. What remains in the backlog by cases: invites (3), pages with parameters (2), computed
-  fields (2), role changes (2), then one-offs.
+  cluster within a round. What remained in the backlog by cases when the plan was made: invites (3, built since
+  in round A4), pages with parameters (2, built since in round A3), computed fields (2), role changes (2), then
+  one-offs.
 - **The survey** found what hand-written applications build for themselves and police with lint: tenant
   isolation in the database, field-level visibility, state machines, money and sequences, archive and counts,
   audit and webhooks, API keys and an MCP surface, and five structural walks. No round asks for them, because a
@@ -52,21 +53,26 @@ milestone D.
 
 ### Milestone A: access (`1.0.0-alpha.4`)
 
-| #   | Round                                                                                                                                                                                                                    | Design                                                 | Evidence                                                                                             | Size                                            |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| A1  | Conformance walks: the rule, cross-tenant, leak, fuzz and contract-diff walks over every fixture                                                                                                                         | `designs/conformance-walks.md`                         | the survey; raises every later proof                                                                 | smaller than any construct                      |
-| A2  | Membership through any relation: `member:` ending in a membership relation, `ranked: true`                                                                                                                               | `designs/membership-through-any-relation.md`, approved | three exercises (Slack in four intents)                                                              | the relations round                             |
-| A3  | Pages with parameters and sections, with a tenant context: a page over one row at its own address, sections from other resources filtered by the parameter, `{tenant.id}` and a switcher                                 | to write                                               | three exercises, 2 cases, the top open page gap                                                      | the pages round                                 |
-| A4  | Invites: email invites with a role, acceptance that creates the account, auto-accept on every sign-in path                                                                                                               | `designs/invites.md`                                   | 3 cases, the top of the backlog; the SaaS kit needs it                                               | the hidden-rows round plus web work             |
-| A5  | Role ceiling on membership writes: a write of a ranked role (the tenancy `role_field`, or an enum marked `ranked: true` on a membership entity) may not grant a role above the writer's own, the check A4's invites make | to write                                               | 2 cases (the role changes gap), Slack; the workspace fixture, where an admin may write `role: owner` | near the hidden-rows round, to size in the note |
-| A6  | Rules and time: `when actor.<field> = <value>`, `when created_at > now-15m` on predicates and as range filters, timers before a date and on date fields                                                                  | to write                                               | two exercises, three one-off cases                                                                   | smaller than the relations round                |
+| #   | Round                                                                                                                                                                                                                    | Design                                              | Evidence                                                                                             | Size                                            |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| A1  | Conformance walks: the rule, cross-tenant, leak, fuzz and contract-diff walks over every fixture                                                                                                                         | `designs/conformance-walks.md`                      | the survey; raises every later proof                                                                 | smaller than any construct                      |
+| A2  | Membership through any relation: `member:` ending in a membership relation, `ranked: true`                                                                                                                               | `designs/membership-through-any-relation.md`, built | three exercises (Slack in four intents)                                                              | the relations round                             |
+| A3  | Pages with parameters and sections, with a tenant context: a page over one row at its own address, sections from other resources filtered by the parameter, `{tenant.id}` and a switcher                                 | `designs/pages-with-parameters.md`, built           | three exercises, 2 cases, the top open page gap                                                      | the pages round                                 |
+| A4  | Invites: email invites with a role, acceptance that creates the account, auto-accept on every sign-in path                                                                                                               | `designs/invites.md`, built                         | 3 cases, the top of the backlog; the SaaS kit needs it                                               | the hidden-rows round plus web work             |
+| A5  | Role ceiling on membership writes: a write of a ranked role (the tenancy `role_field`, or an enum marked `ranked: true` on a membership entity) may not grant a role above the writer's own, the check A4's invites make | to write                                            | 2 cases (the role changes gap), Slack; the workspace fixture, where an admin may write `role: owner` | near the hidden-rows round, to size in the note |
+| A6  | Rules and time: `when actor.<field> = <value>`, `when created_at > now-15m` on predicates and as range filters, timers before a date and on date fields                                                                  | to write                                            | two exercises, three one-off cases                                                                   | smaller than the relations round                |
+| A7  | Verified registration: registering with a password proves the email, so no account is held ahead of the address's owner                                                                                                  | to write                                            | `designs/invites.md`, choice 12; invites raise what such an account is worth                         | to size in its note                             |
 
 Why this order: the walks first, so A2 onward are proven against the leak and cross-tenant walks without
 writing those scenarios; membership before pages, because the channel page is the proof of both; invites after
 membership, because an invite to a channel is the same construct a second time and the design can say so; the
 role ceiling straight after invites, because it is the invite's own check applied to the membership resource and
-the two ways to a role should not disagree inside one release; the small rules round last, when the rounds before
-it have settled what a predicate can reference and the rule parser (Q2) is in.
+the two ways to a role should not disagree inside one release; the small rules round after it, when the rounds
+before it have settled what a predicate can reference and the rule parser (Q2) is in. A7 joined on 2026-11-09
+with the approval of the invites design (its choice 12): an invite raises what an account registered ahead of its
+owner is worth, and the proof rule of A4 does not close that, so verified registration leaves the 1.1 table for
+this milestone and lands before the kits. It was A6 until the merge of A3 and A4 with milestone B (2026-11-10),
+which kept the role ceiling and rules and time as A5 and A6.
 
 A5 was the role changes row of the 1.1 table until 2026-11-10. In the workspace fixture `TeamMember` has `create`
 and `update: "member:team_id:admin"`, the generated update checks that rule and writes the patch, and no scenario
@@ -184,13 +190,15 @@ in `packages/evals/src/backlog.ts`); a kind for them is a change to the loop's t
 A1 walks ──► every later proof
 A2 membership ──► A3 pages (channel page) ──► C2 cursor (the page loads older rows)
 A2 membership ──► A4 invites (an invite to a channel) ──► A5 role ceiling (the invite's check, on memberships)
+A4 invites ──► A7 verified registration (the open end of the proof rule)
 Q2 rule parser ──► A6 rules and time (comparisons, now, actor fields)
 milestone A, Q1 upgrade safety, Q3 walks in osl verify ──► the first publication (alpha.4)
 A2 membership ──► B1 isolation (policies know junction rules) ──► B3 counts, C2 search, C3 audit (designed under it)
+A4 invites ──► B1 isolation (an invite leads into a tenant its invitee is not in: functions that see past the policy)
 B2 many-to-many ──► B3 counts (reverse relations)
 B3 archive, B4 transitions ──► C3 audit (records them) ──► C4 MCP (tools cover them)
 B5 visibility ──► C3 audit and webhooks (their exclusions)
-A4 invites, A5 role ceiling, C3 audit, C4 keys ──► D1 saas kit
+A4 invites, A5 role ceiling, A7 verified registration, C3 audit, C4 keys ──► D1 saas kit
 ```
 
 ## What 1.0.0 leaves for 1.1, with the evidence that would pull it forward
@@ -201,7 +209,7 @@ A4 invites, A5 role ceiling, C3 audit, C4 keys ──► D1 saas kit
 | Write rules by caller beyond the role ceiling (what a client may write into a field depends on who they are)                     | a second grammar for before-and-after values; the ceiling on ranked roles is round A5 | two cases the ceiling does not answer              |
 | Search across resources                                                                                                          | a custom page composes the per-resource searches                                      | two cases                                          |
 | Dashboard panels beyond counts, sums and averages                                                                                | a trigger per numeric type and a null policy                                          | two cases each                                     |
-| Shared secrets and access codes, sign-in flow settings, uniqueness beyond `unique`                                               | one case each                                                                         | a second case                                      |
+| Shared secrets and access codes, sign-in flow settings (verified registration is A7), uniqueness beyond `unique` | one case each                                                                         | a second case                                      |
 | Cascading archive, incoming webhooks, rate limits, import and export                                                             | declined in their design notes with a sentence                                        | a round that asks twice                            |
 
 Declined and staying declined: realtime and live updates, payments and billing, user-defined schemas (the
@@ -213,7 +221,9 @@ boundary the Notion exercise wrote down), handlers left to implement.
   round, as today. The nightly round keeps running against `main`.
 - The generator gains two briefs it does not write today: intents whose caller is a program or an assistant
   (for C4) and intents with two membership shapes or a page per row (for A2 and A3), so that the rounds test the
-  constructs the exercises found rather than only the ones they asked for.
+  constructs the exercises found rather than only the ones they asked for. The second was added with round A3 as
+  two constraints of the generator (`packages/evals/src/generate.ts`) and first drawn in round r8; the first waits
+  for C4.
 - One exercise per milestone, before its design notes are finalized: a Shopify admin for B and C (money,
   sequences, transitions, audit, webhooks), GitHub for C4, Airbnb for A6 and B6. Each adds its intents to a fixture
   or starts a sibling, and its gaps enter the backlog as the first three did.
@@ -222,9 +232,9 @@ boundary the Notion exercise wrote down), handlers left to implement.
 
 ## Size and pace
 
-Sixteen construct rounds, three quality rounds and two release pieces, with the first publication after milestone
+Seventeen construct rounds, three quality rounds and two release pieces, with the first publication after milestone
 A. The five construct rounds of 2026-11-09 each took one session from design to backlog flip, with the harness as
-the judge; at that pace the version is about sixteen sessions of construct work plus the quality rounds, the
+the judge; at that pace the version is about seventeen sessions of construct work plus the quality rounds, the
 exercises and the release, with the design reviews between them as the human checkpoints the loop requires. Each
 round's full eval regrade costs about five dollars; a milestone with its exercise and the Sonnet comparison about
 twenty.
@@ -235,12 +245,15 @@ twenty.
 | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | A1 conformance walks               | built 2026-11-09: five walks as harness steps, all fixtures on all backends passing them unchanged; the first run's only findings were the harness's own (`designs/conformance-walks.md`)                                                                                                                                                                         |
 | A2 membership through any relation | built 2026-11-09: `member:` paths ending in a membership relation with `ranked: true`, workspace WS-9 channels and blog FEAT-12 followers, 9/9 with walks, oracle 27/27 (`designs/membership-through-any-relation.md`)                                                                                                                                            |
-| B1 tenant isolation backstop       | built 2026-11-10: `auth.tenancy.isolation: database`, workspace WS-11, 9/9 with walks, the tenant walk again with the rule checks off and the unbound probe, oracle 28/28 (`designs/tenant-isolation-backstop.md`)                                                                                                                                                |
-| B2 many-to-many and ordering       | built 2026-11-10: `relations: { <name>: { through } }` and `position: { within }` with the compiler's `move`, the order kept in the database, a fourth fixture `music` (MU-1 to MU-4) and workspace WS-12 under isolation, 12/12 with six walks (the new one bursts concurrent creates, moves and deletes), oracle 32/32 (`designs/many-to-many-and-ordering.md`) |
-| B3 archive and counts              | built 2026-11-10: `archive: true` with the compiler's `archive` and `restore`, `count_of` kept by statement triggers (an append takes the parent where its rows are ordered within it), workspace WS-13 under isolation and blog FEAT-13, 12/12 with six walks (rule and order compare every count with its rows), oracle 34/34 (`designs/archive-and-counts.md`) |
-| B4 state machines                  | built 2026-11-10: `transitions` on a read-only enum as compiler-written row actions (a conditional update, 409 from another state), timers that run them and `archive`, boards that drag along them (driven in Chromium on both web backends), blog FEAT-14, todo TODO-8, workspace WS-14 under isolation, 12/12, oracle 37/37 (`designs/state-machines.md`)      |
-| B5 field-level visibility          | built 2026-11-10: `read:` on a field, a rule over the row and the caller; one presenter with a viewer on every way out, `fields` for the pages (seen in Chromium, both web backends, two users), `expect.absent`, the leak walk holding every answered row to its field rules; workspace WS-15, blog FEAT-15, 12/12, oracle 39/39 (`designs/field-visibility.md`) |
-| B6 field kinds                     | built 2026-11-10 in two halves: `type: sequence` numbered by a trigger and `type: money` as `numeric(19, 4)`, a decimal string on every path (workspace WS-16); `sealed: true` in one stored format on three backends, json with `shape` and `shape_by` (blog FEAT-16); 12/12 with six walks, the pages seen in Chromium, oracle 41/41 (`designs/field-kinds.md`) |
+| A3 pages with parameters           | built 2026-11-09: `kind: detail` pages with sections filtered by `{row.id}`, `{tenant.id}` with a switcher in the shell, workspace WS-10 channel page and team home and blog FEAT-13 author and article pages, 9/9 with walks, oracle 29/29, rounds r1 to r7 graded again without loss, round r8 no longer reporting the gap (`designs/pages-with-parameters.md`) |
+| A4 invites                         | built 2026-11-09: `auth.invites` for any membership, the invite entity and resource the compiler writes, acceptance on proof of the email in one function, the landing page at `/invite/<token>`, workspace WS-11 team invites and WS-12 channel invites and blog FEAT-14 co-authors, 9/9 with six walks, oracle 32/32, rounds r1 to r8 graded again without loss, round r9 using invites in its four invitation briefs (the fourth graded on a retry once the proposer's token limit went from 16,000 to 64,000) and reporting a reminder on pending invites and a filter on the invite list, not the gap (`designs/invites.md`) |
+| B1 tenant isolation backstop       | built 2026-11-10: `auth.tenancy.isolation: database`, workspace WS-13, 9/9 with walks, the tenant walk again with the rule checks off and the unbound probe, oracle 28/28 (`designs/tenant-isolation-backstop.md`)                                                                                                                                                |
+| B2 many-to-many and ordering       | built 2026-11-10: `relations: { <name>: { through } }` and `position: { within }` with the compiler's `move`, the order kept in the database, a fourth fixture `music` (MU-1 to MU-4) and workspace WS-14 under isolation, 12/12 with six walks (the new one bursts concurrent creates, moves and deletes), oracle 32/32 (`designs/many-to-many-and-ordering.md`) |
+| B3 archive and counts              | built 2026-11-10: `archive: true` with the compiler's `archive` and `restore`, `count_of` kept by statement triggers (an append takes the parent where its rows are ordered within it), workspace WS-15 under isolation and blog FEAT-15, 12/12 with six walks (rule and order compare every count with its rows), oracle 34/34 (`designs/archive-and-counts.md`) |
+| B4 state machines                  | built 2026-11-10: `transitions` on a read-only enum as compiler-written row actions (a conditional update, 409 from another state), timers that run them and `archive`, boards that drag along them (driven in Chromium on both web backends), blog FEAT-16, todo TODO-8, workspace WS-16 under isolation, 12/12, oracle 37/37 (`designs/state-machines.md`)      |
+| B5 field-level visibility          | built 2026-11-10: `read:` on a field, a rule over the row and the caller; one presenter with a viewer on every way out, `fields` for the pages (seen in Chromium, both web backends, two users), `expect.absent`, the leak walk holding every answered row to its field rules; workspace WS-17, blog FEAT-17, 12/12, oracle 39/39 (`designs/field-visibility.md`) |
+| B6 field kinds                     | built 2026-11-10 in two halves: `type: sequence` numbered by a trigger and `type: money` as `numeric(19, 4)`, a decimal string on every path (workspace WS-18); `sealed: true` in one stored format on three backends, json with `shape` and `shape_by` (blog FEAT-18); 12/12 with six walks, the pages seen in Chromium, oracle 41/41 (`designs/field-kinds.md`) |
+| A3, A4 and B merged                | 2026-11-10: invites under `isolation: database` (two definer functions per invite table, the request binds the tenant a token or a proven address leads into), detail pages with milestone B on them, B renumbered (WS-13 to WS-18, FEAT-15 to FEAT-18, M124 to M128), 12/12 with seven walks, oracle 46/46                                                       |
 
 ## Decisions, as made on 2026-11-09
 
@@ -267,9 +280,14 @@ round it concerns.
    A6. The general write rule stays in the 1.1 table.
 8. **The first publication is `1.0.0-alpha.4`.** Waiting for `1.0.0` meant thirteen more rounds of grammar decided
    before anyone outside could use one. Publishing still touches accounts outside the repo and still needs its
-   own go-ahead, asked for when milestone A, Q1 and Q3 are done; the external identifiers are decided then.
+   own go-ahead, asked for when milestone A (A5 to A7 still to build), Q1 and Q3 are done; the external
+   identifiers are decided then.
 9. **The grammar freezes at `1.0.0`.** The design notes call the grammar permanent, and from `1.0.0` it is. Until
    then a construct an alpha shipped may still change, when the change comes with the step that rewrites an older
    model, proven on the frozen project of Q1, and a line in the changelog.
 10. **Quality rounds exist.** What the backlog cannot hold has its own table. Q1 and Q3 come before the first
     publication and Q2 before A6. `osl verify` running the walks was D3 and is Q3.
+11. **Verified registration is a round.** Decided with the invites design on 2026-11-09 (its choice 12), and
+    numbered 6 among the decisions of that day until the merge of A3 and A4 with milestone B: A4 does not close
+    the account registered ahead of its owner, and the reference says so plainly. A7 closes it, in milestone A and
+    before the kits.

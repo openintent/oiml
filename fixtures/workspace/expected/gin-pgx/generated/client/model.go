@@ -8,6 +8,7 @@ import "strings"
 // Hidden lists the columns that must never appear in any response.
 var Hidden = map[string]bool{
 	"password_hash": true,
+	"token_hash":    true,
 }
 
 // Actors are the model's example actors.
@@ -15,6 +16,7 @@ var Actors = map[string]Actor{
 	"alice": {Email: "alice@example.com", Password: "alice-pass-1", Fields: MustJSON("{\"name\":\"Alice\"}").(map[string]any), Provisioned: nil},
 	"bob":   {Email: "bob@example.com", Password: "bob-pass-1", Fields: MustJSON("{\"name\":\"Bob\"}").(map[string]any), Provisioned: nil},
 	"carol": {Email: "carol@example.com", Password: "carol-pass-1", Fields: MustJSON("{\"name\":\"Carol\"}").(map[string]any), Provisioned: nil},
+	"dana":  {Email: "dana@example.com", Password: "dana-pass-1", Fields: MustJSON("{\"name\":\"Dana\"}").(map[string]any), Provisioned: nil},
 }
 
 // provision has nothing to do: no actor sets a column register refuses.

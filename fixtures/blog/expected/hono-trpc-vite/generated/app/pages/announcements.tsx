@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { client, sessionUser, type Inputs, type Outputs, type SessionUser } from "../client";
-import { EmptyPane, ErrorNote, FieldRow, FormRow, ListSkeleton, Pagination, Pane, PaneHeader, PaneSkeleton, formatDateTime, selectClass, splitList, text, yesNo } from "../ui";
+import { EmptyPane, ErrorNote, FieldRow, FormRow, ListSkeleton, Pagination, Pane, PaneHeader, PaneSkeleton, RowError, formatDateTime, selectClass, splitList, text, yesNo } from "../ui";
 
 type Row = Outputs["announcements"]["list"]["data"][number];
 type Detail = Outputs["announcements"]["get"];
@@ -364,7 +364,7 @@ function AnnouncementsDetailInner() {
     }
   });
   if (query.isPending) return <PaneSkeleton />;
-  if (query.error) return <ErrorNote error={query.error} className="m-6" />;
+  if (query.error) return <RowError error={query.error} signIn={<Link to="/login" className={buttonVariants()}>Sign in</Link>} />;
   const row: Detail = query.data;
   return (
     <Pane
@@ -418,7 +418,7 @@ function AnnouncementsDetailInner() {
           <p className="whitespace-pre-wrap">{text(row.body) || "—"}</p>
         </FieldRow>
         <FieldRow label="Published">{row.published == null ? "—" : <Badge variant={row.published ? "default" : "outline"}>{yesNo(row.published)}</Badge>}</FieldRow>
-        <FieldRow label="Author">{(row.author ? text(row.author.name) : text(row.author_id)) || "—"}</FieldRow>
+        <FieldRow label="Author">{<Link to="/authors/$id" params={{ id: text(row.author_id) }} className="hover:underline">{(row.author ? text(row.author.name) : text(row.author_id)) || "—"}</Link>}</FieldRow>
         <FieldRow label="Created At">{formatDateTime(row.created_at) || "—"}</FieldRow>
         </dl>
       )}

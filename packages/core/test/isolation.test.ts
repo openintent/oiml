@@ -161,12 +161,12 @@ describe("isolation: database, the tenant tables", () => {
     const two = model("database", m => {
       m.entities.Task.fields.second_id = { type: "uuid", required: true, relation: { entity: "Project" } };
     });
-    expect(codes(two, "error")).toContain("M115");
+    expect(codes(two, "error")).toContain("M124");
     const declared = model("database", m => {
       m.entities.Task.fields.second_id = { type: "uuid", required: true, relation: { entity: "Project" } };
       m.entities.Task.fields.team_id = { type: "uuid", required: true, relation: { entity: "Team" } };
     });
-    expect(codes(declared, "error")).not.toContain("M115");
+    expect(codes(declared, "error")).not.toContain("M124");
     expect(compile(declared).entities.find(e => e.name === "Task")!.tenant).toMatchObject({
       column: "team_id",
       keys: [{ columns: ["team_id", "project_id"] }, { columns: ["team_id", "second_id"] }]
@@ -175,18 +175,18 @@ describe("isolation: database, the tenant tables", () => {
       m.entities.Team.fields.id = { type: "integer", primary: true };
       for (const e of ["TeamMember", "Project"]) m.entities[e].fields.team_id.type = "integer";
     });
-    expect(codes(integerKey, "error")).toContain("M118");
+    expect(codes(integerKey, "error")).toContain("M127");
     const identity = model("database", m => {
       m.entities.User.fields.team_id = { type: "uuid", required: true, relation: { entity: "Team" } };
     });
-    expect(codes(identity, "error")).toContain("M118");
+    expect(codes(identity, "error")).toContain("M127");
   });
 
   it("warns that an entity reaching the tenant only through an optional relation stays shared", () => {
     const optional = model("database", m => {
       m.entities.Label.fields.project_id = { type: "uuid", relation: { entity: "Project", on_delete: "set_null" } };
     });
-    expect(codes(optional, "warning")).toContain("M116");
+    expect(codes(optional, "warning")).toContain("M125");
     expect(compile(optional).entities.find(e => e.name === "Label")!.tenant).toBeUndefined();
   });
 });
@@ -208,7 +208,7 @@ describe("isolation: database, the rules", () => {
     // The operations carry the compiled rule
     const get = ir.resources[0].operations.find(o => o.kind === "get")!;
     expect(get.rule).toEqual(task.rules.read);
-    const warnings = validateModel(model("database")).filter(d => d.code === "M119");
+    const warnings = validateModel(model("database")).filter(d => d.code === "M128");
     expect(warnings.map(w => w.path)).toEqual(["entities.Task.rules.read", "entities.Task.rules.update"]);
     expect(warnings[0].message).toContain(
       '"owner:assignee_id" is compiled as "owner:assignee_id and member:project_id.team_id"'
@@ -220,22 +220,22 @@ describe("isolation: database, the rules", () => {
     expect(ruleText(task.rules.read)).toBe(
       "public when project_id.public = true or owner:assignee_id or member:project_id.team_id:admin"
     );
-    expect(codes(model(undefined), "warning")).not.toContain("M119");
+    expect(codes(model(undefined), "warning")).not.toContain("M128");
   });
 
   it("lets a caller without a session reach a tenant table through its read rule only", () => {
     const write = model("database", m => {
       m.entities.Task.rules.update = "public when project_id.public = true or member:project_id.team_id";
     });
-    expect(codes(write, "error")).toContain("M117");
+    expect(codes(write, "error")).toContain("M126");
     const action = model("database", m => {
       m.resources.tasks.actions = { nudge: { rule: "public" } };
     });
-    expect(codes(action, "error")).toContain("M117");
+    expect(codes(action, "error")).toContain("M126");
     const joined = model("database", m => {
       m.entities.Task.rules.read = "public when project_id.public = true and owner:assignee_id";
     });
-    expect(codes(joined, "error")).toContain("M117");
+    expect(codes(joined, "error")).toContain("M126");
     expect(codes(model("database"), "error")).toEqual([]);
   });
 

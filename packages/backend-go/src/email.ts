@@ -1,12 +1,43 @@
 import { HEADER, goFile } from "./util.js";
 
-/** generated/email/email.go: one send function, three adapters. Static. */
-export function emailFile(modulePath: string): string {
+/** generated/email/email.go: one send function, three adapters, and the invite mail where the model invites. */
+export function emailFile(modulePath: string, options: { invite?: boolean } = {}): string {
+  const invite = options.invite
+    ? `
+// Invite is the mail an invite sends: who invites, to what, as what, the link, and the day the link stops working.
+func Invite(to, name, inviter, role, link string, expires time.Time) Email {
+	if inviter == "" {
+		inviter = "Someone"
+	}
+	as := ""
+	if role != "" {
+		as = " as " + role
+	}
+	return Email{
+		To:      to,
+		Subject: "You are invited to " + name,
+		Text:    inviter + " invited you to " + name + as + ".\\n\\nAccept the invite: " + link + "\\n\\nThe link works until " + expires.UTC().Format("2006-01-02") + ".",
+	}
+}
+`
+    : "";
   return goFile(
     modulePath,
     HEADER("Email: logged to the console, sent through Resend, or captured in memory for tests."),
     "email",
-    ["bytes", "context", "encoding/json", "errors", "io", "log", "net/http", "os", "strconv", "sync"],
+    [
+      "bytes",
+      "context",
+      "encoding/json",
+      "errors",
+      "io",
+      "log",
+      "net/http",
+      "os",
+      "strconv",
+      "sync",
+      ...(options.invite ? ["time"] : [])
+    ],
     `// Email is one message to send.
 type Email struct {
 	To      string
@@ -101,6 +132,6 @@ func Send(ctx context.Context, email Email) error {
 	log.Printf("[email] to %s: %s\\n%s", email.To, email.Subject, email.Text)
 	return nil
 }
-`
+${invite}`
   );
 }

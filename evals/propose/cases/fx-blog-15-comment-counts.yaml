@@ -1,0 +1,33 @@
+id: fx-blog-15-comment-counts
+tags: [fixture, fields, actions, events, app, archive, counts, scenario]
+base: { fixture: blog, through: FEAT-14 }
+oracle: fixtures/blog/intents/FEAT-15/diff.yaml
+intent:
+  title: Comment counts and archived articles
+  ask: >-
+    An article shows how many comments it has, and the list of articles can be sorted by that number. An author can
+    archive one of their own articles: it leaves the list of articles, still opens by its link, and the author can
+    restore it. Archiving notifies in the background. The home page says how many articles are archived. A user shows
+    how many published articles they have that are not archived.
+  acceptance:
+    - An article's comment count rises with each comment and falls when one is deleted
+    - Sorted by comment count, the most discussed article of an author comes first
+    - Only the author archives an article; an admin who may edit it is refused
+    - An archived article is missing from the list, opens by its id and is in the list of archived ones
+    - An author's count of published articles falls when one of them is archived and rises again when it is restored
+expect:
+  archive: [Article]
+  counts: ["Article.* -> Comment", "User.* -> Article"]
+  types: { "Article.comment_count|comments_count|comment_total": integer }
+  list: { posts: { sortable: ["comment_count|comments_count|comment_total"] } }
+  actions_on: { posts: { scope: row, rule: "owner:author_id" } }
+  events: ["posts.archive:queue"]
+  pages: { "overview|home|dashboard": { kind: dashboard } }
+  scenarios: { min: 1, rejections: 3, statuses: [403, 409, 401] }
+  touches: [posts.archive, posts.restore, comments.create]
+  ops: { require: [set_archive, add_field], forbid: [add_action] }
+notes: >-
+  The resource is still called posts although the entity is Article; the event is posts.archive and needs no action
+  declared, because the archive writes it. The archive names its own rule: the update rule would let an admin archive
+  too. The count on User has a condition over two fields, one of them the archive field. A view counter, a handler
+  that increments, or `page.total` read by the client has not used the construct.

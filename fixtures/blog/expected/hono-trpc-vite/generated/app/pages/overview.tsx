@@ -83,7 +83,7 @@ export function OverviewPage() {
               <ul className="space-y-2 text-sm">
                 {recent0.data.data.map(row => (
                   <li key={text(row.id)} className="flex items-center justify-between gap-3">
-                    <Link to="/posts/$id" params={{ id: text(row.id) }} className="hover:underline">{text(row.title) || text(row.id)}</Link>
+                    {user !== null ? <Link to="/posts/$id" params={{ id: text(row.id) }} className="hover:underline">{text(row.title) || text(row.id)}</Link> : <span>{text(row.title) || text(row.id)}</span>}
                     
                   </li>
                 ))}

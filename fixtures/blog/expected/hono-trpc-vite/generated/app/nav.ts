@@ -92,3 +92,9 @@ export function userInitials(user: SessionUser): string {
 function text(value: unknown): string {
   return value == null ? "" : String(value);
 }
+
+/** Where a sign-in goes when it is done: the page's `next` query when that is a path of this app, else nowhere */
+export function nextPath(): string | undefined {
+  const next = new URLSearchParams(window.location.search).get("next");
+  return next && /^\/(?!\/)/.test(next) && !next.includes("\\") ? next : undefined;
+}

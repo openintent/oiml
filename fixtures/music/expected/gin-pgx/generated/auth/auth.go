@@ -85,7 +85,7 @@ func (a *Auth) Routes(r gin.IRouter) {
 	r.GET("/api/auth/providers", a.Providers)
 }
 
-// AppURL is where the web app lives (OSL_APP_URL, default http://localhost:3000): magic links point there and OAuth returns there.
+// AppURL is where the web app lives (OSL_APP_URL, default http://localhost:3000): the links in emails point there and OAuth returns there.
 func AppURL() string {
 	if v := os.Getenv("OSL_APP_URL"); v != "" {
 		return strings.TrimSuffix(v, "/")

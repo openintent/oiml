@@ -1,0 +1,32 @@
+id: fx-ws-10-channel-page-and-team-home
+tags: [fixture, app, tenancy, scenario]
+base: { fixture: workspace, through: WS-9 }
+oracle: fixtures/workspace/intents/WS-10/diff.yaml
+intent:
+  title: A channel page and a home for the current team
+  ask: >-
+    Opening a channel should show the channel with its conversation underneath, newest message first, and a box to
+    post into it, followed by who is in the channel. People are often in several teams, so the app needs a team
+    switcher: the projects, channels and members pages show the team that is switched to, and the home page shows
+    that team's numbers and its latest projects.
+  acceptance:
+    - A channel has its own page at its own address with its messages newest first and its members
+    - Posting from the channel page puts the message in that channel without asking which channel
+    - A person in two teams sees one team's projects, channels and members at a time and switches between them
+    - The home page counts the current team's active projects, channels and members and lists its latest projects
+    - Someone who is not in a private channel finds nothing at its address
+expect:
+  pages:
+    "channel|channel_page|channel_detail|conversation":
+      { kind: detail, resource: channels, sections: [messages, channel_members] }
+    "home|overview|dashboard|team_home": { kind: dashboard, path: "/", tenant: true, tiles_min: 3 }
+    projects: { kind: resource, tenant: true, filter: [team_id] }
+    channels: { kind: resource, tenant: true, filter: [team_id] }
+    members: { kind: resource, tenant: true, filter: [team_id] }
+  scenarios: { min: 1, rejections: 1, statuses: [404] }
+  touches: [channels, messages, projects]
+notes: >-
+  Pages with parameters, both halves. The channel page is a detail page (`kind: detail`) whose sections list the
+  messages and the channel's members by `{row.id}`, and the section's create presets the channel. The team switcher
+  is not declared: filtering a page, a tile or a recent list by `{tenant.id}` turns it on. Tasks, notes and
+  milestones reach the team through the project and stay unfiltered, which the ask does not mention on purpose.

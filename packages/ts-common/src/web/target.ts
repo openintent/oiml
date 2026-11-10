@@ -20,7 +20,7 @@ export interface WebTarget {
   /** An expression telling whether the link to `path` (with `idExpr`) is the current location */
   isActive(path: string, idExpr?: string): string;
   /** A statement reading the `id` route param into `rawId` */
-  useIdParam(path: string): string;
+  useIdParam(path: string, routeId?: string): string;
   /** A statement that makes navigation available in the component */
   navigateDecl: string;
   /** An expression (awaitable) that navigates to a page path */
@@ -62,7 +62,7 @@ export const TANSTACK: WebTarget = {
     idExpr === undefined
       ? `Boolean(matchRoute({ to: "${path}" }))`
       : `Boolean(matchRoute({ to: "${path}/$id", params: { id: ${idExpr} } }))`,
-  useIdParam: path => `const { id: rawId } = useParams({ from: "${path}/$id" });`,
+  useIdParam: (path, routeId) => `const { id: rawId } = useParams({ from: "${routeId ?? `${path}/$id`}" });`,
   navigateDecl: "const navigate = useNavigate();",
   navigateTo: (path, idExpr) =>
     idExpr === undefined ? `navigate({ to: "${path}" })` : `navigate({ to: "${path}/$id", params: { id: ${idExpr} } })`,

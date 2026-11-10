@@ -137,6 +137,16 @@ export function presentInvoice(row: schema.Invoice): PublicInvoice {
   return { id: row.id, team_id: row.team_id, number: row.number, customer: row.customer, currency: row.currency, total: row.total, fee: row.fee, created_at: row.created_at };
 }
 
+export type PublicTeamInvite = Pick<schema.TeamInvite, "id" | "team_id" | "email" | "role" | "invited_by" | "expires_at" | "created_at">;
+export function presentTeamInvite(row: schema.TeamInvite): PublicTeamInvite {
+  return { id: row.id, team_id: row.team_id, email: row.email, role: row.role, invited_by: row.invited_by, expires_at: row.expires_at, created_at: row.created_at };
+}
+
+export type PublicChannelInvite = Pick<schema.ChannelInvite, "id" | "channel_id" | "email" | "role" | "invited_by" | "expires_at" | "created_at">;
+export function presentChannelInvite(row: schema.ChannelInvite): PublicChannelInvite {
+  return { id: row.id, channel_id: row.channel_id, email: row.email, role: row.role, invited_by: row.invited_by, expires_at: row.expires_at, created_at: row.created_at };
+}
+
 export type PublicOslAuthToken = Pick<schema.OslAuthToken, "id" | "token_hash" | "email" | "purpose" | "expires_at" | "created_at">;
 export function presentOslAuthToken(row: schema.OslAuthToken): PublicOslAuthToken {
   return { id: row.id, token_hash: row.token_hash, email: row.email, purpose: row.purpose, expires_at: row.expires_at, created_at: row.created_at };

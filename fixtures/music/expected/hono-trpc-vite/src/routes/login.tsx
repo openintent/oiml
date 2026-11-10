@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { client } from "@generated/app/client";
+import { nextPath } from "@generated/app/nav";
 import { ErrorNote } from "@generated/app/ui";
 
 export const Route = createFileRoute("/login")({ component: LoginPage });
@@ -19,9 +20,12 @@ function LoginPage() {
   const queryClient = useQueryClient();
   const providers = useQuery({ queryKey: ["auth", "providers"], queryFn: () => client.auth.providers() });
   void providers;
+  // After signing in: back to the page that asked for it, when `next` names one; else home
   const done = async () => {
     await queryClient.invalidateQueries();
-    await navigate({ to: "/" });
+    const next = nextPath();
+    if (next) window.location.assign(next);
+    else await navigate({ to: "/" });
   };
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");

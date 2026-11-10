@@ -9,12 +9,33 @@ const CODES: Record<number, TRPC_ERROR_CODE_KEY> = {
   401: "UNAUTHORIZED",
   403: "FORBIDDEN",
   404: "NOT_FOUND",
-  409: "CONFLICT"
+  409: "CONFLICT",
+  410: "NOT_FOUND"
 };
 
-/** Refuse the request with the contract's status and code */
+/** What a refusal carries as the tRPC error's cause: the contract's status and code */
+class Refusal extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    message: string
+  ) {
+    super(message);
+  }
+}
+
+/**
+ * Refuse the request with the contract's status and code. tRPC has no code for every status (410, say), so the
+ * status travels on the error and the transport answers with it.
+ */
 export function fail(status: number, code: string, message: string): never {
-  throw new TRPCError({ code: CODES[status] ?? "INTERNAL_SERVER_ERROR", message, cause: { code } });
+  const fallback = status >= 400 && status < 500 ? "BAD_REQUEST" : "INTERNAL_SERVER_ERROR";
+  throw new TRPCError({ code: CODES[status] ?? fallback, message, cause: new Refusal(status, code, message) });
+}
+
+/** The status a refusal made with fail() carries; undefined for every other error */
+export function statusOf(err: unknown): number | undefined {
+  return err instanceof TRPCError && err.cause instanceof Refusal ? err.cause.status : undefined;
 }
 
 export function notFound(): TRPCError {

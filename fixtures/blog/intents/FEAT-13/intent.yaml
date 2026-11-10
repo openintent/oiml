@@ -1,13 +1,10 @@
 osl: "1.0"
-title: Comment counts and archived articles
+title: Author and article pages
 ask: >-
-  An article shows how many comments it has, and the list of articles can be sorted by that number. An author can
-  archive one of their own articles: it leaves the list of articles, still opens by its link, and the author can
-  restore it. Archiving notifies in the background. The home page says how many articles are archived. A user shows
-  how many published articles they have that are not archived.
+  Every author gets a public page at an address of their own that shows their name and their published articles,
+  newest first. An article opens on a page of its own with its comments under it and a form to add one. A published
+  announcement has a public address anyone can open as a share link; a draft's address answers not found.
 acceptance:
-  - An article's comment count rises with each comment and falls when one is deleted
-  - Sorted by comment count, the most discussed article of an author comes first
-  - Only the author archives an article; an admin who may edit it is refused
-  - An archived article is missing from the list, opens by its id and is in the list of archived ones
-  - An author's count of published articles falls when one of them is archived and rises again when it is restored
+  - An author's page lists that author's published articles and no one else's, newest first
+  - An article's page lists its comments, and a comment added there lands on that article
+  - A visitor who is not signed in opens a published announcement at its address; a draft answers not found

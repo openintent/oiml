@@ -9,6 +9,8 @@ export const projectStatusEnum = pgEnum("project_status", ["active", "archived"]
 export const channelMemberRoleEnum = pgEnum("channel_member_role", ["admin", "member"]);
 export const requestStatusEnum = pgEnum("request_status", ["pending", "approved", "declined", "expired"]);
 export const invoiceCurrencyEnum = pgEnum("invoice_currency", ["USD", "EUR", "JPY"]);
+export const teamInviteRoleEnum = pgEnum("team_invite_role", ["owner", "admin", "member"]);
+export const channelInviteRoleEnum = pgEnum("channel_invite_role", ["admin", "member"]);
 export const oslAuthTokenPurposeEnum = pgEnum("osl_auth_token_purpose", ["magic_link"]);
 
 export const users = pgTable("users", {
@@ -187,6 +189,36 @@ export const invoices = pgTable(
   t => [unique("invoices_team_id_number_key").on(t.team_id, t.number), index("invoices_team_id_idx").on(t.team_id)]
 );
 
+export const teamInvites = pgTable(
+  "team_invites",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    team_id: uuid().notNull().references(() => teams.id, { onDelete: "cascade" }),
+    email: varchar({ length: 255 }).notNull(),
+    role: teamInviteRoleEnum().notNull().default("member"),
+    invited_by: uuid().notNull().references(() => users.id, { onDelete: "cascade" }),
+    token_hash: varchar({ length: 255 }).notNull().unique(),
+    expires_at: timestamp({ withTimezone: true }).notNull(),
+    created_at: timestamp({ withTimezone: true }).notNull().defaultNow()
+  },
+  t => [unique("team_invites_team_id_email_key").on(t.team_id, t.email), index("team_invites_team_id_idx").on(t.team_id), index("team_invites_invited_by_idx").on(t.invited_by)]
+);
+
+export const channelInvites = pgTable(
+  "channel_invites",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    channel_id: uuid().notNull().references(() => channels.id, { onDelete: "cascade" }),
+    email: varchar({ length: 255 }).notNull(),
+    role: channelInviteRoleEnum().notNull().default("member"),
+    invited_by: uuid().notNull().references(() => users.id, { onDelete: "cascade" }),
+    token_hash: varchar({ length: 255 }).notNull().unique(),
+    expires_at: timestamp({ withTimezone: true }).notNull(),
+    created_at: timestamp({ withTimezone: true }).notNull().defaultNow()
+  },
+  t => [unique("channel_invites_channel_id_email_key").on(t.channel_id, t.email), index("channel_invites_channel_id_idx").on(t.channel_id), index("channel_invites_invited_by_idx").on(t.invited_by)]
+);
+
 export const oslAuthTokens = pgTable("osl_auth_tokens", {
   id: uuid().primaryKey().defaultRandom(),
   token_hash: varchar({ length: 255 }).notNull().unique(),
@@ -272,6 +304,16 @@ export const invoicesRelations = relations(invoices, ({ one }) => ({
   team: one(teams, { fields: [invoices.team_id], references: [teams.id], relationName: "team" })
 }));
 
+export const teamInvitesRelations = relations(teamInvites, ({ one }) => ({
+  team: one(teams, { fields: [teamInvites.team_id], references: [teams.id], relationName: "team" }),
+  inviter: one(users, { fields: [teamInvites.invited_by], references: [users.id], relationName: "inviter" })
+}));
+
+export const channelInvitesRelations = relations(channelInvites, ({ one }) => ({
+  channel: one(channels, { fields: [channelInvites.channel_id], references: [channels.id], relationName: "channel" }),
+  inviter: one(users, { fields: [channelInvites.invited_by], references: [users.id], relationName: "inviter" })
+}));
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Team = typeof teams.$inferSelect;
@@ -300,5 +342,9 @@ export type Request = typeof requests.$inferSelect;
 export type NewRequest = typeof requests.$inferInsert;
 export type Invoice = typeof invoices.$inferSelect;
 export type NewInvoice = typeof invoices.$inferInsert;
+export type TeamInvite = typeof teamInvites.$inferSelect;
+export type NewTeamInvite = typeof teamInvites.$inferInsert;
+export type ChannelInvite = typeof channelInvites.$inferSelect;
+export type NewChannelInvite = typeof channelInvites.$inferInsert;
 export type OslAuthToken = typeof oslAuthTokens.$inferSelect;
 export type NewOslAuthToken = typeof oslAuthTokens.$inferInsert;

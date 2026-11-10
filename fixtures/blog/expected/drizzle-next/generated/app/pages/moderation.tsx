@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { client, sessionUser, type Inputs, type Outputs, type SessionUser } from "../client";
-import { EmptyPane, ErrorNote, FieldRow, FormRow, ListSkeleton, Pagination, Pane, PaneHeader, PaneSkeleton, formatDateTime, selectClass, splitList, text } from "../ui";
+import { EmptyPane, ErrorNote, FieldRow, FormRow, ListSkeleton, Pagination, Pane, PaneHeader, PaneSkeleton, RowError, formatDateTime, selectClass, splitList, text } from "../ui";
 
 type Row = Outputs["comments"]["list"]["data"][number];
 type Detail = Outputs["comments"]["get"];
@@ -339,7 +339,7 @@ function ModerationDetailInner() {
   });
 
   if (query.isPending) return <PaneSkeleton />;
-  if (query.error) return <ErrorNote error={query.error} className="m-6" />;
+  if (query.error) return <RowError error={query.error} signIn={<Link href="/login" className={buttonVariants()}>Sign in</Link>} />;
   const row: Detail = query.data;
   return (
     <Pane
@@ -387,8 +387,8 @@ function ModerationDetailInner() {
         <FieldRow label="Body">
           <p className="whitespace-pre-wrap">{text(row.body) || "—"}</p>
         </FieldRow>
-        <FieldRow label="Article">{text(row.article_id) || "—"}</FieldRow>
-        <FieldRow label="Author">{text(row.author_id) || "—"}</FieldRow>
+        <FieldRow label="Article">{user !== null ? <Link href={`/posts/${text(row.article_id)}`} className="hover:underline">{text(row.article_id) || "—"}</Link> : text(row.article_id) || "—"}</FieldRow>
+        <FieldRow label="Author">{<Link href={`/authors/${text(row.author_id)}`} className="hover:underline">{text(row.author_id) || "—"}</Link>}</FieldRow>
         <FieldRow label="Created At">{formatDateTime(row.created_at) || "—"}</FieldRow>
         </dl>
       )}

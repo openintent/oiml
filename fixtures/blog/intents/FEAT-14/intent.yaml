@@ -1,15 +1,11 @@
 osl: "1.0"
-title: Editorial review
+title: Co-authors by invite
 ask: >-
-  Articles go through a review. An author submits a draft; an admin approves it or sends it back; an approved
-  article can be retired by its author or an admin. Nobody sets the status by hand. Record when an article was
-  approved and when it was retired. Thirty days after approval an article retires on its own, and thirty days after
-  that it is archived. A user shows how many approved articles they have. Publishing stays what it is. Give the
-  editors a board of articles by status where a card can only be dragged along a step its viewer may take, and tell
-  the newsroom when an article is approved.
+  An article's author should be able to bring in co-authors by email address. The person gets a mail with a link,
+  and accepting it, or signing in with that address by magic link or GitHub, makes them an editor of that one
+  article. An editor can change the article and cannot delete it. Only the author invites to an article.
 acceptance:
-  - Only the author submits a draft, and submitting twice is a conflict
-  - Only an admin approves or rejects, and only an article in review; approving records when
-  - Setting the status in a create or an update is refused
-  - A user's count of approved articles follows the review
-  - An approved article retires by itself after thirty days, and one retired by hand is left as it was
+  - The author invites an email address to an article, and the address gets a mail with a link
+  - Nobody but the author can invite to an article or see who was invited
+  - The invited person accepts the link and can then edit the article, and still cannot delete it
+  - Signing in by magic link with the invited address makes the person an editor without the invite's link

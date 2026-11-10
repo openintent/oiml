@@ -186,9 +186,13 @@ describe.each(PROJECTS)("a lock another request holds, on %s", fixture => {
 
   it("goes out with Retry-After from the tRPC route and from the REST routes beside it", () => {
     const app = generated.get(`hono-trpc-vite:${fixture}`)!.get("generated/server/app.ts")!;
-    expect(app).toContain('import { isBusy } from "./errors";');
-    expect(app).toContain('errors.some(isBusy) ? { headers: new Headers({ "Retry-After": "1" }) } : {}');
-    expect(app).toContain("trpcServer({ router: appRouter, createContext, responseMeta })");
+    // The status a refusal carries (A4) and the busy header share the one responseMeta
+    expect(app).toContain('import { isBusy, statusOf } from "./errors";');
+    expect(app).toContain('const busy = errors.some(isBusy) ? { headers: new Headers({ "Retry-After": "1" }) } : {};');
+    expect(app).toContain("return status === undefined ? busy : { status, ...busy };");
+    expect(app).toMatch(
+      /trpcServer\(\{\n\s+router: appRouter,\n\s+createContext,[\s\S]*responseMeta: \(\{ errors, paths \}\) =>/
+    );
     expect(app).toContain('if (isBusy(err)) c.header("Retry-After", "1");');
   });
 

@@ -8,12 +8,12 @@ row's tenant, which the compiler adds to the IR's rules; and another tenant's ro
 through an existence probe. Row security is enabled and not forced; the derived column stays out of the entity's
 columns and is kept by a trigger; the TypeScript backends bind in one transaction per request and the Go backend
 per statement; the app role is created without a login and gets its password from the environment; the backfill is
-one statement. The body below is the design as built. Proof: workspace WS-11 (the key and
+one statement. The body below is the design as built. Proof: workspace WS-13 (the key and
 one scenario of 27 steps), conformance 9/9 with every earlier scenario unchanged (workspace 192 scenario steps per
 backend, 165 of them the earlier ones) and the five walks passing: 473 rule calls and 956 probes as before, 16
 home-team rows checked against an outsider and again with the rule checks off, and the unbound probe reading 2 of
 90 rows in 9 tenant tables, the 2 tasks of public projects. The fixture's database belongs to a role that is no
-superuser. 136 unit tests, the oracle gate 28/28 with `fx-ws-11-isolation`, and the cases
+superuser. 136 unit tests, the oracle gate 28/28 with `fx-ws-13-isolation`, and the cases
 `ws2-database-isolation` and `empty-clinic-isolation` for the next live round (both pass a full run with a diff
 written by hand). Not a round the gap backlog asked for: it comes from the survey below.
 
@@ -55,7 +55,7 @@ Each was open in the proposal or not seen by it. Most consequential first.
    The handlers call the same function where they resolve that path and where they filter a list, so the rule
    check, the list and the policy read one value. Reason: without it the fixture's public project cannot exist
    under isolation, and moving the proof to a model without one would have left the commonest mixed case unproven.
-   A public alternative on create, update, delete or a row action of a tenant table is M117; so is `public` joined
+   A public alternative on create, update, delete or a row action of a tenant table is M126; so is `public` joined
    to a predicate that needs a session, where the status of a hidden row would depend on a value the handler
    cannot see.
 2. **A signed-in caller reaches a tenant table's rows only as a member of the row's tenant, and the compiler says
@@ -63,13 +63,13 @@ Each was open in the proposal or not seen by it. Most consequential first.
    every alternative that needs a session and does not already ask for a membership of the row's tenant (any role)
    gets that predicate joined to it, in the IR. So the handlers, the list filters, the OpenAPI descriptions, the
    harness's evaluator and the reference all read the same rule, and nothing differs silently between what the
-   rules say and what the database returns. M119 (a warning) names each rule the compiler changed, and `osl apply` prints it when the intent is applied. The tenant
+   rules say and what the database returns. M128 (a warning) names each rule the compiler changed, and `osl apply` prints it when the intent is applied. The tenant
    entity's own create rule is left alone: whoever creates a tenant becomes its first member. Rules of collection
    and global actions, which have no row, are left alone too; what their handlers read is still under the policy.
    Reason: the policy is keyed on the caller's tenants and cannot know an owner; an owner who is not a member would
    read through the rule and get nothing from the database, which is the silent difference the review named. The
    one observable change: an assignee, author or channel member who left the team no longer reaches the row
-   (403). No earlier scenario exercised that, and WS-11's scenario states it.
+   (403). No earlier scenario exercised that, and WS-13's scenario states it.
 3. **Statuses do not move: an existence probe tells another tenant's row from a missing one.** A handler loads the
    row through the policy, so another tenant's row does not come back. On a tenant table with `hidden: forbidden`
    the handler then asks `osl_exists_<table>(id)`, a `SECURITY DEFINER` function that answers a boolean; when the
@@ -113,7 +113,7 @@ Each was open in the proposal or not seen by it. Most consequential first.
 8. **Memberships are read through a function.** A session's memberships are rows of a tenant table, read before
    any tenant is bound. `osl_memberships(user)`, `SECURITY DEFINER`, answers them; the request binds what it
    answers. A new tenant is bound before it exists: its create handler makes the uuid, adds it to the binding and
-   then inserts the tenant and its creator's membership, which is why the tenant's key must be a uuid (M118).
+   then inserts the tenant and its creator's membership, which is why the tenant's key must be a uuid (M127).
 9. **Credentials.** The migrations create the app role `NOLOGIN`, inside a block that tolerates the role existing
    (roles belong to the cluster, and two databases of one app may meet on it; an owner that may not create roles can be handed one made for it), and no password is in any generated file or snapshot. `osl migrate` reads `DATABASE_APP_URL` from the environment and makes its user a
    login with its password: the app role itself, or any other name as a member of the app role. Development: the
@@ -128,10 +128,10 @@ Each was open in the proposal or not seen by it. Most consequential first.
     command and expression, each function's body and `SECURITY DEFINER`, each trigger. PostgreSQL prints an
     expression back with its own parentheses and casts, so both sides are reduced to a canonical form before they
     are compared. Constraints, the composite keys among them, are still not compared, as for every other key.
-12. **Diagnostics are M115 to M119**, in the tenancy family (M110 to M114), not the next free M09x, which the invites round building beside this one will take: M115 two ways
-    to the tenant, or the derived column's name taken; M116 (warning) only an optional relation reaches the
-    tenant, the entity stays shared; M117 a public alternative where only the read rule may have one; M118 the
-    identity under a tenant, or a tenant key that is not a uuid; M119 (warning) the rules the compiler narrowed.
+12. **Diagnostics are M124 to M128**, in the tenancy family (M110 to M114). Built as M115 to M119; the invites round, built beside this one, took M115 to M118, and at the merge (2026-11-10) these moved to M124 to M128 in order: M124 two ways
+    to the tenant, or the derived column's name taken; M125 (warning) only an optional relation reaches the
+    tenant, the entity stays shared; M126 a public alternative where only the read rule may have one; M127 the
+    identity under a tenant, or a tenant key that is not a uuid; M128 (warning) the rules the compiler narrowed.
 
 ## The construct
 
@@ -158,17 +158,17 @@ forgotten filter into zero rows instead of a leak.
   for every table, and no row can point at another tenant's parent.
 - **Everything else is shared.** The identity, lookup entities with no way to the tenant, OSL's own tables (files,
   auth tokens) and the queue's get no policy. An entity with two required relations that reach the tenant must
-  declare a required relation to the tenant itself (M115). An entity that reaches the tenant only through an
-  optional relation is shared (M116, a warning: say `required: true` to make it a tenant table). The identity may
-  not sit under a tenant (M118).
+  declare a required relation to the tenant itself (M124). An entity that reaches the tenant only through an
+  optional relation is shared (M125, a warning: say `required: true` to make it a tenant table). The identity may
+  not sit under a tenant (M127).
 - **The policy.** `ALTER TABLE ... ENABLE ROW LEVEL SECURITY`, and one policy per tenant table for all commands:
   `team_id = ANY (NULLIF(current_setting('app.team_ids', true), '')::uuid[])`. No setting, no rows. The setting
   carries every team the session is a member of, so a user in several teams keeps today's semantics (lists show
   rows of all their teams), and the grammar does not gain a "current team".
 - **Public rows.** The read rule's public alternatives become a second policy for SELECT only (decision 1). A
-  public alternative anywhere else on a tenant table is M117.
+  public alternative anywhere else on a tenant table is M126.
 - **Members only.** Every alternative that needs a session also needs a membership of the row's tenant; the
-  compiler adds it and M119 says where (decision 2).
+  compiler adds it and M128 says where (decision 2).
 - **Two roles.** The migrations create `<app>_app` (no login, no `BYPASSRLS`) and grant it the tables.
   `DATABASE_URL` is the owner the migrator and the worker use, `DATABASE_APP_URL` is what requests use, and the
   generated README says so. The worker runs schedules and timers as the system, which is what the owner role
@@ -220,6 +220,8 @@ From this round on a design note says what its tables, triggers and queries are 
 | Queries a handler makes                       | on the request's connection, as the app role, bound to the caller's tenants; a subquery on another tenant table is under that table's policy too                        |
 | Queries a job makes                           | as the owner, unbound, seeing every tenant: a job that acts for one tenant filters by it itself                                                                         |
 | Functions that see past the policy            | `osl_memberships`, `osl_exists_<table>`, `osl_read_<table>_<path>`: each answers one named thing, is owned by the migrating role and granted to the app role alone      |
+| Invite tables (round A4, at the merge)        | tenant tables like any: `team_invites` by its declared `team_id`, `channel_invites` with a derived one; the inviter's requests read and write them, an invitee reads none |
+| Functions an invite adds                      | `osl_invite_<table>(token_hash)` and `osl_invites_<table>(email, at)`: the tenant a token, or a proven address, leads into, which the request then binds (`designs/invites.md`) |
 
 ## Declined, with the sentence the reference gets
 
@@ -231,7 +233,7 @@ From this round on a design note says what its tables, triggers and queries are 
 - Search functions with elevated rights so that substring search can use a trigram index under the policy: OSL
   creates no trigram index today, so search is correct and no slower than it is; noted for when it does.
 - Per-tenant connection limits and pools: operations, not the model.
-- A tenant key that is not a uuid (M118): the create handler must know the key before the insert; a sequence would
+- A tenant key that is not a uuid (M127): the create handler must know the key before the insert; a sequence would
   need its own grant and a round trip. Noted for whoever asks.
 - A strict mode that throws on an unbound statement: unbound, the app role reads no tenant row, which is the
   property; throwing would be a second mechanism for it.
@@ -240,7 +242,7 @@ From this round on a design note says what its tables, triggers and queries are 
 
 ## Proof
 
-- Fixture: workspace gains `isolation: database` through WS-11, whose diff is `set_auth` with the key and one
+- Fixture: workspace gains `isolation: database` through WS-13, whose diff is `set_auth` with the key and one
   scenario. Every earlier scenario passes unchanged on all three backends (165 steps each), which proves the
   statuses did not move. The new scenario (27 steps) states the one observable change: an assignee removed from the
   team gets 403 for the task, may not update it, lists none of the team's tasks and still reads a public
@@ -264,7 +266,7 @@ From this round on a design note says what its tables, triggers and queries are 
   `DATABASE_APP_URL` pointed at the owner the app refuses every request (TypeScript) or to start (Go).
 - Models without the key generate byte-identical output: the blog and todo snapshots match unchanged, and the
   workspace project built through WS-9 matches the snapshot committed before this round.
-- Eval cases: `fx-ws-11-isolation` (the fixture's diff as the oracle), `ws2-database-isolation` (the ask in the
+- Eval cases: `fx-ws-13-isolation` (the fixture's diff as the oracle), `ws2-database-isolation` (the ask in the
   security review's words) and `empty-clinic-isolation` (isolation from the first intent, with a derived column
   the diff must not write by hand). The expectation checks read rules as the model declares them, so a case over
   an isolated model names the rule it wants, not the compiled one. The four cases over the whole workspace

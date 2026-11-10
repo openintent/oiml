@@ -1,0 +1,139 @@
+osl: "1.0"
+summary: "read: on fields: User.phone and User.banned_at for the person and the admins, Article.editor_note for admins; users can set their phone, the users table gains the column for those who may read it; the article page shows the status and, to admins, the editor note"
+ops:
+  - op: add_field
+    entity: User
+    name: phone
+    field: { type: string, max_length: 40, read: "owner:id or role:admin" }
+  - op: update_field
+    entity: User
+    name: banned_at
+    field: { type: datetime, read_only: true, read: "owner:id or role:admin" }
+  - op: add_field
+    entity: Article
+    name: editor_note
+    field: { type: text, read: "role:admin", description: For the editors }
+  - op: update_resource
+    name: users
+    resource:
+      entity: User
+      operations: [list, get, update]
+      get: { include: [posts] }
+      update: { fields: [name, phone] }
+      actions:
+        ban:
+          description: Ban the user, recording when and why
+          input:
+            reason: { type: string, required: true, max_length: 200, validate: { min_length: 1 } }
+          rule: "role:admin"
+  - op: update_page
+    name: users
+    page: { resource: users, columns: [name, email, role, banned, phone] }
+  - op: update_page
+    name: post
+    page:
+      kind: detail
+      resource: posts
+      path: /posts/:id
+      title: Article
+      fields: [title, content, published, locked, cover, tags, posted_at, author_id, status, editor_note]
+      sections:
+        - resource: comments
+          filter: { article_id: "{row.id}" }
+          columns: [body, author_id, created_at]
+          create: true
+  - op: add_scenario
+    scenario:
+      name: contact details and editor notes
+      steps:
+        - as: alice
+          op: auth.me
+          expect: { status: 200, body: { data: { phone: null } } }
+          capture: { alice_id: data.id }
+        - as: alice
+          op: users.update
+          path: { id: "{alice_id}" }
+          body: { phone: "+1 555 0100" }
+          expect: { status: 200, body: { data: { phone: "+1 555 0100" } } }
+        - as: alice
+          op: auth.me
+          expect: { status: 200, body: { data: { phone: "+1 555 0100" } } }
+        - as: bob
+          op: users.get
+          path: { id: "{alice_id}" }
+          expect: { status: 200, body: { data: { banned: true } }, absent: [data.phone, data.banned_at] }
+        - op: users.get
+          path: { id: "{alice_id}" }
+          expect: { status: 200, body: { data: { banned: true } }, absent: [data.phone, data.banned_at] }
+        - op: users.list
+          expect: { status: 200, absent: [data.phone, data.banned_at] }
+        - as: admin
+          op: users.get
+          path: { id: "{alice_id}" }
+          expect: { status: 200, body: { data: { phone: "+1 555 0100" } } }
+        - as: admin
+          op: users.list
+          query: { page_size: "100" }
+          expect: { status: 200, body: { data: [{ phone: "+1 555 0100" }] } }
+        - as: alice
+          op: posts.create
+          body: { title: Field notes, content: What a reader gets, editor_note: Check the dates }
+          expect: { status: 201, body: { data: { title: Field notes } }, absent: [data.editor_note] }
+          capture: { post: data.id }
+        - as: admin
+          op: posts.get
+          path: { id: "{post}" }
+          expect: { status: 200, body: { data: { editor_note: Check the dates, author: { phone: "+1 555 0100" } } } }
+        - as: alice
+          op: posts.get
+          path: { id: "{post}" }
+          expect: { status: 200, body: { data: { author: { phone: "+1 555 0100" } } }, absent: [data.editor_note] }
+        - as: bob
+          op: posts.get
+          path: { id: "{post}" }
+          expect: { status: 200, body: { data: { title: Field notes } }, absent: [data.editor_note, data.author.phone] }
+        - op: posts.list
+          query: { author_id: "{alice_id}" }
+          expect: { status: 200, absent: [data.editor_note, data.author.phone, data.author.banned_at] }
+        - as: admin
+          op: posts.list
+          query: { author_id: "{alice_id}" }
+          expect: { status: 200, body: { data: [{ title: Field notes, editor_note: Check the dates }] } }
+        - as: alice
+          op: posts.update
+          path: { id: "{post}" }
+          body: { content: "What a reader gets, revised" }
+          expect:
+            { status: 200, body: { data: { content: "What a reader gets, revised" } }, absent: [data.editor_note] }
+        - as: alice
+          op: posts.submit
+          path: { id: "{post}" }
+          expect: { status: 200, body: { data: { status: in_review } }, absent: [data.editor_note] }
+        - as: admin
+          op: posts.approve
+          path: { id: "{post}" }
+          expect: { status: 200, body: { data: { status: approved, editor_note: Check the dates } } }
+        - as: alice
+          op: posts.publish
+          path: { id: "{post}" }
+          expect: { status: 200, body: { data: { published: true } }, absent: [data.editor_note] }
+        - as: alice
+          op: posts.archive
+          path: { id: "{post}" }
+          expect: { status: 200, absent: [data.editor_note] }
+        - as: alice
+          op: posts.restore
+          path: { id: "{post}" }
+          expect: { status: 200, body: { data: { archived_at: null } }, absent: [data.editor_note] }
+        - as: admin
+          op: posts.lock
+          path: { id: "{post}" }
+          expect: { status: 200, body: { data: { locked: true, editor_note: Check the dates } } }
+        - as: bob
+          op: users.get
+          path: { id: "{alice_id}" }
+          expect: { status: 200, absent: [data.phone, data.posts.editor_note] }
+        - as: admin
+          op: users.get
+          path: { id: "{alice_id}" }
+          expect: { status: 200, body: { data: { phone: "+1 555 0100", posts: [{ editor_note: Check the dates }] } } }

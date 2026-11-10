@@ -354,6 +354,14 @@ ${
         return created;
       });`
         : `      const [row] = await db.insert(${table}).values(values).returning();`;
+    // An invite is issued, not inserted: the role ceiling, the token, the mail and the row are one function
+    const write = create.invite
+      ? `      if (!session) return denied({ ok: false, status: 401 });
+      const hookContext: HookContext = { request, session };
+      const { row, debug } = await issue${T}(body.data, session, values => hooks.beforeCreate(values, hookContext));`
+      : `      const hookContext: HookContext = { request, session };
+      const values = await hooks.beforeCreate(${atRestCall(entity, `{ ...${resolveFiles("body.data")}${owner} }`)}, hookContext);
+${insert}`;
     methods.push(`  async create(request: Request): Promise<Response> {
     try {
       const session = await getSession(request);
@@ -361,12 +369,10 @@ ${
       if (!verdict.ok) return denied(verdict);
       const body = await parseBody(${resource.name}CreateInput, request);
       if (!body.ok) return body.response;${createShapeLines}
-${bodyCheck}      const hookContext: HookContext = { request, session };
-      const values = await hooks.beforeCreate(${atRestCall(entity, `{ ...${resolveFiles("body.data")}${owner} }`)}, hookContext);
-${insert}
+${bodyCheck}${write}
 ${emitLines.join("\n")}${timerLine}
       await hooks.afterCreate(row, hookContext);
-      return created(${presentCall(entity, "row", isTenant && tenancy ? creatorViewer(ir, "session", `row.${pk}`) : "session")});
+      return created(${presentCall(entity, "row", isTenant && tenancy ? creatorViewer(ir, "session", `row.${pk}`) : "session")}${create.invite ? ", debug ? { debug } : {}" : ""});
     } catch (err) {
       return handleError(err, "write");
     }
@@ -499,6 +505,7 @@ ${emitLines.join("\n")}
     ...(usesEmit ? [`import { emit } from "../events";`] : []),
     ...(hasTimers ? [`import { scheduleTimers } from "../scheduling";`] : []),
     ...(hasFiles ? [`import { resolveFileRefs } from "../files";`] : []),
+    ...(create?.invite ? [`import { issue${T} } from "../auth-providers";`] : []),
     `import { ${[...httpImports].sort().join(", ")} } from "../http";`,
     ...(sealedColumns(entity).length && (create || update) ? [`import { atRest } from "../seal";`] : []),
     `import { ${[...presents].sort().join(", ")} } from "../present";`,

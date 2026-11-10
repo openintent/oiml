@@ -34,11 +34,12 @@ export function uiFile(ir: IR, conv: TsConventions): string {
 "use client";
 import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-${ir.files ? `import { client } from "./client";\n` : ""}
+import { ${ir.files ? "client, " : ""}errorStatus } from "./client";
+
 export function text(value: unknown): string {
   if (value == null) return "";
   if (value instanceof Date) return value.toISOString();
@@ -126,6 +127,34 @@ export function ErrorNote({ error, className }: { error: { message: string } | n
     <p role="alert" className={cn("rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive", className)}>
       {error.message}
     </p>
+  );
+}
+
+/**
+ * The API's answer for a row that did not load, as a card: not found (a missing row and a hidden one alike), no
+ * access, or sign in. Anything else is shown as the error it is.
+ */
+export function RowError({ error, signIn }: { error: { message: string }; signIn?: ReactNode }) {
+  const status = errorStatus(error);
+  const card =
+    status === 404
+      ? { title: "Not found", description: "There is nothing at this address." }
+      : status === 403
+        ? { title: "No access", description: "Your account cannot open this page." }
+        : status === 401
+          ? { title: "Sign in required", description: "Sign in to open this page." }
+          : null;
+  if (!card) return <ErrorNote error={error} className="m-6" />;
+  return (
+    <div className="mx-auto max-w-md p-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>{card.title}</CardTitle>
+          <CardDescription>{card.description}</CardDescription>
+        </CardHeader>
+        {status === 401 && signIn ? <CardContent>{signIn}</CardContent> : null}
+      </Card>
+    </div>
   );
 }
 

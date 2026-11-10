@@ -41,7 +41,9 @@ export const TENANT_TABLES: { table: string; key: string; publicRead: boolean }[
   { table: "labels", key: "id", publicRead: false },
   { table: "milestone_labels", key: "id", publicRead: false },
   { table: "requests", key: "id", publicRead: false },
-  { table: "invoices", key: "id", publicRead: false }
+  { table: "invoices", key: "id", publicRead: false },
+  { table: "team_invites", key: "id", publicRead: false },
+  { table: "channel_invites", key: "id", publicRead: false }
 ];
 
 /** The app role's pool (DATABASE_APP_URL), made on first use so that building the app needs no database */
@@ -111,10 +113,14 @@ export async function withTenants<T>(tenants: (string | number)[], work: () => P
   return result;
 }
 
-/** Bind a tenant the request is about to create: its creator becomes its first member in the same transaction */
+/**
+ * Bind a tenant the request is about to create (its creator becomes its first member in the same transaction), or
+ * one an invite leads into. A tenant bound already is left as it is.
+ */
 export async function bindTenant(tenant: string | number): Promise<void> {
   const scope = scopes.getStore();
   if (!scope?.tenants) throw new Error("bindTenant needs a request scope (withTenants)");
+  if (scope.tenants.some(t => String(t) === String(tenant))) return;
   scope.tenants.push(tenant);
   await scope.db.execute(sql`select set_config(${SETTING}, ${arrayLiteral(scope.tenants)}, true)`);
 }

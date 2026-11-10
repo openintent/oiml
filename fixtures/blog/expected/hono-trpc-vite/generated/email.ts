@@ -34,3 +34,15 @@ export async function sendEmail(email: Email): Promise<void> {
     }
   }
 }
+
+/** The mail an invite sends: who invites, to what, as what, the link, and the day the link stops working */
+export function inviteEmail(invite: { to: string; name: string; inviter: string; role?: string | null; url: string; expires: Date }): Email {
+  return {
+    to: invite.to,
+    subject: "You are invited to " + invite.name,
+    text:
+      (invite.inviter || "Someone") + " invited you to " + invite.name + (invite.role ? " as " + invite.role : "") + ".\n\n" +
+      "Accept the invite: " + invite.url + "\n\n" +
+      "The link works until " + invite.expires.toISOString().slice(0, 10) + "."
+  };
+}

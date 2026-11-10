@@ -1,5 +1,5 @@
 id: ws1-invites-gap
-tags: [gap, tenancy, entity, actions]
+tags: [auth, tenancy, scenario]
 base: { fixture: workspace, through: WS-1 }
 intent:
   title: Invitations
@@ -7,8 +7,12 @@ intent:
     Owners and admins invite people to a team by email. The invitee gets a link; accepting it makes them
     a member. Pending invitations are listed per team and can be revoked.
 expect:
-  outcome: any
-  entities: ["Invite|Invitation|TeamInvite|TeamInvitation"]
-  relations: ["Invite|Invitation|TeamInvite|TeamInvitation.* -> Team"]
-  fields: { "Invite|Invitation|TeamInvite|TeamInvitation": [email] }
-notes: There is no invite construct; the agent should model it as an entity with actions and leave the email to a handler.
+  auth: { invites: [TeamMember] }
+  absent_entities: ["Invite|Invitation|TeamInvite|TeamInvitation|PendingInvite"]
+  scenarios: { min: 1, rejections: 1, statuses: [403, 201] }
+  touches: [team_invites.create, auth.invite_accept]
+notes: >-
+  Promoted from outcome any when invites were built (round A4, docs/designs/invites.md); the id keeps its history in
+  the earlier runs. Every clause is the construct's: `auth.invites` on TeamMember, whose default rule is the
+  membership's create rule (owners and admins), the list filtered by team and the delete that revokes. An invite
+  entity declared by hand, with an action and a handler for the mail, was the right answer before and fails now.

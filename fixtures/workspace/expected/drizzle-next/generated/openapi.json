@@ -49,11 +49,244 @@
       "name": "invoices"
     },
     {
+      "name": "team_invites",
+      "description": "Invites to a Team: create sends one, delete revokes one, list shows the ones waiting"
+    },
+    {
+      "name": "channel_invites",
+      "description": "Invites to a Channel: create sends one, delete revokes one, list shows the ones waiting"
+    },
+    {
       "name": "auth",
       "description": "Sign-in"
     }
   ],
   "paths": {
+    "/api/auth/invites/{token}": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "operationId": "auth_invite",
+        "summary": "What an invite's link is for",
+        "description": "Never accepts. A token that is unknown, used or revoked answers 404, a lapsed one 410.",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "entity",
+                        "name",
+                        "inviter",
+                        "email",
+                        "expires_at",
+                        "account"
+                      ],
+                      "properties": {
+                        "entity": {
+                          "type": "string",
+                          "enum": [
+                            "Team",
+                            "Channel"
+                          ]
+                        },
+                        "name": {
+                          "type": "string",
+                          "description": "The display value of the row the invite is to"
+                        },
+                        "role": {
+                          "type": "string",
+                          "enum": [
+                            "owner",
+                            "admin",
+                            "member"
+                          ]
+                        },
+                        "inviter": {
+                          "type": "string",
+                          "description": "The display value of who invited"
+                        },
+                        "email": {
+                          "type": "string",
+                          "description": "The address invited, masked"
+                        },
+                        "expires_at": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "account": {
+                          "type": "boolean",
+                          "description": "Whether the address already has an account"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          }
+        }
+      }
+    },
+    "/api/auth/invites/{token}/accept": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "operationId": "auth_invite_accept",
+        "summary": "Accept an invite",
+        "description": "A session under the invite's email accepts, 200. A session under another email answers 403 invite_email_mismatch. Without a session, an address that has an account answers 401 sign_in_required, and one that has none gets an account made from the body, signed in, 201. One proof accepts every live invite to the address.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "description": "Only read when the account is made here",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 1
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 8
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "accepted"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/User"
+                    },
+                    "accepted": {
+                      "type": "array",
+                      "description": "The invites this sign-in accepted, the one whose token was used first",
+                      "items": {
+                        "$ref": "#/components/schemas/AcceptedInvite"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Account made, signed in and accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "accepted"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/User"
+                    },
+                    "accepted": {
+                      "type": "array",
+                      "description": "The invites this sign-in accepted, the one whose token was used first",
+                      "items": {
+                        "$ref": "#/components/schemas/AcceptedInvite"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
+          }
+        }
+      }
+    },
     "/api/auth/login": {
       "post": {
         "tags": [
@@ -73,6 +306,10 @@
                   },
                   "password": {
                     "type": "string"
+                  },
+                  "invite": {
+                    "type": "string",
+                    "description": "An invite's token: the sign-in accepts it"
                   }
                 },
                 "required": [
@@ -96,6 +333,13 @@
                   "properties": {
                     "data": {
                       "$ref": "#/components/schemas/User"
+                    },
+                    "accepted": {
+                      "type": "array",
+                      "description": "The invites this sign-in accepted, the one whose token was used first",
+                      "items": {
+                        "$ref": "#/components/schemas/AcceptedInvite"
+                      }
                     }
                   }
                 }
@@ -246,6 +490,13 @@
                   "properties": {
                     "data": {
                       "$ref": "#/components/schemas/User"
+                    },
+                    "accepted": {
+                      "type": "array",
+                      "description": "The invites this sign-in accepted, the one whose token was used first",
+                      "items": {
+                        "$ref": "#/components/schemas/AcceptedInvite"
+                      }
                     }
                   }
                 }
@@ -461,6 +712,407 @@
                 }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
+          }
+        }
+      }
+    },
+    "/api/channel_invites": {
+      "get": {
+        "tags": [
+          "channel_invites"
+        ],
+        "operationId": "channel_invites_list",
+        "description": "Any of: All of: Only the owner of the row reached through channel_id.created_by; Only members of the tenant reached through channel_id.team_id; All of: Only the members of the row reached through channel_id (ChannelMember) with at least admin; Only members of the tenant reached through channel_id.team_id.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "summary": "List channel_invites",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 20
+            }
+          },
+          {
+            "name": "channel_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "page"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "channel_id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "email": {
+                            "type": "string",
+                            "maxLength": 255,
+                            "format": "email",
+                            "description": "The address invited; whoever proves it becomes the member"
+                          },
+                          "role": {
+                            "type": "string",
+                            "enum": [
+                              "admin",
+                              "member"
+                            ],
+                            "description": "The role the membership gets"
+                          },
+                          "invited_by": {
+                            "type": "string",
+                            "format": "uuid",
+                            "readOnly": true
+                          },
+                          "expires_at": {
+                            "type": "string",
+                            "format": "date-time",
+                            "readOnly": true
+                          },
+                          "created_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "inviter": {
+                            "oneOf": [
+                              {
+                                "$ref": "#/components/schemas/User"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "channel_id",
+                          "email",
+                          "role",
+                          "invited_by",
+                          "expires_at",
+                          "created_at",
+                          "inviter"
+                        ]
+                      }
+                    },
+                    "page": {
+                      "type": "object",
+                      "required": [
+                        "page",
+                        "page_size",
+                        "total"
+                      ],
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "page_size": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "channel_invites"
+        ],
+        "operationId": "channel_invites_create",
+        "description": "Any of: All of: Only the owner of the row reached through channel_id.created_by; Only members of the tenant reached through channel_id.team_id; All of: Only the members of the row reached through channel_id (ChannelMember) with at least admin; Only members of the tenant reached through channel_id.team_id. Mails the address a link; proving the address makes the ChannelMember. A live invite to the address answers 409 invite_exists, a member's address 409 already_member.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "summary": "Invite an address (channel_invites)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "channel_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "email": {
+                    "type": "string",
+                    "maxLength": 255,
+                    "format": "email",
+                    "description": "The address invited; whoever proves it becomes the member"
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "admin",
+                      "member"
+                    ],
+                    "description": "The role the membership gets"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "channel_id",
+                  "email"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ChannelInvite"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
+          }
+        }
+      }
+    },
+    "/api/channel_invites/{id}": {
+      "get": {
+        "tags": [
+          "channel_invites"
+        ],
+        "operationId": "channel_invites_get",
+        "description": "Any of: All of: Only the owner of the row reached through channel_id.created_by; Only members of the tenant reached through channel_id.team_id; All of: Only the members of the row reached through channel_id (ChannelMember) with at least admin; Only members of the tenant reached through channel_id.team_id. A row the read rule hides answers 404.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "summary": "Get one of channel_invites",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "channel_id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "email": {
+                          "type": "string",
+                          "maxLength": 255,
+                          "format": "email",
+                          "description": "The address invited; whoever proves it becomes the member"
+                        },
+                        "role": {
+                          "type": "string",
+                          "enum": [
+                            "admin",
+                            "member"
+                          ],
+                          "description": "The role the membership gets"
+                        },
+                        "invited_by": {
+                          "type": "string",
+                          "format": "uuid",
+                          "readOnly": true
+                        },
+                        "expires_at": {
+                          "type": "string",
+                          "format": "date-time",
+                          "readOnly": true
+                        },
+                        "created_at": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "channel_id",
+                        "email",
+                        "role",
+                        "invited_by",
+                        "expires_at",
+                        "created_at"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "channel_invites"
+        ],
+        "operationId": "channel_invites_delete",
+        "description": "Any of: All of: Only the owner of the row reached through channel_id.created_by; Only members of the tenant reached through channel_id.team_id; All of: Only the members of the row reached through channel_id (ChannelMember) with at least admin; Only members of the tenant reached through channel_id.team_id. A row the read rule hides answers 404.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "summary": "Delete one of channel_invites",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
@@ -3068,6 +3720,17 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "created_at:asc",
+                "created_at:desc"
+              ]
+            }
           }
         ],
         "responses": {
@@ -3105,6 +3768,16 @@
                           "created_at": {
                             "type": "string",
                             "format": "date-time"
+                          },
+                          "author": {
+                            "oneOf": [
+                              {
+                                "$ref": "#/components/schemas/User"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         },
                         "required": [
@@ -3112,7 +3785,8 @@
                           "channel_id",
                           "author_id",
                           "body",
-                          "created_at"
+                          "created_at",
+                          "author"
                         ]
                       }
                     },
@@ -6915,6 +7589,410 @@
         }
       }
     },
+    "/api/team_invites": {
+      "get": {
+        "tags": [
+          "team_invites"
+        ],
+        "operationId": "team_invites_list",
+        "description": "Only members of the row's tenant (team_id) with at least role admin.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "summary": "List team_invites",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 20
+            }
+          },
+          {
+            "name": "team_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "page"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "team_id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "email": {
+                            "type": "string",
+                            "maxLength": 255,
+                            "format": "email",
+                            "description": "The address invited; whoever proves it becomes the member"
+                          },
+                          "role": {
+                            "type": "string",
+                            "enum": [
+                              "owner",
+                              "admin",
+                              "member"
+                            ],
+                            "description": "The role the membership gets"
+                          },
+                          "invited_by": {
+                            "type": "string",
+                            "format": "uuid",
+                            "readOnly": true
+                          },
+                          "expires_at": {
+                            "type": "string",
+                            "format": "date-time",
+                            "readOnly": true
+                          },
+                          "created_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "inviter": {
+                            "oneOf": [
+                              {
+                                "$ref": "#/components/schemas/User"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "team_id",
+                          "email",
+                          "role",
+                          "invited_by",
+                          "expires_at",
+                          "created_at",
+                          "inviter"
+                        ]
+                      }
+                    },
+                    "page": {
+                      "type": "object",
+                      "required": [
+                        "page",
+                        "page_size",
+                        "total"
+                      ],
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "page_size": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "team_invites"
+        ],
+        "operationId": "team_invites_create",
+        "description": "Only members of the row's tenant (team_id) with at least role admin. Mails the address a link; proving the address makes the TeamMember. A live invite to the address answers 409 invite_exists, a member's address 409 already_member.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "summary": "Invite an address (team_invites)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "team_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "email": {
+                    "type": "string",
+                    "maxLength": 255,
+                    "format": "email",
+                    "description": "The address invited; whoever proves it becomes the member"
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "owner",
+                      "admin",
+                      "member"
+                    ],
+                    "description": "The role the membership gets"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "team_id",
+                  "email"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/TeamInvite"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
+          }
+        }
+      }
+    },
+    "/api/team_invites/{id}": {
+      "get": {
+        "tags": [
+          "team_invites"
+        ],
+        "operationId": "team_invites_get",
+        "description": "Only members of the row's tenant (team_id) with at least role admin.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "summary": "Get one of team_invites",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "team_id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "email": {
+                          "type": "string",
+                          "maxLength": 255,
+                          "format": "email",
+                          "description": "The address invited; whoever proves it becomes the member"
+                        },
+                        "role": {
+                          "type": "string",
+                          "enum": [
+                            "owner",
+                            "admin",
+                            "member"
+                          ],
+                          "description": "The role the membership gets"
+                        },
+                        "invited_by": {
+                          "type": "string",
+                          "format": "uuid",
+                          "readOnly": true
+                        },
+                        "expires_at": {
+                          "type": "string",
+                          "format": "date-time",
+                          "readOnly": true
+                        },
+                        "created_at": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "team_id",
+                        "email",
+                        "role",
+                        "invited_by",
+                        "expires_at",
+                        "created_at"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "team_invites"
+        ],
+        "operationId": "team_invites_delete",
+        "description": "Only members of the row's tenant (team_id) with at least role admin.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "summary": "Delete one of team_invites",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
+          }
+        }
+      }
+    },
     "/api/teams": {
       "get": {
         "tags": [
@@ -7564,6 +8642,47 @@
   },
   "components": {
     "schemas": {
+      "AcceptedInvite": {
+        "type": "object",
+        "description": "A membership an invite made: the row joined, the role given and the tenant it belongs to",
+        "required": [
+          "entity",
+          "id",
+          "tenant"
+        ],
+        "properties": {
+          "entity": {
+            "type": "string",
+            "enum": [
+              "Team",
+              "Channel"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "owner",
+              "admin",
+              "member"
+            ]
+          },
+          "tenant": {
+            "oneOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
       "Channel": {
         "type": "object",
         "properties": {
@@ -7598,6 +8717,56 @@
           "created_by",
           "name",
           "private",
+          "created_at"
+        ]
+      },
+      "ChannelInvite": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "channel_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "email": {
+            "type": "string",
+            "maxLength": 255,
+            "format": "email",
+            "description": "The address invited; whoever proves it becomes the member"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "member"
+            ],
+            "description": "The role the membership gets"
+          },
+          "invited_by": {
+            "type": "string",
+            "format": "uuid",
+            "readOnly": true
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "channel_id",
+          "email",
+          "role",
+          "invited_by",
+          "expires_at",
           "created_at"
         ]
       },
@@ -8143,6 +9312,57 @@
           "invoice_count"
         ]
       },
+      "TeamInvite": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "team_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "email": {
+            "type": "string",
+            "maxLength": 255,
+            "format": "email",
+            "description": "The address invited; whoever proves it becomes the member"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "owner",
+              "admin",
+              "member"
+            ],
+            "description": "The role the membership gets"
+          },
+          "invited_by": {
+            "type": "string",
+            "format": "uuid",
+            "readOnly": true
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "team_id",
+          "email",
+          "role",
+          "invited_by",
+          "expires_at",
+          "created_at"
+        ]
+      },
       "TeamMember": {
         "type": "object",
         "properties": {
@@ -8275,6 +9495,16 @@
             }
           }
         },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Gone": {
+        "description": "The invite has lapsed",
         "content": {
           "application/json": {
             "schema": {

@@ -1,5 +1,5 @@
 osl: "1.0"
-summary: Pages over the catalog and the playlists, with ordered tracks and genres by name
+summary: "Pages over the catalog and the playlists, with ordered tracks and genres by name; album and playlist pages at /albums/:id and /playlists/:id"
 ops:
   - op: set_app
     app:
@@ -27,6 +27,16 @@ ops:
           resource: playlists
           columns: [name, public]
           filter: { owner_id: "{actor.id}" }
+        album:
+          kind: detail
+          resource: albums
+          path: /albums/:id
+          fields: [title, artist_id, created_at]
+        playlist:
+          kind: detail
+          resource: playlists
+          path: /playlists/:id
+          fields: [name, public, created_at]
       sidebar:
         items:
           - { page: albums, icon: disc-3 }

@@ -12,8 +12,8 @@ transition named `archive` is refused where the entity has `archive:`, so the bl
 board takes a drop only on a column a transition reaches and needs no update operation; the proof has a third
 intent, on the workspace fixture under `isolation: database`, which the note predated; the page test is a script
 outside the repository that drove both web backends in Chromium, because the repository has no browser tests; the
-intents are FEAT-14, TODO-8 and WS-14; four diagnostics, not five. Proof: blog FEAT-14 (44 scenario steps), todo
-TODO-8 (22 steps and one earlier scenario re-stated) and workspace WS-14 (34 steps), conformance 12/12 with six
+intents are FEAT-16, TODO-8 and WS-16; four diagnostics, not five. Proof: blog FEAT-16 (44 scenario steps), todo
+TODO-8 (22 steps and one earlier scenario re-stated) and workspace WS-16 (34 steps), conformance 12/12 with six
 walks, the rule walk predicting 200 or 409 from each row's state, 211 unit tests, the oracle gate 37/37, and the
 board dragged along an allowed move, two moves no transition allows and a stale card on `drizzle-next` and on
 `hono-trpc-vite`.
@@ -125,15 +125,15 @@ than the round was recommended to do; "Addition" what neither named.
    back, and B1's existence probe answers what the rule answers a caller it refuses (401 or 403, or 404 under
    `hidden: not_found`) before the update is tried, so a conditional update that matches no row is never mistaken
    for a conflict there. The update itself runs under the policy. A timer runs it through the owner's pool, as it
-   runs a handler. A transition's rule is a row action's rule: a public alternative on a tenant table is M117, and
-   the compiler adds the membership to every alternative that needs a session (M119). The tenant walk needed no
+   runs a handler. A transition's rule is a row action's rule: a public alternative on a tenant table is M126, and
+   the compiler adds the membership to every alternative that needs a session (M128). The tenant walk needed no
    change: it already calls every row action as the outsider, in both passes, and takes only 401, 403 or 404.
-7. **Addition: a third intent, workspace WS-14**, beside the note's two, because the note predated isolation and a
+7. **Addition: a third intent, workspace WS-16**, beside the note's two, because the note predated isolation and a
    design for it that never ran is a liability: a new tenant entity `Request` with approve, decline, reopen and a
    timer-only expire, a count of pending requests on Team, a board.
 8. **Names.** On an entity with `archive:` a transition named `archive` or `restore` is M151, with
    `archiveNameClash(resource, entity, field, "transition", name)`; `move` on an ordered entity, an operation's
-   name and a declared action's name are M162. The blog fixture's Article archives (FEAT-13), so its step is
+   name and a declared action's name are M162. The blog fixture's Article archives (FEAT-15), so its step is
    `retire`; the note's own example keeps `archive` and a unit test holds it valid. The reference tells a proposer
    which to use: "removed but recoverable, out of the lists" is `archive:`, a step in a lifecycle is a transition,
    and an entity with both names its step otherwise.
@@ -186,7 +186,7 @@ than the round was recommended to do; "Addition" what neither named.
     every project's `trpc.ts` and was left out of this round.
 18. **Diagnostics M160 to M163**, the round's block, plus the existing M151, M087, M131 and M133 with new cases.
     The note counted five; the rule of a transition is checked by the rules' own codes.
-19. **Intents FEAT-14, TODO-8 and WS-14**: the note named FEAT-13, which round B3 took.
+19. **Intents FEAT-16, TODO-8 and WS-16**: the note named FEAT-15, which round B3 took.
 20. **Eval corpus.** A new expectation key, `transitions: { Entity: [name or "from -> to"] }`; three fixture
     cases; `blog2-review-workflow` re-expected with `any_of` (transitions, or the two actions as before); one new
     ask, `empty-leave-requests`, which requires the construct; `todo4-archive-projects`, the one case based on the
@@ -220,7 +220,7 @@ than the round was recommended to do; "Addition" what neither named.
 | The load                  | as the app role with the caller's tenants bound: another tenant's row does not come back, and the existence probe answers 401, 403 or 404 before the 409 |
 | The update                | as the app role under the same policy; it can only match a row the load returned                                                                         |
 | A timer                   | the statement through the owner's pool, as the system, like every job                                                                                    |
-| The rule                  | a row action's: no public alternative on a tenant table (M117); the tenant's membership added to every alternative that needs a session (M119)           |
+| The rule                  | a row action's: no public alternative on a tenant table (M126); the tenant's membership added to every alternative that needs a session (M128)           |
 | A count over the field    | the count's definer function, unchanged from B3                                                                                                          |
 
 ## Declined, with the sentence the reference gets
@@ -239,8 +239,8 @@ than the round was recommended to do; "Addition" what neither named.
 ## Proof
 
 - Fixtures, each on all three backends:
-  - blog FEAT-14 "editorial review" adds `status` (draft, in_review, approved, retired) with `submit`, `approve`,
-    `reject` and `retire` on Article beside the existing `publish` action and the `archive:` of FEAT-13, to show
+  - blog FEAT-16 "editorial review" adds `status` (draft, in_review, approved, retired) with `submit`, `approve`,
+    `reject` and `retire` on Article beside the existing `publish` action and the `archive:` of FEAT-15, to show
     that a transition, a handler-backed action and the compiler's archive coexist on one entity. 44 steps: the
     status refused in create and update (400), each transition refused to the wrong caller (401, 403) and from
     the wrong state (409), the stamp, the count of approved articles on User, `publish` still working, an archived
@@ -249,7 +249,7 @@ than the round was recommended to do; "Addition" what neither named.
     run by a timer on a stamp another timer set. An event follows `posts.approve`. A board page by status.
   - todo TODO-8 "task flow": `start`, `pause` and `finish` on Task's status, `completed_at`, the handler-backed
     `complete` kept beside them (decision 13), the existing board now dragging along the transitions. 22 steps.
-  - workspace WS-14 "requests and approvals" under `isolation: database`: decision 7. 34 steps, among them the
+  - workspace WS-16 "requests and approvals" under `isolation: database`: decision 7. 34 steps, among them the
     outsider's 403 on a row of another tenant, the member's 403, the 409s, the row frozen by its update rule once
     it left pending, the timer-only expiry at fourteen days and the team's count after each step.
 - The walks: rule (decision 16), tenant twice (22 rows of the home team, the Request rows among them, with the
@@ -257,7 +257,7 @@ than the round was recommended to do; "Addition" what neither named.
 - Unit tests: `packages/core/test/transitions.test.ts` (16), and round B3's test of M133 turned into one that a
   timer runs archive and restore.
 - The board in a browser: decision 15.
-- Eval cases: `fx-blog-14-editorial-review`, `fx-todo-8-task-flow`, `fx-ws-14-requests`, `blog2-review-workflow`
+- Eval cases: `fx-blog-16-editorial-review`, `fx-todo-8-task-flow`, `fx-ws-16-requests`, `blog2-review-workflow`
   re-expected and `empty-leave-requests`; the oracle gate 37/37. The two asks were checked against hand-written
   answers, and an answer with actions and handlers fails `empty-leave-requests` as it should.
 
@@ -281,3 +281,9 @@ them replacing round B3's own statement). The board and the buttons (about 215).
 - `rename_field` does not rewrite the rule of `archive: { rule }` (round B3's), though it does rewrite a
   transition's; validation catches the stale name.
 - The live evals were not run: the asks have never met a model.
+
+## At the merge with rounds A3 and A4 (2026-11-10)
+
+A detail page (round A3) offers a transition from the row's state as the detail pane did (WS-16's `request` page,
+blog's article page), and a board over the field of a state machine takes a page's `{tenant.id}` filter as any
+board does.

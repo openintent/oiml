@@ -8,15 +8,18 @@ import { useSearchParams } from "next/navigation";
 import { useEffect } from "react";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { client } from "@/generated/app/client";
+import { useLandInvitee } from "@/generated/app/invite";
 
 export default function VerifyPage() {
   const params = useSearchParams();
   const token = params.get("token") ?? "";
   const router = useRouter();
   const queryClient = useQueryClient();
+  const land = useLandInvitee();
   const verify = useMutation({
     mutationFn: (input: { token: string }) => client.auth.magic_link_verify(input),
-    onSuccess: async () => {
+    onSuccess: async reply => {
+      if (reply.accepted?.length) return land(reply.accepted);
       await queryClient.invalidateQueries();
       await router.push("/");
     }

@@ -1,0 +1,38 @@
+id: fx-feat-14-coauthor-invites
+tags: [fixture, auth, junction, entity, rules, scenario]
+base: { fixture: blog, through: FEAT-13 }
+oracle: fixtures/blog/intents/FEAT-14/diff.yaml
+intent:
+  title: Co-authors by invite
+  ask: >-
+    An article's author should be able to bring in co-authors by email address. The person gets a mail with a link,
+    and accepting it, or signing in with that address by magic link or GitHub, makes them an editor of that one
+    article. An editor can change the article and cannot delete it. Only the author invites to an article.
+  acceptance:
+    - The author invites an email address to an article, and the address gets a mail with a link
+    - Nobody but the author can invite to an article or see who was invited
+    - The invited person accepts the link and can then edit the article, and still cannot delete it
+    - Signing in by magic link with the invited address makes the person an editor without the invite's link
+expect:
+  entities: ["ArticleEditor|ArticleCoauthor|ArticleCoAuthor|CoAuthor|Coauthor|Editor|ArticleCollaborator|Collaborator"]
+  relations:
+    - "ArticleEditor|ArticleCoauthor|ArticleCoAuthor|CoAuthor|Coauthor|Editor|ArticleCollaborator|Collaborator.* -> Article:cascade"
+    - "ArticleEditor|ArticleCoauthor|ArticleCoAuthor|CoAuthor|Coauthor|Editor|ArticleCollaborator|Collaborator.* -> User:cascade"
+  unique_together:
+    "ArticleEditor|ArticleCoauthor|ArticleCoAuthor|CoAuthor|Coauthor|Editor|ArticleCollaborator|Collaborator":
+      [article_id, user_id]
+  auth:
+    invites: ["ArticleEditor|ArticleCoauthor|ArticleCoAuthor|CoAuthor|Coauthor|Editor|ArticleCollaborator|Collaborator"]
+  absent_entities: ["ArticleInvite|ArticleInvitation|Invite|Invitation"]
+  rules:
+    Article:
+      update: "owner:author_id or member:editors or role:admin|owner:author_id or member:coauthors or role:admin|owner:author_id or member:co_authors or role:admin|owner:author_id or member:collaborators or role:admin"
+      delete: "owner:author_id or role:admin"
+  scenarios: { min: 1, rejections: 3, statuses: [201, 403] }
+  touches: [article_invites.create, auth.invite_accept, posts.update]
+notes: >-
+  Invites without tenancy and without a role: the junction is new in the same diff, the article's update rule gains
+  a member path through its reverse relation, and `auth.invites` names the junction. The default rule is the
+  junction's create rule, the author's alone. The provider callback's call to `acceptPending` is compiled for this
+  model and no scenario drives it (the open entry `provider sign-in in scenarios`). A diff that keeps co-authors in a
+  handler, or lets an editor delete, fails the rules check on purpose.
