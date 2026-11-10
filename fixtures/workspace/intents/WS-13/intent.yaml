@@ -1,0 +1,14 @@
+osl: "1.0"
+title: Archived milestones and labels, and what a project counts
+ask: >-
+  A team's admins archive a milestone that is out of the way and restore it later; a plain member cannot. An archived
+  milestone leaves the list unless the archived ones are asked for, still opens by its id, and keeps its place among
+  the project's milestones. Labels can be archived by whoever may edit them, and a milestone still shows an archived
+  label it carries. A project says how many milestones it has and how many of them are still open (not done and not
+  archived). A user says how many teams they are in.
+acceptance:
+  - A member is refused when archiving a milestone; an admin archives it, and a second archive is a conflict
+  - The archived milestone is missing from the project's list and is the only one in the list of archived ones
+  - The project's milestone count stays while its count of open milestones falls, and rises again on restore
+  - An archived label is out of the label list and still named on the milestone that carries it
+  - A user in two teams counts two, whoever asks

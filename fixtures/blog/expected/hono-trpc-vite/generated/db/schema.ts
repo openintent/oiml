@@ -20,6 +20,7 @@ export const users = pgTable("users", {
   banned: boolean().notNull().default(false),
   banned_at: timestamp({ withTimezone: true }),
   ban_reason: text(),
+  post_count: integer().notNull().default(0),
   password_hash: varchar({ length: 255 })
 });
 
@@ -35,7 +36,9 @@ export const articles = pgTable(
     tags: varchar({ length: 255 }).array(),
     cover: jsonb().$type<FileRef>(),
     publish_at: timestamp({ withTimezone: true }),
-    locked: boolean().notNull().default(false)
+    locked: boolean().notNull().default(false),
+    comment_count: integer().notNull().default(0),
+    archived_at: timestamp({ withTimezone: true })
   },
   t => [unique("articles_author_id_title_key").on(t.author_id, t.title), index("articles_author_id_idx").on(t.author_id)]
 );

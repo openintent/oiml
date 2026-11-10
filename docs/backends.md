@@ -88,6 +88,8 @@ The `hono-trpc-vite` contract tests speak tRPC's HTTP transport but assert the s
 | Membership relations (`member:members`, `member:channel_id.members:admin`)      | `withRuleValues(row, session)` looks the caller's junction row up under the path's key and the access module ranks it by the junction's enum; lists filter with a subquery through the junction                                                  | the same                                                                                       | `ruleRow(ctx, session, row)` and `access.CheckRow` with `Through` and `Roles`; the list filter as `IN (SELECT ...)` through `where.Raw` |
 | Relations through a junction (`relations: { genres: { through: TrackGenre } }`) | a `load<Relation>(ids)` per relation: the junction joined to the far table for the page of rows, in the junction's order or by the far rows' display column; `attachList` and `attachGet` put the far rows on the rows before they are presented | the same                                                                                       | `load<Relation>` on the handler: the links in order, then the far rows they name, grouped by the near key                               |
 | Ordered collections (`position: { within: album_id }`)                          | the column has a default the insert trigger overwrites; `POST <resource>/{id}/move` calls `osl_move_<table>(id, to)` and reads the row again; delete calls `osl_remove_<table>(id)`; a reverse include is `with: { tracks: { orderBy } }`        | the same, `move` as a tRPC mutation                                                            | the same statements through the handler's pool or scope; the reverse loader's `ORDER BY`                                                |
+| Archive (`archive: true`) | the list's own condition (`isNull(archived_at)`, or `isNotNull` when `?archived=true`); `POST <resource>/{id}/archive` and `/restore` call one module-level `setArchived(row, archived)`, a conditional update, and answer 409 when it changed no row; the entity's timers are scheduled as after an update | the same, `archived` a boolean of the list input and the two actions tRPC mutations | `archived` parses like a boolean filter and becomes `IS NULL` or `IS NOT NULL` on the `Where`; the two handlers run the same conditional update and answer 409 on `pgx.ErrNoRows` |
+| Counts (`count_of: comments`) | none beyond the column: `integer NOT NULL DEFAULT 0`, read-only, kept by the database (see below); filters, sorts and tiles read it like any integer | the same | the same |
 | Schedules, timers                                                               | pg-boss cron schedules and jobs with `startAfter`; a timer job reloads the row and runs the action only if the row still says so; test hooks at `/api/osl-hooks/*` when `OSL_TEST_HOOKS=1`                                                       | the same, with the hooks as REST routes beside tRPC                                            | River periodic jobs (robfig/cron) and `ScheduledAt` jobs; the same hooks                                                                |
 | Magic links, OAuth                                                              | `POST /api/auth/magic-link`, `/verify`, `GET /api/auth/oauth/<name>[/callback]`, `GET /api/auth/providers`; email through log, Resend or capture                                                                                                 | procedures `auth.magic_link`, `auth.magic_link_verify`, `auth.providers`; OAuth as REST routes | the same routes                                                                                                                         |
 | Queued events                                                                   | pg-boss in the `pgboss` schema; the worker runs in the Next.js process from `instrumentation.ts` or alone with `tsx src/worker.ts`; `OSL_ROLE=web                                                                                                | worker                                                                                         | all`                                                                                                                                    | pg-boss; `src/server/main.ts` starts it; `src/server/worker.ts` alone | River; `river_%` tables are left alone by drift |
@@ -160,6 +162,31 @@ failed statement, no shared place, and 1..n after the parent's next move; its co
 append trigger and expects the unique constraint to refuse one of two appends. One thing the database cannot order
 is yours: a transaction of your own that writes two parents takes their locks in the order it writes them.
 
+## Counts in the database
+
+A `count_of` field is kept by the database, so that every writer keeps it: a generated handler, an action handler
+of yours, a seed, a cascade, a TRUNCATE. `countObjects` in `packages/core/src/counts.ts` renders the objects;
+`databaseObjects` is the one list of the isolation layer's, the ordered collections' and the counts', which the
+migrations create and drop together and `osl drift` compares.
+
+| Piece                       | What is generated                                                                                                                                                                                                                                                                                                                              |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Column                      | `<count> integer NOT NULL DEFAULT 0` on the counting table; no backend writes it                                                                                                                                                                                                                                                              |
+| Function                    | `osl_count_<table>_<count>()`: from the statement's rows (transition tables) it adds up, per parent, the rows the conditions of `where` hold for, and writes `count = count + n` once per parent in key order. The write waits for the parent's row, which is what makes the number exact                                                    |
+| Triggers                    | four on the counted table, `AFTER ... FOR EACH STATEMENT`: insert, delete, update (every update: a trigger with transition tables takes no column list; it writes nothing when neither the relation nor a field of `where` changed) and truncate                                                                                              |
+| Backfill                    | the migration that adds the field to a table that exists, or changes what it counts, sets it with one `UPDATE ... SET <count> = (SELECT count(*) ...)`; listed as a table rewrite                                                                                                                                                             |
+| On an ordered table         | where the counted rows are ordered within the relation they are counted by, `osl_count_hold_<table>()`, `BEFORE INSERT FOR EACH ROW` (it fires before the order's own trigger): key shares on the rows the new row points at, then `osl_hold_<table>(parent)`, the parent and every row of it as a move takes them                            |
+| Under `isolation: database` | the functions are `SECURITY DEFINER` with `EXECUTE` revoked from everyone: a count is written whoever the caller is bound to, onto a tenant's row or a shared one, and reads and returns nothing. A count on a shared row over a tenant table adds up every tenant's rows (M156)                                                              |
+
+Every writer of a counted row holds that row and then waits for the counting row. On an ordered table the hold
+before an append makes that safe against the order's own writers: `packages/core/test/order.database.test.ts` runs
+its load a second time with a count in place, and no writer fails. A writer that goes the other way, the counting
+row first and a counted row second, can meet one of them: a delete of the counting row against a delete of one of
+its counted rows, or a transaction of your own that writes a counted row and then another row of the same parent.
+PostgreSQL ends such a pair by failing one side (`deadlock_detected`), and the count stays exact;
+`packages/core/test/count.database.test.ts` runs both loads, and a control that writes the increments from a value
+read before the row was held ends with counts that are short.
+
 ## The conformance walks
 
 After the scenarios, the harness runs six checks over every fixture that no scenario names, each a function of
@@ -171,7 +198,11 @@ skips them).
   the IR's rule predicts (allowed, 401, 403, or 404 under `hidden: not_found`) and compares it with the answer. It
   makes one row per actor the create rule allows (and tests the refused creates), walks an entity nobody may
   create on an existing row, and resolves owner and member paths, conditions through relations and memberships
-  straight from the database. The step's detail counts what the predictions said, so the coverage is visible.
+  straight from the database. The step's detail counts what the predictions said, so the coverage is visible. On
+  an archiving entity the prediction leaves an archived row out of the list, expects 200 from `archive` on a live
+  row and 409 on an archived one (the reverse for `restore`), and after each one that went through looks for the
+  row in the caller's plain list and in the one asked with `archived=true`. Before and after its deletes the walk
+  compares every count of the model with the rows the database holds.
 - **tenant**: with tenancy, a member of another team (an actor outside the home team, or a user the walk registers)
   gets, updates, deletes and runs actions on the home team's rows and must be refused with the rows unchanged, lists
   nothing of theirs, and cannot create a row under one of their parents. A row the read rule opens to everyone is
@@ -184,7 +215,9 @@ skips them).
 - **order**: on every entity with a position field, bursts of eight calls at once into one parent, as a caller who
   may make its rows: eight creates, then a move of every row, then creates, moves and deletes together. No call may
   fail (a create may meet a unique pair, 409), and after each burst the harness reads the parent's rows from the
-  database: every place once, 1..n, and the list in that order where the resource lists in the entity's own.
+  database: every place once, 1..n, and the list in that order where the resource lists in the entity's own. It
+  ends by comparing every count of the model with its rows: the counts over an ordered table were written inside
+  each of those calls.
 - **leak**: every response body of the walks is scanned for hidden columns, the password, key and token hash
   columns, and the shape of a raw key.
 - **fuzz**: from the IR, wrong types, boundary lengths, extra keys, missing and null required fields, server-owned

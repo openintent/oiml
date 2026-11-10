@@ -8,6 +8,10 @@
  * failure. No two entries of a list may share a place at any time, and once a list's last writer is done its places
  * are 1..n. The control takes the parent's lock out of the append trigger and expects the same load to fail.
  *
+ * The same load runs a second time with a count on the list over its entries (`count_of`, counts.ts): the count's
+ * triggers fire inside every append, remove, plain delete and cascade, and write the row the order locks. Nothing
+ * may fail there either, and each list's count must equal its rows when the writers are done.
+ *
  * What the load leaves out is the one thing the database cannot order: a transaction of the caller's own that writes
  * two lists, against another that writes them the other way round, takes the two parents' locks in opposite orders.
  */
@@ -34,6 +38,27 @@ const model = Model.parse({
   }
 });
 
+/** The same lists with a count of their entries: the count's triggers sit on the ordered table and write its parent */
+const counted = Model.parse({
+  ...model,
+  entities: {
+    ...model.entities,
+    List: {
+      fields: { ...model.entities.List.fields, entry_count: { type: "integer", count_of: "entries" } }
+    },
+    Entry: {
+      fields: {
+        ...model.entities.Entry.fields,
+        list_id: {
+          type: "integer",
+          required: true,
+          relation: { entity: "List", reverse: "entries", on_delete: "cascade" }
+        }
+      }
+    }
+  }
+});
+
 /** A small deterministic generator, so a failure replays */
 function rng(seed: number): () => number {
   let state = seed >>> 0;
@@ -46,8 +71,11 @@ function rng(seed: number): () => number {
   };
 }
 
-describe.skipIf(!url)("an order under concurrent writers", () => {
-  const database = `osl_order_${Date.now().toString(36)}`;
+describe.skipIf(!url).each([
+  { title: "", model, counts: false },
+  { title: ", with a count of the parent's rows", model: counted, counts: true }
+])("an order under concurrent writers$title", ({ model, counts }) => {
+  const database = `osl_order_${counts ? "count_" : ""}${Date.now().toString(36)}`;
   const LISTS = 3;
   const ITEMS = 40;
   const WORKERS = 24;
@@ -90,6 +118,16 @@ describe.skipIf(!url)("an order under concurrent writers", () => {
     const out = new Map<number, number[]>();
     for (const row of rows) (out.get(row.list_id) ?? out.set(row.list_id, []).get(row.list_id)!).push(row.position);
     return out;
+  };
+
+  /** With the count: every list says as many entries as it has */
+  const expectCounts = async () => {
+    if (!counts) return;
+    const { rows } = await pool.query<{ id: number; said: number; has: number }>(
+      "SELECT l.id, l.entry_count AS said, (SELECT count(*)::int FROM entries e WHERE e.list_id = l.id) AS has FROM lists l ORDER BY l.id"
+    );
+    expect(rows.length).toBe(LISTS);
+    for (const row of rows) expect(row.said, `list ${row.id}`).toBe(row.has);
   };
 
   /** WORKERS connections each run `rounds` random writes; what failed comes back by SQLSTATE */
@@ -158,6 +196,7 @@ describe.skipIf(!url)("an order under concurrent writers", () => {
   it("fails no writer and leaves every list in order", async () => {
     const failures = await load(SEED, ROUNDS, LISTS);
     expect([...failures.entries()]).toEqual([]);
+    await expectCounts();
     // No two entries of a list share a place, whatever the cascades left
     for (const [list, seen] of await places()) expect(new Set(seen).size, `list ${list}`).toBe(seen.length);
     // The next move of each list closes what a cascade could not: after it the places are 1..n
@@ -167,6 +206,7 @@ describe.skipIf(!url)("an order under concurrent writers", () => {
     }
     for (const [list, seen] of await places()) expect(seen, `list ${list}`).toEqual(seen.map((_, index) => index + 1));
     expect((await places()).size).toBe(LISTS);
+    await expectCounts();
   }, 120_000);
 
   it("keeps the places 1..n at every moment when the writers are appends, moves and removes alone", async () => {
@@ -194,6 +234,7 @@ describe.skipIf(!url)("an order under concurrent writers", () => {
     const seen = (await places()).get(1) ?? [];
     expect(seen.length).toBeGreaterThan(0);
     expect(seen).toEqual(seen.map((_, index) => index + 1));
+    await expectCounts();
   }, 120_000);
 
   it("control: without the parent's lock the same appends collide", async () => {
@@ -207,6 +248,8 @@ describe.skipIf(!url)("an order under concurrent writers", () => {
     await pool.query(
       `CREATE OR REPLACE FUNCTION osl_position_entries() RETURNS trigger LANGUAGE plpgsql AS $$\n${unlocked}\n$$`
     );
+    // With the count an append takes the parent before the order's own trigger does: that lock goes too
+    if (counts) await pool.query('DROP TRIGGER "osl_count_hold" ON entries');
     const codes = new Map<string, number>();
     await Promise.all(
       Array.from({ length: WORKERS * 10 }, async () => {

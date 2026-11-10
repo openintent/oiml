@@ -84,7 +84,9 @@ export const client = {
     create: (input: Inputs["milestones"]["create"]) => trpc.milestones.create.mutate(input),
     update: (input: Inputs["milestones"]["update"]) => trpc.milestones.update.mutate(input),
     delete: (input: Inputs["milestones"]["delete"]) => trpc.milestones.delete.mutate(input),
-    move: (input: Inputs["milestones"]["move"]) => trpc.milestones.move.mutate(input)
+    move: (input: Inputs["milestones"]["move"]) => trpc.milestones.move.mutate(input),
+    archive: (input: Inputs["milestones"]["archive"]) => trpc.milestones.archive.mutate(input),
+    restore: (input: Inputs["milestones"]["restore"]) => trpc.milestones.restore.mutate(input)
   },
   channels: {
     list: (input: Inputs["channels"]["list"]) => trpc.channels.list.query(input),
@@ -112,7 +114,9 @@ export const client = {
     get: (input: Inputs["labels"]["get"]) => trpc.labels.get.query(input),
     create: (input: Inputs["labels"]["create"]) => trpc.labels.create.mutate(input),
     update: (input: Inputs["labels"]["update"]) => trpc.labels.update.mutate(input),
-    delete: (input: Inputs["labels"]["delete"]) => trpc.labels.delete.mutate(input)
+    delete: (input: Inputs["labels"]["delete"]) => trpc.labels.delete.mutate(input),
+    archive: (input: Inputs["labels"]["archive"]) => trpc.labels.archive.mutate(input),
+    restore: (input: Inputs["labels"]["restore"]) => trpc.labels.restore.mutate(input)
   },
   milestone_labels: {
     list: (input: Inputs["milestone_labels"]["list"]) => trpc.milestone_labels.list.query(input),

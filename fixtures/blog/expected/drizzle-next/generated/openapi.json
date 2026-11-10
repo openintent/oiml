@@ -2570,6 +2570,14 @@
             }
           },
           {
+            "name": "archived",
+            "in": "query",
+            "description": "true: only archived rows (archived_at set). Absent or false: only live rows",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "sort",
             "in": "query",
             "schema": {
@@ -2578,7 +2586,9 @@
                 "title:asc",
                 "title:desc",
                 "posted_at:asc",
-                "posted_at:desc"
+                "posted_at:desc",
+                "comment_count:asc",
+                "comment_count:desc"
               ]
             }
           },
@@ -2672,6 +2682,22 @@
                             "description": "Set by the lock and unlock actions",
                             "readOnly": true
                           },
+                          "comment_count": {
+                            "type": "integer",
+                            "readOnly": true
+                          },
+                          "archived_at": {
+                            "oneOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "readOnly": true
+                          },
                           "author": {
                             "oneOf": [
                               {
@@ -2694,6 +2720,8 @@
                           "cover",
                           "publish_at",
                           "locked",
+                          "comment_count",
+                          "archived_at",
                           "author"
                         ]
                       }
@@ -2948,6 +2976,22 @@
                           "description": "Set by the lock and unlock actions",
                           "readOnly": true
                         },
+                        "comment_count": {
+                          "type": "integer",
+                          "readOnly": true
+                        },
+                        "archived_at": {
+                          "oneOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "readOnly": true
+                        },
                         "author": {
                           "oneOf": [
                             {
@@ -2970,6 +3014,8 @@
                         "cover",
                         "publish_at",
                         "locked",
+                        "comment_count",
+                        "archived_at",
                         "author"
                       ]
                     }
@@ -3157,6 +3203,67 @@
         }
       }
     },
+    "/api/posts/{id}/archive": {
+      "post": {
+        "tags": [
+          "posts"
+        ],
+        "operationId": "posts_archive",
+        "summary": "Archives the row: sets archived_at, and lists leave it out unless asked with ?archived=true. 409 when it is archived already",
+        "description": "Only the row's owner (author_id).",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Article"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
     "/api/posts/{id}/lock": {
       "post": {
         "tags": [
@@ -3225,6 +3332,67 @@
         ],
         "operationId": "posts_publish",
         "summary": "Mark the article published",
+        "description": "Only the row's owner (author_id).",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Article"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/posts/{id}/restore": {
+      "post": {
+        "tags": [
+          "posts"
+        ],
+        "operationId": "posts_restore",
+        "summary": "Restores an archived row: clears archived_at. 409 when it is not archived",
         "description": "Only the row's owner (author_id).",
         "security": [
           {
@@ -3504,6 +3672,10 @@
                               }
                             ],
                             "readOnly": true
+                          },
+                          "post_count": {
+                            "type": "integer",
+                            "readOnly": true
                           }
                         },
                         "required": [
@@ -3514,7 +3686,8 @@
                           "created_at",
                           "banned",
                           "banned_at",
-                          "ban_reason"
+                          "ban_reason",
+                          "post_count"
                         ]
                       }
                     },
@@ -3652,6 +3825,10 @@
                           ],
                           "readOnly": true
                         },
+                        "post_count": {
+                          "type": "integer",
+                          "readOnly": true
+                        },
                         "posts": {
                           "type": "array",
                           "items": {
@@ -3668,6 +3845,7 @@
                         "banned",
                         "banned_at",
                         "ban_reason",
+                        "post_count",
                         "posts"
                       ]
                     }
@@ -3960,6 +4138,22 @@
             "type": "boolean",
             "description": "Set by the lock and unlock actions",
             "readOnly": true
+          },
+          "comment_count": {
+            "type": "integer",
+            "readOnly": true
+          },
+          "archived_at": {
+            "oneOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "readOnly": true
           }
         },
         "required": [
@@ -3972,7 +4166,9 @@
           "tags",
           "cover",
           "publish_at",
-          "locked"
+          "locked",
+          "comment_count",
+          "archived_at"
         ]
       },
       "Bulletin": {
@@ -4169,6 +4365,10 @@
               }
             ],
             "readOnly": true
+          },
+          "post_count": {
+            "type": "integer",
+            "readOnly": true
           }
         },
         "required": [
@@ -4179,7 +4379,8 @@
           "created_at",
           "banned",
           "banned_at",
-          "ban_reason"
+          "ban_reason",
+          "post_count"
         ]
       }
     },

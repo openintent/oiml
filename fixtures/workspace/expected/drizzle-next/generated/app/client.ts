@@ -4,7 +4,7 @@
 import { QueryClient } from "@tanstack/react-query";
 import type { z } from "zod";
 import type { PublicChannel, PublicChannelMember, PublicLabel, PublicMessage, PublicMilestone, PublicMilestoneLabel, PublicNote, PublicProject, PublicTask, PublicTeam, PublicTeamMember, PublicUser } from "../present";
-import type { channel_membersCreateInput, channel_membersListQuery, channelsCreateInput, channelsJoinInput, channelsListQuery, channelsUpdateInput, labelsCreateInput, labelsListQuery, labelsUpdateInput, membersCreateInput, membersListQuery, membersUpdateInput, messagesCreateInput, messagesListQuery, messagesUpdateInput, milestone_labelsCreateInput, milestone_labelsListQuery, milestonesCreateInput, milestonesListQuery, milestonesMoveInput, milestonesUpdateInput, notesCreateInput, notesListQuery, notesUpdateInput, projectsCreateInput, projectsListQuery, projectsUpdateInput, tasksCreateInput, tasksListQuery, tasksRemindInput, tasksUpdateInput, teamsCreateInput, teamsListQuery, teamsUpdateInput, usersListQuery } from "../validation";
+import type { channel_membersCreateInput, channel_membersListQuery, channelsCreateInput, channelsJoinInput, channelsListQuery, channelsUpdateInput, labelsArchiveInput, labelsCreateInput, labelsListQuery, labelsRestoreInput, labelsUpdateInput, membersCreateInput, membersListQuery, membersUpdateInput, messagesCreateInput, messagesListQuery, messagesUpdateInput, milestone_labelsCreateInput, milestone_labelsListQuery, milestonesArchiveInput, milestonesCreateInput, milestonesListQuery, milestonesMoveInput, milestonesRestoreInput, milestonesUpdateInput, notesCreateInput, notesListQuery, notesUpdateInput, projectsCreateInput, projectsListQuery, projectsUpdateInput, tasksCreateInput, tasksListQuery, tasksRemindInput, tasksUpdateInput, teamsCreateInput, teamsListQuery, teamsUpdateInput, usersListQuery } from "../validation";
 
 export class ApiError extends Error {
   constructor(
@@ -103,6 +103,8 @@ export type Inputs = {
     update: { id: string; data: z.input<typeof milestonesUpdateInput> };
     delete: { id: string };
     move: z.input<typeof milestonesMoveInput> & { id: string };
+    archive: z.input<typeof milestonesArchiveInput> & { id: string };
+    restore: z.input<typeof milestonesRestoreInput> & { id: string };
   };
   channels: {
     list: z.input<typeof channelsListQuery>;
@@ -131,6 +133,8 @@ export type Inputs = {
     create: z.input<typeof labelsCreateInput>;
     update: { id: string; data: z.input<typeof labelsUpdateInput> };
     delete: { id: string };
+    archive: z.input<typeof labelsArchiveInput> & { id: string };
+    restore: z.input<typeof labelsRestoreInput> & { id: string };
   };
   milestone_labels: {
     list: z.input<typeof milestone_labelsListQuery>;
@@ -198,6 +202,8 @@ export type Outputs = {
     update: PublicMilestone;
     delete: null;
     move: PublicMilestone;
+    archive: PublicMilestone;
+    restore: PublicMilestone;
   };
   channels: {
     list: { data: (PublicChannel)[]; page: Page };
@@ -226,6 +232,8 @@ export type Outputs = {
     create: PublicLabel;
     update: PublicLabel;
     delete: null;
+    archive: PublicLabel;
+    restore: PublicLabel;
   };
   milestone_labels: {
     list: { data: (PublicMilestoneLabel)[]; page: Page };
@@ -299,7 +307,9 @@ export const client = {
     create: (input: Inputs["milestones"]["create"]) => call<PublicMilestone>("POST", "/api/milestones", { body: input }),
     update: ({ id, data }: Inputs["milestones"]["update"]) => call<PublicMilestone>("PATCH", "/api/milestones" + "/" + id, { body: data }),
     delete: ({ id }: Inputs["milestones"]["delete"]) => call<null>("DELETE", "/api/milestones" + "/" + id),
-    move: ({ id, ...input }: Inputs["milestones"]["move"]) => call<PublicMilestone>("POST", "/api/milestones" + "/" + id + "/move", { body: input })
+    move: ({ id, ...input }: Inputs["milestones"]["move"]) => call<PublicMilestone>("POST", "/api/milestones" + "/" + id + "/move", { body: input }),
+    archive: ({ id, ...input }: Inputs["milestones"]["archive"]) => call<PublicMilestone>("POST", "/api/milestones" + "/" + id + "/archive", { body: input }),
+    restore: ({ id, ...input }: Inputs["milestones"]["restore"]) => call<PublicMilestone>("POST", "/api/milestones" + "/" + id + "/restore", { body: input })
   },
   channels: {
     list: (input: Inputs["channels"]["list"]) => call<Outputs["channels"]["list"]>("GET", "/api/channels", { query: input as Record<string, unknown>, whole: true }),
@@ -327,7 +337,9 @@ export const client = {
     get: ({ id }: Inputs["labels"]["get"]) => call<Outputs["labels"]["get"]>("GET", "/api/labels" + "/" + id),
     create: (input: Inputs["labels"]["create"]) => call<PublicLabel>("POST", "/api/labels", { body: input }),
     update: ({ id, data }: Inputs["labels"]["update"]) => call<PublicLabel>("PATCH", "/api/labels" + "/" + id, { body: data }),
-    delete: ({ id }: Inputs["labels"]["delete"]) => call<null>("DELETE", "/api/labels" + "/" + id)
+    delete: ({ id }: Inputs["labels"]["delete"]) => call<null>("DELETE", "/api/labels" + "/" + id),
+    archive: ({ id, ...input }: Inputs["labels"]["archive"]) => call<PublicLabel>("POST", "/api/labels" + "/" + id + "/archive", { body: input }),
+    restore: ({ id, ...input }: Inputs["labels"]["restore"]) => call<PublicLabel>("POST", "/api/labels" + "/" + id + "/restore", { body: input })
   },
   milestone_labels: {
     list: (input: Inputs["milestone_labels"]["list"]) => call<Outputs["milestone_labels"]["list"]>("GET", "/api/milestone_labels", { query: input as Record<string, unknown>, whole: true }),

@@ -7,8 +7,13 @@ import {
   Action,
   Actor,
   App,
+  ArchiveOptions,
+  archiveOf,
+  ARCHIVE_FIELD,
   Auth,
   conjunctionParts,
+  countLink,
+  type CountLink,
   DashboardTile,
   Entity,
   Event,
@@ -47,6 +52,10 @@ export const DiffOp = z.discriminatedUnion("op", [
   z.object({ op: z.literal("set_rules"), entity: EntityName, rules: Rules }).strict(),
   z
     .object({ op: z.literal("set_relations"), entity: EntityName, relations: z.record(Identifier, ThroughRelation) })
+    .strict(),
+  /** true or options: the entity archives (the field is added when it lacks it). false: it no longer does; the field stays */
+  z
+    .object({ op: z.literal("set_archive"), entity: EntityName, archive: z.union([z.boolean(), ArchiveOptions]) })
     .strict(),
   z
     .object({
@@ -116,6 +125,18 @@ export class DiffError extends Error {
 export interface ApplyResult {
   model: ModelType;
   renames: Renames;
+}
+
+/** Every count_of field of the model with the rows it counts, where the relation it names resolves */
+function forEachCount(
+  model: ModelType,
+  visit: (owner: string, name: string, field: Field, counted: CountLink) => void
+): void {
+  for (const [owner, entity] of Object.entries(model.entities))
+    for (const [name, field] of Object.entries(entity.fields)) {
+      const counted = countLink(model, owner, field);
+      if (counted && !("problem" in counted)) visit(owner, name, field, counted);
+    }
 }
 
 /** Fold a diff into a model. Returns a new model; neither the input model nor the diff is mutated. */
@@ -227,6 +248,15 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
         for (const [fieldName, field] of Object.entries(entity.fields))
           if (field.position?.within === op.name)
             fail(`${op.entity}.${fieldName} is a position within ${op.name}; remove or change that field first`);
+        if (archiveOf(entity)?.field === op.name)
+          fail(`${op.name} is the archive field of ${op.entity}; end the archive first (set_archive: false)`);
+        forEachCount(model, (owner, countName, count, counted) => {
+          if (counted.entity !== op.entity) return;
+          if (counted.field === op.name)
+            fail(`${owner}.${countName} counts the rows of ${op.entity} by ${op.name}; remove that count first`);
+          if (counted.where.some(c => c.field === op.name))
+            fail(`${owner}.${countName} counts ${op.entity} rows where ${count.where}; change that count first`);
+        });
         for (const [otherName, other] of Object.entries(model.entities))
           for (const [relationName, relation] of Object.entries(other.relations ?? {}))
             if (relation.through === op.entity && (relation.from === op.name || relation.to === op.name))
@@ -280,6 +310,13 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
         const swap = (name: string) => (name === op.from ? op.to : name);
         for (const field of Object.values(entity.fields))
           if (field.position?.within === op.from) field.position.within = op.to;
+        if (archiveOf(entity)?.field === op.from)
+          entity.archive = { ...(entity.archive === true ? {} : entity.archive), field: op.to };
+        // A count on another entity may name the field in its where
+        forEachCount(model, (_owner, _countName, count, counted) => {
+          if (counted.entity !== op.entity || !counted.where.some(c => c.field === op.from)) return;
+          count.where = counted.where.map(c => `${swap(c.field)} ${c.op} ${c.value}`).join(" and ");
+        });
         for (const other of Object.values(model.entities))
           for (const relation of Object.values(other.relations ?? {})) {
             if (relation.through !== op.entity) continue;
@@ -327,6 +364,19 @@ export function applyDiff(input: ModelType, diff: Diff): ApplyResult {
         const entity = entityOf(op.entity);
         if (Object.keys(op.relations).length) entity.relations = op.relations;
         else delete entity.relations;
+        break;
+      }
+
+      case "set_archive": {
+        const entity = entityOf(op.entity);
+        if (op.archive === false) {
+          delete entity.archive;
+          break;
+        }
+        entity.archive = op.archive;
+        // The field is the compiler's to add; one the entity already has is used as it is (validation says if it fits)
+        const name = (op.archive === true ? undefined : op.archive.field) ?? ARCHIVE_FIELD;
+        if (!entity.fields[name]) entity.fields[name] = { type: "datetime", read_only: true };
         break;
       }
 

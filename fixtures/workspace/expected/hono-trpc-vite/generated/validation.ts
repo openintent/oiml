@@ -138,7 +138,8 @@ export const milestonesListQuery = z
     page: z.number().int().min(1).default(1),
     page_size: z.number().int().min(1).max(200).default(20),
     project_id: z.string().uuid().optional(),
-    done: z.boolean().optional()
+    done: z.boolean().optional(),
+    archived: z.boolean().optional()
   })
   .strict();
 export const milestonesCreateInput = z
@@ -225,7 +226,8 @@ export const labelsListQuery = z
   .object({
     page: z.number().int().min(1).default(1),
     page_size: z.number().int().min(1).max(200).default(20),
-    team_id: z.string().uuid().optional()
+    team_id: z.string().uuid().optional(),
+    archived: z.boolean().optional()
   })
   .strict();
 export const labelsCreateInput = z
@@ -268,5 +270,17 @@ export const milestonesMoveInput = z
   .strict();
 export type MilestonesMoveInput = z.infer<typeof milestonesMoveInput>;
 
+export const milestonesArchiveInput = z.object({}).strict();
+export type MilestonesArchiveInput = z.infer<typeof milestonesArchiveInput>;
+
+export const milestonesRestoreInput = z.object({}).strict();
+export type MilestonesRestoreInput = z.infer<typeof milestonesRestoreInput>;
+
 export const channelsJoinInput = z.object({}).strict();
 export type ChannelsJoinInput = z.infer<typeof channelsJoinInput>;
+
+export const labelsArchiveInput = z.object({}).strict();
+export type LabelsArchiveInput = z.infer<typeof labelsArchiveInput>;
+
+export const labelsRestoreInput = z.object({}).strict();
+export type LabelsRestoreInput = z.infer<typeof labelsRestoreInput>;

@@ -164,6 +164,14 @@ export function validationFile(
           `    page: ${number}.int().min(1).default(1)`,
           `    page_size: ${number}.int().min(1).max(200).default(${op.pageSize})`,
           ...op.filters.map(f => `    ${f}: ${fillEnums(filter(f), ir, entity)}`),
+          // An archiving entity: the archived rows instead of the live ones
+          ...(entity.archive
+            ? [
+                options.listInput === "http"
+                  ? `    archived: z.enum(["true", "false"]).transform(value => value === "true").optional()`
+                  : `    archived: z.boolean().optional()`
+              ]
+            : []),
           ...(op.sortable.length
             ? [
                 `    sort: z.enum([${op.sortable

@@ -29,7 +29,8 @@ describe("blog fixture", () => {
       "FEAT-9",
       "FEAT-10",
       "FEAT-11",
-      "FEAT-12"
+      "FEAT-12",
+      "FEAT-13"
     ]);
 
     for (const id of ids) {
@@ -40,7 +41,7 @@ describe("blog fixture", () => {
     expect(again.status).toBe("noop");
 
     const project = await loadProject(root);
-    expect(project.lock.revisions).toHaveLength(12);
+    expect(project.lock.revisions).toHaveLength(13);
     const ir = project.ir;
 
     const article = ir.entities.find(e => e.name === "Article")!;
@@ -55,7 +56,9 @@ describe("blog fixture", () => {
       "tags",
       "cover",
       "publish_at",
-      "locked"
+      "locked",
+      "comment_count",
+      "archived_at"
     ]);
     expect(article.foreignKeys[0]).toMatchObject({ column: "author_id", targetTable: "users", onDelete: "cascade" });
     expect(article.relations.map(r => r.name)).toEqual(["author", "comments"]);
@@ -97,7 +100,7 @@ describe("blog fixture", () => {
       fields: ["title", "content", "published", "tags", "cover", "publish_at"]
     });
     const list = posts.operations.find(o => o.kind === "list")!;
-    expect(list).toMatchObject({ sortable: ["title", "posted_at"], search: ["title", "content"] });
+    expect(list).toMatchObject({ sortable: ["title", "posted_at", "comment_count"], search: ["title", "content"] });
     expect(list).toMatchObject({ order: [["posted_at", "desc"]], include: ["author"] });
     expect(ir.examples.scenarios.map(s => s.name)).toEqual([
       "register and sign in",
@@ -113,7 +116,8 @@ describe("blog fixture", () => {
       "scheduled publishing",
       "locked articles",
       "private drafts",
-      "followers read bulletins"
+      "followers read bulletins",
+      "comment counts and archived articles"
     ]);
     expect(ir.examples.seed.map(s => s.op)).toEqual(["posts.create", "posts.create"]);
     expect(ir.actions.map(a => `${a.resource ?? "actions"}.${a.name}:${a.scope}`)).toEqual([
@@ -122,6 +126,8 @@ describe("blog fixture", () => {
       "posts.unpublish_all:collection",
       "posts.lock:row",
       "posts.unlock:row",
+      "posts.archive:row",
+      "posts.restore:row",
       "announcements.publish:row",
       "actions.send_digest:global"
     ]);

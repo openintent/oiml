@@ -25,7 +25,8 @@ func PostsID(raw string) (string, bool) {
 var PostsListQuery = Query{PageSize: 20, Filters: []Filter{
 	{Name: "published", Type: Boolean{}},
 	{Name: "author_id", Type: UUID{}},
-}, Sortable: []string{"title", "posted_at"}, Search: true}
+	{Name: "archived", Type: Boolean{}},
+}, Sortable: []string{"title", "posted_at", "comment_count"}, Search: true}
 
 // PostsCreateInput validates POST /api/posts bodies.
 var PostsCreateInput = Object{Fields: []Field{
@@ -146,6 +147,12 @@ var PostsLockInput = Object{}
 
 // PostsUnlockInput validates POST /api/posts/{id}/unlock bodies.
 var PostsUnlockInput = Object{}
+
+// PostsArchiveInput validates POST /api/posts/{id}/archive bodies.
+var PostsArchiveInput = Object{}
+
+// PostsRestoreInput validates POST /api/posts/{id}/restore bodies.
+var PostsRestoreInput = Object{}
 
 // AnnouncementsPublishInput validates POST /api/announcements/{id}/publish bodies.
 var AnnouncementsPublishInput = Object{}

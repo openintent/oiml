@@ -17,6 +17,10 @@ import {
   ruleAlternativeTexts,
   membershipRelation,
   MOVE_ACTION,
+  ARCHIVE_ACTIONS,
+  ARCHIVED_PARAM,
+  archiveOf,
+  countLink,
   positionOf,
   tenantLinks,
   throughRelation,
@@ -27,6 +31,7 @@ import {
   type Field,
   type Model,
   type Rule,
+  type CountLink,
   type ThroughLink,
   type Validate
 } from "./model.js";
@@ -78,6 +83,8 @@ export interface ColumnIR {
   enumValues?: string[];
   /** The row's place within its parent (`EntityIR.order`): numbered by the database, read-only to clients */
   position?: true;
+  /** A count the database keeps (`EntityIR.counts`): never null, read-only to clients and to handlers */
+  count?: true;
 }
 
 export interface ForeignKeyIR {
@@ -120,6 +127,38 @@ export interface ThroughIR {
    * Without one they come by the far entity's display column, then its key.
    */
   orderBy?: string;
+}
+
+/** An archiving entity: the column that says when a row was archived, and who may archive and restore */
+export interface ArchiveIR {
+  /** A nullable datetime only the server sets: null while the row is live */
+  column: string;
+  /** The rule of `archive` and `restore`: the archive's own, else the entity's update rule */
+  rule: RuleIR;
+}
+
+/** A count over a reverse relation: an integer column the database keeps with triggers on the counted table */
+export interface CountIR {
+  /** The integer column on this entity */
+  column: string;
+  /** The reverse relation counted */
+  relation: string;
+  /** The counted entity, its table, and its column pointing at this entity's key */
+  entity: string;
+  table: string;
+  fk: string;
+  /** This entity's key, which `fk` holds */
+  key: string;
+  /** Only rows these hold for count; empty counts every row */
+  where: RuleConditionIR[];
+  /** The trigger function on the counted table, and the name its triggers share */
+  function: string;
+  trigger: string;
+  /**
+   * Present when the counted table is ordered within `fk`: the function that takes the parent the way the order's
+   * own writers do before a row is added, so that a count never waits for a parent whose rows are half taken.
+   */
+  hold?: string;
 }
 
 /** An ordered collection: rows that hold a place among the rows sharing a parent */
@@ -409,6 +448,10 @@ export interface EntityIR {
   order?: OrderIR;
   /** Relations through a junction, as `relations` declares them; absent without any */
   through?: ThroughIR[];
+  /** Present when the entity archives */
+  archive?: ArchiveIR;
+  /** The count_of fields of the entity; absent without any */
+  counts?: CountIR[];
 }
 
 export interface EnumIR {
@@ -468,8 +511,11 @@ export interface ActionIR {
   returns: ActionReturnsIR;
   /** The user-owned handler module name under src/actions */
   handler: string;
-  /** Written by the compiler, with no handler of yours: `move` on a resource over an ordered entity */
-  builtin?: "move";
+  /**
+   * Written by the compiler, with no handler of yours: `move` on a resource over an ordered entity, `archive` and
+   * `restore` on one over an archiving entity
+   */
+  builtin?: "move" | "archive" | "restore";
 }
 
 export type ProviderIR =
@@ -1062,6 +1108,13 @@ export function compile(input: Model): IR {
       column.default = { kind: "literal", value: 0 };
       column.position = true;
     }
+    if (field.count_of && stored) {
+      // The database counts: triggers on the counted table keep it, and no client or handler writes it
+      column.nullable = false;
+      column.readOnly = true;
+      column.default = { kind: "literal", value: 0 };
+      column.count = true;
+    }
     if (isPrimary && primaryKey.length === 1 && !def) {
       if (field.type === "uuid") column.default = { kind: "uuid" };
       else if (field.type === "integer" || field.type === "bigint") column.generated = "identity";
@@ -1308,6 +1361,47 @@ export function compile(input: Model): IR {
     });
   }
 
+  // Counts over reverse relations: the column sits on the entity, the triggers on the table whose rows it counts
+  for (const entity of entities) {
+    const declared = Object.entries(allEntities[entity.name].fields).filter(([, f]) => f.count_of);
+    if (!declared.length) continue;
+    entity.counts = declared.map(([name, field]) => {
+      const link = countLink(model, entity.name, field) as CountLink;
+      const counted = entities.find(e => e.name === link.entity)!;
+      const parse = conditionOn(link.entity);
+      const count: CountIR = {
+        column: name,
+        relation: field.count_of!,
+        entity: link.entity,
+        table: counted.table,
+        fk: link.field,
+        key: entity.primaryKey[0],
+        where: link.where.map(c => parse(c.field, c.op === "=" ? "eq" : "ne", c.value)),
+        function: sqlName(`osl_count_${entity.table}_${name}`),
+        trigger: sqlName(`osl_count_${entity.table}_${name}`)
+      };
+      // Rows ordered within the relation they are counted by: an append takes the parent as a move does
+      if (counted.order?.within === link.field) count.hold = sqlName(`osl_count_hold_${counted.table}`);
+      return count;
+    });
+  }
+
+  // Archiving entities: the column, and the rule archive and restore run under
+  for (const entity of entities) {
+    const archive = archiveOf(allEntities[entity.name]);
+    if (!archive) continue;
+    const rule = archive.rule
+      ? parseRule(
+          archive.rule,
+          entity.rules.update,
+          path => hopsFrom(entity.name, path),
+          conditionOn(entity.name),
+          path => memberPathFrom(entity.name, path)
+        )
+      : entity.rules.update;
+    entity.archive = { column: archive.field, rule: archive.rule ? withinTenant(entity.name, rule) : rule };
+  }
+
   const entityByName = (name: string) => entities.find(e => e.name === name)!;
 
   let auth: AuthIR | undefined;
@@ -1546,6 +1640,26 @@ export function compile(input: Model): IR {
       );
       move.builtin = "move";
       actions.push(move);
+    }
+    // The compiler's own row actions on an archiving entity: a conditional update each, no handler of the user's
+    if (entity.archive && entity.archive.rule.kind !== "none") {
+      const declared = allEntities[entity.name].archive;
+      const rule = declared === true ? undefined : declared?.rule;
+      for (const name of ARCHIVE_ACTIONS) {
+        const action = compileAction(
+          name,
+          {
+            description:
+              name === "archive"
+                ? `Archives the row: sets ${entity.archive.column}, and lists leave it out unless asked with ?${ARCHIVED_PARAM}=true. 409 when it is archived already`
+                : `Restores an archived row: clears ${entity.archive.column}. 409 when it is not archived`,
+            ...(rule ? { rule } : {})
+          },
+          { name: resourceName, entity, path }
+        );
+        action.builtin = name;
+        actions.push(action);
+      }
     }
   }
   for (const [actionName, action] of Object.entries(model.actions))
@@ -1918,7 +2032,7 @@ export function actionsOf(ir: IR, resource: string): ActionIR[] {
 }
 
 /** Actions not tied to a resource */
-/** The actions whose handler the user owns in src/actions: every one but the compiler's own (`move`) */
+/** The actions whose handler the user owns in src/actions: every one but the compiler's own (`move`, `archive`, `restore`) */
 export function userActions(ir: IR): ActionIR[] {
   return ir.actions.filter(a => !a.builtin);
 }

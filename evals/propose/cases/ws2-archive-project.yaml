@@ -1,5 +1,5 @@
 id: ws2-archive-project
-tags: [fields, actions, rules, tenancy]
+tags: [fields, actions, rules, tenancy, archive]
 base: { fixture: workspace, through: WS-9 }
 intent:
   title: Archiving projects
@@ -10,6 +10,7 @@ intent:
     - A plain member archiving a project gets 403; a team admin succeeds and the project then shows when
     - Editing a project with the archive stamp in the body is refused
 expect:
+  archive: [Project]
   fields: { Project: ["archived_at|archived"] }
   field_props: { "Project.archived_at|archived": { read_only: true } }
   actions_on: { projects: { scope: row, rule: "member:team_id:admin|member:team_id:owner" } }
@@ -17,4 +18,6 @@ expect:
   touches: [projects]
 notes: >-
   Server-owned field under tenancy: the stamp is read_only, the action is for the team's admins. The scenario
-  needs a member who is not an admin of the team to show the refusal.
+  needs a member who is not an admin of the team to show the refusal. Since round B3 the answer is `archive:` on
+  Project with `rule: "member:team_id:admin"`: the field, the refusal of a written stamp and the action are the
+  construct's. The project's `status` enum of WS-4 stays what it is; the ask is about the stamp.

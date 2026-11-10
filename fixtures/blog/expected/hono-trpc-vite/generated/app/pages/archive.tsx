@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import { client, sessionUser, type Inputs, type Outputs, type SessionUser } from "../client";
 import { EmptyPane, ErrorNote, FieldRow, FileInput, FilePreview, FormRow, ListSkeleton, Pagination, Pane, PaneHeader, PaneSkeleton, SortHeader, formatDateTime, formatList, selectClass, splitList, text, toDateTimeInput, useDebounced, yesNo } from "../ui";
 
@@ -50,6 +51,14 @@ function canLock(user: SessionUser | null, row: Detail): boolean {
 
 function canUnlock(user: SessionUser | null, row: Detail): boolean {
   return user !== null && (user as { role?: unknown }).role === "admin";
+}
+
+function canArchive(user: SessionUser | null, row: Detail): boolean {
+  return user !== null && row.author_id === user.id;
+}
+
+function canRestore(user: SessionUser | null, row: Detail): boolean {
+  return user !== null && row.author_id === user.id;
 }
 
 function canUnpublishAll(user: SessionUser | null): boolean {
@@ -286,6 +295,7 @@ function ArchiveLayoutInner() {
 
 function ArchiveIndexInner() {
   const [page, setPage] = useState(1);
+  const [archived, setArchived] = useState(false);
   const [sort, setSort] = useState<string | undefined>(undefined);
   const [search, setSearch] = useState("");
   const q = useDebounced(search);
@@ -305,7 +315,8 @@ function ArchiveIndexInner() {
     page_size: PAGE_SIZE,
     sort,
     q: q || undefined,
-    published: filters.published === "true" ? true : filters.published === "false" ? false : undefined, author_id: filters.author_id || undefined
+    published: filters.published === "true" ? true : filters.published === "false" ? false : undefined, author_id: filters.author_id || undefined,
+    ...(archived ? { archived: true } : {})
   } as Inputs["posts"]["list"];
   const list = useQuery({ queryKey: [...KEY, "list", input], queryFn: () => client.posts.list(input) });
   const navigate = useNavigate();
@@ -320,6 +331,17 @@ function ArchiveIndexInner() {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <PaneHeader title="Archive" count={list.data?.page.total}>
+          <Button
+            variant={archived ? "secondary" : "ghost"}
+            size="sm"
+            aria-pressed={archived}
+            onClick={() => {
+              setArchived(current => !current);
+              setPage(1);
+            }}
+          >
+            {archived ? "Showing archived" : "Show archived"}
+          </Button>
           {canCreate(user) ? (
             <Link to="/archive/new" className={buttonVariants({ variant: "ghost", size: "icon-sm" })} aria-label="New article">
               <Plus />
@@ -369,7 +391,7 @@ function ArchiveIndexInner() {
             </TableHeader>
             <TableBody>
               {list.data.data.map((row: Row) => (
-                <TableRow key={text(row.id)} className="cursor-pointer" onClick={() => navigate({ to: "/archive/$id", params: { id: text(row.id) } })}>
+                <TableRow key={text(row.id)} className={cn("cursor-pointer", row.archived_at && "text-muted-foreground")} onClick={() => navigate({ to: "/archive/$id", params: { id: text(row.id) } })}>
                   <TableCell>{text(row.title)}</TableCell>
                   <TableCell>{(row.published ? "Published" : "Not published")}</TableCell>
                   <TableCell>{formatDateTime(row.posted_at)}</TableCell>
@@ -461,6 +483,20 @@ function ArchiveDetailInner() {
       await queryClient.invalidateQueries({ queryKey: KEY });
     }
   });
+  const archiveAction = useMutation({
+    mutationFn: (input: Inputs["posts"]["archive"]) => client.posts.archive(input),
+    onSuccess: async () => {
+      setOpenAction(null);
+      await queryClient.invalidateQueries({ queryKey: KEY });
+    }
+  });
+  const restoreAction = useMutation({
+    mutationFn: (input: Inputs["posts"]["restore"]) => client.posts.restore(input),
+    onSuccess: async () => {
+      setOpenAction(null);
+      await queryClient.invalidateQueries({ queryKey: KEY });
+    }
+  });
   if (query.isPending) return <PaneSkeleton />;
   if (query.error) return <ErrorNote error={query.error} className="m-6" />;
   const row: Detail = query.data;
@@ -487,6 +523,16 @@ function ArchiveDetailInner() {
               Unlock
             </Button>
           ) : null}
+          {canArchive(user, row) && !row.archived_at ? (
+            <Button variant="outline" size="sm" disabled={archiveAction.isPending} onClick={() => archiveAction.mutate({ id })}>
+              Archive
+            </Button>
+          ) : null}
+          {canRestore(user, row) && row.archived_at ? (
+            <Button variant="outline" size="sm" disabled={restoreAction.isPending} onClick={() => restoreAction.mutate({ id })}>
+              Restore
+            </Button>
+          ) : null}
           {canUpdate(user, row) ? (
             <Button variant="outline" size="sm" onClick={() => setEditing(current => !current)}>
               {editing ? "Cancel" : "Edit"}
@@ -511,6 +557,8 @@ function ArchiveDetailInner() {
       <ErrorNote error={publishAction.error} className="mb-4" />
       <ErrorNote error={lockAction.error} className="mb-4" />
       <ErrorNote error={unlockAction.error} className="mb-4" />
+      <ErrorNote error={archiveAction.error} className="mb-4" />
+      <ErrorNote error={restoreAction.error} className="mb-4" />
       {editing ? (
         <ArchiveForm
           fields={ARCHIVE_UPDATE}
@@ -546,6 +594,8 @@ function ArchiveDetailInner() {
         </FieldRow>
         <FieldRow label="Publish At">{formatDateTime(row.publish_at) || "—"}</FieldRow>
         <FieldRow label="Locked">{row.locked == null ? "—" : <Badge variant={row.locked ? "default" : "outline"}>{yesNo(row.locked)}</Badge>}</FieldRow>
+        <FieldRow label="Comment Count">{text(row.comment_count) || "—"}</FieldRow>
+        <FieldRow label="Archived At">{formatDateTime(row.archived_at) || "—"}</FieldRow>
         </dl>
       )}
     </Pane>

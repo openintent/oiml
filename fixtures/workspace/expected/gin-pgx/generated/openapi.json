@@ -1345,6 +1345,14 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "archived",
+            "in": "query",
+            "description": "true: only archived rows (archived_at set). Absent or false: only live rows",
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -1375,12 +1383,25 @@
                           "name": {
                             "type": "string",
                             "maxLength": 60
+                          },
+                          "archived_at": {
+                            "oneOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "readOnly": true
                           }
                         },
                         "required": [
                           "id",
                           "team_id",
-                          "name"
+                          "name",
+                          "archived_at"
                         ]
                       }
                     },
@@ -1548,12 +1569,25 @@
                         "name": {
                           "type": "string",
                           "maxLength": 60
+                        },
+                        "archived_at": {
+                          "oneOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "readOnly": true
                         }
                       },
                       "required": [
                         "id",
                         "team_id",
-                        "name"
+                        "name",
+                        "archived_at"
                       ]
                     }
                   }
@@ -1684,6 +1718,128 @@
         "responses": {
           "204": {
             "description": "Deleted"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/labels/{id}/archive": {
+      "post": {
+        "tags": [
+          "labels"
+        ],
+        "operationId": "labels_archive",
+        "summary": "Archives the row: sets archived_at, and lists leave it out unless asked with ?archived=true. 409 when it is archived already",
+        "description": "Only members of the row's tenant (team_id) with at least role admin. A row the read rule hides answers 404.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Label"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/labels/{id}/restore": {
+      "post": {
+        "tags": [
+          "labels"
+        ],
+        "operationId": "labels_restore",
+        "summary": "Restores an archived row: clears archived_at. 409 when it is not archived",
+        "description": "Only members of the row's tenant (team_id) with at least role admin. A row the read rule hides answers 404.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Label"
+                    }
+                  }
+                }
+              }
+            }
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
@@ -2966,6 +3122,14 @@
             "schema": {
               "type": "boolean"
             }
+          },
+          {
+            "name": "archived",
+            "in": "query",
+            "description": "true: only archived rows (archived_at set). Absent or false: only live rows",
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -3009,6 +3173,18 @@
                             "type": "integer",
                             "readOnly": true
                           },
+                          "archived_at": {
+                            "oneOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "readOnly": true
+                          },
                           "labels": {
                             "type": "array",
                             "items": {
@@ -3023,6 +3199,7 @@
                           "due_on",
                           "done",
                           "position",
+                          "archived_at",
                           "labels"
                         ]
                       }
@@ -3213,6 +3390,18 @@
                           "type": "integer",
                           "readOnly": true
                         },
+                        "archived_at": {
+                          "oneOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "readOnly": true
+                        },
                         "labels": {
                           "type": "array",
                           "items": {
@@ -3227,6 +3416,7 @@
                         "due_on",
                         "done",
                         "position",
+                        "archived_at",
                         "labels"
                       ]
                     }
@@ -3381,6 +3571,67 @@
         }
       }
     },
+    "/api/milestones/{id}/archive": {
+      "post": {
+        "tags": [
+          "milestones"
+        ],
+        "operationId": "milestones_archive",
+        "summary": "Archives the row: sets archived_at, and lists leave it out unless asked with ?archived=true. 409 when it is archived already",
+        "description": "Only members of the tenant reached through project_id.team_id with at least role admin. A row the read rule hides answers 404.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Milestone"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
     "/api/milestones/{id}/move": {
       "post": {
         "tags": [
@@ -3425,6 +3676,67 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Milestone"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/milestones/{id}/restore": {
+      "post": {
+        "tags": [
+          "milestones"
+        ],
+        "operationId": "milestones_restore",
+        "summary": "Restores an archived row: clears archived_at. 409 when it is not archived",
+        "description": "Only members of the tenant reached through project_id.team_id with at least role admin. A row the read rule hides answers 404.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -4009,6 +4321,14 @@
                           "public": {
                             "type": "boolean",
                             "description": "Anyone may read a public project and its tasks"
+                          },
+                          "milestone_count": {
+                            "type": "integer",
+                            "readOnly": true
+                          },
+                          "open_milestones": {
+                            "type": "integer",
+                            "readOnly": true
                           }
                         },
                         "required": [
@@ -4017,7 +4337,9 @@
                           "name",
                           "status",
                           "created_at",
-                          "public"
+                          "public",
+                          "milestone_count",
+                          "open_milestones"
                         ]
                       }
                     },
@@ -4213,6 +4535,14 @@
                         "public": {
                           "type": "boolean",
                           "description": "Anyone may read a public project and its tasks"
+                        },
+                        "milestone_count": {
+                          "type": "integer",
+                          "readOnly": true
+                        },
+                        "open_milestones": {
+                          "type": "integer",
+                          "readOnly": true
                         }
                       },
                       "required": [
@@ -4221,7 +4551,9 @@
                         "name",
                         "status",
                         "created_at",
-                        "public"
+                        "public",
+                        "milestone_count",
+                        "open_milestones"
                       ]
                     }
                   }
@@ -5477,13 +5809,18 @@
                           "created_at": {
                             "type": "string",
                             "format": "date-time"
+                          },
+                          "team_count": {
+                            "type": "integer",
+                            "readOnly": true
                           }
                         },
                         "required": [
                           "id",
                           "email",
                           "name",
-                          "created_at"
+                          "created_at",
+                          "team_count"
                         ]
                       }
                     },
@@ -5584,13 +5921,18 @@
                         "created_at": {
                           "type": "string",
                           "format": "date-time"
+                        },
+                        "team_count": {
+                          "type": "integer",
+                          "readOnly": true
                         }
                       },
                       "required": [
                         "id",
                         "email",
                         "name",
-                        "created_at"
+                        "created_at",
+                        "team_count"
                       ]
                     }
                   }
@@ -5729,12 +6071,25 @@
           "name": {
             "type": "string",
             "maxLength": 60
+          },
+          "archived_at": {
+            "oneOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "readOnly": true
           }
         },
         "required": [
           "id",
           "team_id",
-          "name"
+          "name",
+          "archived_at"
         ]
       },
       "Message": {
@@ -5794,6 +6149,18 @@
           "position": {
             "type": "integer",
             "readOnly": true
+          },
+          "archived_at": {
+            "oneOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "readOnly": true
           }
         },
         "required": [
@@ -5802,7 +6169,8 @@
           "title",
           "due_on",
           "done",
-          "position"
+          "position",
+          "archived_at"
         ]
       },
       "MilestoneLabel": {
@@ -5894,6 +6262,14 @@
           "public": {
             "type": "boolean",
             "description": "Anyone may read a public project and its tasks"
+          },
+          "milestone_count": {
+            "type": "integer",
+            "readOnly": true
+          },
+          "open_milestones": {
+            "type": "integer",
+            "readOnly": true
           }
         },
         "required": [
@@ -5902,7 +6278,9 @@
           "name",
           "status",
           "created_at",
-          "public"
+          "public",
+          "milestone_count",
+          "open_milestones"
         ]
       },
       "Task": {
@@ -6055,13 +6433,18 @@
           "created_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "team_count": {
+            "type": "integer",
+            "readOnly": true
           }
         },
         "required": [
           "id",
           "email",
           "name",
-          "created_at"
+          "created_at",
+          "team_count"
         ]
       }
     },

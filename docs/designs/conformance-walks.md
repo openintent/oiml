@@ -21,6 +21,9 @@ them; nothing here changes the grammar. Since 2026-11-10 (round B1, `tenant-isol
 walk has its second pass and the two hooks: on a fixture with `isolation: database` it runs again with the
 generated rule checks switched off, after a control that shows the switch worked, and then asks what the app's
 database role reads with no tenant bound; a row the read rule opens to everyone is accounted for in both passes.
+Since round B3 (`archive-and-counts.md`) the rule walk predicts what an archiving entity's list leaves out and what
+`archive` and `restore` answer (the 409 when there is nothing to do included), and the rule and order walks end by
+comparing every count of the model with the rows the database holds.
 
 Scenarios prove what a fixture's author thought to write. The hand-written applications surveyed for these notes
 learned that the properties worth proving are the ones nobody writes a test for per entity: every procedure records

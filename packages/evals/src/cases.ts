@@ -85,6 +85,10 @@ export const Expect = z
     through: Names.optional(),
     /** entity -> the relation field its rows are ordered within (a position field); "*" for any parent */
     ordered: z.record(z.string(), z.string()).optional(),
+    /** Entities that archive (`archive:` on the entity), not ones with a hand-written flag and action */
+    archive: Names.optional(),
+    /** "Entity.field -> Counted": a count_of field on Entity over rows of Counted; field may be "*" for any name */
+    counts: Names.optional(),
     /** entity -> operation -> rule alternatives, compared after defaults are applied */
     rules: z.record(z.string(), z.record(z.string(), z.string())).optional(),
     resources: Names.optional(),

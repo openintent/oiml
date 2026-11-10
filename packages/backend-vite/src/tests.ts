@@ -36,6 +36,8 @@ function coercions(ir: IR): Record<string, Record<string, Coercion>> {
       else if (t.kind === "scalar" && t.scalar === "boolean") map[f] = "boolean";
       else map[f] = "string";
     }
+    // The archive parameter of an archiving entity's list
+    if (entity.archive) map.archived = "boolean";
     out[`${resource.name}.list`] = map;
   }
   return out;

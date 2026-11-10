@@ -142,6 +142,7 @@ func MilestonesID(raw string) (string, bool) {
 var MilestonesListQuery = Query{PageSize: 20, Filters: []Filter{
 	{Name: "project_id", Type: UUID{}},
 	{Name: "done", Type: Boolean{}},
+	{Name: "archived", Type: Boolean{}},
 }}
 
 // MilestonesCreateInput validates POST /api/milestones bodies.
@@ -233,6 +234,7 @@ func LabelsID(raw string) (string, bool) {
 // LabelsListQuery validates the GET /api/labels query string.
 var LabelsListQuery = Query{PageSize: 20, Filters: []Filter{
 	{Name: "team_id", Type: UUID{}},
+	{Name: "archived", Type: Boolean{}},
 }}
 
 // LabelsCreateInput validates POST /api/labels bodies.
@@ -273,5 +275,17 @@ var MilestonesMoveInput = Object{Fields: []Field{
 	{Name: "to", Required: true, Type: Integer{Min: F(1)}},
 }}
 
+// MilestonesArchiveInput validates POST /api/milestones/{id}/archive bodies.
+var MilestonesArchiveInput = Object{}
+
+// MilestonesRestoreInput validates POST /api/milestones/{id}/restore bodies.
+var MilestonesRestoreInput = Object{}
+
 // ChannelsJoinInput validates POST /api/channels/{id}/join bodies.
 var ChannelsJoinInput = Object{}
+
+// LabelsArchiveInput validates POST /api/labels/{id}/archive bodies.
+var LabelsArchiveInput = Object{}
+
+// LabelsRestoreInput validates POST /api/labels/{id}/restore bodies.
+var LabelsRestoreInput = Object{}

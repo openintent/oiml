@@ -183,11 +183,12 @@ program
         ok(
           `applied ${id} as revision ${outcome.revision.rev}${outcome.revision.summary ? `: ${outcome.revision.summary}` : ""}`
         );
-      // isolation: database changes what some rules allow (an owner must also be a member) and leaves some
-      // entities shared: say so when the intent is applied, not only in the generated code
+      // isolation: database changes what some rules allow (an owner must also be a member), leaves some entities
+      // shared, and makes a count on a shared row add up every tenant's rows: say so when the intent is applied,
+      // not only in the generated code
       if (outcome.status !== "noop" && outcome.model.auth?.tenancy?.isolation === "database")
         for (const d of validateModel(outcome.model))
-          if (d.code === "M116" || d.code === "M119") warn(`${d.code} ${d.path}: ${d.message}`);
+          if (d.code === "M116" || d.code === "M119" || d.code === "M156") warn(`${d.code} ${d.path}: ${d.message}`);
     }
     info("next: osl generate");
   });

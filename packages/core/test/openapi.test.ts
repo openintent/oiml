@@ -51,8 +51,10 @@ describe("openapi document", () => {
       "/api/follows/{id}",
       "/api/posts",
       "/api/posts/{id}",
+      "/api/posts/{id}/archive",
       "/api/posts/{id}/lock",
       "/api/posts/{id}/publish",
+      "/api/posts/{id}/restore",
       "/api/posts/{id}/unlock",
       "/api/posts/unpublish_all",
       "/api/users",
@@ -61,7 +63,15 @@ describe("openapi document", () => {
     ]);
     const list = doc.paths["/api/posts"].get;
     expect(list.operationId).toBe("posts_list");
-    expect(list.parameters!.map(p => p.name)).toEqual(["page", "page_size", "published", "author_id", "sort", "q"]);
+    expect(list.parameters!.map(p => p.name)).toEqual([
+      "page",
+      "page_size",
+      "published",
+      "author_id",
+      "archived",
+      "sort",
+      "q"
+    ]);
     expect(doc.paths["/api/posts/{id}/publish"].post.operationId).toBe("posts_publish");
     expect(Object.keys(doc.paths["/api/posts/{id}/publish"].post.responses)).toContain("200");
     expect(Object.keys(doc.paths["/api/posts/{id}"].delete.responses)).toContain("204");

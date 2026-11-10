@@ -1,6 +1,6 @@
 id: blog5-stats-action
 tags: [actions, global]
-base: { fixture: blog }
+base: { fixture: blog, through: FEAT-12 }
 intent:
   title: Admin statistics
   ask: An admin-only endpoint that returns how many articles exist, how many are published, and how many users there are.

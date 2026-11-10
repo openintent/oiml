@@ -89,9 +89,11 @@ gaps:
     first_seen: r2
     last_seen: r7
     cases: 2
-    note: "Design for the count case: docs/designs/archive-and-counts.md (count_of over a reverse relation); sums
-      stay open. Exercise (docs/exercises/spotify.md): follower, like, track and play counts are count_of; a chart
-      over a window stays a schedule writing a read_only rank. Slack (docs/exercises/slack.md): unread counts compare
+    note: "The count case is built (2026-11-10, round B3): count_of over a reverse relation on an integer field,
+      with a where, kept by the database (workspace WS-13, blog FEAT-13; docs/designs/archive-and-counts.md). Sums,
+      averages, a latest value, a count over two relations, a count per viewer and a count grouped by a value stay
+      open, which is why the entry does. Exercise (docs/exercises/spotify.md): follower, like, track and play counts
+      are count_of; a chart over a window stays a schedule writing a read_only rank. Slack (docs/exercises/slack.md): unread counts compare
       a channel's messages with the viewer's own marker and reaction counts group by emoji; neither is count_of, and
       a per-viewer count is likely declined as a custom page or an action."
   - key: uniqueness and constraints
@@ -288,12 +290,16 @@ gaps:
     note: "Encrypted at rest, never in events, webhooks, audit or logs. Design: docs/designs/field-kinds.md."
   - key: soft delete and archiving
     kind: not_delivered
-    status: open
+    status: built
     first_seen: designs-2026-11-09
     last_seen: designs-2026-11-09
     cases: 0
-    note: "archive: true on an entity; archived rows leave lists, archive and restore actions. Design:
-      docs/designs/archive-and-counts.md."
+    construct: "archive: true on an entity (or { field, rule }): a server-owned archived_at, lists that leave
+      archived rows out unless asked with ?archived=true, the compiler's archive and restore row actions"
+    version: unreleased
+    note: "Built 2026-11-10 (round B3) with workspace WS-13 (milestones and labels, under isolation: database) and
+      blog FEAT-13 (articles, with a queued event on posts.archive). Declined: a cascading archive, a list of live
+      and archived rows together, a timer that runs archive itself. Design: docs/designs/archive-and-counts.md."
   - key: history, versions and audit
     kind: not_delivered
     status: open

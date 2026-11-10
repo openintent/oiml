@@ -45,7 +45,8 @@ const COERCE: Record<string, Record<string, "int" | "number" | "boolean" | "stri
     "page": "int",
     "page_size": "int",
     "project_id": "string",
-    "done": "boolean"
+    "done": "boolean",
+    "archived": "boolean"
   },
   "channels.list": {
     "page": "int",
@@ -67,7 +68,8 @@ const COERCE: Record<string, Record<string, "int" | "number" | "boolean" | "stri
   "labels.list": {
     "page": "int",
     "page_size": "int",
-    "team_id": "string"
+    "team_id": "string",
+    "archived": "boolean"
   },
   "milestone_labels.list": {
     "page": "int",

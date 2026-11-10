@@ -3,7 +3,7 @@
  * is applied (and its IR, for rules and actions after defaults). Every failure is one line a reader can act on.
  */
 import type { Diff, IR, Model, RuleIR } from "@osl/core";
-import { compile, positionOf, ruleText as coreRuleText, throughRelation } from "@osl/core";
+import { archiveOf, compile, countLink, positionOf, ruleText as coreRuleText, throughRelation } from "@osl/core";
 import { Expect as ExpectSchema, type Expect } from "./cases.js";
 
 export interface Checked {
@@ -327,6 +327,29 @@ export function checkExpectations(expect: Expect, checked: Checked): string[] {
     else if (!position) fail(`${entity} has no position field`);
     else if (within !== "*" && !alts(within).includes(position.within))
       fail(`${entity} is ordered within ${position.within}, expected ${within}`);
+  }
+
+  for (const entityName of expect.archive ?? []) {
+    const entity = pick(entityName, entities);
+    if (!entity) fail(`entity ${entityName} missing (for its archive)`);
+    else if (!archiveOf(model.entities[entity])) fail(`${entity} does not archive (no archive: on the entity)`);
+  }
+
+  for (const spec of expect.counts ?? []) {
+    const [left, countedAlts] = spec.split("->").map(s => s.trim());
+    const dot = left.indexOf(".");
+    const entity = pick(left.slice(0, dot), entities);
+    if (!entity) {
+      fail(`entity ${left.slice(0, dot)} missing (for the count ${spec})`);
+      continue;
+    }
+    const nameSpec = left.slice(dot + 1);
+    const hit = Object.entries(model.entities[entity].fields).some(([name, field]) => {
+      if (nameSpec !== "*" && !alts(nameSpec).includes(name)) return false;
+      const link = countLink(model, entity, field);
+      return Boolean(link && !("problem" in link) && alts(countedAlts).includes(link.entity));
+    });
+    if (!hit) fail(`count ${spec} missing (a count_of field)`);
   }
 
   for (const [entityName, rules] of Object.entries(expect.rules ?? {})) {

@@ -1,6 +1,6 @@
 id: blog5-comments-page
 tags: [entity, relation, app, rules]
-base: { fixture: blog }
+base: { fixture: blog, through: FEAT-12 }
 intent:
   title: Comments with a page
   ask: >-

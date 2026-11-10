@@ -23,7 +23,8 @@ export const postsListQuery = z
     page_size: z.number().int().min(1).max(200).default(20),
     published: z.boolean().optional(),
     author_id: z.string().uuid().optional(),
-    sort: z.enum(["title:asc", "title:desc", "posted_at:asc", "posted_at:desc"]).optional(),
+    archived: z.boolean().optional(),
+    sort: z.enum(["title:asc", "title:desc", "posted_at:asc", "posted_at:desc", "comment_count:asc", "comment_count:desc"]).optional(),
     q: z.string().max(200).optional()
   })
   .strict();
@@ -145,6 +146,12 @@ export type PostsLockInput = z.infer<typeof postsLockInput>;
 
 export const postsUnlockInput = z.object({}).strict();
 export type PostsUnlockInput = z.infer<typeof postsUnlockInput>;
+
+export const postsArchiveInput = z.object({}).strict();
+export type PostsArchiveInput = z.infer<typeof postsArchiveInput>;
+
+export const postsRestoreInput = z.object({}).strict();
+export type PostsRestoreInput = z.infer<typeof postsRestoreInput>;
 
 export const announcementsPublishInput = z.object({}).strict();
 export type AnnouncementsPublishInput = z.infer<typeof announcementsPublishInput>;

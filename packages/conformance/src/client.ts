@@ -177,7 +177,12 @@ class TrpcClient extends BaseClient {
     const out: Record<string, unknown> = {};
     for (const [key, raw] of Object.entries(call.query ?? {})) {
       const column = entity.columns.find(c => c.name === key);
-      const how = key === "page" || key === "page_size" ? "int" : coercion(column);
+      const how =
+        key === "page" || key === "page_size"
+          ? "int"
+          : key === "archived" && entity.archive
+            ? "boolean"
+            : coercion(column);
       if (how === "int" || how === "number") out[key] = numeric(raw) ? Number(raw) : raw;
       else if (how === "boolean") out[key] = raw === "true" ? true : raw === "false" ? false : raw;
       else out[key] = raw;

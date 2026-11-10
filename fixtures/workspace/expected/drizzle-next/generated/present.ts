@@ -3,9 +3,9 @@
 
 import type * as schema from "./db/schema";
 
-export type PublicUser = Pick<schema.User, "id" | "email" | "name" | "created_at">;
+export type PublicUser = Pick<schema.User, "id" | "email" | "name" | "created_at" | "team_count">;
 export function presentUser(row: schema.User): PublicUser {
-  return { id: row.id, email: row.email, name: row.name, created_at: row.created_at };
+  return { id: row.id, email: row.email, name: row.name, created_at: row.created_at, team_count: row.team_count };
 }
 
 export type PublicTeam = Pick<schema.Team, "id" | "name" | "created_at">;
@@ -18,9 +18,9 @@ export function presentTeamMember(row: schema.TeamMember): PublicTeamMember {
   return { id: row.id, team_id: row.team_id, user_id: row.user_id, role: row.role, created_at: row.created_at };
 }
 
-export type PublicProject = Pick<schema.Project, "id" | "team_id" | "name" | "status" | "created_at" | "public">;
+export type PublicProject = Pick<schema.Project, "id" | "team_id" | "name" | "status" | "created_at" | "public" | "milestone_count" | "open_milestones">;
 export function presentProject(row: schema.Project): PublicProject {
-  return { id: row.id, team_id: row.team_id, name: row.name, status: row.status, created_at: row.created_at, public: row.public };
+  return { id: row.id, team_id: row.team_id, name: row.name, status: row.status, created_at: row.created_at, public: row.public, milestone_count: row.milestone_count, open_milestones: row.open_milestones };
 }
 
 export type PublicTask = Pick<schema.Task, "id" | "project_id" | "title" | "done" | "assignee_id" | "created_at" | "due_at" | "reminded_at">;
@@ -33,9 +33,9 @@ export function presentNote(row: schema.Note): PublicNote {
   return { id: row.id, project_id: row.project_id, author_id: row.author_id, body: row.body, created_at: row.created_at };
 }
 
-export type PublicMilestone = Pick<schema.Milestone, "id" | "project_id" | "title" | "due_on" | "done" | "position">;
+export type PublicMilestone = Pick<schema.Milestone, "id" | "project_id" | "title" | "due_on" | "done" | "position" | "archived_at">;
 export function presentMilestone(row: schema.Milestone): PublicMilestone {
-  return { id: row.id, project_id: row.project_id, title: row.title, due_on: row.due_on, done: row.done, position: row.position };
+  return { id: row.id, project_id: row.project_id, title: row.title, due_on: row.due_on, done: row.done, position: row.position, archived_at: row.archived_at };
 }
 
 export type PublicChannel = Pick<schema.Channel, "id" | "team_id" | "created_by" | "name" | "private" | "created_at">;
@@ -53,9 +53,9 @@ export function presentMessage(row: schema.Message): PublicMessage {
   return { id: row.id, channel_id: row.channel_id, author_id: row.author_id, body: row.body, created_at: row.created_at };
 }
 
-export type PublicLabel = Pick<schema.Label, "id" | "team_id" | "name">;
+export type PublicLabel = Pick<schema.Label, "id" | "team_id" | "name" | "archived_at">;
 export function presentLabel(row: schema.Label): PublicLabel {
-  return { id: row.id, team_id: row.team_id, name: row.name };
+  return { id: row.id, team_id: row.team_id, name: row.name, archived_at: row.archived_at };
 }
 
 export type PublicMilestoneLabel = Pick<schema.MilestoneLabel, "id" | "team_id" | "milestone_id" | "label_id">;

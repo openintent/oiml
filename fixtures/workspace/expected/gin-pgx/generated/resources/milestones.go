@@ -6,6 +6,8 @@ package resources
 import (
 	"context"
 	"errors"
+	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
@@ -39,6 +41,8 @@ func (h *Milestones) Routes(r gin.IRouter) {
 	r.PATCH("/api/milestones/:id", h.Update)
 	r.DELETE("/api/milestones/:id", h.Delete)
 	r.POST("/api/milestones/:id/move", h.ActionMove)
+	r.POST("/api/milestones/:id/archive", h.ActionArchive)
+	r.POST("/api/milestones/:id/restore", h.ActionRestore)
 }
 
 var milestonesReadRule = access.Rule{Kind: "member", Field: "project_id.team_id"}
@@ -50,6 +54,10 @@ var milestonesUpdateRule = access.Rule{Kind: "member", Field: "project_id.team_i
 var milestonesDeleteRule = access.Rule{Kind: "member", Field: "project_id.team_id", Role: "admin"}
 
 var milestonesMoveActionRule = access.Rule{Kind: "member", Field: "project_id.team_id"}
+
+var milestonesArchiveActionRule = access.Rule{Kind: "member", Field: "project_id.team_id", Role: "admin"}
+
+var milestonesRestoreActionRule = access.Rule{Kind: "member", Field: "project_id.team_id", Role: "admin"}
 
 // milestonesListRow is a list item with its includes.
 type milestonesListRow struct {
@@ -94,6 +102,11 @@ func (h *Milestones) List(c *gin.Context) {
 			return
 		}
 		where.Raw(`"project_id" IN (SELECT "id" FROM ` + models.ProjectTable + ` WHERE "team_id" = ANY(` + where.Param(tenants) + `))`)
+	}
+	if archived, _ := query.Filters["archived"].(bool); archived {
+		where.Raw(`"archived_at" IS NOT NULL`)
+	} else {
+		where.Raw(`"archived_at" IS NULL`)
 	}
 	var total int
 	if err := h.db.QueryRow(ctx, `SELECT count(*) FROM `+models.MilestoneTable+where.SQL(), where.Args()...).Scan(&total); err != nil {
@@ -394,6 +407,124 @@ func (h *Milestones) ActionMove(c *gin.Context) {
 		return
 	}
 	_ = row
+	httpx.OK(c, models.PresentMilestone(result))
+}
+
+// ActionArchive handles POST /api/milestones/{id}/archive: the archive action.
+func (h *Milestones) ActionArchive(c *gin.Context) {
+	ctx := c.Request.Context()
+	session, err := h.auth.Session(c)
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if verdict := access.Check(milestonesArchiveActionRule, session); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	id, ok := validation.MilestonesID(c.Param("id"))
+	if !ok {
+		httpx.Fail(c, httpx.NotFound())
+		return
+	}
+	row, err := models.ScanMilestone(h.db.QueryRow(ctx, `SELECT `+models.MilestoneColumns+` FROM `+models.MilestoneTable+` WHERE "id" = $1`, id))
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	ruleRow, err := h.ruleRow(ctx, access.Row{"project_id": row.ProjectID})
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if access.CheckRow(milestonesReadRule, session, ruleRow) != nil {
+		httpx.Fail(c, httpx.NotFound())
+		return
+	}
+	if verdict := access.CheckRow(milestonesArchiveActionRule, session, ruleRow); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	body, perr := httpx.ParseBody(c)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	values, perr := validation.MilestonesArchiveInput.Parse(body)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	_ = values
+	_ = row
+	result, err := models.ScanMilestone(h.db.QueryRow(ctx, `UPDATE `+models.MilestoneTable+` SET "archived_at" = $2 WHERE "id" = $1 AND "archived_at" IS NULL RETURNING `+models.MilestoneColumns, id, time.Now().UTC()))
+	if errors.Is(err, pgx.ErrNoRows) {
+		httpx.Fail(c, httpx.NewError(http.StatusConflict, "conflict", "The row is archived already"))
+		return
+	}
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	httpx.OK(c, models.PresentMilestone(result))
+}
+
+// ActionRestore handles POST /api/milestones/{id}/restore: the restore action.
+func (h *Milestones) ActionRestore(c *gin.Context) {
+	ctx := c.Request.Context()
+	session, err := h.auth.Session(c)
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if verdict := access.Check(milestonesRestoreActionRule, session); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	id, ok := validation.MilestonesID(c.Param("id"))
+	if !ok {
+		httpx.Fail(c, httpx.NotFound())
+		return
+	}
+	row, err := models.ScanMilestone(h.db.QueryRow(ctx, `SELECT `+models.MilestoneColumns+` FROM `+models.MilestoneTable+` WHERE "id" = $1`, id))
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	ruleRow, err := h.ruleRow(ctx, access.Row{"project_id": row.ProjectID})
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if access.CheckRow(milestonesReadRule, session, ruleRow) != nil {
+		httpx.Fail(c, httpx.NotFound())
+		return
+	}
+	if verdict := access.CheckRow(milestonesRestoreActionRule, session, ruleRow); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	body, perr := httpx.ParseBody(c)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	values, perr := validation.MilestonesRestoreInput.Parse(body)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	_ = values
+	_ = row
+	result, err := models.ScanMilestone(h.db.QueryRow(ctx, `UPDATE `+models.MilestoneTable+` SET "archived_at" = NULL WHERE "id" = $1 AND "archived_at" IS NOT NULL RETURNING `+models.MilestoneColumns, id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		httpx.Fail(c, httpx.NewError(http.StatusConflict, "conflict", "The row is not archived"))
+		return
+	}
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
 	httpx.OK(c, models.PresentMilestone(result))
 }
 

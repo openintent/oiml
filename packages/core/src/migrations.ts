@@ -5,8 +5,8 @@
 import type { Renames } from "./diff.js";
 import { slugify } from "./naming.js";
 import type { ColumnIR, EntityIR, IR, TenantKeyIR, TypeIR } from "./ir.js";
-import { isolationObjects } from "./isolation.js";
-import { backfillPositions, orderObjects } from "./order.js";
+import { backfillCount, databaseObjects } from "./counts.js";
+import { backfillPositions } from "./order.js";
 
 export type MigrationStep =
   | { kind: "create_enum"; name: string; values: string[] }
@@ -40,7 +40,9 @@ export type MigrationStep =
   | { kind: "add_tenant_key"; table: string; key: TenantKeyIR }
   /** Number the rows a table already has, parent by parent, when it gains a position field */
   | { kind: "backfill_position"; table: string; column: string; within: string; statement: string }
-  /** Statements of the isolation layer (roles and grants, functions, triggers, row security, policies) and of the ordered collections (the constraint, functions and triggers), made or dropped whole */
+  /** Set a count from the rows that exist, when a count_of field arrives on a table that has rows or changes what it counts */
+  | { kind: "backfill_count"; table: string; column: string; statement: string }
+  /** Statements of the isolation layer (roles and grants, functions, triggers, row security, policies), of the ordered collections (the constraint, functions and triggers) and of the counts (functions and triggers), made or dropped whole */
   | { kind: "sql"; about: string; statements: string[] };
 
 export interface MigrationPlan {
@@ -52,7 +54,12 @@ export interface MigrationPlan {
 
 /** Whether a step rewrites its table rather than adding to it */
 export function isRewrite(step: MigrationStep, next: IR): boolean {
-  if (step.kind === "alter_column_type" || step.kind === "backfill_tenant" || step.kind === "backfill_position")
+  if (
+    step.kind === "alter_column_type" ||
+    step.kind === "backfill_tenant" ||
+    step.kind === "backfill_position" ||
+    step.kind === "backfill_count"
+  )
     return true;
   if (step.kind === "set_not_null" && step.notNull) {
     const entity = next.entities.find(e => e.table === step.table);
@@ -93,6 +100,7 @@ export function planMigration(prev: IR | null, next: IR, renames: Renames = EMPT
   const dropsKeys: MigrationStep[] = []; // composite tenant keys, before the uniques they point at
   const addsKeys: MigrationStep[] = []; // composite tenant keys, after the uniques they point at
   const positionFills: MigrationStep[] = []; // positions of tables that have rows
+  const countFills: MigrationStep[] = []; // counts of tables that have rows
 
   const prevEntities = prev?.entities ?? [];
   const prevEnums = prev?.enums ?? [];
@@ -193,6 +201,24 @@ export function planMigration(prev: IR | null, next: IR, renames: Renames = EMPT
         });
     }
 
+    // A table that has rows and gains a count, or whose count means something else now: counted from the rows
+    // that exist, before the triggers that keep it arrive
+    for (const count of entity.counts ?? []) {
+      const prevCount = prevEntity.counts?.find(c => c.column === oldFieldOf(entity.name, count.column));
+      const meaning = JSON.stringify([
+        oldNameOf(count.entity),
+        oldFieldOf(count.entity, count.fk),
+        count.where.map(when => ({ ...when, column: oldFieldOf(count.entity, when.column) }))
+      ]);
+      if (prevCount && JSON.stringify([prevCount.entity, prevCount.fk, prevCount.where]) === meaning) continue;
+      countFills.push({
+        kind: "backfill_count",
+        table,
+        column: count.column,
+        statement: backfillCount(entity, count)
+      });
+    }
+
     // Foreign keys by column: drop changed or removed, add new or changed
     for (const fk of entity.foreignKeys) {
       const prevFk = prevEntity.foreignKeys.find(p => p.column === oldFieldOf(entity.name, fk.column));
@@ -277,8 +303,8 @@ export function planMigration(prev: IR | null, next: IR, renames: Renames = EMPT
 
   // The isolation layer: what is gone or defined differently is dropped before anything is renamed or removed,
   // and what is new or defined differently is made once the tables are in their final shape
-  const before = prev ? [...isolationObjects(prev), ...orderObjects(prev)] : [];
-  const after = [...isolationObjects(next), ...orderObjects(next)];
+  const before = prev ? databaseObjects(prev) : [];
+  const after = databaseObjects(next);
   const beforeByKey = new Map(before.map(o => [o.key, o]));
   const afterByKey = new Map(after.map(o => [o.key, o]));
   const remade = new Set<string>();
@@ -315,6 +341,7 @@ export function planMigration(prev: IR | null, next: IR, renames: Renames = EMPT
     ...alters,
     ...ordered,
     ...positionFills,
+    ...countFills,
     ...dropsKeys,
     ...dropsConstraints,
     ...dropsColumns,
@@ -496,6 +523,7 @@ export function renderPostgres(plan: MigrationPlan): string {
         );
         break;
       case "backfill_position":
+      case "backfill_count":
         out.push(step.statement);
         break;
       case "add_tenant_key": {

@@ -5,9 +5,12 @@ package resources
 
 import (
 	"context"
+	"errors"
+	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"blog/generated/access"
@@ -47,6 +50,8 @@ func (h *Posts) Routes(r gin.IRouter) {
 	r.POST("/api/posts/unpublish_all", h.ActionUnpublishAll)
 	r.POST("/api/posts/:id/lock", h.ActionLock)
 	r.POST("/api/posts/:id/unlock", h.ActionUnlock)
+	r.POST("/api/posts/:id/archive", h.ActionArchive)
+	r.POST("/api/posts/:id/restore", h.ActionRestore)
 }
 
 var postsReadRule = access.Rule{Kind: "public"}
@@ -64,6 +69,10 @@ var postsUnpublishAllActionRule = access.Rule{Kind: "role", Value: "admin"}
 var postsLockActionRule = access.Rule{Kind: "role", Value: "admin"}
 
 var postsUnlockActionRule = access.Rule{Kind: "role", Value: "admin"}
+
+var postsArchiveActionRule = access.Rule{Kind: "owner", Field: "author_id"}
+
+var postsRestoreActionRule = access.Rule{Kind: "owner", Field: "author_id"}
 
 // postsFileFields lists the file fields of Article and what they accept.
 var postsFileFields = []files.FieldSpec{{Column: "cover", Accept: []string{"image/*"}, MaxSize: 2097152}}
@@ -103,6 +112,11 @@ func (h *Posts) List(c *gin.Context) {
 	}
 	if v, ok := query.Filters["author_id"]; ok {
 		where.Eq(`"author_id"`, v)
+	}
+	if archived, _ := query.Filters["archived"].(bool); archived {
+		where.Raw(`"archived_at" IS NOT NULL`)
+	} else {
+		where.Raw(`"archived_at" IS NULL`)
 	}
 	if query.Q != "" {
 		where.Search([]string{`"title"`, `"content"`}, query.Q)
@@ -501,6 +515,118 @@ func (h *Posts) ActionUnlock(c *gin.Context) {
 	actx := &actions.Context{Gin: c, Ctx: c.Request.Context(), Session: session, DB: h.db, Now: time.Now().UTC()}
 	result, err := handlers.PostsUnlock(actx, actions.ParsePostsUnlockInput(values), row)
 	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	httpx.OK(c, models.PresentArticle(result))
+}
+
+// ActionArchive handles POST /api/posts/{id}/archive: the archive action.
+func (h *Posts) ActionArchive(c *gin.Context) {
+	ctx := c.Request.Context()
+	session, err := h.auth.Session(c)
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if verdict := access.Check(postsArchiveActionRule, session); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	id, ok := validation.PostsID(c.Param("id"))
+	if !ok {
+		httpx.Fail(c, httpx.NotFound())
+		return
+	}
+	row, err := models.ScanArticle(h.db.QueryRow(ctx, `SELECT `+models.ArticleColumns+` FROM `+models.ArticleTable+` WHERE "id" = $1`, id))
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if verdict := access.CheckRow(postsArchiveActionRule, session, access.Row{"author_id": row.AuthorID}); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	body, perr := httpx.ParseBody(c)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	values, perr := validation.PostsArchiveInput.Parse(body)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	_ = values
+	_ = row
+	result, err := models.ScanArticle(h.db.QueryRow(ctx, `UPDATE `+models.ArticleTable+` SET "archived_at" = $2 WHERE "id" = $1 AND "archived_at" IS NULL RETURNING `+models.ArticleColumns, id, time.Now().UTC()))
+	if errors.Is(err, pgx.ErrNoRows) {
+		httpx.Fail(c, httpx.NewError(http.StatusConflict, "conflict", "The row is archived already"))
+		return
+	}
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if err := scheduling.ScheduleArticle(ctx, result); err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if err := events.PostsArchive(ctx, models.PresentArticle(result)); err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	httpx.OK(c, models.PresentArticle(result))
+}
+
+// ActionRestore handles POST /api/posts/{id}/restore: the restore action.
+func (h *Posts) ActionRestore(c *gin.Context) {
+	ctx := c.Request.Context()
+	session, err := h.auth.Session(c)
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if verdict := access.Check(postsRestoreActionRule, session); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	id, ok := validation.PostsID(c.Param("id"))
+	if !ok {
+		httpx.Fail(c, httpx.NotFound())
+		return
+	}
+	row, err := models.ScanArticle(h.db.QueryRow(ctx, `SELECT `+models.ArticleColumns+` FROM `+models.ArticleTable+` WHERE "id" = $1`, id))
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if verdict := access.CheckRow(postsRestoreActionRule, session, access.Row{"author_id": row.AuthorID}); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	body, perr := httpx.ParseBody(c)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	values, perr := validation.PostsRestoreInput.Parse(body)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	_ = values
+	_ = row
+	result, err := models.ScanArticle(h.db.QueryRow(ctx, `UPDATE `+models.ArticleTable+` SET "archived_at" = NULL WHERE "id" = $1 AND "archived_at" IS NOT NULL RETURNING `+models.ArticleColumns, id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		httpx.Fail(c, httpx.NewError(http.StatusConflict, "conflict", "The row is not archived"))
+		return
+	}
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if err := scheduling.ScheduleArticle(ctx, result); err != nil {
 		httpx.HandleError(c, err, "write")
 		return
 	}

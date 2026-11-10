@@ -1,0 +1,36 @@
+id: fx-ws-13-archive-and-counts
+tags: [fixture, fields, rules, tenancy, isolation, archive, counts, ordering, scenario]
+base: { fixture: workspace, through: WS-12 }
+oracle: fixtures/workspace/intents/WS-13/diff.yaml
+intent:
+  title: Archived milestones and labels, and what a project counts
+  ask: >-
+    A team's admins archive a milestone that is out of the way and restore it later; a plain member cannot. An archived
+    milestone leaves the list unless the archived ones are asked for, still opens by its id, and keeps its place among
+    the project's milestones. Labels can be archived by whoever may edit them, and a milestone still shows an archived
+    label it carries. A project says how many milestones it has and how many of them are still open (not done and not
+    archived). A user says how many teams they are in.
+  acceptance:
+    - A member is refused when archiving a milestone; an admin archives it, and a second archive is a conflict
+    - The archived milestone is missing from the project's list and is the only one in the list of archived ones
+    - The project's milestone count stays while its count of open milestones falls, and rises again on restore
+    - An archived label is out of the label list and still named on the milestone that carries it
+    - A user in two teams counts two, whoever asks
+expect:
+  archive: [Milestone, Label]
+  counts: ["Project.* -> Milestone", "User.* -> TeamMember"]
+  fields: { Milestone: [archived_at], Label: [archived_at] }
+  field_props:
+    "Milestone.archived_at": { read_only: true }
+  actions_on:
+    milestones: { scope: row, rule: "member:project_id.team_id:admin" }
+    labels: { scope: row, rule: "member:team_id:admin" }
+  scenarios: { min: 1, rejections: 3, statuses: [403, 409, 404] }
+  touches: [milestones.archive, milestones.restore, labels.archive]
+  ops: { require: [set_archive, add_field], forbid: [add_action] }
+notes: >-
+  Both constructs under isolation: database. The archive of Milestone names its own rule (the update rule would let
+  any member archive), Label's falls back to its update rule. One count has a condition that reads the archive
+  field, so an archived milestone leaves the open count and stays in the plain one. The count on User adds up
+  memberships of every team (M156 says so at apply). A diff that adds an `archived` flag, an action with a handler
+  and a list filter has not used the construct.

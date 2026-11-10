@@ -1059,15 +1059,17 @@ function idOf(raw: string) {
   if (layout === "split") {
     use(ctx, "ui", "ListSkeleton");
     use(ctx, "ui", "Pagination");
+    const toggle = archiveToggle(ctx, true);
+    const muted = archivedClass(ctx, "row");
     sections.push(`export function ${Comp}Layout(${target.layoutProps}) {
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(1);${toggle?.decl ?? ""}
   const [openAction, setOpenAction] = useState<string | null>(null);
   void openAction;
   void setOpenAction;
   const session = ${sessionQuery};
   const user = sessionUser(session.data);
   void user;
-  const input = { page, page_size: PAGE_SIZE${fixedSpread} } as Inputs[${q(R)}]["list"];
+  const input = { page, page_size: PAGE_SIZE${toggle?.spread ?? ""}${fixedSpread} } as Inputs[${q(R)}]["list"];
   const list = ${listQueryDecl("input")};
   ${target.activeDecl}${mutations ? "\n  const queryClient = useQueryClient();" : ""}
 ${collectionActionDecls.join("\n")}
@@ -1075,7 +1077,7 @@ ${collectionActionDecls.join("\n")}
     <div className="flex h-full min-h-0">
       <aside className="flex w-80 shrink-0 flex-col border-r border-border">
         <PaneHeader title=${q(title)} count={list.data?.page.total}>
-          ${headerExtras}
+          ${[toggle?.button, headerExtras].filter(Boolean).join("\n          ")}
         </PaneHeader>
 ${collectionActionForms.join("\n")}
 ${collectionErrors.join("\n")}
@@ -1085,14 +1087,14 @@ ${collectionErrors.join("\n")}
           ) : list.error ? (
             <ErrorNote error={list.error} className="m-4" />
           ) : list.data.data.length === 0 ? (
-            <EmptyPane>No ${title.toLowerCase()} yet.</EmptyPane>
+            <EmptyPane>${toggle ? `{archived ? ${q(`No archived ${title.toLowerCase()}.`)} : ${q(`No ${title.toLowerCase()} yet.`)}}` : `No ${title.toLowerCase()} yet.`}</EmptyPane>
           ) : (
             <ul className="py-1">
               {list.data.data.map((row: Row) => (
                 <li key={text(row.${pk})}>
                   <Link
                     ${detailLink(`text(row.${pk})`)}
-                    className={cn("block border-l-2 border-transparent px-4 py-2 hover:bg-accent/60", ${target.isActive(page.path, `text(row.${pk})`)} && "border-primary bg-accent")}
+                    className={cn("block border-l-2 border-transparent px-4 py-2 hover:bg-accent/60", ${target.isActive(page.path, `text(row.${pk})`)} && "border-primary bg-accent"${muted ? `, ${muted}` : ""})}
                   >
                     <div className="truncate text-sm font-medium">{${showExpr(ctx, first, "row", listIncludes, "list")} || ${q(`${one} `)} + text(row.${pk})}</div>${
                       metaExpr
@@ -1185,6 +1187,13 @@ export function ${Comp}Index() {
   for (const a of rowActions) {
     shadcn(ctx, "button", "Button");
     const Pascal = toPascalCase(a.name);
+    // The compiler's archive shows on a live row and its restore on an archived one: the other would answer 409
+    const when =
+      a.builtin === "archive"
+        ? ` && !row.${entity.archive!.column}`
+        : a.builtin === "restore"
+          ? ` && row.${entity.archive!.column}`
+          : "";
     actions.push(
       a.input.length
         ? `          {can${Pascal}(user, row) ? (
@@ -1192,7 +1201,7 @@ export function ${Comp}Index() {
               ${toTitleCase(a.name)}
             </Button>
           ) : null}`
-        : `          {can${Pascal}(user, row) ? (
+        : `          {can${Pascal}(user, row)${when} ? (
             <Button variant="outline" size="sm" disabled={${a.name}Action.isPending} onClick={() => ${a.name}Action.mutate({ id })}>
               ${toTitleCase(a.name)}
             </Button>
@@ -1402,6 +1411,9 @@ function tableIndex(
   const listIncludes = list.include.map(name => entity.relations.find(r => r.name === name)!);
   const filters = filterControls(ctx, list);
   const { queryOpts } = listQueryOptions(page);
+  const toggle = archiveToggle(ctx, true);
+  const muted = archivedClass(ctx, "row");
+  if (muted) use(ctx, "ui", "cn");
   shadcn(ctx, "table", "Table");
   shadcn(ctx, "table", "TableBody");
   shadcn(ctx, "table", "TableCell");
@@ -1433,7 +1445,7 @@ function tableIndex(
     cells.push(`                  <TableCell>{${relation.expr}}</TableCell>`);
   }
   return `export function ${Comp}Index() {
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(1);${toggle?.decl ?? ""}
   const [sort, setSort] = useState<string | undefined>(undefined);${list.sortable.length ? "" : "\n  void setSort;"}
 ${
   list.search.length
@@ -1454,7 +1466,7 @@ ${
   void user;
   const input = {
     page,
-    page_size: PAGE_SIZE${list.sortable.length ? ",\n    sort" : ""}${list.search.length ? ",\n    q: q || undefined" : ""}${filters.toInput ? `,\n    ${filters.toInput}` : ""}${page.filter ? ",\n    ...fixedFilter(user)" : ""}
+    page_size: PAGE_SIZE${list.sortable.length ? ",\n    sort" : ""}${list.search.length ? ",\n    q: q || undefined" : ""}${filters.toInput ? `,\n    ${filters.toInput}` : ""}${toggle ? `,\n    ${toggle.spread.slice(2)}` : ""}${page.filter ? ",\n    ...fixedFilter(user)" : ""}
   } as Inputs[${q(R)}]["list"];
   const list = useQuery({ queryKey: [...KEY, "list", input], queryFn: () => client.${R}.list(input)${queryOpts} });
   ${target.navigateDecl}${mutations ? "\n  const queryClient = useQueryClient();" : ""}
@@ -1462,7 +1474,7 @@ ${actionDecls.join("\n")}
   return (
     <div className="flex h-full min-h-0 flex-col">
       <PaneHeader title=${q(page.title)} count={list.data?.page.total}>
-          ${headerExtras}
+          ${[toggle?.button, headerExtras].filter(Boolean).join("\n          ")}
       </PaneHeader>
 ${actionForms.join("\n")}
 ${actionErrors.join("\n")}
@@ -1490,7 +1502,7 @@ ${heads.join("\n")}
             </TableHeader>
             <TableBody>
               {list.data.data.map((row: Row) => (
-                <TableRow key={text(row.${pk})} className="cursor-pointer" onClick={() => ${target.navigateTo(page.path, `text(row.${pk})`)}}>
+                <TableRow key={text(row.${pk})} className=${muted ? `{cn("cursor-pointer", ${muted})}` : `"cursor-pointer"`} onClick={() => ${target.navigateTo(page.path, `text(row.${pk})`)}}>
 ${cells.join("\n")}
                 </TableRow>
               ))}
@@ -1520,6 +1532,7 @@ function boardIndex(
   const pk = ctx.pk.name;
   const groupBy = page.groupBy!;
   const { queryOpts, fixedSpread } = listQueryOptions(page);
+  const toggle = archiveToggle(ctx, false);
   const groupCol = entity.columns.find(c => c.name === groupBy)!;
   const values = enumValues(ctx, groupCol);
   const columns = page.columns.map(name => entity.columns.find(c => c.name === name)!).filter(c => c.name !== groupBy);
@@ -1540,11 +1553,11 @@ function boardIndex(
 const COLUMNS = [${values.map(q).join(", ")}] as const;
 type Column = (typeof COLUMNS)[number];
 
-export function ${Comp}Index() {
+export function ${Comp}Index() {${toggle?.decl ?? ""}
   const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
   const user = sessionUser(session.data);
   void user;
-  const boardInput = { ...BOARD_INPUT${fixedSpread} } as Inputs[${q(R)}]["list"];
+  const boardInput = { ...BOARD_INPUT${toggle?.spread ?? ""}${fixedSpread} } as Inputs[${q(R)}]["list"];
   const boardKey = [...KEY, "list", boardInput] as const;
   const list = useQuery({ queryKey: boardKey, queryFn: () => client.${R}.list(boardInput)${queryOpts} });
   const [openAction, setOpenAction] = useState<string | null>(null);
@@ -1575,7 +1588,7 @@ ${actionDecls.join("\n")}
   return (
     <div className="flex h-full min-h-0 flex-col">
       <PaneHeader title=${q(page.title)} count={list.data?.page.total}>
-          ${headerExtras}
+          ${[toggle?.button, headerExtras].filter(Boolean).join("\n          ")}
       </PaneHeader>
 ${actionForms.join("\n")}
 ${actionErrors.join("\n")}
@@ -1814,6 +1827,36 @@ function fixedValue(value: PageFilterValue, target: WebTarget, userExpr: string,
 /** Whether a filter names the signed-in user, so its query waits for the session */
 function usesActor(filter: Record<string, PageFilterValue> | undefined): boolean {
   return Object.values(filter ?? {}).some(v => typeof v === "object");
+}
+
+/**
+ * The "Show archived" toggle of a page over an archiving entity: its state, what it adds to the list input and its
+ * button. Null when the entity does not archive, or when the page's fixed filter already says which rows it shows.
+ */
+function archiveToggle(ctx: Ctx, paged: boolean): { decl: string; spread: string; button: string } | null {
+  if (!ctx.entity.archive || (ctx.page.filter && "archived" in ctx.page.filter)) return null;
+  shadcn(ctx, "button", "Button");
+  // The REST contract reads booleans from the query string as "true" | "false"; tRPC takes booleans
+  const yes = ctx.target.kind === "next" ? `"true" as const` : "true";
+  return {
+    decl: "\n  const [archived, setArchived] = useState(false);",
+    spread: `, ...(archived ? { archived: ${yes} } : {})`,
+    button: `<Button
+            variant={archived ? "secondary" : "ghost"}
+            size="sm"
+            aria-pressed={archived}
+            onClick={() => {
+              setArchived(current => !current);${paged ? "\n              setPage(1);" : ""}
+            }}
+          >
+            {archived ? "Showing archived" : "Show archived"}
+          </Button>`
+  };
+}
+
+/** The class a list row takes when it is archived: muted, so the archived rows read as out of the way */
+function archivedClass(ctx: Ctx, row: string): string | null {
+  return ctx.entity.archive ? `${row}.${ctx.entity.archive.column} && "text-muted-foreground"` : null;
 }
 
 /** The list query options a page adds: a refetch interval, and waiting for the session when a filter names the user */

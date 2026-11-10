@@ -14,8 +14,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 import { client, sessionUser, type Inputs, type Outputs, type SessionUser } from "../client";
-import { EmptyPane, ErrorNote, FieldRow, FormRow, ListSkeleton, NameChips, Pagination, Pane, PaneHeader, PaneSkeleton, selectClass, splitList, text, yesNo } from "../ui";
+import { EmptyPane, ErrorNote, FieldRow, FormRow, ListSkeleton, NameChips, Pagination, Pane, PaneHeader, PaneSkeleton, formatDateTime, selectClass, splitList, text, yesNo } from "../ui";
 
 type Row = Outputs["milestones"]["list"]["data"][number];
 type Detail = Outputs["milestones"]["get"];
@@ -41,6 +42,14 @@ function canDelete(user: SessionUser | null, row: Detail): boolean {
 }
 
 function canMove(user: SessionUser | null, row: Detail): boolean {
+  return user !== null;
+}
+
+function canArchive(user: SessionUser | null, row: Detail): boolean {
+  return user !== null;
+}
+
+function canRestore(user: SessionUser | null, row: Detail): boolean {
   return user !== null;
 }
 
@@ -320,6 +329,7 @@ function MilestonesLayoutInner({ children }: { children: ReactNode }) {
 
 function MilestonesIndexInner() {
   const [page, setPage] = useState(1);
+  const [archived, setArchived] = useState(false);
   const [sort, setSort] = useState<string | undefined>(undefined);
   void setSort;
 
@@ -337,7 +347,8 @@ function MilestonesIndexInner() {
   const input = {
     page,
     page_size: PAGE_SIZE,
-    project_id: filters.project_id || undefined, done: filters.done || undefined
+    project_id: filters.project_id || undefined, done: filters.done || undefined,
+    ...(archived ? { archived: "true" as const } : {})
   } as Inputs["milestones"]["list"];
   const list = useQuery({ queryKey: [...KEY, "list", input], queryFn: () => client.milestones.list(input) });
   const router = useRouter();
@@ -346,6 +357,17 @@ function MilestonesIndexInner() {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <PaneHeader title="Milestones" count={list.data?.page.total}>
+          <Button
+            variant={archived ? "secondary" : "ghost"}
+            size="sm"
+            aria-pressed={archived}
+            onClick={() => {
+              setArchived(current => !current);
+              setPage(1);
+            }}
+          >
+            {archived ? "Showing archived" : "Show archived"}
+          </Button>
           {canCreate(user) ? (
             <Link href="/milestones/new" className={buttonVariants({ variant: "ghost", size: "icon-sm" })} aria-label="New milestone">
               <Plus />
@@ -382,7 +404,7 @@ function MilestonesIndexInner() {
             </TableHeader>
             <TableBody>
               {list.data.data.map((row: Row) => (
-                <TableRow key={text(row.id)} className="cursor-pointer" onClick={() => router.push(`/milestones/${text(row.id)}`)}>
+                <TableRow key={text(row.id)} className={cn("cursor-pointer", row.archived_at && "text-muted-foreground")} onClick={() => router.push(`/milestones/${text(row.id)}`)}>
                   <TableCell>{text(row.title)}</TableCell>
                   <TableCell>{text(row.due_on)}</TableCell>
                   <TableCell>{(row.done ? "Done" : "Not done")}</TableCell>
@@ -488,6 +510,20 @@ function MilestonesDetailInner() {
       await queryClient.invalidateQueries({ queryKey: KEY });
     }
   });
+  const archiveAction = useMutation({
+    mutationFn: (input: Inputs["milestones"]["archive"]) => client.milestones.archive(input),
+    onSuccess: async () => {
+      setOpenAction(null);
+      await queryClient.invalidateQueries({ queryKey: KEY });
+    }
+  });
+  const restoreAction = useMutation({
+    mutationFn: (input: Inputs["milestones"]["restore"]) => client.milestones.restore(input),
+    onSuccess: async () => {
+      setOpenAction(null);
+      await queryClient.invalidateQueries({ queryKey: KEY });
+    }
+  });
   if (query.isPending) return <PaneSkeleton />;
   if (query.error) return <ErrorNote error={query.error} className="m-6" />;
   const row: Detail = query.data;
@@ -503,6 +539,16 @@ function MilestonesDetailInner() {
           {canMove(user, row) ? (
             <Button variant="outline" size="sm" onClick={() => setOpenAction(open => (open === "move" ? null : "move"))}>
               Move
+            </Button>
+          ) : null}
+          {canArchive(user, row) && !row.archived_at ? (
+            <Button variant="outline" size="sm" disabled={archiveAction.isPending} onClick={() => archiveAction.mutate({ id })}>
+              Archive
+            </Button>
+          ) : null}
+          {canRestore(user, row) && row.archived_at ? (
+            <Button variant="outline" size="sm" disabled={restoreAction.isPending} onClick={() => restoreAction.mutate({ id })}>
+              Restore
             </Button>
           ) : null}
           {canUpdate(user, row) ? (
@@ -530,7 +576,8 @@ function MilestonesDetailInner() {
           <MilestonesMoveForm fields={MILESTONESMOVE_CREATE} initial={EMPTY_MILESTONESMOVE} submitLabel="Move" pending={moveAction.isPending} error={moveAction.error} onCancel={() => setOpenAction(null)} onSubmit={values => moveAction.mutate({ id, ...toMilestonesMoveCreateInput(values) })} />
         </div>
       ) : null}
-
+      <ErrorNote error={archiveAction.error} className="mb-4" />
+      <ErrorNote error={restoreAction.error} className="mb-4" />
       {editing ? (
         <MilestonesForm
           fields={MILESTONES_UPDATE}
@@ -549,6 +596,7 @@ function MilestonesDetailInner() {
         <FieldRow label="Due On">{text(row.due_on) || "—"}</FieldRow>
         <FieldRow label="Done">{row.done == null ? "—" : <Badge variant={row.done ? "default" : "outline"}>{yesNo(row.done)}</Badge>}</FieldRow>
         <FieldRow label="Position">{text(row.position) || "—"}</FieldRow>
+        <FieldRow label="Archived At">{formatDateTime(row.archived_at) || "—"}</FieldRow>
         <FieldRow label="Labels">
           <MilestonesLabelsField row={row} user={user} />
         </FieldRow>

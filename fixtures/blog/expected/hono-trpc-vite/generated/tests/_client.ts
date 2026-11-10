@@ -18,7 +18,8 @@ const COERCE: Record<string, Record<string, "int" | "number" | "boolean" | "stri
     "page": "int",
     "page_size": "int",
     "published": "boolean",
-    "author_id": "string"
+    "author_id": "string",
+    "archived": "boolean"
   },
   "comments.list": {
     "page": "int",

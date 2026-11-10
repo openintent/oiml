@@ -1,6 +1,6 @@
 id: blog5-drop-github
 tags: [auth, remove]
-base: { fixture: blog }
+base: { fixture: blog, through: FEAT-12 }
 intent:
   title: Drop GitHub sign-in
   ask: Remove the GitHub sign-in option. Passwords and magic links stay.

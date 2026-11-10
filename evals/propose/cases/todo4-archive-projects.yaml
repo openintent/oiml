@@ -1,5 +1,5 @@
 id: todo4-archive-projects
-tags: [actions, fields, app, no-auth]
+tags: [actions, fields, app, no-auth, archive]
 base: { fixture: todo }
 intent:
   title: Archive projects
@@ -7,9 +7,13 @@ intent:
   acceptance:
     - Archiving a project marks it archived
 expect:
+  archive: [Project]
   fields: { Project: ["archived|is_archived|archived_at"] }
   actions_on: { projects: { scope: row } }
   pages: { "home|dashboard|overview": { kind: dashboard } }
-  list: { projects: { filters: ["archived|is_archived"] } }
   scenarios: { min: 1 }
-notes: A dashboard tile filters on a list filter, so the agent must add the filter to the projects list.
+  touches: [projects.archive]
+notes: >-
+  Since round B3 the answer is `archive: true` on Project: the one operation is the compiler's projects.archive, and
+  the tile counts archived projects with `filter: { archived: true }`, the list's own parameter, which needs no list
+  filter (a field named archived in list.filters is refused on an archiving entity, M157).

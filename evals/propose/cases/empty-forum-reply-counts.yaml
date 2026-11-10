@@ -1,0 +1,25 @@
+id: empty-forum-reply-counts
+tags: [entity, rules, relation, counts, auth, scenario]
+base: { empty: forum }
+intent:
+  title: A forum with reply counts
+  ask: >-
+    People sign up and start threads; anyone signed in replies to a thread. A moderator can hide a reply. The list of
+    threads shows, for each thread, how many replies it has that are not hidden, and can be sorted by that number so
+    the busiest threads come first. Nobody types that number in: it follows the replies.
+  acceptance:
+    - A new thread says zero replies; each reply raises the number
+    - Hiding a reply lowers the number, and so does deleting one
+    - Sending the number when creating or editing a thread is refused
+expect:
+  entities: [User, "Thread|Topic", "Reply|Post|Comment"]
+  counts: ["Thread|Topic.* -> Reply|Post|Comment"]
+  types: { "Thread|Topic.reply_count|replies_count|visible_replies|visible_reply_count": integer }
+  list: { "threads|topics": { sortable: ["reply_count|replies_count|visible_replies|visible_reply_count"] } }
+  scenarios: { min: 1, rejections: 1, statuses: [400] }
+  touches: ["replies.create|posts.create|comments.create"]
+notes: >-
+  A count with a condition over an empty model: `count_of` the reverse relation of the reply's thread field with
+  `where: "hidden = false"`. A read_only integer that a handler or an event keeps, or a client that reads the list's
+  page.total, has not used the construct. The hide may be an update by a moderator or an action; either moves the
+  count, because the trigger reads the row.

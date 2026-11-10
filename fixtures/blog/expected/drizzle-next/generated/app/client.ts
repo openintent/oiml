@@ -5,7 +5,7 @@ import { QueryClient } from "@tanstack/react-query";
 import type { z } from "zod";
 import type { FileRecord } from "../files";
 import type { PublicAnnouncement, PublicArticle, PublicBulletin, PublicComment, PublicFollow, PublicUser } from "../present";
-import type { announcementsCreateInput, announcementsListQuery, announcementsPublishInput, announcementsUpdateInput, bulletinsCreateInput, bulletinsListQuery, bulletinsUpdateInput, commentsCreateInput, commentsListQuery, commentsUpdateInput, followsCreateInput, followsListQuery, postsCreateInput, postsListQuery, postsLockInput, postsPublishInput, postsUnlockInput, postsUnpublishAllInput, postsUpdateInput, sendDigestInput, usersBanInput, usersListQuery, usersUpdateInput } from "../validation";
+import type { announcementsCreateInput, announcementsListQuery, announcementsPublishInput, announcementsUpdateInput, bulletinsCreateInput, bulletinsListQuery, bulletinsUpdateInput, commentsCreateInput, commentsListQuery, commentsUpdateInput, followsCreateInput, followsListQuery, postsArchiveInput, postsCreateInput, postsListQuery, postsLockInput, postsPublishInput, postsRestoreInput, postsUnlockInput, postsUnpublishAllInput, postsUpdateInput, sendDigestInput, usersBanInput, usersListQuery, usersUpdateInput } from "../validation";
 
 export class ApiError extends Error {
   constructor(
@@ -81,6 +81,8 @@ export type Inputs = {
     unpublish_all: z.input<typeof postsUnpublishAllInput>;
     lock: z.input<typeof postsLockInput> & { id: string };
     unlock: z.input<typeof postsUnlockInput> & { id: string };
+    archive: z.input<typeof postsArchiveInput> & { id: string };
+    restore: z.input<typeof postsRestoreInput> & { id: string };
   };
   comments: {
     list: z.input<typeof commentsListQuery>;
@@ -147,6 +149,8 @@ export type Outputs = {
     unpublish_all: { count: number };
     lock: PublicArticle;
     unlock: PublicArticle;
+    archive: PublicArticle;
+    restore: PublicArticle;
   };
   comments: {
     list: { data: (PublicComment & { author: PublicUser | null })[]; page: Page };
@@ -219,7 +223,9 @@ export const client = {
     publish: ({ id, ...input }: Inputs["posts"]["publish"]) => call<PublicArticle>("POST", "/api/posts" + "/" + id + "/publish", { body: input }),
     unpublish_all: (input: Inputs["posts"]["unpublish_all"]) => call<{ count: number }>("POST", "/api/posts/unpublish_all", { body: input }),
     lock: ({ id, ...input }: Inputs["posts"]["lock"]) => call<PublicArticle>("POST", "/api/posts" + "/" + id + "/lock", { body: input }),
-    unlock: ({ id, ...input }: Inputs["posts"]["unlock"]) => call<PublicArticle>("POST", "/api/posts" + "/" + id + "/unlock", { body: input })
+    unlock: ({ id, ...input }: Inputs["posts"]["unlock"]) => call<PublicArticle>("POST", "/api/posts" + "/" + id + "/unlock", { body: input }),
+    archive: ({ id, ...input }: Inputs["posts"]["archive"]) => call<PublicArticle>("POST", "/api/posts" + "/" + id + "/archive", { body: input }),
+    restore: ({ id, ...input }: Inputs["posts"]["restore"]) => call<PublicArticle>("POST", "/api/posts" + "/" + id + "/restore", { body: input })
   },
   comments: {
     list: (input: Inputs["comments"]["list"]) => call<Outputs["comments"]["list"]>("GET", "/api/comments", { query: input as Record<string, unknown>, whole: true }),

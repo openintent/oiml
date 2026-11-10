@@ -878,7 +878,12 @@ function queryLiteral(ir: IR, entity: EntityIR, op: Extract<OperationIR, { kind:
   if (op.sortable.length) extras.push(`Sortable: []string{${op.sortable.map(q).join(", ")}}`);
   if (op.search.length) extras.push("Search: true");
   const tail = extras.length ? `, ${extras.join(", ")}` : "";
-  if (op.filters.length === 0) return `Query{PageSize: ${op.pageSize}${tail}}`;
   const filters = op.filters.map(f => `\t{Name: ${q(f)}, Type: ${typeExpr(ir, column(entity, f), "filter", "")}},`);
+  // An archiving entity: archived parses like a boolean filter, and the handler turns it into the list's own condition
+  if (entity.archive)
+    filters.push(
+      `\t{Name: "archived", Type: ${typeExpr(ir, { name: "archived", type: { kind: "scalar", scalar: "boolean" }, nullable: true, unique: false, primary: false, hidden: false }, "filter", "")}},`
+    );
+  if (filters.length === 0) return `Query{PageSize: ${op.pageSize}${tail}}`;
   return `Query{PageSize: ${op.pageSize}, Filters: []Filter{\n${filters.join("\n")}\n}${tail}}`;
 }

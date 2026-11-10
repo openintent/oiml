@@ -253,6 +253,13 @@ export function openapiDocument(ir: IR): Record<string, unknown> {
             const c = entity.columns.find(col => col.name === f)!;
             parameters.push({ name: f, in: "query", schema: columnSchema({ ...c, nullable: false }, ir) });
           }
+          if (entity.archive)
+            parameters.push({
+              name: "archived",
+              in: "query",
+              description: `true: only archived rows (${entity.archive.column} set). Absent or false: only live rows`,
+              schema: { type: "boolean" }
+            });
           if (op.sortable.length)
             parameters.push({
               name: "sort",
@@ -801,6 +808,7 @@ export function explainedBy(change: OpenApiChange, ops: DiffOp[], before: IR): b
       case "remove_field":
       case "set_rules":
       case "set_relations":
+      case "set_archive":
         return subject.entities.has(op.entity);
       case "rename_field":
         return subject.entities.has(op.entity);

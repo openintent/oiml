@@ -10,6 +10,7 @@ import (
 
 	"blog/generated/jobs"
 	"blog/generated/models"
+	postarchived "blog/src/events/post_archived"
 	postcreated "blog/src/events/post_created"
 	postpublished "blog/src/events/post_published"
 )
@@ -22,6 +23,11 @@ func ArticleCreated(ctx context.Context, payload models.PublicArticle) error {
 	return nil
 }
 
+// PostsArchive runs every handler for posts.archive: inline ones in the request (an error aborts it), queued ones through a job.
+func PostsArchive(ctx context.Context, payload models.PublicArticle) error {
+	return jobs.Enqueue(ctx, "posts.archive", payload)
+}
+
 // PostsPublish runs every handler for posts.publish: inline ones in the request (an error aborts it), queued ones through a job.
 func PostsPublish(ctx context.Context, payload models.PublicArticle) error {
 	return jobs.Enqueue(ctx, "posts.publish", payload)
@@ -31,6 +37,15 @@ func PostsPublish(ctx context.Context, payload models.PublicArticle) error {
 func RunQueued(ctx context.Context, name string, raw json.RawMessage) error {
 	_ = ctx
 	switch name {
+	case "posts.archive":
+		var payload models.PublicArticle
+		if err := json.Unmarshal(raw, &payload); err != nil {
+			return err
+		}
+		if err := postarchived.Handle(payload); err != nil {
+			return err
+		}
+		return nil
 	case "posts.publish":
 		var payload models.PublicArticle
 		if err := json.Unmarshal(raw, &payload); err != nil {

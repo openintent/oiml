@@ -1,6 +1,6 @@
 id: blog5-archive-action
-tags: [actions, events, fields]
-base: { fixture: blog }
+tags: [actions, events, fields, archive]
+base: { fixture: blog, through: FEAT-12 }
 intent:
   title: Archiving articles
   ask: >-
@@ -9,8 +9,13 @@ intent:
   acceptance:
     - Another user archiving my article gets 403
 expect:
+  archive: [Article]
   fields: { Article: ["archived|is_archived|archived_at"] }
   actions_on: { posts: { scope: row, rule: "owner:author_id" } }
   events: ["posts.archive:queue"]
   scenarios: { min: 1, rejections: 1, statuses: [403] }
-notes: The resource is still called posts although the entity is Article; the event must be posts.archive.
+notes: >-
+  The resource is still called posts although the entity is Article; the event must be posts.archive. Since round
+  B3 the answer is `archive:` on Article with `rule: "owner:author_id"` (the update rule also lets an admin in) and
+  the event on the compiler's posts.archive; an action with a handler that sets a flag has not used the construct.
+  The case is pinned to FEAT-12: FEAT-13 gives the fixture its own archive.

@@ -9,7 +9,7 @@ import "time"
 const UserTable = `"users"`
 
 // UserColumns lists the columns of User in model order, for SELECT and RETURNING.
-const UserColumns = `"id", "email", "name", "role", "created_at", "banned", "banned_at", "ban_reason", "password_hash"`
+const UserColumns = `"id", "email", "name", "role", "created_at", "banned", "banned_at", "ban_reason", "post_count", "password_hash"`
 
 // User is a row of users.
 type User struct {
@@ -21,6 +21,7 @@ type User struct {
 	Banned       bool       `json:"banned"`
 	BannedAt     *time.Time `json:"banned_at"`
 	BanReason    *string    `json:"ban_reason"`
+	PostCount    int        `json:"post_count"`
 	PasswordHash *string    `json:"-"`
 }
 
@@ -34,12 +35,13 @@ type PublicUser struct {
 	Banned    bool    `json:"banned"`
 	BannedAt  *string `json:"banned_at"`
 	BanReason *string `json:"ban_reason"`
+	PostCount int     `json:"post_count"`
 }
 
 // ScanUser reads one User from a row selected with UserColumns.
 func ScanUser(row Scanner) (*User, error) {
 	var r User
-	if err := row.Scan(&r.ID, &r.Email, &r.Name, &r.Role, &r.CreatedAt, &r.Banned, &r.BannedAt, &r.BanReason, &r.PasswordHash); err != nil {
+	if err := row.Scan(&r.ID, &r.Email, &r.Name, &r.Role, &r.CreatedAt, &r.Banned, &r.BannedAt, &r.BanReason, &r.PostCount, &r.PasswordHash); err != nil {
 		return nil, err
 	}
 	return &r, nil
@@ -47,7 +49,7 @@ func ScanUser(row Scanner) (*User, error) {
 
 // PresentUser returns the public shape of a User.
 func PresentUser(row *User) PublicUser {
-	return PublicUser{ID: row.ID, Email: row.Email, Name: row.Name, Role: row.Role, CreatedAt: FormatDateTime(row.CreatedAt), Banned: row.Banned, BannedAt: FormatDateTimePtr(row.BannedAt), BanReason: row.BanReason}
+	return PublicUser{ID: row.ID, Email: row.Email, Name: row.Name, Role: row.Role, CreatedAt: FormatDateTime(row.CreatedAt), Banned: row.Banned, BannedAt: FormatDateTimePtr(row.BannedAt), BanReason: row.BanReason, PostCount: row.PostCount}
 }
 
 // PresentUserPtr presents an optional User; nil stays nil.
@@ -72,40 +74,44 @@ func PresentUsers(rows []*User) []PublicUser {
 const ArticleTable = `"articles"`
 
 // ArticleColumns lists the columns of Article in model order, for SELECT and RETURNING.
-const ArticleColumns = `"id", "title", "content", "published", "author_id", "posted_at", "tags", "cover", "publish_at", "locked"`
+const ArticleColumns = `"id", "title", "content", "published", "author_id", "posted_at", "tags", "cover", "publish_at", "locked", "comment_count", "archived_at"`
 
 // Article is a row of articles.
 type Article struct {
-	ID        string     `json:"id"`
-	Title     string     `json:"title"`
-	Content   string     `json:"content"`
-	Published bool       `json:"published"`
-	AuthorID  string     `json:"author_id"`
-	PostedAt  time.Time  `json:"posted_at"`
-	Tags      []string   `json:"tags"`
-	Cover     *FileRef   `json:"cover"`
-	PublishAt *time.Time `json:"publish_at"`
-	Locked    bool       `json:"locked"`
+	ID           string     `json:"id"`
+	Title        string     `json:"title"`
+	Content      string     `json:"content"`
+	Published    bool       `json:"published"`
+	AuthorID     string     `json:"author_id"`
+	PostedAt     time.Time  `json:"posted_at"`
+	Tags         []string   `json:"tags"`
+	Cover        *FileRef   `json:"cover"`
+	PublishAt    *time.Time `json:"publish_at"`
+	Locked       bool       `json:"locked"`
+	CommentCount int        `json:"comment_count"`
+	ArchivedAt   *time.Time `json:"archived_at"`
 }
 
 // PublicArticle is Article as the API returns it: hidden columns removed, dates rendered.
 type PublicArticle struct {
-	ID        string      `json:"id"`
-	Title     string      `json:"title"`
-	Content   string      `json:"content"`
-	Published bool        `json:"published"`
-	AuthorID  string      `json:"author_id"`
-	PostedAt  string      `json:"posted_at"`
-	Tags      []string    `json:"tags"`
-	Cover     *PublicFile `json:"cover"`
-	PublishAt *string     `json:"publish_at"`
-	Locked    bool        `json:"locked"`
+	ID           string      `json:"id"`
+	Title        string      `json:"title"`
+	Content      string      `json:"content"`
+	Published    bool        `json:"published"`
+	AuthorID     string      `json:"author_id"`
+	PostedAt     string      `json:"posted_at"`
+	Tags         []string    `json:"tags"`
+	Cover        *PublicFile `json:"cover"`
+	PublishAt    *string     `json:"publish_at"`
+	Locked       bool        `json:"locked"`
+	CommentCount int         `json:"comment_count"`
+	ArchivedAt   *string     `json:"archived_at"`
 }
 
 // ScanArticle reads one Article from a row selected with ArticleColumns.
 func ScanArticle(row Scanner) (*Article, error) {
 	var r Article
-	if err := row.Scan(&r.ID, &r.Title, &r.Content, &r.Published, &r.AuthorID, &r.PostedAt, &r.Tags, &r.Cover, &r.PublishAt, &r.Locked); err != nil {
+	if err := row.Scan(&r.ID, &r.Title, &r.Content, &r.Published, &r.AuthorID, &r.PostedAt, &r.Tags, &r.Cover, &r.PublishAt, &r.Locked, &r.CommentCount, &r.ArchivedAt); err != nil {
 		return nil, err
 	}
 	return &r, nil
@@ -113,7 +119,7 @@ func ScanArticle(row Scanner) (*Article, error) {
 
 // PresentArticle returns the public shape of a Article.
 func PresentArticle(row *Article) PublicArticle {
-	return PublicArticle{ID: row.ID, Title: row.Title, Content: row.Content, Published: row.Published, AuthorID: row.AuthorID, PostedAt: FormatDateTime(row.PostedAt), Tags: row.Tags, Cover: PresentFileRefPtr(row.Cover), PublishAt: FormatDateTimePtr(row.PublishAt), Locked: row.Locked}
+	return PublicArticle{ID: row.ID, Title: row.Title, Content: row.Content, Published: row.Published, AuthorID: row.AuthorID, PostedAt: FormatDateTime(row.PostedAt), Tags: row.Tags, Cover: PresentFileRefPtr(row.Cover), PublishAt: FormatDateTimePtr(row.PublishAt), Locked: row.Locked, CommentCount: row.CommentCount, ArchivedAt: FormatDateTimePtr(row.ArchivedAt)}
 }
 
 // PresentArticlePtr presents an optional Article; nil stays nil.

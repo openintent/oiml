@@ -17,5 +17,6 @@ export * from "./actions.js";
 export * from "./access.js";
 export * from "./isolation.js";
 export * from "./ordering.js";
+export * from "./archive.js";
 export * from "./docker.js";
 export * from "./web/index.js";

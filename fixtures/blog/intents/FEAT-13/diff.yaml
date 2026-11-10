@@ -1,0 +1,175 @@
+osl: "1.0"
+summary: comment_count on Article kept by the database, Article archive under the author's rule with a queued event, a count of live published articles on User, a tile of archived articles
+ops:
+  - op: add_field
+    entity: Article
+    name: comment_count
+    field: { type: integer, count_of: comments }
+  - op: set_archive
+    entity: Article
+    archive: { rule: "owner:author_id" }
+  - op: add_field
+    entity: User
+    name: post_count
+    field: { type: integer, count_of: posts, where: "published = true and archived_at = null" }
+  - op: update_resource
+    name: posts
+    resource:
+      entity: Article
+      operations: [list, get, create, update, delete]
+      list:
+        filters: [published, author_id]
+        order: [[posted_at, desc]]
+        include: [author]
+        sortable: [title, posted_at, comment_count]
+        search: [title, content]
+      get: { include: [author] }
+      actions:
+        publish: { description: Mark the article published, rule: "owner:author_id" }
+        unpublish_all:
+          description: Unpublish every article
+          scope: collection
+          rule: "role:admin"
+          returns: { count: { type: integer, required: true } }
+        lock: { description: Close the article to new comments, rule: "role:admin" }
+        unlock: { description: Reopen the article to comments, rule: "role:admin" }
+  - op: add_event
+    event: { on: posts.archive, handler: post_archived, delivery: queue }
+  - op: update_page
+    name: overview
+    page:
+      kind: dashboard
+      path: /
+      title: Home
+      access: public
+      refresh: 30
+      tiles:
+        - { resource: posts, label: Articles, icon: file-text }
+        - { resource: posts, label: Published, filter: { published: true }, icon: check }
+        - { resource: posts, label: Archived, filter: { archived: true }, icon: archive }
+        - { resource: posts, label: By author, icon: users, group_by: author_id }
+        - { resource: users, label: Users, icon: users }
+      recent:
+        - { resource: posts, limit: 5 }
+  - op: add_scenario
+    scenario:
+      name: comment counts and archived articles
+      steps:
+        - as: dave
+          op: auth.me
+          expect: { status: 200, body: { data: { post_count: 0 } } }
+          capture: { dave_id: data.id }
+        - as: dave
+          op: posts.create
+          body: { title: Counting, content: How many of you are reading }
+          expect: { status: 201, body: { data: { comment_count: 0, archived_at: null } } }
+          capture: { counting: data.id }
+        - as: dave
+          op: posts.create
+          body: { title: Quiet, content: Nobody answers this one }
+          expect: { status: 201 }
+          capture: { quiet: data.id }
+        - as: dave
+          op: posts.create
+          body: { title: Counted by hand, content: Not mine to say, comment_count: 7 }
+          expect: { status: 400 }
+        - as: bob
+          op: comments.create
+          body: { article_id: "{counting}", body: One }
+          expect: { status: 201 }
+          capture: { one: data.id }
+        - as: alice
+          op: comments.create
+          body: { article_id: "{counting}", body: Two }
+          expect: { status: 201 }
+        - as: bob
+          op: comments.create
+          body: { article_id: "{quiet}", body: Somebody after all }
+          expect: { status: 201 }
+        - op: posts.get
+          path: { id: "{counting}" }
+          expect: { status: 200, body: { data: { title: Counting, comment_count: 2 } } }
+        - op: posts.list
+          query: { author_id: "{dave_id}", sort: "comment_count:desc", page_size: 1 }
+          expect: { status: 200, body: { data: [{ title: Counting, comment_count: 2 }], page: { total: 2 } } }
+        - op: posts.list
+          query: { author_id: "{dave_id}", sort: "comment_count:asc", page_size: 1 }
+          expect: { status: 200, body: { data: [{ title: Quiet, comment_count: 1 }] } }
+        - as: bob
+          op: comments.delete
+          path: { id: "{one}" }
+          expect: { status: 204 }
+        - op: posts.get
+          path: { id: "{counting}" }
+          expect: { status: 200, body: { data: { comment_count: 1 } } }
+        - as: dave
+          op: posts.publish
+          path: { id: "{counting}" }
+          expect: { status: 200, body: { data: { published: true } } }
+        - as: dave
+          op: posts.publish
+          path: { id: "{quiet}" }
+          expect: { status: 200 }
+        - op: users.get
+          path: { id: "{dave_id}" }
+          expect: { status: 200, body: { data: { post_count: 2 } } }
+        - op: posts.archive
+          path: { id: "{quiet}" }
+          expect: { status: 401 }
+        - as: bob
+          op: posts.archive
+          path: { id: "{quiet}" }
+          expect: { status: 403 }
+        - as: admin
+          op: posts.archive
+          path: { id: "{quiet}" }
+          expect: { status: 403 }
+        - as: dave
+          op: posts.archive
+          path: { id: "{quiet}" }
+          expect: { status: 200, body: { data: { title: Quiet, published: true } } }
+        - as: dave
+          op: posts.archive
+          path: { id: "{quiet}" }
+          expect: { status: 409 }
+        - op: posts.list
+          query: { author_id: "{dave_id}" }
+          expect: { status: 200, body: { data: [{ title: Counting }], page: { total: 1 } } }
+        - op: posts.list
+          query: { author_id: "{dave_id}", archived: "true" }
+          expect: { status: 200, body: { data: [{ title: Quiet }], page: { total: 1 } } }
+        - op: posts.get
+          path: { id: "{quiet}" }
+          expect: { status: 200, body: { data: { title: Quiet, comment_count: 1 } } }
+        - op: users.get
+          path: { id: "{dave_id}" }
+          expect: { status: 200, body: { data: { post_count: 1 } } }
+        - as: bob
+          op: comments.create
+          body: { article_id: "{quiet}", body: Still talking }
+          expect: { status: 201 }
+        - op: posts.get
+          path: { id: "{quiet}" }
+          expect: { status: 200, body: { data: { comment_count: 2 } } }
+        - as: admin
+          op: posts.restore
+          path: { id: "{quiet}" }
+          expect: { status: 403 }
+        - as: dave
+          op: posts.restore
+          path: { id: "{quiet}" }
+          expect: { status: 200, body: { data: { title: Quiet, archived_at: null } } }
+        - as: dave
+          op: posts.restore
+          path: { id: "{quiet}" }
+          expect: { status: 409 }
+        - op: users.get
+          path: { id: "{dave_id}" }
+          expect: { status: 200, body: { data: { post_count: 2 } } }
+        - as: dave
+          op: posts.delete
+          path: { id: "{quiet}" }
+          expect: { status: 204 }
+        - op: users.get
+          path: { id: "{dave_id}" }
+          expect: { status: 200, body: { data: { post_count: 1 } } }

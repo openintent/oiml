@@ -20,6 +20,11 @@ import {
   ruleValuesSource,
   verdictSource,
   zodForColumn,
+  ARCHIVE_DRIZZLE,
+  archiveCall,
+  archiveCondition,
+  archiveSource,
+  isArchive,
   isMove,
   moveSource,
   removeStatement,
@@ -703,7 +708,7 @@ export function resourceRouterFile(ir: IR, resource: ResourceIR): string {
   const extraTables = new Set<string>([...(listFilter?.tables ?? []), ...(ruleValues?.tables ?? [])]);
   extraTables.delete(entity.name);
   const hasConditions = Boolean(
-    list && (list.filters.length > 0 || listFilter!.lines.length > 0 || list.search.length > 0)
+    list && (list.filters.length > 0 || listFilter!.lines.length > 0 || list.search.length > 0 || entity.archive)
   );
 
   const drizzleImports = new Set<string>();
@@ -756,6 +761,9 @@ export function resourceRouterFile(ir: IR, resource: ResourceIR): string {
   for (const name of through.drizzle) drizzleImports.add(name);
   const move = actions.find(isMove);
   if (move || (remove && entity.order)) drizzleImports.add("sql");
+  // An archiving entity: the list's own condition, and the update behind archive and restore
+  const archives = actions.some(isArchive);
+  if (entity.archive && (list || archives)) for (const name of ARCHIVE_DRIZZLE) drizzleImports.add(name);
 
   const sections: string[] = [];
   sections.push(`const RULES = {
@@ -800,6 +808,10 @@ async function missing(id: unknown, rule: Rule, session: Session | null) {
   if (get) sections.push(rowSection("Get", get.include, get.through));
   sections.push(...through.sections);
   if (move) sections.push(moveSource(entity, table, query));
+  if (archives) {
+    sections.push(archiveSource(entity, table));
+    errorImports.add("fail");
+  }
 
   const resolveFiles = (expr: string) => (hasFiles ? `await resolveFileRefs(${expr}, FILE_FIELDS)` : expr);
   const procedures: string[] = [];
@@ -810,6 +822,7 @@ async function missing(id: unknown, rule: Rule, session: Session | null) {
       f => `    if (filters.${f} !== undefined) conditions.push(eq(${table}.${f}, filters.${f}));`
     );
     filterLines.push(...listFilter!.lines);
+    if (entity.archive) filterLines.push(archiveCondition(entity, table, "    "));
     if (list.search.length) {
       filterLines.push(`    if (q) {
       const pattern = "%" + q.replace(/[\\\\%_]/g, "\\\\$&") + "%";
@@ -822,7 +835,8 @@ async function missing(id: unknown, rule: Rule, session: Session | null) {
       "page",
       "page_size",
       ...(list.sortable.length ? ["sort"] : []),
-      ...(list.search.length ? ["q"] : [])
+      ...(list.search.length ? ["q"] : []),
+      ...(entity.archive ? ["archived"] : [])
     ];
     const destructure = list.filters.length
       ? `const { ${picks.join(", ")}, ...filters } = input;`
@@ -1007,7 +1021,7 @@ ${emitLines.join("\n")}
     ...(hasFiles ? [`import { resolveFileRefs } from "../../files";`] : []),
     `import { ${[...presents].sort().join(", ")} } from "../../present";`,
     `import { ${[...validationImports].sort().join(", ")} } from "../../validation";`,
-    ...(actions.some(a => !isMove(a)) ? [`import { handlers } from "../../actions";`] : []),
+    ...(actions.some(a => !a.builtin) ? [`import { handlers } from "../../actions";`] : []),
     `import { ${[...accessImports].sort().join(", ")}, type Rule } from "../access";`,
     `import type { Session } from "../auth";`,
     `import { ${[...errorImports].sort().join(", ")} } from "../errors";`,
@@ -1071,7 +1085,9 @@ function actionProcedure(
       ${
         isMove(action)
           ? `const result = await moveRow(current, input.to);\n      if (!result) throw notFound();`
-          : `const result = await handlers.${action.handler}({ input, row: current, session: ctx.session, db, now: new Date() });`
+          : isArchive(action)
+            ? ["void input;", ...archiveCall(ir, action, "current")].join("\n      ")
+            : `const result = await handlers.${action.handler}({ input, row: current, session: ctx.session, db, now: new Date() });`
       }
 ${emitLines.join("\n")}
       return ${resultExpr};

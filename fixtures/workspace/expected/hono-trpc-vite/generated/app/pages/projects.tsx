@@ -429,6 +429,8 @@ function ProjectsDetailInner() {
         <FieldRow label="Status">{row.status == null ? "—" : <Badge variant="secondary">{text(row.status)}</Badge>}</FieldRow>
         <FieldRow label="Created At">{formatDateTime(row.created_at) || "—"}</FieldRow>
         <FieldRow label="Public">{row.public == null ? "—" : <Badge variant={row.public ? "default" : "outline"}>{yesNo(row.public)}</Badge>}</FieldRow>
+        <FieldRow label="Milestone Count">{text(row.milestone_count) || "—"}</FieldRow>
+        <FieldRow label="Open Milestones">{text(row.open_milestones) || "—"}</FieldRow>
         </dl>
       )}
     </Pane>

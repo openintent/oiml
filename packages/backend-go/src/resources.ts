@@ -778,6 +778,33 @@ ${fail("write")}
     lines.push(`}`);
     return lines.join("\n");
   }
+  if ((action.builtin === "archive" || action.builtin === "restore") && row) {
+    // The compiler's own actions: one conditional update, so two callers at once cannot both archive a row; when
+    // it matches no row there was nothing to do, which is a conflict
+    const pk = singlePrimaryKey(row.entity);
+    const column = quoteIdent(row.entity.archive!.column);
+    const archiving = action.builtin === "archive";
+    const statement = archiving
+      ? `SET ${column} = $2 WHERE ${quoteIdent(pk.name)} = $1 AND ${column} IS NULL`
+      : `SET ${column} = NULL WHERE ${quoteIdent(pk.name)} = $1 AND ${column} IS NOT NULL`;
+    lines.push(`\t_ = values
+	_ = row
+	result, err := models.${scanFunc(row.entity)}(h.db.QueryRow(ctx, \`UPDATE \`+models.${tableConst(row.entity)}+\` ${statement} RETURNING \`+models.${columnsConst(row.entity)}, id${archiving ? ", time.Now().UTC()" : ""}))
+	if errors.Is(err, pgx.ErrNoRows) {
+		httpx.Fail(c, httpx.NewError(http.StatusConflict, "conflict", ${q(archiving ? "The row is archived already" : "The row is not archived")}))
+		return
+	}
+${fail("write")}`);
+    // The row was written, as by an update: the entity's timers are scheduled, and one may wait on the stamp
+    if (ir.timers.some(t => t.entity === row.entity.name))
+      lines.push(
+        `\tif err := scheduling.Schedule${typeName(row.entity)}(ctx, result); err != nil {\n\t\thttpx.HandleError(c, err, "write")\n\t\treturn\n\t}`
+      );
+    lines.push(...emitLines(events, `${present}(result)`, "write"));
+    lines.push(`\thttpx.OK(c, ${present}(result))`);
+    lines.push(`}`);
+    return lines.join("\n");
+  }
   lines.push(
     `\tactx := &actions.Context{Gin: c, Ctx: c.Request.Context(), Session: session, DB: h.db, Now: time.Now().UTC()}`
   );
@@ -854,6 +881,12 @@ export function resourceFile(ir: IR, resource: ResourceIR, modulePath: string): 
     imports.add(`${modulePath}/generated/actions`);
     imports.add("time");
     imports.add(`${modulePath}/generated/actions/handlers`);
+  }
+  if (actions.some(a => a.builtin === "archive" || a.builtin === "restore")) {
+    imports.add("errors");
+    imports.add("net/http");
+    imports.add("time");
+    imports.add("github.com/jackc/pgx/v5");
   }
   const allRules = [...Object.values(entity.rules), ...actions.map(a => a.rule)];
   const ruleRow = ruleRowMethod(ir, handler, allRules);
@@ -941,6 +974,12 @@ var ${prefix}FileFields = ${fileSpecsLiteral(files)}`);
         (total: number) => `httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: ${total}}`
       )
     );
+    if (entity.archive) {
+      // The list's own condition: live rows, or the archived ones when the caller asks with ?archived=true
+      filterLines.push(
+        `\tif archived, _ := query.Filters["archived"].(bool); archived {\n\t\twhere.Raw(${goRaw(`${quoteIdent(entity.archive.column)} IS NOT NULL`)})\n\t} else {\n\t\twhere.Raw(${goRaw(`${quoteIdent(entity.archive.column)} IS NULL`)})\n\t}`
+      );
+    }
     if (list.search.length)
       filterLines.push(
         `\tif query.Q != "" {\n\t\twhere.Search([]string{${list.search.map(f => goRaw(quoteIdent(f))).join(", ")}}, query.Q)\n\t}`

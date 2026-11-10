@@ -9,7 +9,7 @@ import "time"
 const UserTable = `"users"`
 
 // UserColumns lists the columns of User in model order, for SELECT and RETURNING.
-const UserColumns = `"id", "email", "name", "created_at", "password_hash"`
+const UserColumns = `"id", "email", "name", "created_at", "team_count", "password_hash"`
 
 // User is a row of users.
 type User struct {
@@ -17,6 +17,7 @@ type User struct {
 	Email        string    `json:"email"`
 	Name         string    `json:"name"`
 	CreatedAt    time.Time `json:"created_at"`
+	TeamCount    int       `json:"team_count"`
 	PasswordHash *string   `json:"-"`
 }
 
@@ -26,12 +27,13 @@ type PublicUser struct {
 	Email     string `json:"email"`
 	Name      string `json:"name"`
 	CreatedAt string `json:"created_at"`
+	TeamCount int    `json:"team_count"`
 }
 
 // ScanUser reads one User from a row selected with UserColumns.
 func ScanUser(row Scanner) (*User, error) {
 	var r User
-	if err := row.Scan(&r.ID, &r.Email, &r.Name, &r.CreatedAt, &r.PasswordHash); err != nil {
+	if err := row.Scan(&r.ID, &r.Email, &r.Name, &r.CreatedAt, &r.TeamCount, &r.PasswordHash); err != nil {
 		return nil, err
 	}
 	return &r, nil
@@ -39,7 +41,7 @@ func ScanUser(row Scanner) (*User, error) {
 
 // PresentUser returns the public shape of a User.
 func PresentUser(row *User) PublicUser {
-	return PublicUser{ID: row.ID, Email: row.Email, Name: row.Name, CreatedAt: FormatDateTime(row.CreatedAt)}
+	return PublicUser{ID: row.ID, Email: row.Email, Name: row.Name, CreatedAt: FormatDateTime(row.CreatedAt), TeamCount: row.TeamCount}
 }
 
 // PresentUserPtr presents an optional User; nil stays nil.
@@ -172,32 +174,36 @@ func PresentTeamMembers(rows []*TeamMember) []PublicTeamMember {
 const ProjectTable = `"projects"`
 
 // ProjectColumns lists the columns of Project in model order, for SELECT and RETURNING.
-const ProjectColumns = `"id", "team_id", "name", "status", "created_at", "public"`
+const ProjectColumns = `"id", "team_id", "name", "status", "created_at", "public", "milestone_count", "open_milestones"`
 
 // Project is a row of projects.
 type Project struct {
-	ID        string    `json:"id"`
-	TeamID    string    `json:"team_id"`
-	Name      string    `json:"name"`
-	Status    string    `json:"status"`
-	CreatedAt time.Time `json:"created_at"`
-	Public    bool      `json:"public"`
+	ID             string    `json:"id"`
+	TeamID         string    `json:"team_id"`
+	Name           string    `json:"name"`
+	Status         string    `json:"status"`
+	CreatedAt      time.Time `json:"created_at"`
+	Public         bool      `json:"public"`
+	MilestoneCount int       `json:"milestone_count"`
+	OpenMilestones int       `json:"open_milestones"`
 }
 
 // PublicProject is Project as the API returns it: hidden columns removed, dates rendered.
 type PublicProject struct {
-	ID        string `json:"id"`
-	TeamID    string `json:"team_id"`
-	Name      string `json:"name"`
-	Status    string `json:"status"`
-	CreatedAt string `json:"created_at"`
-	Public    bool   `json:"public"`
+	ID             string `json:"id"`
+	TeamID         string `json:"team_id"`
+	Name           string `json:"name"`
+	Status         string `json:"status"`
+	CreatedAt      string `json:"created_at"`
+	Public         bool   `json:"public"`
+	MilestoneCount int    `json:"milestone_count"`
+	OpenMilestones int    `json:"open_milestones"`
 }
 
 // ScanProject reads one Project from a row selected with ProjectColumns.
 func ScanProject(row Scanner) (*Project, error) {
 	var r Project
-	if err := row.Scan(&r.ID, &r.TeamID, &r.Name, &r.Status, &r.CreatedAt, &r.Public); err != nil {
+	if err := row.Scan(&r.ID, &r.TeamID, &r.Name, &r.Status, &r.CreatedAt, &r.Public, &r.MilestoneCount, &r.OpenMilestones); err != nil {
 		return nil, err
 	}
 	return &r, nil
@@ -205,7 +211,7 @@ func ScanProject(row Scanner) (*Project, error) {
 
 // PresentProject returns the public shape of a Project.
 func PresentProject(row *Project) PublicProject {
-	return PublicProject{ID: row.ID, TeamID: row.TeamID, Name: row.Name, Status: row.Status, CreatedAt: FormatDateTime(row.CreatedAt), Public: row.Public}
+	return PublicProject{ID: row.ID, TeamID: row.TeamID, Name: row.Name, Status: row.Status, CreatedAt: FormatDateTime(row.CreatedAt), Public: row.Public, MilestoneCount: row.MilestoneCount, OpenMilestones: row.OpenMilestones}
 }
 
 // PresentProjectPtr presents an optional Project; nil stays nil.
@@ -348,32 +354,34 @@ func PresentNotes(rows []*Note) []PublicNote {
 const MilestoneTable = `"milestones"`
 
 // MilestoneColumns lists the columns of Milestone in model order, for SELECT and RETURNING.
-const MilestoneColumns = `"id", "project_id", "title", "due_on", "done", "position"`
+const MilestoneColumns = `"id", "project_id", "title", "due_on", "done", "position", "archived_at"`
 
 // Milestone is a row of milestones.
 type Milestone struct {
-	ID        string    `json:"id"`
-	ProjectID string    `json:"project_id"`
-	Title     string    `json:"title"`
-	DueOn     time.Time `json:"due_on"`
-	Done      bool      `json:"done"`
-	Position  int       `json:"position"`
+	ID         string     `json:"id"`
+	ProjectID  string     `json:"project_id"`
+	Title      string     `json:"title"`
+	DueOn      time.Time  `json:"due_on"`
+	Done       bool       `json:"done"`
+	Position   int        `json:"position"`
+	ArchivedAt *time.Time `json:"archived_at"`
 }
 
 // PublicMilestone is Milestone as the API returns it: hidden columns removed, dates rendered.
 type PublicMilestone struct {
-	ID        string `json:"id"`
-	ProjectID string `json:"project_id"`
-	Title     string `json:"title"`
-	DueOn     string `json:"due_on"`
-	Done      bool   `json:"done"`
-	Position  int    `json:"position"`
+	ID         string  `json:"id"`
+	ProjectID  string  `json:"project_id"`
+	Title      string  `json:"title"`
+	DueOn      string  `json:"due_on"`
+	Done       bool    `json:"done"`
+	Position   int     `json:"position"`
+	ArchivedAt *string `json:"archived_at"`
 }
 
 // ScanMilestone reads one Milestone from a row selected with MilestoneColumns.
 func ScanMilestone(row Scanner) (*Milestone, error) {
 	var r Milestone
-	if err := row.Scan(&r.ID, &r.ProjectID, &r.Title, &r.DueOn, &r.Done, &r.Position); err != nil {
+	if err := row.Scan(&r.ID, &r.ProjectID, &r.Title, &r.DueOn, &r.Done, &r.Position, &r.ArchivedAt); err != nil {
 		return nil, err
 	}
 	return &r, nil
@@ -381,7 +389,7 @@ func ScanMilestone(row Scanner) (*Milestone, error) {
 
 // PresentMilestone returns the public shape of a Milestone.
 func PresentMilestone(row *Milestone) PublicMilestone {
-	return PublicMilestone{ID: row.ID, ProjectID: row.ProjectID, Title: row.Title, DueOn: FormatDate(row.DueOn), Done: row.Done, Position: row.Position}
+	return PublicMilestone{ID: row.ID, ProjectID: row.ProjectID, Title: row.Title, DueOn: FormatDate(row.DueOn), Done: row.Done, Position: row.Position, ArchivedAt: FormatDateTimePtr(row.ArchivedAt)}
 }
 
 // PresentMilestonePtr presents an optional Milestone; nil stays nil.
@@ -576,26 +584,28 @@ func PresentMessages(rows []*Message) []PublicMessage {
 const LabelTable = `"labels"`
 
 // LabelColumns lists the columns of Label in model order, for SELECT and RETURNING.
-const LabelColumns = `"id", "team_id", "name"`
+const LabelColumns = `"id", "team_id", "name", "archived_at"`
 
 // Label is a row of labels.
 type Label struct {
-	ID     string `json:"id"`
-	TeamID string `json:"team_id"`
-	Name   string `json:"name"`
+	ID         string     `json:"id"`
+	TeamID     string     `json:"team_id"`
+	Name       string     `json:"name"`
+	ArchivedAt *time.Time `json:"archived_at"`
 }
 
 // PublicLabel is Label as the API returns it: hidden columns removed, dates rendered.
 type PublicLabel struct {
-	ID     string `json:"id"`
-	TeamID string `json:"team_id"`
-	Name   string `json:"name"`
+	ID         string  `json:"id"`
+	TeamID     string  `json:"team_id"`
+	Name       string  `json:"name"`
+	ArchivedAt *string `json:"archived_at"`
 }
 
 // ScanLabel reads one Label from a row selected with LabelColumns.
 func ScanLabel(row Scanner) (*Label, error) {
 	var r Label
-	if err := row.Scan(&r.ID, &r.TeamID, &r.Name); err != nil {
+	if err := row.Scan(&r.ID, &r.TeamID, &r.Name, &r.ArchivedAt); err != nil {
 		return nil, err
 	}
 	return &r, nil
@@ -603,7 +613,7 @@ func ScanLabel(row Scanner) (*Label, error) {
 
 // PresentLabel returns the public shape of a Label.
 func PresentLabel(row *Label) PublicLabel {
-	return PublicLabel{ID: row.ID, TeamID: row.TeamID, Name: row.Name}
+	return PublicLabel{ID: row.ID, TeamID: row.TeamID, Name: row.Name, ArchivedAt: FormatDateTimePtr(row.ArchivedAt)}
 }
 
 // PresentLabelPtr presents an optional Label; nil stays nil.

@@ -20,6 +20,7 @@ Every op has an \`op\` key. Validation runs after all ops, so order within one d
 - \`set_rules\` { entity, rules: Rules }
 - \`set_indexes\` { entity, indexes?: Index[], unique?: string[][] }
 - \`set_relations\` { entity, relations: { <name>: { through: <JunctionEntity>, from?, to? } } } (replaces the entity's whole relations block; {} removes it)
+- \`set_archive\` { entity, archive: true | { field?, rule? } | false } (true or options: the entity archives, and gets its \`archived_at\` field if it lacks it; false: it no longer does, and the field stays)
 - \`add_resource\` { name: snake_case, resource: Resource }
 - \`update_resource\` { name, resource: Resource }  (replaces the whole resource: repeat the operations, list options and actions you keep)
 - \`remove_resource\` { name }  (also drops the events, scenarios and seed steps that used it; do not remove those separately)
@@ -48,6 +49,7 @@ rules: { read, create, update, delete, hidden }   # each rule: a predicate, or s
 indexes: [{ fields: [a, b], unique: false, name: optional }]
 unique: [[a, b]]        # multi-column unique constraints
 relations: { genres: { through: TrackGenre } } # many-to-many: the rows a junction entity links this one to (from, to: the junction's two relation fields, when it has more)
+archive: true           # rows can be archived and restored; or { field: archived_at, rule: "member:team_id:admin" } (see Archive)
 \`\`\`
 
 Default rules: read public; create, update and delete are authenticated when auth exists, public otherwise.
@@ -127,10 +129,12 @@ hidden: true           # never returned by or accepted from the API
 read_only: true        # returned by the API but never accepted from it: register, create and update answer 400 when a client sends it
 ranked: true           # enum only: the values rank in declared order, first most privileged, for member:<path>:<value> on a membership entity
 position: { within: album_id } # integer only: the row's place among the rows with the same album_id, kept by the server (see Ordered collections)
+count_of: comments     # integer only: how many rows the reverse relation \`comments\` holds, kept by the database (see Counts)
+where: "approved = true" # with count_of: only the related rows this holds for count
 file: { accept: [image/*, application/pdf], max_size: 5242880 }   # file only: what uploads it takes (sizes in bytes)
 \`\`\`
 
-A \`read_only\` field is one the server owns: a \`banned\` flag, an \`archived_at\` stamp, a \`view_count\`. Only your action
+A \`read_only\` field is one the server owns: a \`banned\` flag, a \`reviewed_at\` stamp, a \`view_count\`. Only your action
 handlers (and its default) set it, so declare the action that does, and give the field a default or leave it optional
 (a required one without a default could never be created). Mark the identity's \`role\` read_only the same way. Example
 actors may still set read_only identity fields: the harness writes them into the database after registering the actor.
@@ -180,6 +184,43 @@ once when nothing else is writing that parent, and otherwise with its next move 
 order and never shared. Not expressible, say so in not_delivered: an order over a whole table, an
 order within an optional or a self relation (a tree of pages, nested blocks), moving a row to another parent in one
 call, creating at a given place (create, then move), an event on move.
+
+Archive: \`archive: true\` on an entity is "removed but recoverable": use it when the ask says rows are archived, put
+away, hidden from the list or soft-deleted and can come back. It gives the entity a read-only nullable datetime
+\`archived_at\` (do not declare it; \`{ field: <name> }\` names another), and every resource over the entity gets two row
+actions without declaring them: \`POST /api/<resource>/{id}/archive\` sets the field and \`.../restore\` clears it, each
+answering the row, 409 when there is nothing to do (already archived, not archived), under the entity's update rule
+or \`archive: { rule: "<rule>" }\` when someone else decides ("only admins archive"). A list leaves archived rows out;
+\`?archived=true\` answers the archived rows instead (never both: a client that wants both asks twice). Get, update
+and delete treat an archived row like any other, and so do includes: a row still shows the archived row it points
+at or carries through a junction, with its \`archived_at\` set. What else an archived row may not do is the rules' to
+say: \`update: "owner:author_id when archived_at = null"\` freezes it. A row with a \`position\` keeps its place while
+archived. Scenario steps call \`projects.archive\` and \`projects.restore\` with no body and list archived rows with
+\`query: { archived: "true" }\`; events follow them (\`on: projects.archive\`); a dashboard tile counts archived rows with
+\`filter: { archived: true }\` and a page shows them with the same filter, neither needing a list filter. Pages get a
+"Show archived" switch. Never declare an action named \`archive\` or \`restore\` on such a resource (M151), never add an
+\`archived\` flag with a list filter beside it (M157), and never write a handler for it. Delete is unchanged: keep it
+for "gone for good", or set \`delete: none\` when archiving is the only way out. Not expressible, say so in
+not_delivered: archiving a row archives the rows under it (an event handler on \`projects.archive\` may), a list of
+live and archived rows together, a timer that runs archive itself (declare an action whose handler sets the field
+and run that; a timer may wait on \`archived_at\` to purge), archived rows hidden from includes.
+
+Counts: \`count_of: <reverse relation>\` on an integer field is "how many related rows": comments of a post, tasks of
+a project, members of a team. The relation is the \`reverse\` name a relation field of the counted entity declares
+(\`Comment.post_id\` with \`relation: { entity: Post, reverse: comments }\` gives \`Post.comment_count: { type: integer,
+count_of: comments }\`); give that field a \`reverse\` name if it has none. The database keeps the number in the row,
+whoever writes the counted rows (a handler of yours, a seed, a cascade), and it is exact under concurrent writers.
+Write only \`type: integer\` and \`count_of\`: the field is never null, starts at 0, is read-only (create and update
+answer 400 when a client sends it) and can be filtered, sorted and shown like any integer. \`where\` counts only the
+rows it holds for, in the rules' spelling on fields of the counted entity, joined with \` and \`: \`where: "done =
+false"\`, \`where: "approved = true and archived_at = null"\`. Without \`where\` every row counts, archived ones too:
+say \`archived_at = null\` to leave them out. A count is a field of the row it sits on: whoever may read that row
+reads the number, whatever the rules of the counted rows say, so do not count rows whose number the row's readers
+may not know. Under \`isolation: database\` a count on a shared row over a tenant table adds up every tenant's rows
+(M156 warns). Never keep such a number with a handler, an event or a \`read_only\` field of your own. Not
+expressible, say so in not_delivered: a sum, an average, a maximum or a latest value (a \`read_only\` field a handler
+keeps), a count over a path of two relations or through a junction's far side (count the junction's rows), a count
+per viewer (unread for me), a count grouped by a value (reactions per emoji).
 
 ## Resource
 

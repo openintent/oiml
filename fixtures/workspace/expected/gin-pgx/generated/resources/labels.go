@@ -4,7 +4,12 @@
 package resources
 
 import (
+	"errors"
+	"net/http"
+	"time"
+
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5"
 
 	"workspace/generated/access"
 	"workspace/generated/auth"
@@ -27,13 +32,15 @@ func NewLabels(db *db.Scope, a *auth.Auth) *Labels {
 	return &Labels{db: db, auth: a}
 }
 
-// Routes registers every operation of the resource.
+// Routes registers every operation of the resource and its actions.
 func (h *Labels) Routes(r gin.IRouter) {
 	r.GET("/api/labels", h.List)
 	r.GET("/api/labels/:id", h.Get)
 	r.POST("/api/labels", h.Create)
 	r.PATCH("/api/labels/:id", h.Update)
 	r.DELETE("/api/labels/:id", h.Delete)
+	r.POST("/api/labels/:id/archive", h.ActionArchive)
+	r.POST("/api/labels/:id/restore", h.ActionRestore)
 }
 
 var labelsReadRule = access.Rule{Kind: "member", Field: "team_id"}
@@ -43,6 +50,10 @@ var labelsCreateRule = access.Rule{Kind: "member", Field: "team_id"}
 var labelsUpdateRule = access.Rule{Kind: "member", Field: "team_id", Role: "admin"}
 
 var labelsDeleteRule = access.Rule{Kind: "member", Field: "team_id", Role: "admin"}
+
+var labelsArchiveActionRule = access.Rule{Kind: "member", Field: "team_id", Role: "admin"}
+
+var labelsRestoreActionRule = access.Rule{Kind: "member", Field: "team_id", Role: "admin"}
 
 // List handles GET /api/labels.
 func (h *Labels) List(c *gin.Context) {
@@ -72,6 +83,11 @@ func (h *Labels) List(c *gin.Context) {
 			return
 		}
 		where.In(`"team_id"`, tenants)
+	}
+	if archived, _ := query.Filters["archived"].(bool); archived {
+		where.Raw(`"archived_at" IS NOT NULL`)
+	} else {
+		where.Raw(`"archived_at" IS NULL`)
 	}
 	var total int
 	if err := h.db.QueryRow(ctx, `SELECT count(*) FROM `+models.LabelTable+where.SQL(), where.Args()...).Scan(&total); err != nil {
@@ -274,4 +290,112 @@ func (h *Labels) Delete(c *gin.Context) {
 		return
 	}
 	httpx.NoContent(c)
+}
+
+// ActionArchive handles POST /api/labels/{id}/archive: the archive action.
+func (h *Labels) ActionArchive(c *gin.Context) {
+	ctx := c.Request.Context()
+	session, err := h.auth.Session(c)
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if verdict := access.Check(labelsArchiveActionRule, session); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	id, ok := validation.LabelsID(c.Param("id"))
+	if !ok {
+		httpx.Fail(c, httpx.NotFound())
+		return
+	}
+	row, err := models.ScanLabel(h.db.QueryRow(ctx, `SELECT `+models.LabelColumns+` FROM `+models.LabelTable+` WHERE "id" = $1`, id))
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if access.CheckRow(labelsReadRule, session, access.Row{"team_id": row.TeamID}) != nil {
+		httpx.Fail(c, httpx.NotFound())
+		return
+	}
+	if verdict := access.CheckRow(labelsArchiveActionRule, session, access.Row{"team_id": row.TeamID}); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	body, perr := httpx.ParseBody(c)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	values, perr := validation.LabelsArchiveInput.Parse(body)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	_ = values
+	_ = row
+	result, err := models.ScanLabel(h.db.QueryRow(ctx, `UPDATE `+models.LabelTable+` SET "archived_at" = $2 WHERE "id" = $1 AND "archived_at" IS NULL RETURNING `+models.LabelColumns, id, time.Now().UTC()))
+	if errors.Is(err, pgx.ErrNoRows) {
+		httpx.Fail(c, httpx.NewError(http.StatusConflict, "conflict", "The row is archived already"))
+		return
+	}
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	httpx.OK(c, models.PresentLabel(result))
+}
+
+// ActionRestore handles POST /api/labels/{id}/restore: the restore action.
+func (h *Labels) ActionRestore(c *gin.Context) {
+	ctx := c.Request.Context()
+	session, err := h.auth.Session(c)
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if verdict := access.Check(labelsRestoreActionRule, session); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	id, ok := validation.LabelsID(c.Param("id"))
+	if !ok {
+		httpx.Fail(c, httpx.NotFound())
+		return
+	}
+	row, err := models.ScanLabel(h.db.QueryRow(ctx, `SELECT `+models.LabelColumns+` FROM `+models.LabelTable+` WHERE "id" = $1`, id))
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	if access.CheckRow(labelsReadRule, session, access.Row{"team_id": row.TeamID}) != nil {
+		httpx.Fail(c, httpx.NotFound())
+		return
+	}
+	if verdict := access.CheckRow(labelsRestoreActionRule, session, access.Row{"team_id": row.TeamID}); verdict != nil {
+		access.Deny(c, verdict)
+		return
+	}
+	body, perr := httpx.ParseBody(c)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	values, perr := validation.LabelsRestoreInput.Parse(body)
+	if perr != nil {
+		httpx.Fail(c, perr)
+		return
+	}
+	_ = values
+	_ = row
+	result, err := models.ScanLabel(h.db.QueryRow(ctx, `UPDATE `+models.LabelTable+` SET "archived_at" = NULL WHERE "id" = $1 AND "archived_at" IS NOT NULL RETURNING `+models.LabelColumns, id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		httpx.Fail(c, httpx.NewError(http.StatusConflict, "conflict", "The row is not archived"))
+		return
+	}
+	if err != nil {
+		httpx.HandleError(c, err, "write")
+		return
+	}
+	httpx.OK(c, models.PresentLabel(result))
 }

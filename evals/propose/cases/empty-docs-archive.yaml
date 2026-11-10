@@ -1,0 +1,25 @@
+id: empty-docs-archive
+tags: [entity, rules, archive, auth, scenario]
+base: { empty: docs }
+intent:
+  title: Documents that can be put away
+  ask: >-
+    People sign up and write documents that are theirs: a title and a body. An owner can put a document away without
+    losing it: it disappears from their list of documents, they can ask for the list of the ones put away, and they can
+    bring one back. Putting away a document that is already put away is a conflict. Deleting stays possible and is
+    final.
+  acceptance:
+    - A document that was put away is not in the list and is in the list of archived documents
+    - Bringing it back puts it in the list again; bringing it back twice is a conflict
+    - Another person cannot put my document away
+expect:
+  entities: [User, "Document|Doc"]
+  archive: ["Document|Doc"]
+  absent_fields: { "Document|Doc": [archived, is_archived, deleted_at, is_deleted] }
+  scenarios: { min: 1, rejections: 2, statuses: [403, 409] }
+  touches: ["documents.archive|docs.archive", "documents.restore|docs.restore"]
+  ops: { forbid: [add_action] }
+notes: >-
+  Archive over an empty model: `archive: true` on the entity and nothing else. The list parameter is `archived`,
+  written as a string in a scenario's query (`query: { archived: "true" }`). A boolean flag with a list filter, or
+  archive and restore actions with handlers, has not used the construct.

@@ -5,6 +5,26 @@ fixture intent on all three backends before it is listed here.
 
 ## Unreleased
 
+- Archive and counts (round B3 of the road to 1.0.0). `archive: true` on an entity (or `{ field, rule }`) gives it
+  a server-owned `archived_at`: lists leave archived rows out unless asked with `?archived=true`, every resource
+  over the entity gets the row actions `archive` and `restore` without declaring them (under the update rule or the
+  archive's own, 409 when there is nothing to do), events follow them, a tile or a page filters with
+  `archived: true`, and the pages get a "Show archived" switch with Archive and Restore in the detail pane. Get,
+  update, delete and includes treat an archived row like any other, and a row with a position keeps its place.
+  `count_of: <reverse relation>` on an integer field, with an optional `where`, is a number the database keeps:
+  one function and four statement triggers on the counted table write each parent once in key order, the migration
+  that adds the field counts the rows that exist, and the field is read-only, sortable and filterable. Where the
+  counted rows are ordered within the row that counts them, an append takes the parent the way a move does, so
+  round B2's concurrency test passes unchanged with a count in place; under `isolation: database` the count's
+  functions run with their owner's rights, since a count is written whoever the caller is bound to. A delete of a
+  counting row that races a write of one of its counted rows can end in PostgreSQL's deadlock detection: one
+  request fails and the count stays exact. The rule walk predicts the archive's list filter and its 409s, and the
+  rule and order walks compare every count with the rows it counts. New ops and keys: `set_archive`,
+  `Entity.archive`, `Field.count_of`, `Field.where`; diagnostics M150 to M157. A timer cannot run `archive` itself
+  (M133 says what to run); sums and other aggregates stay a handler's. Fixtures: workspace WS-13 (archived
+  milestones and labels, a project's counts, a user's teams, under `isolation: database`) and blog FEAT-13 (comment
+  counts, archived articles with a queued event, an author's count of live published articles). Design:
+  `docs/designs/archive-and-counts.md`.
 - PostgreSQL 18: the `docker-compose.yml` a new project gets starts `postgres:18`, with its volume at
   `/var/lib/postgresql`, where the 18 image keeps its data (it refuses to start with one at
   `/var/lib/postgresql/data`). CI and the nightly round run on 18 as well. The compose file is written once, so an

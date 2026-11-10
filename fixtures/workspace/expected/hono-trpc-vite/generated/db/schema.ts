@@ -14,6 +14,7 @@ export const users = pgTable("users", {
   email: varchar({ length: 255 }).notNull().unique(),
   name: varchar({ length: 100 }).notNull(),
   created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  team_count: integer().notNull().default(0),
   password_hash: varchar({ length: 255 })
 });
 
@@ -43,7 +44,9 @@ export const projects = pgTable(
     name: varchar({ length: 120 }).notNull(),
     status: projectStatusEnum().notNull().default("active"),
     created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
-    public: boolean().notNull().default(false)
+    public: boolean().notNull().default(false),
+    milestone_count: integer().notNull().default(0),
+    open_milestones: integer().notNull().default(0)
   },
   t => [index("projects_team_id_idx").on(t.team_id)]
 );
@@ -83,7 +86,8 @@ export const milestones = pgTable(
     title: varchar({ length: 200 }).notNull(),
     due_on: date().notNull(),
     done: boolean().notNull().default(false),
-    position: integer().notNull().default(0)
+    position: integer().notNull().default(0),
+    archived_at: timestamp({ withTimezone: true })
   },
   t => [index("milestones_project_id_idx").on(t.project_id)]
 );
@@ -130,7 +134,8 @@ export const labels = pgTable(
   {
     id: uuid().primaryKey().defaultRandom(),
     team_id: uuid().notNull().references(() => teams.id, { onDelete: "cascade" }),
-    name: varchar({ length: 60 }).notNull()
+    name: varchar({ length: 60 }).notNull(),
+    archived_at: timestamp({ withTimezone: true })
   },
   t => [unique("labels_team_id_name_key").on(t.team_id, t.name), index("labels_team_id_idx").on(t.team_id)]
 );

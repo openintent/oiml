@@ -63,7 +63,17 @@ describe("app section", () => {
     });
     expect(posts.columns).toEqual(["title", "published", "locked", "posted_at"]);
     const users = ir.app!.pages.find(p => p.name === "users")!;
-    expect(users.fields).toEqual(["id", "email", "name", "role", "created_at", "banned", "banned_at", "ban_reason"]);
+    expect(users.fields).toEqual([
+      "id",
+      "email",
+      "name",
+      "role",
+      "created_at",
+      "banned",
+      "banned_at",
+      "ban_reason",
+      "post_count"
+    ]);
     expect(posts.fields).toEqual([
       "title",
       "content",
@@ -93,6 +103,7 @@ describe("app section", () => {
     expect(overview.tiles.map(t => [t.label, t.filter])).toEqual([
       ["Articles", {}],
       ["Published", { published: true }],
+      ["Archived", { archived: true }],
       ["By author", {}],
       ["Users", {}]
     ]);
@@ -161,8 +172,8 @@ describe("app section", () => {
     const { ir } = await compiled("blog");
     const overview = ir.app!.pages.find(p => p.name === "overview")!;
     expect(overview).toMatchObject({ kind: "dashboard", path: "/", refresh: 30, access: { kind: "public" } });
-    expect(overview.tiles.map(t => t.label)).toEqual(["Articles", "Published", "By author", "Users"]);
-    expect(overview.tiles[2].groupBy).toEqual({
+    expect(overview.tiles.map(t => t.label)).toEqual(["Articles", "Published", "Archived", "By author", "Users"]);
+    expect(overview.tiles[3].groupBy).toEqual({
       field: "author_id",
       kind: "relation",
       resource: "users",

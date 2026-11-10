@@ -79,6 +79,10 @@ export const Relation = z
   .strict();
 export type Relation = z.infer<typeof Relation>;
 
+/** The conditions of a count: `done = false`, `done = false and archived_at = null` */
+const COUNT_WHERE_PATTERN =
+  /^[a-z][a-z0-9_]* (?:=|!=) [A-Za-z0-9_.+-]+(?: and [a-z][a-z0-9_]* (?:=|!=) [A-Za-z0-9_.+-]+)*$/;
+
 export const Field = z
   .object({
     type: z.enum(FIELD_TYPES),
@@ -105,10 +109,42 @@ export const Field = z
      * entity. The server owns it: create appends, the resource's `move` action reorders, lists follow it.
      */
     position: z.object({ within: Identifier }).strict().optional(),
+    /**
+     * Integer fields only: how many rows a reverse relation of the entity holds (`count_of: comments`, where
+     * Comment.post_id declares `reverse: comments`). The database keeps it with a trigger; nothing writes it.
+     */
+    count_of: Identifier.optional(),
+    /** With count_of: only the related rows these conditions hold for count, in the rules' spelling, joined with " and " */
+    where: z
+      .string()
+      .regex(
+        COUNT_WHERE_PATTERN,
+        "<field> = <value> or <field> != <value> on fields of the counted entity, joined with ' and '"
+      )
+      .optional(),
     description: z.string().optional()
   })
   .strict()
   .superRefine((field, ctx) => {
+    if (field.count_of && field.type !== "integer")
+      ctx.addIssue({ code: "custom", message: "count_of only applies to integer fields" });
+    if (
+      field.count_of &&
+      (field.primary ||
+        field.unique ||
+        field.hidden ||
+        field.relation ||
+        field.default !== undefined ||
+        field.validate ||
+        field.position)
+    )
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "a count_of field is a plain integer the database keeps: no primary, unique, hidden, relation, default, validate or position"
+      });
+    if (field.where !== undefined && !field.count_of)
+      ctx.addIssue({ code: "custom", message: "where only applies to a count_of field" });
     if (field.position && field.type !== "integer")
       ctx.addIssue({ code: "custom", message: "position only applies to integer fields" });
     if (
@@ -539,6 +575,20 @@ export const ThroughRelation = z
   .strict();
 export type ThroughRelation = z.infer<typeof ThroughRelation>;
 
+/** The field `archive: true` adds and reads when the entity names no other */
+export const ARCHIVE_FIELD = "archived_at";
+
+/** How an entity archives when `true` does not say it all */
+export const ArchiveOptions = z
+  .object({
+    /** The nullable datetime that holds when the row was archived; default archived_at, added when the entity lacks it */
+    field: Identifier.optional(),
+    /** Who may archive and restore; default the entity's update rule */
+    rule: Rule.optional()
+  })
+  .strict();
+export type ArchiveOptions = z.infer<typeof ArchiveOptions>;
+
 export const Entity = z
   .object({
     table: Identifier.optional(),
@@ -546,13 +596,79 @@ export const Entity = z
     fields: z.record(Identifier, Field),
     /** Many-to-many: relations to the rows a junction entity links this one to, by name */
     relations: z.record(Identifier, ThroughRelation).optional(),
+    /**
+     * Rows can be archived: a server-owned datetime says when, lists leave archived rows out unless asked
+     * (`?archived=true`), and every resource over the entity gets the row actions `archive` and `restore`.
+     */
+    archive: z.union([z.literal(true), ArchiveOptions]).optional(),
     rules: Rules.optional(),
     indexes: z.array(Index).optional(),
     /** Multi-column unique constraints */
     unique: z.array(z.array(Identifier).min(1)).optional()
   })
-  .strict();
+  .strict()
+  // The archive field is the compiler's to add: a model that says `archive: true` is written back with the field
+  // spelled out, so everything that reads the model (rules, pages, filters, diffs) sees an ordinary read-only field
+  .transform(entity => {
+    if (!entity.archive) return entity;
+    const name = (entity.archive === true ? undefined : entity.archive.field) ?? ARCHIVE_FIELD;
+    if (entity.fields[name]) return entity;
+    return { ...entity, fields: { ...entity.fields, [name]: { type: "datetime" as const, read_only: true } } };
+  });
 export type Entity = z.infer<typeof Entity>;
+
+/** The archive of an entity, resolved: the field that holds when, and the rule of archive and restore when it names one */
+export function archiveOf(entity: Entity | undefined): { field: string; rule?: string } | undefined {
+  if (!entity?.archive) return undefined;
+  const options = entity.archive === true ? {} : entity.archive;
+  const out: { field: string; rule?: string } = { field: options.field ?? ARCHIVE_FIELD };
+  if (options.rule) out.rule = options.rule;
+  return out;
+}
+
+/** The row actions the compiler writes on a resource over an archiving entity */
+export const ARCHIVE_ACTIONS = ["archive", "restore"] as const;
+export type ArchiveAction = (typeof ARCHIVE_ACTIONS)[number];
+
+/** The list parameter of an archiving entity: `?archived=true` answers the archived rows instead of the live ones */
+export const ARCHIVED_PARAM = "archived";
+
+/** A count_of field resolved against the model: the entity whose rows it counts and the relation field they point with */
+export interface CountLink {
+  entity: string;
+  /** The counted entity's relation field that declares the reverse relation */
+  field: string;
+  /** The conditions of `where`, as written */
+  where: RuleCondition[];
+}
+
+/**
+ * The reverse relation `count_of` names on `entityName`, resolved. A problem when no other entity's relation field
+ * declares that reverse name towards this entity, or when it is a one-to-one (at most one row: nothing to count).
+ */
+export function countLink(model: Model, entityName: string, field: Field): CountLink | { problem: string } | null {
+  if (!field.count_of) return null;
+  const where = (field.where ?? "")
+    .split(" and ")
+    .map(part => splitCondition(part.trim()))
+    .filter((c): c is RuleCondition => Boolean(c));
+  for (const [otherName, other] of Object.entries(model.entities))
+    for (const [fieldName, f] of Object.entries(other.fields)) {
+      if (f.relation?.entity !== entityName || f.relation.reverse !== field.count_of) continue;
+      if (f.relation.kind === "one_to_one")
+        return {
+          problem: `${field.count_of} is a one-to-one relation (${otherName}.${fieldName}): there is at most one row to count`
+        };
+      return { entity: otherName, field: fieldName, where };
+    }
+  if (model.entities[entityName]?.relations?.[field.count_of])
+    return {
+      problem: `${field.count_of} is a relation through a junction; count the junction's rows instead: give its relation field to ${entityName} a reverse name and count that`
+    };
+  return {
+    problem: `${field.count_of} is not a reverse relation of ${entityName}: no relation field of another entity points at ${entityName} with reverse: ${field.count_of}`
+  };
+}
 
 export const OPERATIONS = ["list", "get", "create", "update", "delete"] as const;
 export const Operation = z.enum(OPERATIONS);
@@ -1001,7 +1117,7 @@ function isWritable(field: Field): boolean {
 
 /** A client may write the field through the API: writable and not read_only */
 function isClientWritable(field: Field): boolean {
-  return isWritable(field) && !field.read_only && !field.position;
+  return isWritable(field) && !field.read_only && !field.position && !field.count_of;
 }
 
 /** Fields auth.register accepts besides email and password: client-writable identity fields, never role */
@@ -1402,6 +1518,86 @@ export function validateModel(model: Model): Diagnostic[] {
           rpath
         );
     }
+    const archive = archiveOf(entity);
+    if (archive) {
+      const apath = `${base}.archive`;
+      const field = entity.fields[archive.field];
+      if (
+        !field ||
+        field.type !== "datetime" ||
+        field.required ||
+        field.primary ||
+        field.unique ||
+        field.hidden ||
+        field.default !== undefined ||
+        !field.read_only
+      )
+        error(
+          "M150",
+          `archive field ${archive.field} must be a nullable datetime with read_only: true and no default: the server sets it when a row is archived and clears it when it is restored`,
+          apath
+        );
+      if (archive.rule) checkRule(archive.rule, entityName, `${apath}.rule`, true);
+      const tenancy = model.auth?.tenancy;
+      const special =
+        entityName === model.auth?.identity
+          ? "the identity: an archived user leaves the lists but still signs in and keeps its sessions"
+          : entityName === tenancy?.entity
+            ? `the tenant: an archived ${entityName} leaves the lists, while its memberships and the rows under it stay as they are`
+            : entityName === tenancy?.membership
+              ? "the membership: an archived membership leaves the lists but still makes its user a member"
+              : undefined;
+      if (special) warn("M152", `${entityName} is ${special}; archive only takes rows out of lists`, apath);
+    }
+    for (const [fieldName, field] of Object.entries(entity.fields)) {
+      if (!field.count_of) continue;
+      const fpath = `${base}.fields.${fieldName}`;
+      const link = countLink(model, entityName, field)!;
+      if ("problem" in link) {
+        error("M153", `count_of ${link.problem}`, `${fpath}.count_of`);
+        continue;
+      }
+      if (primaries.length > 1 || (primaries.length === 0 && !entity.fields.id))
+        error(
+          "M153",
+          `${entityName} has a count_of field, so it needs a single-column primary key (an id) for the database to find the row a count belongs to`,
+          `${fpath}.count_of`
+        );
+      const counted = model.entities[link.entity];
+      for (const condition of link.where) {
+        const tested = counted.fields[condition.field];
+        if (!tested) {
+          error("M154", `where names ${condition.field}, which is not a field of ${link.entity}`, `${fpath}.where`);
+          continue;
+        }
+        if (tested.type === "bytes" || tested.type === "file")
+          error(
+            "M154",
+            `where cannot compare ${link.entity}.${condition.field}: it is a ${tested.type}`,
+            `${fpath}.where`
+          );
+        const problem = conditionProblem(tested, condition.value);
+        if (problem)
+          error(
+            "M154",
+            `where compares ${link.entity}.${condition.field} with ${condition.value}, which ${problem}`,
+            `${fpath}.where`
+          );
+      }
+      if (field.read_only === false || field.required === false)
+        warn(
+          "M155",
+          `${fieldName} is a count: it is never null and never accepted from a client, whatever read_only and required say; drop them`,
+          fpath
+        );
+      const tenants = tenantLinks(model).links;
+      if (isolated(model) && tenants[link.entity] && !tenants[entityName])
+        warn(
+          "M156",
+          `${entityName} is shared by every ${model.auth!.tenancy!.entity} while ${link.entity} rows belong to one: ${fieldName} adds up the rows of all of them, and whoever reads a ${entityName} reads that number`,
+          fpath
+        );
+    }
     for (const action of RULE_OPERATIONS) {
       const rule = entity.rules?.[action];
       if (rule) checkRule(rule, entityName, `${base}.rules.${action}`, true);
@@ -1593,6 +1789,12 @@ export function validateModel(model: Model): Diagnostic[] {
         error("M053", `${what} field ${f} is a ${entity.fields[f].type} field`, where);
     };
     for (const f of resource.list?.filters ?? []) queryable(f, "filter", `${base}.list.filters`);
+    if (archiveOf(entity) && (resource.list?.filters ?? []).includes(ARCHIVED_PARAM))
+      error(
+        "M157",
+        `${resource.entity} archives, so the list parameter ${ARCHIVED_PARAM} is the compiler's (?${ARCHIVED_PARAM}=true answers the archived rows); drop the field ${ARCHIVED_PARAM} from list.filters or rename it`,
+        `${base}.list.filters`
+      );
     for (const [f] of resource.list?.order ?? []) queryable(f, "order", `${base}.list.order`);
     for (const f of resource.list?.sortable ?? []) queryable(f, "sortable", `${base}.list.sortable`);
     for (const f of resource.list?.search ?? []) {
@@ -1614,6 +1816,12 @@ export function validateModel(model: Model): Diagnostic[] {
           error(
             "M064",
             `${key} field ${f} is a position: the server numbers it and ${resourceName}.move changes it; drop it from ${key}.fields`,
+            `${base}.${key}.fields`
+          );
+        else if (entity.fields[f].count_of)
+          error(
+            "M064",
+            `${key} field ${f} is a count: the database keeps it; drop it from ${key}.fields`,
             `${base}.${key}.fields`
           );
         else if (entity.fields[f].read_only)
@@ -1662,6 +1870,12 @@ export function validateModel(model: Model): Diagnostic[] {
           `${resource.entity} has a position field, so ${resourceName}.move is the compiler's: it takes { to } under the update rule; give your action another name`,
           apath
         );
+      if ((ARCHIVE_ACTIONS as readonly string[]).includes(actionName) && archiveOf(entity))
+        error(
+          "M151",
+          archiveNameClash(resourceName, resource.entity, archiveOf(entity)!.field, "action", actionName),
+          apath
+        );
       checkActionFields(action, apath, error);
       const scope = action.scope ?? "row";
       if (action.rule) checkRule(action.rule, resource.entity, `${apath}.rule`, scope === "row");
@@ -1685,7 +1899,14 @@ export function validateModel(model: Model): Diagnostic[] {
     } else {
       const resource = model.resources[m[3]];
       if (!resource) error("M061", `event resource ${m[3]} does not exist`, `events[${i}]`);
-      else if (!resource.actions?.[m[4]]) error("M061", `resource ${m[3]} has no action ${m[4]}`, `events[${i}]`);
+      else if (!resource.actions?.[m[4]] && !isArchiveAction(model, resource, m[4]))
+        error(
+          "M061",
+          m[4] === MOVE_ACTION && hasMoveAction(model, resource)
+            ? `${m[3]}.move is the compiler's reorder and emits no event; a handler on ${resource.entity}.updated sees the row after it`
+            : `resource ${m[3]} has no action ${m[4]}`,
+          `events[${i}]`
+        );
     }
   }
 
@@ -1738,7 +1959,14 @@ export function validateModel(model: Model): Diagnostic[] {
       error("M132", `field ${timer.at} must be a datetime, not ${at.type}`, `${tpath}.at`);
     const target = runTarget(timer.run);
     const resourceEntity = target?.resource ? model.resources[target.resource]?.entity : undefined;
-    if (!target || !target.resource || (target.action.scope ?? "row") !== "row" || resourceEntity !== timer.on)
+    const [runResource, runName] = timer.run.split(".");
+    if (!target && model.resources[runResource] && isArchiveAction(model, model.resources[runResource], runName))
+      error(
+        "M133",
+        `run ${timer.run} is the compiler's ${runName}, which a timer cannot run yet; declare a row action whose handler sets ${archiveOf(model.entities[model.resources[runResource].entity])!.field} and run that`,
+        `${tpath}.run`
+      );
+    else if (!target || !target.resource || (target.action.scope ?? "row") !== "row" || resourceEntity !== timer.on)
       error("M133", `run ${timer.run} is not a row action of a resource over ${timer.on}`, `${tpath}.run`);
     else
       for (const [key, field] of Object.entries(target.action.input ?? {}))
@@ -1788,6 +2016,11 @@ export function validateModel(model: Model): Diagnostic[] {
         const entity = resource && model.entities[resource.entity];
         if (!resource || !entity) return;
         for (const [key, value] of Object.entries(filter ?? {})) {
+          // The archive parameter of the list: `archived: true` shows or counts the archived rows instead
+          if (key === ARCHIVED_PARAM && archiveOf(entity) && !(resource.list?.filters ?? []).includes(key)) {
+            if (typeof value !== "boolean") error("M089", `filter ${key} must be true or false`, where);
+            continue;
+          }
           if (!(resource.list?.filters ?? []).includes(key)) {
             error("M089", `filter ${key} is not a list filter of ${resourceName}`, where);
             continue;
@@ -2054,6 +2287,7 @@ export function resolveStepOp(model: Model, op: string): ResolvedStepOp {
   }
   if (resource.actions?.[name]) return { kind: "action", resource: ns, action: name };
   if (name === MOVE_ACTION && hasMoveAction(model, resource)) return { kind: "action", resource: ns, action: name };
+  if (isArchiveAction(model, resource, name)) return { kind: "action", resource: ns, action: name };
   return { kind: "unknown", reason: `resource ${ns} has no operation or action ${name}` };
 }
 
@@ -2064,6 +2298,31 @@ export const MOVE_ACTION = "move";
 export function hasMoveAction(model: Model, resource: Resource): boolean {
   const entity = model.entities[resource.entity];
   return Boolean(positionOf(entity)) && entity.rules?.update !== "none";
+}
+
+/**
+ * Whether `name` is one of the compiler's `archive` and `restore` on a resource: its entity archives, and the rule
+ * they run under (the archive's own, else the entity's update rule) is not none.
+ */
+export function isArchiveAction(model: Model, resource: Resource, name: string): boolean {
+  if (!(ARCHIVE_ACTIONS as readonly string[]).includes(name)) return false;
+  const entity = model.entities[resource.entity];
+  const archive = archiveOf(entity);
+  return Boolean(archive) && (archive!.rule ?? entity.rules?.update) !== "none";
+}
+
+/**
+ * What a declared name is told when an entity's `archive:` already took it. Written for an action today; a
+ * transition named `archive` or `restore` (state machines) clashes the same way and gets the same sentence.
+ */
+export function archiveNameClash(
+  resourceName: string,
+  entityName: string,
+  field: string,
+  what: "action" | "transition",
+  name: string
+): string {
+  return `${entityName} has archive:, so ${resourceName}.archive and ${resourceName}.restore are the compiler's: they set and clear ${field} and answer 409 when there is nothing to do. Give your ${what} another name than ${name}, or drop archive: from ${entityName} if this ${what} is how its rows are archived`;
 }
 
 /** The URL path of a page that declares none: its name with underscores as dashes */

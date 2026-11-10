@@ -155,7 +155,11 @@ export async function runWalks(ctx: WalkContext, which: ReadonlySet<string> = ne
       // The rule walk's first phase makes the rows every other walk uses, so it runs even when only they were asked
       await createRows(ctx, state, resolver, roles, bodies, which.has("rule") ? ruleFindings : []);
     }
-    if (which.has("rule")) await readWalk(ctx, state, resolver, roles, bodies, ruleFindings);
+    let counts = 0;
+    if (which.has("rule")) {
+      await readWalk(ctx, state, resolver, roles, bodies, ruleFindings);
+      counts = await countFindings(ir, db, "after the creates, updates and actions of the walk", ruleFindings);
+    }
     if (which.has("tenant")) {
       const findings: string[] = [];
       await timed("tenant", () => tenantWalk(ctx, state, resolver, db, listen, bodies, findings), findings);
@@ -170,6 +174,12 @@ export async function runWalks(ctx: WalkContext, which: ReadonlySet<string> = ne
     }
     if (which.has("rule")) {
       await deleteWalk(ctx, state, resolver, roles, ruleFindings);
+      if (counts) {
+        await countFindings(ir, db, "after the deletes of the walk", ruleFindings);
+        state.notes.push(
+          `${counts} ${counts === 1 ? "count" : "counts"} compared with the rows they count, before and after the deletes`
+        );
+      }
       const ms = Date.now() - ruleStarted;
       const entities = state.walkable.length;
       const walked = [...state.rows.values()].filter(r => r.length).length;
@@ -465,7 +475,10 @@ async function readWalk(
             const body = reply.body as { data?: Row[]; page?: { total?: number } } | null;
             const total = body?.page?.total ?? 0;
             if (total <= Number(pageSize)) {
-              const visible = verdict(entity.rules.read, caller.session, resolved, roles).ok;
+              // An archived row is out of the list whatever the rule says of it
+              const visible =
+                verdict(entity.rules.read, caller.session, resolved, roles).ok &&
+                !(entity.archive && fresh[entity.archive.column] != null);
               const present = (body?.data ?? []).some(r => same(r[entity.primaryKey[0]], row.id));
               if (visible !== present)
                 findings.push(
@@ -512,6 +525,20 @@ async function readWalk(
             const body = actionInput(action, bodies);
             const reply = await caller.client.action({ action, id: row.id, body });
             state.calls++;
+            if (entity.archive && (action.builtin === "archive" || action.builtin === "restore")) {
+              // The compiler's own: the model says what it answers, the 409 when there is nothing to do included
+              const archived = fresh[entity.archive.column] != null;
+              const nothing = (action.builtin === "archive") === archived;
+              const what = label({ action }, caller, row);
+              const went = compare(findings, what, expect, reply, s => (nothing ? s === 409 : success(s)), state);
+              if (went && expect.allow && !nothing && list && list.rule.kind !== "none")
+                await archivedLists(
+                  { caller, resource, list, entity, row, archived: action.builtin === "archive", what },
+                  state,
+                  findings
+                );
+              continue;
+            }
             compare(findings, label({ action }, caller, row), expect, reply, notRefused, state);
           }
         }
@@ -529,6 +556,77 @@ async function readWalk(
       compare(findings, label({ action }, caller), expect, reply, notRefused, state);
     }
   }
+}
+
+/**
+ * After an archive or a restore went through: the caller's own lists. An archived row is out of the plain list and
+ * in the one asked with archived=true, a restored row the other way round.
+ */
+async function archivedLists(
+  call: {
+    caller: Caller;
+    resource: ResourceIR;
+    list: Extract<OperationIR, { kind: "list" }>;
+    entity: EntityIR;
+    row: WalkRow;
+    archived: boolean;
+    what: string;
+  },
+  state: State,
+  findings: string[]
+): Promise<void> {
+  const { caller, resource, list, entity, row, archived, what } = call;
+  for (const asked of [false, true]) {
+    const query: Record<string, string> = { page_size: "200" };
+    if (asked) query.archived = "true";
+    const name = `${resource.name}.list${asked ? "?archived=true" : ""}`;
+    const reply = await caller.client.resource({ resource, op: list, query });
+    state.calls++;
+    const body = reply.body as { data?: Row[]; page?: { total?: number } } | null;
+    if (reply.status !== 200) {
+      findings.push(`${what}: ${name} afterwards answered ${reply.status} ${message(reply)}`);
+      continue;
+    }
+    if ((body?.page?.total ?? 0) > 200) continue;
+    const present = (body?.data ?? []).some(r => same(r[entity.primaryKey[0]], row.id));
+    // Whoever may archive a row reads it: the caller that was allowed finds it where its state puts it
+    if (present !== (asked === archived))
+      findings.push(
+        `${what}: afterwards the row should be ${asked === archived ? "in" : "out of"} ${name} but is ${present ? "listed" : "missing"}`
+      );
+  }
+}
+
+/**
+ * Every count of the model against the rows the database holds: a counting row whose number is not the number of
+ * rows that point at it (and that its conditions hold for) is a finding. Returns how many count fields were checked.
+ */
+async function countFindings(ir: IR, db: pg.Client, after: string, findings: string[]): Promise<number> {
+  let checked = 0;
+  for (const entity of ir.entities)
+    for (const count of entity.counts ?? []) {
+      const args: unknown[] = [];
+      const conditions = count.where.map(when => {
+        if (when.value === null) return ` and c."${when.column}" is ${when.op === "eq" ? "" : "not "}null`;
+        args.push(String(when.value));
+        return ` and c."${when.column}"::text ${when.op === "eq" ? "=" : "is distinct from"} $${args.length}`;
+      });
+      const counted = `select count(*)::int from "${count.table}" c where c."${count.fk}" = p."${count.key}"${conditions.join("")}`;
+      const { rows } = await db.query(
+        `select p."${count.key}" as id, p."${count.column}" as said, (${counted}) as has from "${entity.table}" p`,
+        args
+      );
+      checked++;
+      const wrong = (rows as { id: unknown; said: number; has: number }[]).filter(r => r.said !== r.has);
+      if (wrong.length)
+        findings.push(
+          `${entity.name}.${count.column} ${after}: ${wrong.length} of ${rows.length} rows say another number than the rows they count (${wrong
+            .slice(0, 3)
+            .map(r => `${String(r.id)} says ${r.said}, has ${r.has}`)
+            .join("; ")})`
+        );
+    }
+  return checked;
 }
 
 async function sortByExpectation(
@@ -750,6 +848,9 @@ async function orderWalk(
       findings.push(`${resource.name} after deletes at once: a deleted row is still there`);
     notes.push(`${entity.name}: ${mixed.length} rows in one ${order.within} in order`);
   }
+  // The counts over the ordered tables were written inside every one of those calls
+  const counts = await countFindings(ir, db, "after the bursts", findings);
+  if (counts) notes.push(`${counts} ${counts === 1 ? "count equals" : "counts equal"} the rows they count`);
   return `${calls} calls in bursts of ${ORDER_BURST} over ${ordered.length} ordered ${ordered.length === 1 ? "entity" : "entities"} (${notes.join("; ")})`;
 }
 
@@ -1199,6 +1300,8 @@ function describeStep(step: MigrationStep): string {
       return `${step.table}.${step.column} is filled from ${step.parent}`;
     case "backfill_position":
       return `${step.table}.${step.column} is numbered within ${step.within}`;
+    case "backfill_count":
+      return `${step.table}.${step.column} is counted from the rows that exist`;
     default:
       return step.kind;
   }

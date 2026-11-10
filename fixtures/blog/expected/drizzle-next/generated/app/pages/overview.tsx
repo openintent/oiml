@@ -4,27 +4,27 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { Check, FileText, Users } from "lucide-react";
+import { Archive, Check, FileText, Users } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { client, sessionUser, type Inputs, type Outputs, type SessionUser } from "../client";
 import { ErrorNote, Tile, formatDateTime, text } from "../ui";
 
 /** One tile per User, counting posts by author_id */
-function GroupTiles2({ user }: { user: SessionUser | null }) {
+function GroupTiles3({ user }: { user: SessionUser | null }) {
   const rows = useQuery({ queryKey: ["users", "list", { page: 1, page_size: 200 }], queryFn: () => client.users.list({ page: 1, page_size: 200 } as Inputs["users"]["list"]), refetchInterval: 30000 });
   if (rows.isPending) return <Skeleton className="h-24 w-full" />;
   if (rows.error) return <ErrorNote error={rows.error} />;
   return (
     <>
       {rows.data.data.map(row => (
-        <GroupTile2 key={text(row.id)} id={row.id} label={text(row.name)} user={user} />
+        <GroupTile3 key={text(row.id)} id={row.id} label={text(row.name)} user={user} />
       ))}
     </>
   );
 }
 
-function GroupTile2({ id, label, user }: { id: Outputs["users"]["list"]["data"][number]["id"]; label: string; user: SessionUser | null }) {
+function GroupTile3({ id, label, user }: { id: Outputs["users"]["list"]["data"][number]["id"]; label: string; user: SessionUser | null }) {
   void user;
   const input = { page: 1, page_size: 1, author_id: id } as Inputs["posts"]["list"];
   const count = useQuery({ queryKey: ["posts", "list", input], queryFn: () => client.posts.list(input), refetchInterval: 30000 });
@@ -43,8 +43,10 @@ export function OverviewPage() {
   const tile0 = useQuery({ queryKey: ["posts", "list", tile0Input], queryFn: () => client.posts.list(tile0Input), refetchInterval: 30000 });
   const tile1Input = { page: 1, page_size: 1, published: "true" } as Inputs["posts"]["list"];
   const tile1 = useQuery({ queryKey: ["posts", "list", tile1Input], queryFn: () => client.posts.list(tile1Input), refetchInterval: 30000 });
-  const tile3Input = { page: 1, page_size: 1 } as Inputs["users"]["list"];
-  const tile3 = useQuery({ queryKey: ["users", "list", tile3Input], queryFn: () => client.users.list(tile3Input), refetchInterval: 30000 });
+  const tile2Input = { page: 1, page_size: 1, archived: "true" } as Inputs["posts"]["list"];
+  const tile2 = useQuery({ queryKey: ["posts", "list", tile2Input], queryFn: () => client.posts.list(tile2Input), refetchInterval: 30000 });
+  const tile4Input = { page: 1, page_size: 1 } as Inputs["users"]["list"];
+  const tile4 = useQuery({ queryKey: ["users", "list", tile4Input], queryFn: () => client.users.list(tile4Input), refetchInterval: 30000 });
   const recent0 = useQuery({ queryKey: ["posts", "list", {"page":1,"page_size":5}], queryFn: () => client.posts.list({"page":1,"page_size":5} as Inputs["posts"]["list"]), refetchInterval: 30000 });
   void formatDateTime;
   return (
@@ -57,9 +59,12 @@ export function OverviewPage() {
         <Link href="/posts" className="block">
           <Tile label="Published" value={tile1.data?.page.total ?? null} icon={<Check className="size-4 text-muted-foreground" />} />
         </Link>
-        <GroupTiles2 user={user} />
+        <Link href="/posts" className="block">
+          <Tile label="Archived" value={tile2.data?.page.total ?? null} icon={<Archive className="size-4 text-muted-foreground" />} />
+        </Link>
+        <GroupTiles3 user={user} />
         <Link href="/users" className="block">
-          <Tile label="Users" value={tile3.data?.page.total ?? null} icon={<Users className="size-4 text-muted-foreground" />} />
+          <Tile label="Users" value={tile4.data?.page.total ?? null} icon={<Users className="size-4 text-muted-foreground" />} />
         </Link>
       </div>
       <div className="grid gap-4 lg:grid-cols-2">

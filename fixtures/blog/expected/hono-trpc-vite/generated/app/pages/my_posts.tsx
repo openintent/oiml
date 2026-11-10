@@ -52,6 +52,14 @@ function canUnlock(user: SessionUser | null, row: Detail): boolean {
   return user !== null && (user as { role?: unknown }).role === "admin";
 }
 
+function canArchive(user: SessionUser | null, row: Detail): boolean {
+  return user !== null && row.author_id === user.id;
+}
+
+function canRestore(user: SessionUser | null, row: Detail): boolean {
+  return user !== null && row.author_id === user.id;
+}
+
 function canUnpublishAll(user: SessionUser | null): boolean {
   return user !== null && (user as { role?: unknown }).role === "admin";
 }
@@ -288,13 +296,14 @@ function MyPostsForm({
 
 function MyPostsLayoutInner() {
   const [page, setPage] = useState(1);
+  const [archived, setArchived] = useState(false);
   const [openAction, setOpenAction] = useState<string | null>(null);
   void openAction;
   void setOpenAction;
   const session = useQuery({ queryKey: ["auth", "session"], queryFn: () => client.auth.session() });
   const user = sessionUser(session.data);
   void user;
-  const input = { page, page_size: PAGE_SIZE, ...fixedFilter(user) } as Inputs["posts"]["list"];
+  const input = { page, page_size: PAGE_SIZE, ...(archived ? { archived: true } : {}), ...fixedFilter(user) } as Inputs["posts"]["list"];
   const list = useQuery({ queryKey: [...KEY, "list", input], queryFn: () => client.posts.list(input), enabled: user !== null });
   const matchRoute = useMatchRoute();
   const queryClient = useQueryClient();
@@ -309,6 +318,17 @@ function MyPostsLayoutInner() {
     <div className="flex h-full min-h-0">
       <aside className="flex w-80 shrink-0 flex-col border-r border-border">
         <PaneHeader title="My articles" count={list.data?.page.total}>
+          <Button
+            variant={archived ? "secondary" : "ghost"}
+            size="sm"
+            aria-pressed={archived}
+            onClick={() => {
+              setArchived(current => !current);
+              setPage(1);
+            }}
+          >
+            {archived ? "Showing archived" : "Show archived"}
+          </Button>
           {canCreate(user) ? (
             <Link to="/my-posts/new" className={buttonVariants({ variant: "ghost", size: "icon-sm" })} aria-label="New article">
               <Plus />
@@ -328,14 +348,14 @@ function MyPostsLayoutInner() {
           ) : list.error ? (
             <ErrorNote error={list.error} className="m-4" />
           ) : list.data.data.length === 0 ? (
-            <EmptyPane>No my articles yet.</EmptyPane>
+            <EmptyPane>{archived ? "No archived my articles." : "No my articles yet."}</EmptyPane>
           ) : (
             <ul className="py-1">
               {list.data.data.map((row: Row) => (
                 <li key={text(row.id)}>
                   <Link
                     to="/my-posts/$id" params={{ id: text(row.id) }}
-                    className={cn("block border-l-2 border-transparent px-4 py-2 hover:bg-accent/60", Boolean(matchRoute({ to: "/my-posts/$id", params: { id: text(row.id) } })) && "border-primary bg-accent")}
+                    className={cn("block border-l-2 border-transparent px-4 py-2 hover:bg-accent/60", Boolean(matchRoute({ to: "/my-posts/$id", params: { id: text(row.id) } })) && "border-primary bg-accent", row.archived_at && "text-muted-foreground")}
                   >
                     <div className="truncate text-sm font-medium">{text(row.title) || "Article " + text(row.id)}</div>
                     <div className="truncate text-xs text-muted-foreground">{[(row.published ? "Published" : "Not published"), formatDateTime(row.posted_at)].filter(Boolean).join(" · ")}</div>
@@ -432,6 +452,20 @@ function MyPostsDetailInner() {
       await queryClient.invalidateQueries({ queryKey: KEY });
     }
   });
+  const archiveAction = useMutation({
+    mutationFn: (input: Inputs["posts"]["archive"]) => client.posts.archive(input),
+    onSuccess: async () => {
+      setOpenAction(null);
+      await queryClient.invalidateQueries({ queryKey: KEY });
+    }
+  });
+  const restoreAction = useMutation({
+    mutationFn: (input: Inputs["posts"]["restore"]) => client.posts.restore(input),
+    onSuccess: async () => {
+      setOpenAction(null);
+      await queryClient.invalidateQueries({ queryKey: KEY });
+    }
+  });
   if (query.isPending) return <PaneSkeleton />;
   if (query.error) return <ErrorNote error={query.error} className="m-6" />;
   const row: Detail = query.data;
@@ -453,6 +487,16 @@ function MyPostsDetailInner() {
           {canUnlock(user, row) ? (
             <Button variant="outline" size="sm" disabled={unlockAction.isPending} onClick={() => unlockAction.mutate({ id })}>
               Unlock
+            </Button>
+          ) : null}
+          {canArchive(user, row) && !row.archived_at ? (
+            <Button variant="outline" size="sm" disabled={archiveAction.isPending} onClick={() => archiveAction.mutate({ id })}>
+              Archive
+            </Button>
+          ) : null}
+          {canRestore(user, row) && row.archived_at ? (
+            <Button variant="outline" size="sm" disabled={restoreAction.isPending} onClick={() => restoreAction.mutate({ id })}>
+              Restore
             </Button>
           ) : null}
           {canUpdate(user, row) ? (
@@ -479,6 +523,8 @@ function MyPostsDetailInner() {
       <ErrorNote error={publishAction.error} className="mb-4" />
       <ErrorNote error={lockAction.error} className="mb-4" />
       <ErrorNote error={unlockAction.error} className="mb-4" />
+      <ErrorNote error={archiveAction.error} className="mb-4" />
+      <ErrorNote error={restoreAction.error} className="mb-4" />
       {editing ? (
         <MyPostsForm
           fields={MYPOSTS_UPDATE}
