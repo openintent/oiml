@@ -150,16 +150,32 @@ export async function baseIntents(
   return { name: c.base.fixture, ids, all, dir };
 }
 
-/** Copy a fixture overlay, keeping only the action handlers in `keep` (all of them when null) */
-async function copyOverlay(from: string, to: string, keep: Set<string> | null): Promise<void> {
+/** The user-owned handlers a base model declares: the ones its overlay may bring along */
+export interface OverlayKeep {
+  actions: Set<string>;
+  events: Set<string>;
+}
+
+/**
+ * Copy a fixture overlay, keeping only the action and event handlers in `keep` (all of them when null). A handler
+ * for something the base model does not declare would name a type its generated code lacks and fail the check.
+ */
+export async function copyOverlay(from: string, to: string, keep: OverlayKeep | null): Promise<void> {
+  const folder = from.split(path.sep).join("/");
+  const kept = !keep
+    ? null
+    : /(^|\/)src\/actions$/.test(folder)
+      ? keep.actions
+      : /(^|\/)src\/events$/.test(folder)
+        ? keep.events
+        : null;
   for (const entry of await readdir(from, { withFileTypes: true })) {
     const source = path.join(from, entry.name);
     const target = path.join(to, entry.name);
-    const handlers = /(^|\/)src\/actions$/.test(from.split(path.sep).join("/"));
-    if (handlers && keep) {
-      // src/actions/<handler>.ts or src/actions/<handler>/handler.go
+    if (kept) {
+      // src/<actions|events>/<handler>.ts or src/<actions|events>/<handler>/handler.go
       const name = entry.isDirectory() ? entry.name : entry.name.replace(/\.[a-z]+$/, "");
-      if (!keep.has(name)) continue;
+      if (!kept.has(name)) continue;
     }
     if (entry.isDirectory()) await copyOverlay(source, target, keep);
     else {
@@ -307,12 +323,17 @@ async function writeCaseFixture(
   await mkdir(intentsDir, { recursive: true });
   for (const id of ids) await cp(path.join(dir!, "intents", id), path.join(intentsDir, id), { recursive: true });
   // The fixture's overlay holds the user-owned handlers of its final model. The base keeps the ones for the actions
-  // it declares itself (their fields are the fixture's); a handler the proposed diff declares stays a stub, which
-  // --implement then writes. An oracle diff that completes the fixture gets them all.
+  // and events it declares itself (their fields are the fixture's); a handler the proposed diff declares stays a
+  // stub, which --implement then writes. An oracle diff that completes the fixture gets them all.
   if (dir && existsSync(path.join(dir, "overlay"))) {
-    const keep = oracleCompletes
-      ? null
-      : new Set(userActions(compile(await modelThrough(dir, fixtureName, ids))).map(a => a.handler));
+    let keep: OverlayKeep | null = null;
+    if (!oracleCompletes) {
+      const ir = compile(await modelThrough(dir, fixtureName, ids));
+      keep = {
+        actions: new Set(userActions(ir).map(a => a.handler)),
+        events: new Set(ir.events.map(e => e.handler))
+      };
+    }
     await copyOverlay(path.join(dir, "overlay"), path.join(fixtureDir, "overlay"), keep);
   }
   // Sorts after every fixture intent id (FEAT-, TODO-, WS-)
