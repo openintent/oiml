@@ -2,10 +2,10 @@
 // Do not edit: this file is rewritten on every osl generate.
 
 import { and, asc, count, desc, eq, ilike, inArray, or, type SQL } from "drizzle-orm";
-import { db } from "../db/client";
+import { db, rowExists } from "../db/client";
 import * as schema from "../db/schema";
 import { projects as projectsTable } from "../db/schema";
-import { checkRule, denied, memberTenantIds, satisfied, type Rule } from "../access";
+import { checkRule, denied, memberTenantIds, satisfied, unreachable, type Rule } from "../access";
 import { getSession, type Session } from "../auth";
 import { created, handleError, noContent, notFound, ok, parseBody, parseId, parseQuery } from "../http";
 import { presentProject } from "../present";
@@ -21,6 +21,11 @@ const RULES = {
   update: {"kind":"any","rules":[{"kind":"member","field":"team_id","when":{"field":"status","op":"eq","value":"active"}},{"kind":"member","field":"team_id","role":"admin"}]} as Rule,
   delete: {"kind":"member","field":"team_id","role":"admin"} as Rule
 };
+
+/** No row came back: another tenant's row answers as the rule answers a caller it refuses, a missing one 404 */
+async function missing(id: unknown, rule: Rule, session: Session | null): Promise<Response> {
+  return (await rowExists("osl_exists_projects", id)) ? denied(unreachable(rule, session)) : notFound();
+}
 
 const SORTABLE = {
   name: projectsTable.name,
@@ -69,10 +74,9 @@ export const projects = {
         conditions.push(or(ilike(projectsTable.name, pattern))!);
       }
       const where = conditions.length ? and(...conditions) : undefined;
-      const [rows, [{ total }]] = await Promise.all([
-        db.query.projects.findMany({ where, orderBy: sort ? sortOrder(sort) : [desc(projectsTable.created_at)], limit: page_size, offset: (page - 1) * page_size }),
-        db.select({ total: count() }).from(projectsTable).where(where)
-      ]);
+      // One statement at a time: both run on the request's transaction
+      const rows = await db.query.projects.findMany({ where, orderBy: sort ? sortOrder(sort) : [desc(projectsTable.created_at)], limit: page_size, offset: (page - 1) * page_size });
+      const [{ total }] = await db.select({ total: count() }).from(projectsTable).where(where);
       return ok(rows.map(presentListRow), { page: { page, page_size, total } });
     } catch (err) {
       return handleError(err, "read");
@@ -87,7 +91,7 @@ export const projects = {
       const id = parseId(projectsId, (await ctx.params).id);
       if (!id.ok) return id.response;
       const row = await db.query.projects.findFirst({ where: eq(projectsTable.id, id.data) });
-      if (!row) return notFound();
+      if (!row) return missing(id.data, RULES.read, session);
       const rowVerdict = checkRule(RULES.read, session, row);
       if (!rowVerdict.ok) return denied(rowVerdict);
       return ok(presentGetRow(row));
@@ -124,7 +128,7 @@ export const projects = {
       const id = parseId(projectsId, (await ctx.params).id);
       if (!id.ok) return id.response;
       const existing = await db.query.projects.findFirst({ where: eq(projectsTable.id, id.data) });
-      if (!existing) return notFound();
+      if (!existing) return missing(id.data, RULES.update, session);
       const rowVerdict = checkRule(RULES.update, session, existing);
       if (!rowVerdict.ok) return denied(rowVerdict);
       const body = await parseBody(projectsUpdateInput, request);
@@ -149,7 +153,7 @@ export const projects = {
       const id = parseId(projectsId, (await ctx.params).id);
       if (!id.ok) return id.response;
       const existing = await db.query.projects.findFirst({ where: eq(projectsTable.id, id.data) });
-      if (!existing) return notFound();
+      if (!existing) return missing(id.data, RULES.delete, session);
       const rowVerdict = checkRule(RULES.delete, session, existing);
       if (!rowVerdict.ok) return denied(rowVerdict);
       const hookContext: HookContext = { request, session };

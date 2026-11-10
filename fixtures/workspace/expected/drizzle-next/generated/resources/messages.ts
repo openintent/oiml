@@ -16,10 +16,10 @@ export type RouteContext = { params: Promise<{ id: string }> };
 export type HookContext = { request: Request; session: Session | null };
 
 const RULES = {
-  read: {"kind":"any","rules":[{"kind":"member","field":"channel_id.members","through":true,"roles":["admin","member"]},{"kind":"member","field":"channel_id.team_id","when":{"field":"channel_id.private","op":"eq","value":false}}]} as Rule,
-  create: {"kind":"all","rules":[{"kind":"member","field":"channel_id.members","through":true,"roles":["admin","member"]},{"kind":"owner","field":"author_id"}]} as Rule,
-  update: {"kind":"owner","field":"author_id"} as Rule,
-  delete: {"kind":"any","rules":[{"kind":"owner","field":"author_id"},{"kind":"member","field":"channel_id.members","role":"admin","through":true,"roles":["admin","member"]}]} as Rule
+  read: {"kind":"any","rules":[{"kind":"all","rules":[{"kind":"member","field":"channel_id.members","through":true,"roles":["admin","member"]},{"kind":"member","field":"channel_id.team_id"}]},{"kind":"member","field":"channel_id.team_id","when":{"field":"channel_id.private","op":"eq","value":false}}]} as Rule,
+  create: {"kind":"all","rules":[{"kind":"member","field":"channel_id.members","through":true,"roles":["admin","member"]},{"kind":"owner","field":"author_id"},{"kind":"member","field":"channel_id.team_id"}]} as Rule,
+  update: {"kind":"all","rules":[{"kind":"owner","field":"author_id"},{"kind":"member","field":"channel_id.team_id"}]} as Rule,
+  delete: {"kind":"any","rules":[{"kind":"all","rules":[{"kind":"owner","field":"author_id"},{"kind":"member","field":"channel_id.team_id"}]},{"kind":"all","rules":[{"kind":"member","field":"channel_id.members","role":"admin","through":true,"roles":["admin","member"]},{"kind":"member","field":"channel_id.team_id"}]}]} as Rule
 };
 
 /** The row (or create body) with the values its rules reach through relations, under their dotted keys, and the caller's memberships */
@@ -76,17 +76,17 @@ export const messages = {
     if (filters.channel_id !== undefined) conditions.push(eq(messagesTable.channel_id, filters.channel_id));
     if (!satisfied(RULES.read, session)) {
       const alternatives: SQL[] = [];
-      alternatives.push(inArray(messagesTable.channel_id, db.select({ id: channelsTable.id }).from(channelsTable).where(inArray(channelsTable.id, db.select({ id: channelMembersTable.channel_id }).from(channelMembersTable).where(eq(channelMembersTable.user_id, session!.user.id))))));
       const tenants = memberTenantIds(session, undefined);
-      if (tenants.length > 0) alternatives.push(and(inArray(messagesTable.channel_id, db.select({ id: channelsTable.id }).from(channelsTable).where(inArray(channelsTable.team_id, tenants as string[]))), inArray(messagesTable.channel_id, db.select({ id: channelsTable.id }).from(channelsTable).where(eq(channelsTable.private, false))))!);
+      if (tenants.length > 0) alternatives.push(and(inArray(messagesTable.channel_id, db.select({ id: channelsTable.id }).from(channelsTable).where(inArray(channelsTable.id, db.select({ id: channelMembersTable.channel_id }).from(channelMembersTable).where(eq(channelMembersTable.user_id, session!.user.id))))), inArray(messagesTable.channel_id, db.select({ id: channelsTable.id }).from(channelsTable).where(inArray(channelsTable.team_id, tenants as string[]))))!);
+      const tenants2 = memberTenantIds(session, undefined);
+      if (tenants2.length > 0) alternatives.push(and(inArray(messagesTable.channel_id, db.select({ id: channelsTable.id }).from(channelsTable).where(inArray(channelsTable.team_id, tenants2 as string[]))), inArray(messagesTable.channel_id, db.select({ id: channelsTable.id }).from(channelsTable).where(eq(channelsTable.private, false))))!);
       if (alternatives.length === 0) return ok([], { page: { page, page_size, total: 0 } });
       conditions.push(alternatives.length === 1 ? alternatives[0] : or(...alternatives)!);
     }
       const where = conditions.length ? and(...conditions) : undefined;
-      const [rows, [{ total }]] = await Promise.all([
-        db.query.messages.findMany({ where, orderBy: [asc(messagesTable.created_at)], limit: page_size, offset: (page - 1) * page_size }),
-        db.select({ total: count() }).from(messagesTable).where(where)
-      ]);
+      // One statement at a time: both run on the request's transaction
+      const rows = await db.query.messages.findMany({ where, orderBy: [asc(messagesTable.created_at)], limit: page_size, offset: (page - 1) * page_size });
+      const [{ total }] = await db.select({ total: count() }).from(messagesTable).where(where);
       return ok(rows.map(presentListRow), { page: { page, page_size, total } });
     } catch (err) {
       return handleError(err, "read");

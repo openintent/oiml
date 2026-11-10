@@ -98,6 +98,7 @@ export function handleError(err: unknown, operation: "read" | "write" | "delete"
       : error(400, "invalid_reference", "A referenced row does not exist");
   }
   if (code === "23502") return error(400, "validation", "A required value is missing");
+  if (code === "42501") return error(403, "forbidden", "You cannot do that");
   if (code === "22P02") return operation === "read" ? notFound() : error(400, "validation", "A value has the wrong format");
   console.error(err);
   return error(500, "internal", "Something went wrong");

@@ -5,7 +5,7 @@ import { and, asc, count, eq, inArray, type SQL } from "drizzle-orm";
 import { db } from "../db/client";
 import * as schema from "../db/schema";
 import { milestones as milestonesTable, projects as projectsTable } from "../db/schema";
-import { checkRule, denied, memberTenantIds, type Rule } from "../access";
+import { checkRule, denied, memberTenantIds, rulesDisabled, type Rule } from "../access";
 import { getSession, type Session } from "../auth";
 import { created, handleError, noContent, notFound, ok, parseBody, parseId, parseQuery } from "../http";
 import { presentMilestone } from "../present";
@@ -55,14 +55,15 @@ export const milestones = {
       const conditions: SQL[] = [];
     if (filters.project_id !== undefined) conditions.push(eq(milestonesTable.project_id, filters.project_id));
     if (filters.done !== undefined) conditions.push(eq(milestonesTable.done, filters.done));
-    const tenants = memberTenantIds(session, undefined);
-    if (tenants.length === 0) return ok([], { page: { page, page_size, total: 0 } });
-    conditions.push(inArray(milestonesTable.project_id, db.select({ id: projectsTable.id }).from(projectsTable).where(inArray(projectsTable.team_id, tenants as string[]))));
+    if (!rulesDisabled()) {
+      const tenants = memberTenantIds(session, undefined);
+      if (tenants.length === 0) return ok([], { page: { page, page_size, total: 0 } });
+      conditions.push(inArray(milestonesTable.project_id, db.select({ id: projectsTable.id }).from(projectsTable).where(inArray(projectsTable.team_id, tenants as string[]))));
+    }
       const where = conditions.length ? and(...conditions) : undefined;
-      const [rows, [{ total }]] = await Promise.all([
-        db.query.milestones.findMany({ where, orderBy: [asc(milestonesTable.due_on)], limit: page_size, offset: (page - 1) * page_size }),
-        db.select({ total: count() }).from(milestonesTable).where(where)
-      ]);
+      // One statement at a time: both run on the request's transaction
+      const rows = await db.query.milestones.findMany({ where, orderBy: [asc(milestonesTable.due_on)], limit: page_size, offset: (page - 1) * page_size });
+      const [{ total }] = await db.select({ total: count() }).from(milestonesTable).where(where);
       return ok(rows.map(presentListRow), { page: { page, page_size, total } });
     } catch (err) {
       return handleError(err, "read");

@@ -7,3 +7,14 @@ Put your own code in `src/`: `src/extensions/<resource>/hooks.go` holds hooks ar
 Run `go mod tidy` after generating, then `go run ./cmd/server` with `DATABASE_URL` set. The contract tests under `tests` run with `OSL_BASE_URL=http://localhost:8080 go test ./...` against a running server; `go run ./cmd/seed` replays the model's seed steps against it. The REST contract is `openapi.json`, served at `/api/openapi.json`.
 
 Migrations in `db/migrations` are a pure function of the model history. Apply them with `osl migrate`.
+
+## Tenant isolation in the database
+
+The model says `auth.tenancy.isolation: database`, so every tenant table has row-level security behind the rules. Two roles connect:
+
+- `DATABASE_URL` is the owner: it runs the migrations and the worker's jobs (River), and the policies do not bind it.
+- `DATABASE_APP_URL` is `workspace_app`, the role every request reads and writes as. A request sees the rows of the teams its caller belongs to, what a public read rule opens to everyone, and nothing else; outside a request it sees no tenant row at all. `app.New` refuses to build the engine if this URL connects as the owner, a superuser or a role with BYPASSRLS.
+
+The migrations create `workspace_app` without a login and without a password. Put `DATABASE_APP_URL=postgres://workspace_app:<a password you choose>@host:5432/workspace` in the environment and run `osl migrate`: it gives the role that password. No password is in any generated file.
+
+Handlers and your own code hold the database as a `*db.Scope`: its `Query`, `QueryRow`, `Exec` and `Begin` are the pool's, and each statement runs with the tenants of its context bound for its own transaction (pass the request's context, `ctx.Context()` in an action). A schedule or timer gets the owner's pool behind the same type.

@@ -14,6 +14,7 @@ import (
 
 	"workspace/generated/actions"
 	"workspace/generated/actions/handlers"
+	"workspace/generated/db"
 	"workspace/generated/jobs"
 	"workspace/generated/models"
 )
@@ -26,7 +27,7 @@ func Use(p *pgxpool.Pool) {
 }
 
 func systemContext(ctx context.Context, now time.Time) *actions.Context {
-	return &actions.Context{Ctx: ctx, Session: nil, DB: pool, Now: now}
+	return &actions.Context{Ctx: ctx, Session: nil, DB: db.System(pool), Now: now}
 }
 
 // Schedule is a cron (UTC) and the action it runs as the system, with literal input.

@@ -420,7 +420,7 @@
           "channel_members"
         ],
         "operationId": "channel_members_list",
-        "description": "Any of: Only the members of the row reached through channel_id (ChannelMember); Only members of the tenant reached through channel_id.team_id, only when channel_id.private = false.",
+        "description": "Any of: All of: Only the members of the row reached through channel_id (ChannelMember); Only members of the tenant reached through channel_id.team_id; Only members of the tenant reached through channel_id.team_id, only when channel_id.private = false.",
         "security": [
           {
             "cookieAuth": []
@@ -571,7 +571,7 @@
           "channel_members"
         ],
         "operationId": "channel_members_create",
-        "description": "Any of: Only the owner of the row reached through channel_id.created_by; Only the members of the row reached through channel_id (ChannelMember) with at least admin.",
+        "description": "Any of: All of: Only the owner of the row reached through channel_id.created_by; Only members of the tenant reached through channel_id.team_id; All of: Only the members of the row reached through channel_id (ChannelMember) with at least admin; Only members of the tenant reached through channel_id.team_id.",
         "security": [
           {
             "cookieAuth": []
@@ -653,7 +653,7 @@
           "channel_members"
         ],
         "operationId": "channel_members_get",
-        "description": "Any of: Only the members of the row reached through channel_id (ChannelMember); Only members of the tenant reached through channel_id.team_id, only when channel_id.private = false.",
+        "description": "Any of: All of: Only the members of the row reached through channel_id (ChannelMember); Only members of the tenant reached through channel_id.team_id; Only members of the tenant reached through channel_id.team_id, only when channel_id.private = false.",
         "security": [
           {
             "cookieAuth": []
@@ -744,7 +744,7 @@
           "channel_members"
         ],
         "operationId": "channel_members_delete",
-        "description": "Any of: Only the row's owner (user_id); Only the members of the row reached through channel_id (ChannelMember) with at least admin.",
+        "description": "Any of: All of: Only the row's owner (user_id); Only members of the tenant reached through channel_id.team_id; All of: Only the members of the row reached through channel_id (ChannelMember) with at least admin; Only members of the tenant reached through channel_id.team_id.",
         "security": [
           {
             "cookieAuth": []
@@ -790,7 +790,7 @@
           "channels"
         ],
         "operationId": "channels_list",
-        "description": "Any of: Only the row's members (ChannelMember); Only members of the row's tenant (team_id), only when private = false.",
+        "description": "Any of: All of: Only the row's members (ChannelMember); Only members of the row's tenant (team_id); Only members of the row's tenant (team_id), only when private = false.",
         "security": [
           {
             "cookieAuth": []
@@ -1010,7 +1010,7 @@
           "channels"
         ],
         "operationId": "channels_get",
-        "description": "Any of: Only the row's members (ChannelMember); Only members of the row's tenant (team_id), only when private = false. A row the read rule hides answers 404.",
+        "description": "Any of: All of: Only the row's members (ChannelMember); Only members of the row's tenant (team_id); Only members of the row's tenant (team_id), only when private = false. A row the read rule hides answers 404.",
         "security": [
           {
             "cookieAuth": []
@@ -1110,7 +1110,7 @@
           "channels"
         ],
         "operationId": "channels_update",
-        "description": "Any of: Only the row's members (ChannelMember) with at least admin; Only members of the row's tenant (team_id) with at least role admin. A row the read rule hides answers 404.",
+        "description": "Any of: All of: Only the row's members (ChannelMember) with at least admin; Only members of the row's tenant (team_id); Only members of the row's tenant (team_id) with at least role admin. A row the read rule hides answers 404.",
         "security": [
           {
             "cookieAuth": []
@@ -1198,7 +1198,7 @@
           "channels"
         ],
         "operationId": "channels_delete",
-        "description": "Any of: Only the row's members (ChannelMember) with at least admin; Only members of the row's tenant (team_id) with at least role admin. A row the read rule hides answers 404.",
+        "description": "Any of: All of: Only the row's members (ChannelMember) with at least admin; Only members of the row's tenant (team_id); Only members of the row's tenant (team_id) with at least role admin. A row the read rule hides answers 404.",
         "security": [
           {
             "cookieAuth": []
@@ -1766,7 +1766,7 @@
           "messages"
         ],
         "operationId": "messages_list",
-        "description": "Any of: Only the members of the row reached through channel_id (ChannelMember); Only members of the tenant reached through channel_id.team_id, only when channel_id.private = false.",
+        "description": "Any of: All of: Only the members of the row reached through channel_id (ChannelMember); Only members of the tenant reached through channel_id.team_id; Only members of the tenant reached through channel_id.team_id, only when channel_id.private = false.",
         "security": [
           {
             "cookieAuth": []
@@ -1894,7 +1894,7 @@
           "messages"
         ],
         "operationId": "messages_create",
-        "description": "All of: Only the members of the row reached through channel_id (ChannelMember); Only the row's owner (author_id).",
+        "description": "All of: Only the members of the row reached through channel_id (ChannelMember); Only the row's owner (author_id); Only members of the tenant reached through channel_id.team_id.",
         "security": [
           {
             "cookieAuth": []
@@ -1968,7 +1968,7 @@
           "messages"
         ],
         "operationId": "messages_get",
-        "description": "Any of: Only the members of the row reached through channel_id (ChannelMember); Only members of the tenant reached through channel_id.team_id, only when channel_id.private = false. A row the read rule hides answers 404.",
+        "description": "Any of: All of: Only the members of the row reached through channel_id (ChannelMember); Only members of the tenant reached through channel_id.team_id; Only members of the tenant reached through channel_id.team_id, only when channel_id.private = false. A row the read rule hides answers 404.",
         "security": [
           {
             "cookieAuth": []
@@ -2055,7 +2055,7 @@
           "messages"
         ],
         "operationId": "messages_update",
-        "description": "Only the row's owner (author_id). A row the read rule hides answers 404.",
+        "description": "All of: Only the row's owner (author_id); Only members of the tenant reached through channel_id.team_id. A row the read rule hides answers 404.",
         "security": [
           {
             "cookieAuth": []
@@ -2134,7 +2134,7 @@
           "messages"
         ],
         "operationId": "messages_delete",
-        "description": "Any of: Only the row's owner (author_id); Only the members of the row reached through channel_id (ChannelMember) with at least admin. A row the read rule hides answers 404.",
+        "description": "Any of: All of: Only the row's owner (author_id); Only members of the tenant reached through channel_id.team_id; All of: Only the members of the row reached through channel_id (ChannelMember) with at least admin; Only members of the tenant reached through channel_id.team_id. A row the read rule hides answers 404.",
         "security": [
           {
             "cookieAuth": []
@@ -2925,7 +2925,7 @@
           "notes"
         ],
         "operationId": "notes_update",
-        "description": "Only the row's owner (author_id).",
+        "description": "All of: Only the row's owner (author_id); Only members of the tenant reached through project_id.team_id.",
         "security": [
           {
             "cookieAuth": []
@@ -3005,7 +3005,7 @@
           "notes"
         ],
         "operationId": "notes_delete",
-        "description": "Any of: Only the row's owner (author_id); Only members of the tenant reached through project_id.team_id with at least role admin.",
+        "description": "Any of: All of: Only the row's owner (author_id); Only members of the tenant reached through project_id.team_id; Only members of the tenant reached through project_id.team_id with at least role admin.",
         "security": [
           {
             "cookieAuth": []
@@ -3543,7 +3543,7 @@
           "tasks"
         ],
         "operationId": "tasks_list",
-        "description": "Any of: Open to everyone, only when project_id.public = true; Only the row's owner (assignee_id); Only members of the tenant reached through project_id.team_id with at least role admin.",
+        "description": "Any of: Open to everyone, only when project_id.public = true; All of: Only the row's owner (assignee_id); Only members of the tenant reached through project_id.team_id; Only members of the tenant reached through project_id.team_id with at least role admin.",
         "security": [
           {
             "cookieAuth": []
@@ -3828,7 +3828,7 @@
           "tasks"
         ],
         "operationId": "tasks_get",
-        "description": "Any of: Open to everyone, only when project_id.public = true; Only the row's owner (assignee_id); Only members of the tenant reached through project_id.team_id with at least role admin.",
+        "description": "Any of: Open to everyone, only when project_id.public = true; All of: Only the row's owner (assignee_id); Only members of the tenant reached through project_id.team_id; Only members of the tenant reached through project_id.team_id with at least role admin.",
         "security": [
           {
             "cookieAuth": []
@@ -3955,7 +3955,7 @@
           "tasks"
         ],
         "operationId": "tasks_update",
-        "description": "Any of: Only the row's owner (assignee_id); Only members of the tenant reached through project_id.team_id with at least role admin.",
+        "description": "Any of: All of: Only the row's owner (assignee_id); Only members of the tenant reached through project_id.team_id; Only members of the tenant reached through project_id.team_id with at least role admin.",
         "security": [
           {
             "cookieAuth": []

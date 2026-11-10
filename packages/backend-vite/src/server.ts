@@ -36,7 +36,28 @@ import {
 } from "./util.js";
 
 /** generated/server/trpc.ts */
-export function trpcFile(): string {
+export function trpcFile(ir?: IR): string {
+  if (ir?.auth?.tenancy?.isolation)
+    return `${HEADER("tRPC initialisation: every procedure runs within its caller's tenants.")}
+import { initTRPC } from "@trpc/server";
+import { withTenants } from "../db/client";
+import type { Context } from "./context";
+
+const t = initTRPC.context<Context>().create();
+
+/**
+ * One transaction per procedure call, bound to the session's memberships: the procedure reaches the rows of those
+ * tenants, what a public-read policy shows to everyone, and nothing else. A batch runs each call in its own.
+ */
+const withinTenants = t.middleware(({ ctx, next }) =>
+  withTenants(ctx.session?.memberships.map(m => m.tenant) ?? [], () => next())
+);
+
+export const router = t.router;
+export const publicProcedure = t.procedure.use(withinTenants);
+export const middleware = t.middleware;
+export type { Context };
+`;
   return `${HEADER("tRPC initialisation.")}
 import { initTRPC } from "@trpc/server";
 import type { Context } from "./context";
@@ -70,7 +91,11 @@ export async function createContext(opts: FetchCreateContextFnOptions): Promise<
 }
 
 /** generated/server/errors.ts */
-export function errorsFile(): string {
+export function errorsFile(ir?: IR): string {
+  // Under isolation: database the policy refuses a write the rules let through: answered as the rules would have
+  const refused = ir?.auth?.tenancy?.isolation
+    ? `\n  if (code === "42501") return new TRPCError({ code: "FORBIDDEN", message: "You cannot do that" });`
+    : "";
   return `${HEADER("Error mapping: database errors, bad ids and refused requests become tRPC errors with the contract's status codes.")}
 import { TRPCError, type TRPC_ERROR_CODE_KEY } from "@trpc/server";
 import type { ZodTypeAny, z } from "zod";
@@ -117,7 +142,7 @@ export function toTRPCError(err: unknown, operation: "read" | "write" | "delete"
       ? new TRPCError({ code: "CONFLICT", message: "Other rows still reference this row" })
       : new TRPCError({ code: "BAD_REQUEST", message: "A referenced row does not exist" });
   }
-  if (code === "23502") return new TRPCError({ code: "BAD_REQUEST", message: "A required value is missing" });
+  if (code === "23502") return new TRPCError({ code: "BAD_REQUEST", message: "A required value is missing" });${refused}
   if (code === "22P02") {
     return operation === "read" ? notFound() : new TRPCError({ code: "BAD_REQUEST", message: "A value has the wrong format" });
   }
@@ -143,7 +168,18 @@ export function checkRule(rule: Rule, session: Session | null, row?: Record<stri
     ? new TRPCError({ code: "UNAUTHORIZED", message: "Sign in to continue" })
     : new TRPCError({ code: "FORBIDDEN", message: "You cannot do that" });
 }
-`;
+${
+  ir.auth?.tenancy?.isolation
+    ? `
+/** The error a refusal becomes, for a row the caller's tenants do not reach */
+export function refused(result: { ok: false; status: 401 | 403 }): TRPCError {
+  return result.status === 401
+    ? new TRPCError({ code: "UNAUTHORIZED", message: "Sign in to continue" })
+    : new TRPCError({ code: "FORBIDDEN", message: "You cannot do that" });
+}
+`
+    : ""
+}`;
 }
 
 /** generated/server/auth.ts: sessions, passwords and the auth router. Without auth, a session query that answers null. */
@@ -182,16 +218,18 @@ export const authRouter = router({
     `  password: z.string().min(8).max(200)`,
     ...registerFields.map(c => `  ${c.name}: ${fillEnums(zodForColumn(c, "create"), ir, identity)}`)
   ].join(",\n");
+  // Under isolation: database the memberships come from a function, since no tenant is bound when a session is read
+  const isolated = Boolean(tenancy?.isolation);
   const schemaImports = [
     `${table} as ${tableAlias}`,
-    ...(membershipTable ? [`${membershipTable} as ${membershipTable}Table`] : [])
+    ...(membershipTable && !isolated ? [`${membershipTable} as ${membershipTable}Table`] : [])
   ];
   const fileSpecs = identity.columns.some(c => c.type.kind === "file");
 
   return `${HEADER("Auth: cookie sessions and the auth router (passwords, magic links, sign-out, the session).")}
 import { createHmac, randomBytes${credentials ? ", scryptSync" : ""}, timingSafeEqual } from "node:crypto";
 import { TRPCError } from "@trpc/server";
-import { eq } from "drizzle-orm";
+import { eq${isolated ? ", sql" : ""} } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db/client";
 import { ${schemaImports.join(", ")} } from "../db/schema";
@@ -420,7 +458,14 @@ export type AppRouter = typeof appRouter;
 /** generated/server/app.ts */
 export function appFile(ir: IR): string {
   const oauth = ir.auth?.providers.some(p => p.kind === "oauth");
+  const isolated = Boolean(ir.auth?.tenancy?.isolation);
   const restRoutes: string[] = [];
+  if (isolated)
+    restRoutes.push(`  // REST routes answer within their caller's tenants, as the procedures do
+  app.use("/api/*", async (c, next) => {
+    const session = await getSession(c.req.raw);
+    await withTenants(session?.memberships.map(m => m.tenant) ?? [], () => next());
+  });`);
   if (ir.files) {
     restRoutes.push(`  // Files: bytes in and out. Local storage streams them; S3 redirects to a signed URL.
   app.get("/api/files/:id/content", async c => {
@@ -454,7 +499,15 @@ export function appFile(ir: IR): string {
       const result = await schedulesRun(await c.req.json().catch(() => ({})));
       return result ? c.json({ data: result }) : c.json({ error: { code: "unknown_schedule", message: "no schedule runs that action" } }, 400);
     });
-    app.get("/api/osl-hooks/emails", c => c.json({ data: emailsSent({ to: c.req.query("to"), subject: c.req.query("subject") }) }));
+    app.get("/api/osl-hooks/emails", c => c.json({ data: emailsSent({ to: c.req.query("to"), subject: c.req.query("subject") }) }));${
+      isolated
+        ? `
+    // The two hooks of the cross-tenant walk's second pass: the rule checks switched off, and the unbound probe
+    app.post("/api/osl-hooks/rules/off", c => c.json({ data: rulesSwitch(true) }));
+    app.post("/api/osl-hooks/rules/on", c => c.json({ data: rulesSwitch(false) }));
+    app.get("/api/osl-hooks/tenancy/unbound", async c => c.json({ data: await tenancyUnbound() }));`
+        : ""
+    }
   }`);
   if (oauth) {
     restRoutes.push(`  // OAuth: the browser is sent to the provider and comes back signed in.
@@ -482,8 +535,8 @@ import { trpcServer } from "@hono/trpc-server";
 import { TRPCError } from "@trpc/server";
 import { getHTTPStatusCodeFromError } from "@trpc/server/http";
 import { Hono, type Context as HonoContext } from "hono";
-${ir.files ? `import { fileContent, receiveContent } from "../files";\n` : ""}${oauth ? `import { APP_URL, oauthCallback, oauthStart } from "../auth-providers";\nimport { sessionCookie } from "./auth";\n` : ""}${ir.jobs ? `import { startWorker } from "../jobs";\n` : ""}import { emailsSent, schedulesRun, testHooksEnabled, timersRun } from "../test-hooks";
-import { createContext } from "./context";
+${ir.files ? `import { fileContent, receiveContent } from "../files";\n` : ""}${oauth ? `import { APP_URL, oauthCallback, oauthStart } from "../auth-providers";\nimport { sessionCookie } from "./auth";\n` : ""}${ir.jobs ? `import { startWorker } from "../jobs";\n` : ""}${isolated ? `import { withTenants } from "../db/client";\n` : ""}import { emailsSent, ${isolated ? "rulesSwitch, " : ""}schedulesRun, ${isolated ? "tenancyUnbound, " : ""}testHooksEnabled, timersRun } from "../test-hooks";
+${isolated ? `import { getSession } from "./auth";\n` : ""}import { createContext } from "./context";
 import { appRouter } from "./router";
 
 /** Errors from the shared modules are tRPC errors; REST routes answer them in the contract's shape. */
@@ -621,6 +674,10 @@ export function resourceRouterFile(ir: IR, resource: ResourceIR): string {
   const membershipTable = tenancy ? `${tableExport(entityByName(ir, tenancy.membership))}Table` : null;
   const tableVar = (e: EntityIR) => `${tableExport(e)}Table`;
   const me = `ctx.session!.user.${identityPk(ir)}`;
+  // Under isolation: database the policy hides another tenant's row from the load: the probe tells it from a missing one
+  const isolated = Boolean(tenancy?.isolation);
+  const probe = entity.tenant?.exists;
+  const miss = (ruleRef: string) => (probe ? `await missing(id, ${ruleRef}, ctx.session)` : "notFound()");
   const listFilter = list
     ? listRuleFilter(ir, entity, list.rule, {
         ruleRef: "RULES.read",
@@ -708,6 +765,15 @@ export function resourceRouterFile(ir: IR, resource: ResourceIR): string {
   if (hasFiles)
     sections.push(`/** File fields and what they accept */\nconst FILE_FIELDS = ${fileSpecsLiteral(entity)} as const;`);
   if (ruleValues) sections.push(ruleValues.source);
+  if (probe && needsId) {
+    accessImports.add("refused");
+    accessImports.add("unreachable");
+    errorImports.add("notFound");
+    sections.push(`/** No row came back: another tenant's row answers as the rule answers a caller it refuses, a missing one 404 */
+async function missing(id: unknown, rule: Rule, session: Session | null) {
+  return (await rowExists(${q(probe)}, id)) ? refused(unreachable(rule, session)) : notFound();
+}`);
+  }
   if (list?.sortable.length)
     sections.push(`const SORTABLE = {\n${list.sortable.map(f => `  ${f}: ${table}.${f}`).join(",\n")}\n};`);
 
@@ -763,10 +829,16 @@ export function resourceRouterFile(ir: IR, resource: ResourceIR): string {
     ${destructure}
 ${whereLines}
     try {
-      const [rows, [{ total }]] = await Promise.all([
+${
+  isolated
+    ? `      // One statement at a time: both run on the procedure's transaction
+      const rows = await ${query}.findMany({ where${withClause(list.include)}, orderBy: ${orderBy}, limit: page_size, offset: (page - 1) * page_size });
+      const [{ total }] = await db.select({ total: count() }).from(${table}).where(where);`
+    : `      const [rows, [{ total }]] = await Promise.all([
         ${query}.findMany({ where${withClause(list.include)}, orderBy: ${orderBy}, limit: page_size, offset: (page - 1) * page_size }),
         db.select({ total: count() }).from(${table}).where(where)
-      ]);
+      ]);`
+}
       return { data: rows.map(presentListRow), page: { page, page_size, total } };
     } catch (err) {
       throw toTRPCError(err, "read");
@@ -782,7 +854,7 @@ ${whereLines}
     const row = await ${query}.findFirst({ where: eq(${table}.${pk}, id)${withClause(get.include)} }).catch(err => {
       throw toTRPCError(err, "read");
     });
-    if (!row) throw notFound();
+    if (!row) throw ${miss("RULES.read")};
     ${
       entity.hidden === "not_found"
         ? `if (!verdict(RULES.read, ctx.session, ${rowArg(get.rule, "row", sessionArg)}).ok) throw notFound();`
@@ -801,10 +873,12 @@ ${whereLines}
     const bodyCheck = needsBodyCheck(create.rule)
       ? `\n    checkRule(RULES.create, ctx.session, ${rowArg(create.rule, owner || defaults ? `{ ${defaults}...input${owner} }` : "input", sessionArg)});`
       : "";
+    // Under isolation: database a new tenant is bound to the request before the insert, or its own policy would refuse the row
+    const bind = isTenant && isolated;
     const insert =
       isTenant && tenancy && membershipTable
-        ? `      const row = await db.transaction(async tx => {
-        const [created] = await tx.insert(${table}).values(values).returning();
+        ? `${bind ? `      const tenantId = randomUUID();\n      await bindTenant(tenantId);\n` : ""}      const row = await db.transaction(async tx => {
+        const [created] = await tx.insert(${table}).values(${bind ? `{ ...values, ${pk}: tenantId }` : "values"}).returning();
         await tx.insert(${membershipTable}).values({ ${tenancy.userColumn}: ctx.session!.user.${identityPk(ir)}, ${tenancy.tenantColumn}: created.${pk}, ${tenancy.roleColumn}: ${q(tenancy.creatorRole)} });
         return created;
       });`
@@ -837,7 +911,7 @@ ${emitLines.join("\n")}${timerLine}
       const existing = await ${query}.findFirst({ where: eq(${table}.${pk}, id) }).catch(err => {
         throw toTRPCError(err, "read");
       });
-      if (!existing) throw notFound();${updateChecks.lines}
+      if (!existing) throw ${miss("RULES.update")};${updateChecks.lines}
       checkRule(RULES.update, ctx.session, ${updateChecks.arg});
       const hookContext: HookContext = { session: ctx.session, req: ctx.req };
       try {
@@ -863,7 +937,7 @@ ${emitLines.map(l => "  " + l).join("\n")}${timerLine}
     const existing = await ${query}.findFirst({ where: eq(${table}.${pk}, id) }).catch(err => {
       throw toTRPCError(err, "read");
     });
-    if (!existing) throw notFound();${deleteChecks.lines}
+    if (!existing) throw ${miss("RULES.delete")};${deleteChecks.lines}
     checkRule(RULES.delete, ctx.session, ${deleteChecks.arg});
     const hookContext: HookContext = { session: ctx.session, req: ctx.req };
     try {
@@ -889,7 +963,8 @@ ${emitLines.join("\n")}
         idName: `${resource.name}Id`,
         T,
         actionEvents: actionEvents(action.name),
-        checks: rowChecks(action.rule, "current", "    ")
+        checks: rowChecks(action.rule, "current", "    "),
+        miss: miss(`ACTION_RULES.${action.name}`)
       })
     );
   }
@@ -899,7 +974,8 @@ ${emitLines.join("\n")}
       ? [`import { ${[...drizzleImports].sort().join(", ")}${list ? ", type SQL" : ""} } from "drizzle-orm";`]
       : []),
     ...(needsId ? [`import { z } from "zod";`] : []),
-    `import { db } from "../../db/client";`,
+    ...(isTenant && isolated && create ? [`import { randomUUID } from "node:crypto";`] : []),
+    `import { ${["db", ...(isTenant && isolated && create ? ["bindTenant"] : []), ...(accessImports.has("unreachable") ? ["rowExists"] : [])].join(", ")} } from "../../db/client";`,
     `import * as schema from "../../db/schema";`,
     `import { ${[
       `${tableExport(entity)} as ${table}`,
@@ -948,6 +1024,8 @@ function actionProcedure(
     actionEvents: IR["events"];
     /** The checks after the row is loaded (a hidden row's 404 when the entity asks for it) and the row the action's own check reads */
     checks: { lines: string; arg: string };
+    /** What a row that did not come back answers: notFound(), or under isolation the probe's answer */
+    miss: string;
   } | null
 ): string {
   const input = actionInputName(action);
@@ -970,7 +1048,7 @@ function actionProcedure(
     const current = await ${row.query}.findFirst({ where: eq(${row.table}.${row.pk}, id) }).catch(err => {
       throw toTRPCError(err, "read");
     });
-    if (!current) throw notFound();${row.checks.lines}
+    if (!current) throw ${row.miss};${row.checks.lines}
     checkRule(${rulesRef}, ctx.session, ${row.checks.arg});
     try {
       const result = await handlers.${action.handler}({ input, row: current, session: ctx.session, db, now: new Date() });

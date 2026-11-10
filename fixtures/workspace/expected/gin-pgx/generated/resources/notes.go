@@ -9,7 +9,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"workspace/generated/access"
 	"workspace/generated/auth"
@@ -23,12 +22,12 @@ import (
 
 // Notes serves the notes resource (Note).
 type Notes struct {
-	db   *pgxpool.Pool
+	db   *db.Scope
 	auth *auth.Auth
 }
 
 // NewNotes builds the handlers.
-func NewNotes(db *pgxpool.Pool, a *auth.Auth) *Notes {
+func NewNotes(db *db.Scope, a *auth.Auth) *Notes {
 	return &Notes{db: db, auth: a}
 }
 
@@ -45,9 +44,9 @@ var notesReadRule = access.Rule{Kind: "member", Field: "project_id.team_id"}
 
 var notesCreateRule = access.Rule{Kind: "all", All: []access.Rule{{Kind: "member", Field: "project_id.team_id"}, {Kind: "owner", Field: "author_id"}}}
 
-var notesUpdateRule = access.Rule{Kind: "owner", Field: "author_id"}
+var notesUpdateRule = access.Rule{Kind: "all", All: []access.Rule{{Kind: "owner", Field: "author_id"}, {Kind: "member", Field: "project_id.team_id"}}}
 
-var notesDeleteRule = access.Rule{Kind: "any", Any: []access.Rule{{Kind: "owner", Field: "author_id"}, {Kind: "member", Field: "project_id.team_id", Role: "admin"}}}
+var notesDeleteRule = access.Rule{Kind: "any", Any: []access.Rule{{Kind: "all", All: []access.Rule{{Kind: "owner", Field: "author_id"}, {Kind: "member", Field: "project_id.team_id"}}}, {Kind: "member", Field: "project_id.team_id", Role: "admin"}}}
 
 // notesListRow is a list item with its includes.
 type notesListRow struct {
@@ -76,12 +75,14 @@ func (h *Notes) List(c *gin.Context) {
 	if v, ok := query.Filters["project_id"]; ok {
 		where.Eq(`"project_id"`, v)
 	}
-	tenants := access.MemberTenantIDs(session, "")
-	if len(tenants) == 0 {
-		httpx.List(c, []notesListRow{}, httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: 0})
-		return
+	if !access.RulesDisabled() {
+		tenants := access.MemberTenantIDs(session, "")
+		if len(tenants) == 0 {
+			httpx.List(c, []notesListRow{}, httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: 0})
+			return
+		}
+		where.Raw(`"project_id" IN (SELECT "id" FROM ` + models.ProjectTable + ` WHERE "team_id" = ANY(` + where.Param(tenants) + `))`)
 	}
-	where.Raw(`"project_id" IN (SELECT "id" FROM ` + models.ProjectTable + ` WHERE "team_id" = ANY(` + where.Param(tenants) + `))`)
 	var total int
 	if err := h.db.QueryRow(ctx, `SELECT count(*) FROM `+models.NoteTable+where.SQL(), where.Args()...).Scan(&total); err != nil {
 		httpx.HandleError(c, err, "read")
@@ -130,7 +131,7 @@ func (h *Notes) Get(c *gin.Context) {
 	}
 	row, err := models.ScanNote(h.db.QueryRow(ctx, `SELECT `+models.NoteColumns+` FROM `+models.NoteTable+` WHERE "id" = $1`, id))
 	if err != nil {
-		httpx.HandleError(c, err, "read")
+		h.missing(c, err, id, notesReadRule, session, "read")
 		return
 	}
 	ruleRow, err := h.ruleRow(ctx, access.Row{"project_id": row.ProjectID})
@@ -215,10 +216,15 @@ func (h *Notes) Update(c *gin.Context) {
 	}
 	existing, err := models.ScanNote(h.db.QueryRow(ctx, `SELECT `+models.NoteColumns+` FROM `+models.NoteTable+` WHERE "id" = $1`, id))
 	if err != nil {
+		h.missing(c, err, id, notesUpdateRule, session, "write")
+		return
+	}
+	ruleRow, err := h.ruleRow(ctx, access.Row{"author_id": existing.AuthorID, "project_id": existing.ProjectID})
+	if err != nil {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	if verdict := access.CheckRow(notesUpdateRule, session, access.Row{"author_id": existing.AuthorID}); verdict != nil {
+	if verdict := access.CheckRow(notesUpdateRule, session, ruleRow); verdict != nil {
 		access.Deny(c, verdict)
 		return
 	}
@@ -274,7 +280,7 @@ func (h *Notes) Delete(c *gin.Context) {
 	}
 	existing, err := models.ScanNote(h.db.QueryRow(ctx, `SELECT `+models.NoteColumns+` FROM `+models.NoteTable+` WHERE "id" = $1`, id))
 	if err != nil {
-		httpx.HandleError(c, err, "delete")
+		h.missing(c, err, id, notesDeleteRule, session, "delete")
 		return
 	}
 	ruleRow, err := h.ruleRow(ctx, access.Row{"author_id": existing.AuthorID, "project_id": existing.ProjectID})
@@ -300,6 +306,18 @@ func (h *Notes) Delete(c *gin.Context) {
 		return
 	}
 	httpx.NoContent(c)
+}
+
+// missing answers a row that did not come back: another tenant's as the rule answers a caller it refuses, a
+// missing one 404, and any other failure as it is.
+func (h *Notes) missing(c *gin.Context, err error, id any, rule access.Rule, session *auth.Session, operation string) {
+	if errors.Is(err, pgx.ErrNoRows) {
+		if found, perr := h.db.Exists(c.Request.Context(), "osl_exists_notes", id); perr == nil && found {
+			access.Deny(c, access.Unreachable(rule, session))
+			return
+		}
+	}
+	httpx.HandleError(c, err, operation)
 }
 
 // ruleRow adds to row the values the rules reach through relations, under their dotted keys.

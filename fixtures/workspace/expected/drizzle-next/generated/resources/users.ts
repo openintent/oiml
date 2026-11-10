@@ -47,10 +47,9 @@ export const users = {
         conditions.push(or(ilike(usersTable.name, pattern), ilike(usersTable.email, pattern))!);
       }
       const where = conditions.length ? and(...conditions) : undefined;
-      const [rows, [{ total }]] = await Promise.all([
-        db.query.users.findMany({ where, orderBy: [desc(usersTable.created_at)], limit: page_size, offset: (page - 1) * page_size }),
-        db.select({ total: count() }).from(usersTable).where(where)
-      ]);
+      // One statement at a time: both run on the request's transaction
+      const rows = await db.query.users.findMany({ where, orderBy: [desc(usersTable.created_at)], limit: page_size, offset: (page - 1) * page_size });
+      const [{ total }] = await db.select({ total: count() }).from(usersTable).where(where);
       return ok(rows.map(presentListRow), { page: { page, page_size, total } });
     } catch (err) {
       return handleError(err, "read");

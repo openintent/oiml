@@ -687,88 +687,177 @@ async function tenantWalk(
       await outsider.client.resource({ resource: tenantResource, op: tenantCreate, body: built.body });
   }
   await refresh(outsider, resolver);
-  let checked = 0;
+  const roles = tenancy.roles;
   const lookup = async (table: string, column: string, value: unknown): Promise<Row | null> => {
     const { rows } = await db.query(`select * from "${table}" where "${column}" = $1`, [value]);
     return (rows[0] as Row | undefined) ?? null;
   };
-  for (const w of state.walkable) {
-    const { entity, resource } = w;
-    const chain = tenantChain(ir, entity);
-    if (!chain) continue;
-    for (const row of state.rows.get(entity.name) ?? []) {
-      const fresh = await resolver.fresh(entity, row.id);
-      if (!fresh) continue;
-      // Follow the chain to the tenant this row belongs to
-      let current: Row | null = fresh;
-      let tenantId: unknown = entity.name === tenancy.entity ? fresh[entity.primaryKey[0]] : undefined;
-      for (const fk of chain) {
-        const value: unknown = current?.[fk.column];
-        if (fk.targetEntity === tenancy.entity) {
-          tenantId = value;
-          break;
-        }
-        current = value == null ? null : await lookup(fk.targetTable, fk.targetColumn, value);
-      }
-      if (!same(tenantId, home.id)) continue;
-      checked++;
-      const before = JSON.stringify(fresh);
-      const who = `outsider on the home team's ${entity.name}`;
-      for (const op of resource.operations) {
-        if (op.rule.kind === "none") continue;
-        if (op.kind === "list") {
-          const reply = await outsider.client.resource({ resource, op, query: { page_size: "200" } });
-          const body = reply.body as { data?: Row[] } | null;
-          if (reply.status < 300 && (body?.data ?? []).some(r => same(r[entity.primaryKey[0]], row.id)))
-            findings.push(`${resource.name}.list as ${who}: the row is listed`);
-          continue;
-        }
-        if (op.kind === "create") continue;
-        const body = op.kind === "update" ? (updateBody(entity, op, fresh, bodies) ?? {}) : undefined;
-        const reply = await outsider.client.resource({ resource, op, id: row.id, body });
-        if (reply.status < 300 || ![401, 403, 404].includes(reply.status))
-          findings.push(`${resource.name}.${op.kind} as ${who}: ${reply.status} ${message(reply)}`);
-      }
-      for (const action of ir.actions.filter(
-        a => a.resource === resource.name && a.scope === "row" && a.rule.kind !== "none"
-      )) {
-        const reply = await outsider.client.action({ action, id: row.id, body: actionInput(action, bodies) });
-        if (![401, 403, 404].includes(reply.status))
-          findings.push(`${callLabel({ action })} as ${who}: ${reply.status} ${message(reply)}`);
-      }
-      const after = JSON.stringify(await resolver.fresh(entity, row.id));
-      if (after !== before) findings.push(`${entity.name} row of the home team changed after the outsider's calls`);
-      // A create naming the home team's parent
-      const create = resource.operations.find(
-        (o): o is Extract<OperationIR, { kind: "create" }> => o.kind === "create"
-      );
-      if (create && create.rule.kind !== "none" && chain.length) {
-        const parent = chain[0];
-        const ctxBodies: BodyContext = {
-          ...bodies,
-          relatedId: (target, column) => {
-            if (target === parent.targetEntity && column.name === parent.column) return fresh[parent.column];
-            if (ir.auth && target === ir.auth.identity) return outsider!.session!.id;
-            return (state.rows.get(target) ?? [])[0]?.id;
+  /** Whether the read rule shows this row to a caller without a session: what a public alternative deliberately opens */
+  const isPublic = async (entity: EntityIR, row: Row): Promise<boolean> =>
+    verdict(entity.rules.read, null, await resolver.resolve(entity, row, [entity.rules.read], null), roles).ok;
+  /** One pass over every row of the home team as the outsider; `pass` names it in a finding */
+  const walk = async (pass: string): Promise<number> => {
+    let checked = 0;
+    for (const w of state.walkable) {
+      const { entity, resource } = w;
+      const chain = tenantChain(ir, entity);
+      if (!chain) continue;
+      for (const row of state.rows.get(entity.name) ?? []) {
+        const fresh = await resolver.fresh(entity, row.id);
+        if (!fresh) continue;
+        // Follow the chain to the tenant this row belongs to
+        let current: Row | null = fresh;
+        let tenantId: unknown = entity.name === tenancy.entity ? fresh[entity.primaryKey[0]] : undefined;
+        for (const fk of chain) {
+          const value: unknown = current?.[fk.column];
+          if (fk.targetEntity === tenancy.entity) {
+            tenantId = value;
+            break;
           }
-        };
-        const built = validBody(
-          entity,
-          create.fields,
-          ctxBodies,
-          new Set(create.ownerField ? [create.ownerField] : [])
-        );
-        if (!built.missing.length) {
-          const reply = await outsider.client.resource({ resource, op: create, body: built.body });
+          current = value == null ? null : await lookup(fk.targetTable, fk.targetColumn, value);
+        }
+        if (!same(tenantId, home.id)) continue;
+        checked++;
+        const before = JSON.stringify(fresh);
+        const who = `${pass}outsider on the home team's ${entity.name}`;
+        // A row the read rule opens to everyone is theirs to read; nothing else about it is
+        const open = await isPublic(entity, fresh);
+        for (const op of resource.operations) {
+          if (op.rule.kind === "none") continue;
+          if (op.kind === "list") {
+            const reply = await outsider!.client.resource({ resource, op, query: { page_size: "200" } });
+            const body = reply.body as { data?: Row[] } | null;
+            if (!open && reply.status < 300 && (body?.data ?? []).some(r => same(r[entity.primaryKey[0]], row.id)))
+              findings.push(`${resource.name}.list as ${who}: the row is listed`);
+            continue;
+          }
+          if (op.kind === "create" || (op.kind === "get" && open)) continue;
+          const body = op.kind === "update" ? (updateBody(entity, op, fresh, bodies) ?? {}) : undefined;
+          const reply = await outsider!.client.resource({ resource, op, id: row.id, body });
+          if (reply.status < 300 || ![401, 403, 404].includes(reply.status))
+            findings.push(`${resource.name}.${op.kind} as ${who}: ${reply.status} ${message(reply)}`);
+        }
+        for (const action of ir.actions.filter(
+          a => a.resource === resource.name && a.scope === "row" && a.rule.kind !== "none"
+        )) {
+          const reply = await outsider!.client.action({ action, id: row.id, body: actionInput(action, bodies) });
           if (![401, 403, 404].includes(reply.status))
-            findings.push(
-              `${resource.name}.create as outsider naming the home team's ${parent.targetEntity}: ${reply.status} ${message(reply)}`
-            );
+            findings.push(`${callLabel({ action })} as ${who}: ${reply.status} ${message(reply)}`);
+        }
+        const after = JSON.stringify(await resolver.fresh(entity, row.id));
+        if (after !== before)
+          findings.push(`${pass}${entity.name} row of the home team changed after the outsider's calls`);
+        // A create naming the home team's parent
+        const create = resource.operations.find(
+          (o): o is Extract<OperationIR, { kind: "create" }> => o.kind === "create"
+        );
+        if (create && create.rule.kind !== "none" && chain.length) {
+          const parent = chain[0];
+          const ctxBodies: BodyContext = {
+            ...bodies,
+            relatedId: (target, column) => {
+              if (target === parent.targetEntity && column.name === parent.column) return fresh[parent.column];
+              if (ir.auth && target === ir.auth.identity) return outsider!.session!.id;
+              return (state.rows.get(target) ?? [])[0]?.id;
+            }
+          };
+          const built = validBody(
+            entity,
+            create.fields,
+            ctxBodies,
+            new Set(create.ownerField ? [create.ownerField] : [])
+          );
+          if (!built.missing.length) {
+            const reply = await outsider!.client.resource({ resource, op: create, body: built.body });
+            if (![401, 403, 404].includes(reply.status))
+              findings.push(
+                `${resource.name}.create as ${pass}outsider naming the home team's ${parent.targetEntity}: ${reply.status} ${message(reply)}`
+              );
+          }
         }
       }
     }
+    return checked;
+  };
+  const checked = await walk("");
+  const first = `${checked} rows of the home team checked against ${outsider.name}`;
+  if (!tenancy.isolation) return first;
+
+  // isolation: database. The same walk with the generated rule checks switched off: what still refuses is the database.
+  const hook = async (method: "GET" | "POST", path: string): Promise<{ status: number; data: unknown }> => {
+    const response = await fetch(`${ctx.baseUrl}/api/osl-hooks/${path}`, { method });
+    const body = (await response.json().catch(() => null)) as { data?: unknown } | null;
+    return { status: response.status, data: body?.data };
+  };
+  const off = await hook("POST", "rules/off");
+  if (off.status !== 200) throw new Error(`the rules/off hook answered ${off.status}; the second pass cannot run`);
+  let second = 0;
+  let control = "";
+  try {
+    // The control: an operation the rules refuse a caller without a session must now answer, with nothing in it,
+    // or the hook did not switch anything off and the second pass would prove nothing
+    for (const w of state.walkable) {
+      const list = w.resource.operations.find(o => o.kind === "list");
+      if (!w.entity.tenant || !list || list.rule.kind === "none") continue;
+      if (precheck(list.rule, null, roles).allow) continue;
+      const reply = await state.anonymous.client.resource({
+        resource: w.resource,
+        op: list,
+        query: { page_size: "200" }
+      });
+      const rows = (reply.body as { data?: Row[] } | null)?.data ?? [];
+      if (reply.status !== 200)
+        findings.push(
+          `rules off: ${w.resource.name}.list without a session answered ${reply.status}, so the hook did not switch the rule checks off`
+        );
+      for (const listed of rows) {
+        const row = await resolver.fresh(w.entity, listed[w.entity.primaryKey[0]]);
+        if (row && !(await isPublic(w.entity, row)))
+          findings.push(`rules off: ${w.resource.name}.list without a session shows a row no public rule opens`);
+      }
+      control = `${w.resource.name}.list without a session answered ${reply.status} with ${rows.length} rows`;
+      break;
+    }
+    if (!control)
+      findings.push(
+        "rules off: no list of a tenant table refuses a caller without a session, so nothing shows the hook works"
+      );
+    second = await walk("rules off: ");
+  } finally {
+    const on = await hook("POST", "rules/on");
+    if (on.status !== 200) findings.push(`the rules/on hook answered ${on.status}: the rule checks may still be off`);
   }
-  return `${checked} rows of the home team checked against ${outsider.name}`;
+
+  // The unbound probe: the app's database role with no tenant bound reads no row of a tenant table, except
+  // exactly the rows a read rule opens to everyone, which the policy of that table shows on purpose
+  const probe = await hook("GET", "tenancy/unbound");
+  if (probe.status !== 200) throw new Error(`the tenancy/unbound hook answered ${probe.status}`);
+  const seen = (probe.data ?? []) as { table: string; count: number; ids: string[] }[];
+  let total = 0;
+  let shown = 0;
+  const tenantEntities = ir.entities.filter(e => e.tenant);
+  for (const entity of tenantEntities) {
+    const answer = seen.find(t => t.table === entity.table);
+    if (!answer) {
+      findings.push(`unbound probe: ${entity.table} is a tenant table the probe did not read`);
+      continue;
+    }
+    const { rows } = await db.query(`select * from "${entity.table}"`);
+    total += rows.length;
+    const expected: string[] = [];
+    for (const row of rows as Row[]) if (await isPublic(entity, row)) expected.push(String(row[entity.primaryKey[0]]));
+    shown += expected.length;
+    if (answer.count !== expected.length)
+      findings.push(
+        `unbound probe: the app role with no tenant bound reads ${answer.count} rows of ${entity.table}; the read rule opens ${expected.length} to everyone`
+      );
+    const wanted = new Set(expected);
+    const stray = answer.ids.filter(id => !wanted.has(String(id)));
+    if (stray.length)
+      findings.push(`unbound probe: ${entity.table} shows ${stray.length} rows no public rule opens (${stray[0]})`);
+  }
+  if (total === 0) findings.push("unbound probe: the tenant tables hold no row, so reading none proves nothing");
+  return `${first}; again with the rule checks off (${control}), ${second} rows; unbound, the app role reads ${shown} of ${total} rows in ${tenantEntities.length} tenant tables, the ${shown} a public read rule opens`;
 }
 
 async function fuzzWalk(
@@ -964,6 +1053,8 @@ function describeStep(step: MigrationStep): string {
       return `${step.table}.${step.column.name} changes type`;
     case "set_not_null":
       return `${step.table}.${step.column} becomes NOT NULL`;
+    case "backfill_tenant":
+      return `${step.table}.${step.column} is filled from ${step.parent}`;
     default:
       return step.kind;
   }

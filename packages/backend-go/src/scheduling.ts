@@ -70,6 +70,8 @@ export function schedulingFile(ir: IR, modulePath: string): string {
     `${modulePath}/generated/jobs`,
     `${modulePath}/generated/models`
   ]);
+  // Under isolation: database a schedule or timer acts as the system: through the owner's pool, which no policy binds
+  if (ir.auth?.tenancy?.isolation) imports.add(`${modulePath}/generated/db`);
   const sections: string[] = [];
   sections.push(`var pool *pgxpool.Pool
 
@@ -79,7 +81,7 @@ func Use(p *pgxpool.Pool) {
 }
 
 func systemContext(ctx context.Context, now time.Time) *actions.Context {
-	return &actions.Context{Ctx: ctx, Session: nil, DB: pool, Now: now}
+	return &actions.Context{Ctx: ctx, Session: nil, DB: ${ir.auth?.tenancy?.isolation ? "db.System(pool)" : "pool"}, Now: now}
 }`);
 
   // Schedules
@@ -288,10 +290,45 @@ export function testHooksFile(ir: IR, modulePath: string, options: { email: bool
   const imports = new Set<string>(["net/http", "time", "github.com/gin-gonic/gin"]);
   if (scheduling) imports.add(`${modulePath}/generated/scheduling`);
   if (options.email) imports.add(`${modulePath}/generated/email`);
+  // Under isolation: database, the two hooks of the cross-tenant walk's second pass
+  const isolated = Boolean(ir.auth?.tenancy?.isolation);
+  if (isolated) {
+    imports.add(`${modulePath}/generated/access`);
+    imports.add(`${modulePath}/generated/db`);
+  }
+  const isolationRoutes = isolated
+    ? `
+	r.POST("/api/osl-hooks/rules/off", func(c *gin.Context) { rulesSwitch(c, true) })
+	r.POST("/api/osl-hooks/rules/on", func(c *gin.Context) { rulesSwitch(c, false) })
+	r.GET("/api/osl-hooks/tenancy/unbound", func(c *gin.Context) { tenancyUnbound(c, requests) })`
+    : "";
+  const isolationHooks = isolated
+    ? `
+// rulesSwitch switches the generated rule checks, so a walk can prove the policies alone hold.
+func rulesSwitch(c *gin.Context, off bool) {
+	access.SetRulesDisabled(off)
+	state := "on"
+	if off {
+		state = "off"
+	}
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{"rules": state}})
+}
+
+// tenancyUnbound answers what the app role reads of every tenant table with no tenant bound.
+func tenancyUnbound(c *gin.Context, requests *db.Scope) {
+	tables, err := requests.Unbound(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "probe_failed", "message": err.Error()}})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": tables})
+}
+`
+    : "";
   return goFile(
     modulePath,
     HEADER(
-      "Test hooks: a clock for timers and schedules, and the captured mailbox. app.New mounts these only when OSL_TEST_HOOKS=1."
+      `Test hooks: a clock for timers and schedules, and the captured mailbox${isolated ? ", the switch for the rule checks and the unbound probe" : ""}. app.New mounts these only when OSL_TEST_HOOKS=1.`
     ),
     "testhooks",
     imports,
@@ -301,12 +338,12 @@ export function testHooksFile(ir: IR, modulePath: string, options: { email: bool
 }
 
 // Routes mounts the hooks.
-func Routes(r gin.IRouter) {
+func Routes(r gin.IRouter${isolated ? ", requests *db.Scope" : ""}) {
 	r.POST("/api/osl-hooks/timers/run", timersRun)
 	r.POST("/api/osl-hooks/schedules/run", schedulesRun)
-	r.GET("/api/osl-hooks/emails", emails)
+	r.GET("/api/osl-hooks/emails", emails)${isolationRoutes}
 }
-
+${isolationHooks}
 func readBody(c *gin.Context) body {
 	var b body
 	_ = c.ShouldBindJSON(&b)

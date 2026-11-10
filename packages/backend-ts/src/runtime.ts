@@ -3,7 +3,11 @@ import { verdictSource } from "@osl/ts-common";
 import { HEADER, entityByName } from "./util.js";
 
 /** generated/http.ts: response helpers, parsing and database error mapping. Static. */
-export function httpFile(): string {
+export function httpFile(ir?: IR): string {
+  // Under isolation: database the policy refuses a write the rules let through: answered as the rules would have
+  const refused = ir?.auth?.tenancy?.isolation
+    ? `\n  if (code === "42501") return error(403, "forbidden", "You cannot do that");`
+    : "";
   return `${HEADER("HTTP helpers shared by every handler.")}
 import type { ZodTypeAny, z } from "zod";
 
@@ -101,7 +105,7 @@ export function handleError(err: unknown, operation: "read" | "write" | "delete"
       ? error(409, "conflict", "Other rows still reference this row")
       : error(400, "invalid_reference", "A referenced row does not exist");
   }
-  if (code === "23502") return error(400, "validation", "A required value is missing");
+  if (code === "23502") return error(400, "validation", "A required value is missing");${refused}
   if (code === "22P02") return operation === "read" ? notFound() : error(400, "validation", "A value has the wrong format");
   console.error(err);
   return error(500, "internal", "Something went wrong");

@@ -56,6 +56,7 @@ export function holds(when: Condition, row: Record<string, unknown>): boolean {
 
 /** Whether the rule allows this session whatever the row, so a list under it needs no row filter. */
 export function satisfied(rule: Rule, session: Session | null): boolean {
+  if (rulesDisabled()) return true;
   switch (rule.kind) {
     case "public":
       return !rule.when;
@@ -80,6 +81,7 @@ export function satisfied(rule: Rule, session: Session | null): boolean {
  * A condition is checked once the row is there; before that, the rule allows what its predicate allows.
  */
 export function verdict(rule: Rule, session: Session | null, row?: Record<string, unknown> | null): Verdict {
+  if (rulesDisabled()) return ALLOW;
   const base = predicateVerdict(rule, session, row);
   if (!base.ok || rule.kind === "any" || rule.kind === "all" || rule.kind === "none" || !rule.when || !row) return base;
   return holds(rule.when, row) ? ALLOW : { ok: false, status: 403 };
@@ -133,11 +135,43 @@ function predicateVerdict(rule: Rule, session: Session | null, row?: Record<stri
   }
 }
 
+const globalForRules = globalThis as unknown as { oslRulesOff?: boolean };
+
+/** Test hook (OSL_TEST_HOOKS=1 only): with the rule checks off, the database's policies alone stand between a caller and a row */
+export function setRulesDisabled(off: boolean): void {
+  globalForRules.oslRulesOff = off;
+}
+
+export function rulesDisabled(): boolean {
+  return process.env.OSL_TEST_HOOKS === "1" && globalForRules.oslRulesOff === true;
+}
+
+function needsSession(rule: Rule): boolean {
+  if (rule.kind === "any" || rule.kind === "all") return rule.rules.some(needsSession);
+  return rule.kind !== "public" && rule.kind !== "none";
+}
+
+/**
+ * What a rule answers for a row the caller's tenants do not reach, which the policy hides from the handler: the
+ * rule's own refusal of someone who is not a member, 401 when the caller has no session and the rule wanted one,
+ * else 403.
+ */
+export function unreachable(rule: Rule, session: Session | null): { ok: false; status: 401 | 403 } {
+  return { ok: false, status: session === null && needsSession(rule) ? 401 : 403 };
+}
+
 /** Check a rule and throw when denied. */
 export function checkRule(rule: Rule, session: Session | null, row?: Record<string, unknown> | null): void {
   const result = verdict(rule, session, row);
   if (result.ok) return;
   throw result.status === 401
+    ? new TRPCError({ code: "UNAUTHORIZED", message: "Sign in to continue" })
+    : new TRPCError({ code: "FORBIDDEN", message: "You cannot do that" });
+}
+
+/** The error a refusal becomes, for a row the caller's tenants do not reach */
+export function refused(result: { ok: false; status: 401 | 403 }): TRPCError {
+  return result.status === 401
     ? new TRPCError({ code: "UNAUTHORIZED", message: "Sign in to continue" })
     : new TRPCError({ code: "FORBIDDEN", message: "You cannot do that" });
 }

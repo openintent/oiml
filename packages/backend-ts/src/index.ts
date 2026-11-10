@@ -52,11 +52,11 @@ export function generate(input: GenerateInput): GeneratedFile[] {
   const packageManager = packageManagerOf(config);
 
   files.push({ path: `${gen}/db/schema.ts`, content: schemaFile(ir, NEXT) });
-  files.push({ path: `${gen}/db/client.ts`, content: clientFile(NEXT) });
+  files.push({ path: `${gen}/db/client.ts`, content: clientFile(NEXT, ir) });
   const migrations = migrationFiles(revisions, `${gen}/db/migrations`);
   files.push(...migrations.files);
 
-  files.push({ path: `${gen}/http.ts`, content: httpFile() });
+  files.push({ path: `${gen}/http.ts`, content: httpFile(ir) });
   files.push({ path: `${gen}/access.ts`, content: accessFile(ir) });
   files.push({ path: `${gen}/present.ts`, content: presentFile(ir, NEXT) });
   files.push({ path: `${gen}/auth.ts`, content: authFile(ir) });
@@ -237,6 +237,38 @@ ${body}
   void timersRun;
   const result = await schedulesRun(await request.json().catch(() => ({})));
   return result ? ok(result) : error(400, "unknown_schedule", "no schedule runs that action");
+}`
+    );
+  }
+  if (ir.auth?.tenancy?.isolation) {
+    // The two hooks of the cross-tenant walk's second pass: the rule checks switched off, and the unbound probe
+    const isolationRoute = (path: string, what: string, body: string) =>
+      files.push({
+        path: `app/api/osl-hooks/${path}/route.ts`,
+        content: `${HEADER(`Test hook: ${what}. Answers 404 unless OSL_TEST_HOOKS=1.`)}
+import { rulesSwitch, tenancyUnbound, testHooksEnabled } from "@/generated/test-hooks";
+import { notFound, ok } from "@/generated/http";
+
+${body}
+`
+      });
+    for (const state of ["off", "on"] as const)
+      isolationRoute(
+        `rules/${state}`,
+        `switch the generated rule checks ${state}`,
+        `export async function POST(): Promise<Response> {
+  if (!testHooksEnabled()) return notFound();
+  void tenancyUnbound;
+  return ok(rulesSwitch(${state === "off"}));
+}`
+      );
+    isolationRoute(
+      "tenancy/unbound",
+      "what the app's database role reads of every tenant table with no tenant bound",
+      `export async function GET(): Promise<Response> {
+  if (!testHooksEnabled()) return notFound();
+  void rulesSwitch;
+  return ok(await tenancyUnbound());
 }`
     );
   }

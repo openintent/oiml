@@ -95,3 +95,41 @@ export async function pendingMigrations(databaseUrl: string, dir: string): Promi
     return files.filter(f => !applied.has(f.name)).map(f => f.name);
   });
 }
+
+/**
+ * Give the app role of an isolated database (`auth.tenancy.isolation: database`) a way to sign in. The migrations
+ * create the role without a login and without a password, so no secret is ever in a generated file: the password
+ * comes from the connection string the web process will use (`DATABASE_APP_URL`), which only the environment
+ * holds. When its user is the app role itself, the role gains LOGIN with that password; any other name becomes a
+ * login that is a member of the app role, so several databases of one cluster can each have their own.
+ * `databaseUrl` is a role allowed to alter the app role: the owner that ran the migrations, or an administrator.
+ */
+export async function provisionAppLogin(databaseUrl: string, appRole: string, appUrl: string): Promise<string> {
+  const url = new URL(appUrl);
+  const user = decodeURIComponent(url.username);
+  const password = decodeURIComponent(url.password);
+  if (!user || !password) throw new Error("DATABASE_APP_URL needs a user and a password");
+  const ident = (name: string) => `"${name.replace(/"/g, '""')}"`;
+  const literal = (value: string) => `'${value.replace(/'/g, "''")}'`;
+  return withClient(databaseUrl, async client => {
+    const { rows } = await client.query<{ me: boolean; bypass: boolean }>(
+      `SELECT rolname = current_user AS me, (rolsuper OR rolbypassrls) AS bypass FROM pg_roles WHERE rolname = $1`,
+      [user]
+    );
+    if (rows[0]?.me)
+      throw new Error(`DATABASE_APP_URL connects as ${user}, the role that migrates; the policies do not bind it`);
+    if (rows[0]?.bypass)
+      throw new Error(`DATABASE_APP_URL connects as ${user}, a role that bypasses row security; use ${appRole}`);
+    if (user === appRole) {
+      await client.query(`ALTER ROLE ${ident(appRole)} LOGIN PASSWORD ${literal(password)}`);
+      return `${appRole} can sign in`;
+    }
+    if (rows.length === 0)
+      await client.query(`CREATE ROLE ${ident(user)} LOGIN PASSWORD ${literal(password)} IN ROLE ${ident(appRole)}`);
+    else {
+      await client.query(`ALTER ROLE ${ident(user)} LOGIN PASSWORD ${literal(password)}`);
+      await client.query(`GRANT ${ident(appRole)} TO ${ident(user)}`);
+    }
+    return `${user} can sign in as a member of ${appRole}`;
+  });
+}

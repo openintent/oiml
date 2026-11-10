@@ -4,8 +4,10 @@
 package resources
 
 import (
+	"errors"
+
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5"
 
 	"workspace/generated/access"
 	"workspace/generated/auth"
@@ -19,12 +21,12 @@ import (
 
 // Projects serves the projects resource (Project).
 type Projects struct {
-	db   *pgxpool.Pool
+	db   *db.Scope
 	auth *auth.Auth
 }
 
 // NewProjects builds the handlers.
-func NewProjects(db *pgxpool.Pool, a *auth.Auth) *Projects {
+func NewProjects(db *db.Scope, a *auth.Auth) *Projects {
 	return &Projects{db: db, auth: a}
 }
 
@@ -129,7 +131,7 @@ func (h *Projects) Get(c *gin.Context) {
 	}
 	row, err := models.ScanProject(h.db.QueryRow(ctx, `SELECT `+models.ProjectColumns+` FROM `+models.ProjectTable+` WHERE "id" = $1`, id))
 	if err != nil {
-		httpx.HandleError(c, err, "read")
+		h.missing(c, err, id, projectsReadRule, session, "read")
 		return
 	}
 	if verdict := access.CheckRow(projectsReadRule, session, access.Row{"team_id": row.TeamID, "status": row.Status}); verdict != nil {
@@ -203,7 +205,7 @@ func (h *Projects) Update(c *gin.Context) {
 	}
 	existing, err := models.ScanProject(h.db.QueryRow(ctx, `SELECT `+models.ProjectColumns+` FROM `+models.ProjectTable+` WHERE "id" = $1`, id))
 	if err != nil {
-		httpx.HandleError(c, err, "write")
+		h.missing(c, err, id, projectsUpdateRule, session, "write")
 		return
 	}
 	if verdict := access.CheckRow(projectsUpdateRule, session, access.Row{"team_id": existing.TeamID, "status": existing.Status}); verdict != nil {
@@ -262,7 +264,7 @@ func (h *Projects) Delete(c *gin.Context) {
 	}
 	existing, err := models.ScanProject(h.db.QueryRow(ctx, `SELECT `+models.ProjectColumns+` FROM `+models.ProjectTable+` WHERE "id" = $1`, id))
 	if err != nil {
-		httpx.HandleError(c, err, "delete")
+		h.missing(c, err, id, projectsDeleteRule, session, "delete")
 		return
 	}
 	if verdict := access.CheckRow(projectsDeleteRule, session, access.Row{"team_id": existing.TeamID}); verdict != nil {
@@ -283,4 +285,16 @@ func (h *Projects) Delete(c *gin.Context) {
 		return
 	}
 	httpx.NoContent(c)
+}
+
+// missing answers a row that did not come back: another tenant's as the rule answers a caller it refuses, a
+// missing one 404, and any other failure as it is.
+func (h *Projects) missing(c *gin.Context, err error, id any, rule access.Rule, session *auth.Session, operation string) {
+	if errors.Is(err, pgx.ErrNoRows) {
+		if found, perr := h.db.Exists(c.Request.Context(), "osl_exists_projects", id); perr == nil && found {
+			access.Deny(c, access.Unreachable(rule, session))
+			return
+		}
+	}
+	httpx.HandleError(c, err, operation)
 }

@@ -1,8 +1,16 @@
 import type { IR } from "@osl/core";
+import { ISOLATION_DB_IMPORTS, isolationDbSource } from "./isolation.js";
 import { HEADER, entityByName, goFile, q, rowGoType, singlePrimaryKey } from "./util.js";
 
 /** generated/httpx/httpx.go: responses, body parsing and database error mapping. Static. */
-export function httpxFile(modulePath: string): string {
+export function httpxFile(modulePath: string, ir?: IR): string {
+  // Under isolation: database the policy refuses a write the rules let through: answered as the rules would have
+  const refused = ir?.auth?.tenancy?.isolation
+    ? `
+		case "42501":
+			Fail(c, NewError(http.StatusForbidden, "forbidden", "You cannot do that"))
+			return`
+    : "";
   return goFile(
     modulePath,
     HEADER("HTTP helpers shared by every handler."),
@@ -153,7 +161,7 @@ func HandleError(c *gin.Context, err error, operation string) {
 			return
 		case "23502":
 			Fail(c, NewError(http.StatusBadRequest, "validation", "A required value is missing"))
-			return
+			return${refused}
 		case "22P02":
 			if operation == "read" {
 				Fail(c, NotFound())
@@ -238,6 +246,58 @@ func memberOf(session *auth.Session, tenant any, role string) bool {
 	return false
 }`
     : "";
+  // Under isolation: database a test hook can switch the rule checks off, so a walk proves the policies alone hold
+  const isolated = Boolean(tenancy?.isolation);
+  const off = isolated ? "\tif RulesDisabled() {\n\t\treturn nil\n\t}\n" : "";
+  const offSatisfied = isolated ? "\tif RulesDisabled() {\n\t\treturn true\n\t}\n" : "";
+  const isolationSection = isolated
+    ? `
+
+var rulesOff atomic.Bool
+
+// SetRulesDisabled is the test hook's switch (OSL_TEST_HOOKS=1 only): with the rule checks off, the database's
+// policies alone stand between a caller and a row.
+func SetRulesDisabled(off bool) {
+	rulesOff.Store(off)
+}
+
+// RulesDisabled reports whether the test hook switched the rule checks off.
+func RulesDisabled() bool {
+	return rulesOff.Load() && os.Getenv("OSL_TEST_HOOKS") == "1"
+}
+
+func needsSession(rule Rule) bool {
+	switch rule.Kind {
+	case "public", "none":
+		return false
+	case "all":
+		for _, part := range rule.All {
+			if needsSession(part) {
+				return true
+			}
+		}
+		return false
+	case "any":
+		for _, alternative := range rule.Any {
+			if needsSession(alternative) {
+				return true
+			}
+		}
+		return false
+	}
+	return true
+}
+
+// Unreachable is what a rule answers for a row the caller's tenants do not reach, which the policy hides from
+// the handler: the rule's own refusal of someone who is not a member, 401 when the caller has no session and
+// the rule wanted one, else 403.
+func Unreachable(rule Rule, session *auth.Session) *Verdict {
+	if session == nil && needsSession(rule) {
+		return &Verdict{Status: http.StatusUnauthorized}
+	}
+	return &Verdict{Status: http.StatusForbidden}
+}`
+    : "";
   return goFile(
     modulePath,
     HEADER("Access rule evaluation."),
@@ -246,6 +306,7 @@ func memberOf(session *auth.Session, tenant any, role string) bool {
       "fmt",
       "net/http",
       "reflect",
+      ...(isolated ? ["os", "sync/atomic"] : []),
       "github.com/gin-gonic/gin",
       `${modulePath}/generated/auth`,
       `${modulePath}/generated/httpx`
@@ -320,7 +381,7 @@ type Verdict struct {
 
 // Check evaluates a rule before any row is loaded: 401 without a session, 403 for none and a wrong role.
 func Check(rule Rule, session *auth.Session) *Verdict {
-	switch rule.Kind {
+${off}	switch rule.Kind {
 	case "public":
 		return nil
 	case "none":
@@ -349,7 +410,7 @@ func Check(rule Rule, session *auth.Session) *Verdict {
 // CheckRow evaluates a rule against a loaded row (or the body of a create): row holds the values the
 // rule's fields name, the owner for owner rules, the tenant for member rules and the values conditions test.
 func CheckRow(rule Rule, session *auth.Session, row Row) *Verdict {
-	if rule.Kind == "all" {
+${off}	if rule.Kind == "all" {
 		return allOf(rule.All, func(part Rule) *Verdict { return CheckRow(part, session, row) })
 	}
 	if rule.Kind == "any" {
@@ -369,7 +430,7 @@ func CheckRow(rule Rule, session *auth.Session, row Row) *Verdict {
 
 // Satisfied reports whether the rule allows the session whatever the row, so a list under it needs no row filter.
 func Satisfied(rule Rule, session *auth.Session) bool {
-	switch rule.Kind {
+${offSatisfied}	switch rule.Kind {
 	case "public":
 		return rule.When == nil
 	case "authenticated":
@@ -449,18 +510,32 @@ func deref(value any) any {
 		return v.Elem().Interface()
 	}
 	return value
-}${memberSection}
+}${memberSection}${isolationSection}
 `
   );
 }
 
 /** generated/db/db.go: the pool and small SQL builders. Static. */
-export function dbFile(modulePath: string): string {
+export function dbFile(modulePath: string, ir?: IR): string {
+  const isolated = Boolean(ir?.auth?.tenancy?.isolation);
   return goFile(
     modulePath,
-    HEADER("Database pool and SQL builders."),
+    HEADER(
+      isolated
+        ? "Database pools and SQL builders: the owner's pool, the app role's pool requests use under the tenant policies, and the scope that binds a statement to its caller's tenants."
+        : "Database pool and SQL builders."
+    ),
     "db",
-    ["context", "errors", "os", "sort", "strconv", "strings", "github.com/jackc/pgx/v5/pgxpool"],
+    [
+      "context",
+      "errors",
+      "os",
+      "sort",
+      "strconv",
+      "strings",
+      "github.com/jackc/pgx/v5/pgxpool",
+      ...(isolated ? ISOLATION_DB_IMPORTS : [])
+    ],
     `// Connect opens a pool on DATABASE_URL and checks the connection.
 func Connect(ctx context.Context) (*pgxpool.Pool, error) {
 	url := os.Getenv("DATABASE_URL")
@@ -588,7 +663,7 @@ func sortedKeys(values map[string]any) []string {
 	sort.Strings(keys)
 	return keys
 }
-`
+${isolated ? isolationDbSource(ir!) : ""}`
   );
 }
 

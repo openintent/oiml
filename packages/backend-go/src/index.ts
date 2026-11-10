@@ -29,13 +29,13 @@ export function generate(input: GenerateInput): GeneratedFile[] {
 
   const migrations = migrationFiles(revisions, `${gen}/db/migrations`);
   files.push(...migrations.files);
-  files.push({ path: `${gen}/db/db.go`, content: dbFile(mod) });
+  files.push({ path: `${gen}/db/db.go`, content: dbFile(mod, ir) });
 
   files.push({ path: `${gen}/models/values.go`, content: valuesFile(mod) });
   files.push({ path: `${gen}/models/format.go`, content: formatFile(mod) });
   files.push({ path: `${gen}/models/entities.go`, content: entitiesFile(ir, mod) });
   if (ir.files) files.push({ path: `${gen}/models/files.go`, content: modelFilesFile(mod) });
-  files.push({ path: `${gen}/httpx/httpx.go`, content: httpxFile(mod) });
+  files.push({ path: `${gen}/httpx/httpx.go`, content: httpxFile(mod, ir) });
   files.push({ path: `${gen}/validation/types.go`, content: validationRuntimeFile(mod) });
   files.push({ path: `${gen}/validation/resources.go`, content: validationResourcesFile(ir, mod) });
   files.push({ path: `${gen}/auth/auth.go`, content: authFile(ir, mod) });
@@ -120,7 +120,7 @@ export const ginPgxBackend: Backend = {
       `${config.generated_dir}/email/email.go`
     ],
     conventions: [
-      "ctx.DB is a *pgxpool.Pool and ctx.Context() the request's context (or the job's when a schedule or timer runs the action; ctx.Gin is nil then). ctx.Now is when the action runs; a timer or schedule passes the time it was due, so compare against ctx.Now rather than time.Now(). models.<Entity>Table is the quoted table name, models.<Entity>Columns the column list for SELECT and RETURNING, and models.Scan<Entity>(row) scans one row selected with those columns (ctx.DB.QueryRow).",
+      "ctx.DB is the database, a *pgxpool.Pool (under isolation: database a *db.Scope with the same Query, QueryRow, Exec and Begin, which binds each statement to the caller's tenants: always pass ctx.Context()), and ctx.Context() the request's context (or the job's when a schedule or timer runs the action; ctx.Gin is nil then). ctx.Now is when the action runs; a timer or schedule passes the time it was due, so compare against ctx.Now rather than time.Now(). models.<Entity>Table is the quoted table name, models.<Entity>Columns the column list for SELECT and RETURNING, and models.Scan<Entity>(row) scans one row selected with those columns (ctx.DB.QueryRow).",
       "Return httpx.NewError(status, code, message) to answer with that status (the httpx package lives next to the generated/actions package the stub imports); return the plain error for anything unexpected.",
       "ctx.Session is nil for anonymous callers; ctx.Session.User.ID is the caller's id. Nullable columns are pointers, time columns are time.Time; stamp with time.Now().UTC(). Keep the file gofmt-formatted and every import used.",
       "To send mail, call email.Send(ctx.Context(), email.Email{...}) from the generated email package; it logs or captures the message outside production, so sending is safe in tests."

@@ -361,3 +361,16 @@ export function conditionValue(value: string | number | boolean | null): string 
   if (typeof value === "string") return q(value);
   return String(value);
 }
+
+/**
+ * The Go type request code holds its database as: the pool, or under isolation: database the scope that runs every
+ * statement with the caller's tenants bound (generated/db). Its methods are the pool's, so the code using it is the same.
+ */
+export function dbType(ir: IR): string {
+  return ir.auth?.tenancy?.isolation ? "*db.Scope" : "*pgxpool.Pool";
+}
+
+/** The import the database type needs */
+export function dbTypeImport(ir: IR, modulePath: string): string {
+  return ir.auth?.tenancy?.isolation ? `${modulePath}/generated/db` : "github.com/jackc/pgx/v5/pgxpool";
+}

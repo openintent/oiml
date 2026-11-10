@@ -81,14 +81,14 @@ the creator role, and whether a model may turn the ceiling off.
 
 ### Milestone B: data (`1.0.0-alpha.5`)
 
-| #   | Round                                                                                                                                                                                   | Design                                                     | Evidence                                        | Size                                    |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | ----------------------------------------------- | --------------------------------------- |
-| B1  | Tenant isolation backstop: policies derived from relations, composite keys, two database roles, the second pass of the cross-tenant walk                                                | `designs/tenant-isolation-backstop.md`, two questions open | the survey                                      | the scheduling round, mostly migrations |
-| B2  | Many-to-many relations and ordered collections, on one new fixture (`music`): an entity-level relation through a junction, `position` within a parent, a `move` action, drag to reorder | to write                                                   | two exercises each, 1 case each                 | the pages round, shared proof           |
-| B3  | Archive and counts: `archive: true`, `count_of` kept by triggers                                                                                                                        | `designs/archive-and-counts.md`                            | 2 cases, three exercises on counts              | smaller than scheduling                 |
-| B4  | State machines: `transitions` on a read-only enum, the guard as a conditional update, boards that drag only allowed moves                                                               | `designs/state-machines.md`                                | the review-workflow cases of the corpus         | smaller than scheduling                 |
-| B5  | Field-level visibility: `read:` on a field, absent when it refuses, `expect.absent` in scenarios                                                                                        | `designs/field-visibility.md`                              | the survey                                      | the hidden-rows round                   |
-| B6  | Field kinds: sequences, money, sealed fields, typed JSON with a shape per enum value (the conditional-validation gap)                                                                   | `designs/field-kinds.md`, extended                         | 1 case (sequences), Notion's blocks, the survey | the pages round, pieces ship alone      |
+| #   | Round                                                                                                                                                                                   | Design                                 | Evidence                                        | Size                                    |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- | ----------------------------------------------- | --------------------------------------- |
+| B1  | Tenant isolation backstop: policies derived from relations, composite keys, two database roles, the second pass of the cross-tenant walk                                                | `designs/tenant-isolation-backstop.md` | the survey                                      | the scheduling round, mostly migrations |
+| B2  | Many-to-many relations and ordered collections, on one new fixture (`music`): an entity-level relation through a junction, `position` within a parent, a `move` action, drag to reorder | to write                               | two exercises each, 1 case each                 | the pages round, shared proof           |
+| B3  | Archive and counts: `archive: true`, `count_of` kept by triggers                                                                                                                        | `designs/archive-and-counts.md`        | 2 cases, three exercises on counts              | smaller than scheduling                 |
+| B4  | State machines: `transitions` on a read-only enum, the guard as a conditional update, boards that drag only allowed moves                                                               | `designs/state-machines.md`            | the review-workflow cases of the corpus         | smaller than scheduling                 |
+| B5  | Field-level visibility: `read:` on a field, absent when it refuses, `expect.absent` in scenarios                                                                                        | `designs/field-visibility.md`          | the survey                                      | the hidden-rows round                   |
+| B6  | Field kinds: sequences, money, sealed fields, typed JSON with a shape per enum value (the conditional-validation gap)                                                                   | `designs/field-kinds.md`, extended     | 1 case (sequences), Notion's blocks, the survey | the pages round, pieces ship alone      |
 
 Why this order: isolation first, by the reasoning that put the walks first: what is built after it is designed
 under the policy instead of being fitted to it afterwards. Counts kept by triggers (B3), full-text search (C2) and
@@ -102,15 +102,17 @@ need reverse relations, which B2 settles; transitions and archive before audit, 
 before audit and webhooks, which exclude what it hides; field kinds last because each piece can ship alone and
 sequences is the only one a round has asked for.
 
-Isolation was C5, the last construct round, until 2026-11-10. Its note has two questions to settle before the
-build, both from the workspace fixture, where its proof turns isolation on and expects every scenario unchanged.
-WS-7 gives Task
+Isolation was C5, the last construct round, until 2026-11-10. Moving it first found three things its note had
+not settled, all from the workspace fixture, where its proof turns isolation on and expects every scenario
+unchanged. WS-7 gives Task
 `read: "public when project_id.public = true or owner:assignee_id or member:project_id.team_id:admin"`, and the
-note refuses a session-free alternative on a tenant table: either the compiled alternative it logs as the next
-step joins the round, or the proof moves to a model without one. The same rule's `owner:assignee_id` lets a
-caller in by a field of the row and not by their teams: the note should say whether an owner who is not a member
-of the row's team still reads it under a policy keyed on the caller's teams. The intent the proof names, WS-9, has
-been taken since round A2.
+note refused a session-free alternative on a tenant table. The same rule's `owner:assignee_id` lets a caller in by
+a field of the row and not by their teams. And a handler that reads through the policy can no longer tell another
+tenant's row from a missing one, so a 403 would have become a 404. The round settled them without a design review
+stop, so they are the owner's to review in the note: a public alternative of the read rule is compiled into a
+second, SELECT-only policy; every alternative that needs a session also needs a membership of the row's tenant,
+which the compiler adds to the rules in the IR and names in a warning; and an existence probe keeps the rule's 401
+or 403 for another tenant's row.
 
 ### Milestone C: surfaces (`1.0.0-alpha.6`)
 
@@ -233,6 +235,7 @@ twenty.
 | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | A1 conformance walks               | built 2026-11-09: five walks as harness steps, all fixtures on all backends passing them unchanged; the first run's only findings were the harness's own (`designs/conformance-walks.md`)                              |
 | A2 membership through any relation | built 2026-11-09: `member:` paths ending in a membership relation with `ranked: true`, workspace WS-9 channels and blog FEAT-12 followers, 9/9 with walks, oracle 27/27 (`designs/membership-through-any-relation.md`) |
+| B1 tenant isolation backstop       | built 2026-11-10: `auth.tenancy.isolation: database`, workspace WS-11, 9/9 with walks, the tenant walk again with the rule checks off and the unbound probe, oracle 28/28 (`designs/tenant-isolation-backstop.md`)     |
 
 ## Decisions, as made on 2026-11-09
 
@@ -253,8 +256,8 @@ round it concerns.
 
 6. **Isolation opens milestone B.** It was C5, last, so that the policy compiler would know every rule shape
    first. The note's policy is one shape for every tenant table and the construct is opt-in, while counts,
-   full-text search and audit all run under it. Built first, they are designed under it. Its note has two
-   questions to settle before the build.
+   full-text search and audit all run under it. Built first, they are designed under it. The questions the move
+   raised were settled by the round and are in its note.
 7. **The role ceiling is in 1.0.0.** The narrow case of the role changes gap is round A5, and rules and time is
    A6. The general write rule stays in the 1.1 table.
 8. **The first publication is `1.0.0-alpha.4`.** Waiting for `1.0.0` meant thirteen more rounds of grammar decided

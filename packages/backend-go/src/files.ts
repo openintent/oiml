@@ -1,6 +1,16 @@
 import type { IR, RuleIR } from "@osl/core";
 import { columnsConst, presentFunc, scanFunc, tableConst } from "./models.js";
-import { HEADER, entityByName, exported, goFile, ruleLiteral, singlePrimaryKey, typeName } from "./util.js";
+import {
+  HEADER,
+  dbType,
+  dbTypeImport,
+  entityByName,
+  exported,
+  goFile,
+  ruleLiteral,
+  singlePrimaryKey,
+  typeName
+} from "./util.js";
 
 /** generated/files/files.go: uploads as a two-step flow (begin, PUT the bytes, complete), metadata reads, and file-field checks. */
 export function filesFile(ir: IR, modulePath: string): string {
@@ -27,7 +37,7 @@ export function filesFile(ir: IR, modulePath: string): string {
       "strconv",
       "strings",
       "github.com/jackc/pgx/v5",
-      "github.com/jackc/pgx/v5/pgxpool",
+      ...(ir.auth?.tenancy?.isolation ? [] : ["github.com/jackc/pgx/v5/pgxpool"]),
       `${modulePath}/generated/db`,
       `${modulePath}/generated/httpx`,
       `${modulePath}/generated/models`,
@@ -72,7 +82,7 @@ func Present(row *models.${T}) Record {
 }
 
 // Begin creates the file record and says where the bytes go. The record stays pending until the bytes are in place.
-func Begin(ctx context.Context, pool *pgxpool.Pool, name string, contentType string, size int, owner any) (*Begun, error) {
+func Begin(ctx context.Context, pool ${dbType(ir)}, name string, contentType string, size int, owner any) (*Begun, error) {
 	if size > MaxUploadBytes() {
 		return nil, httpx.NewError(http.StatusBadRequest, "validation", "Files may be at most "+strconv.Itoa(MaxUploadBytes())+" bytes")
 	}
@@ -103,7 +113,7 @@ func newID() string {
 }
 
 // Row loads a file by id; a malformed or unknown id is not found.
-func Row(ctx context.Context, pool *pgxpool.Pool, id string) (*models.${T}, error) {
+func Row(ctx context.Context, pool ${dbType(ir)}, id string) (*models.${T}, error) {
 	if _, ok := validation.ParseUUIDID(id); !ok {
 		return nil, httpx.NotFound()
 	}
@@ -114,7 +124,7 @@ func Row(ctx context.Context, pool *pgxpool.Pool, id string) (*models.${T}, erro
 	return row, err
 }
 
-func markReady(ctx context.Context, pool *pgxpool.Pool, id string, size int64) (Record, error) {
+func markReady(ctx context.Context, pool ${dbType(ir)}, id string, size int64) (Record, error) {
 	row, err := ${scan}(pool.QueryRow(ctx, \`UPDATE \`+${tableC}+\` SET "status" = 'ready', "size" = $2 WHERE "id" = $1 RETURNING \`+${columnsC}, id, size))
 	if err != nil {
 		return Record{}, err
@@ -123,7 +133,7 @@ func markReady(ctx context.Context, pool *pgxpool.Pool, id string, size int64) (
 }
 
 // Complete marks an upload finished once its bytes are in storage; the stored size wins over the declared one.
-func Complete(ctx context.Context, pool *pgxpool.Pool, id string) (Record, error) {
+func Complete(ctx context.Context, pool ${dbType(ir)}, id string) (Record, error) {
 	row, err := Row(ctx, pool, id)
 	if err != nil {
 		return Record{}, err
@@ -142,7 +152,7 @@ func Complete(ctx context.Context, pool *pgxpool.Pool, id string) (Record, error
 }
 
 // Get answers a file's metadata.
-func Get(ctx context.Context, pool *pgxpool.Pool, id string) (Record, error) {
+func Get(ctx context.Context, pool ${dbType(ir)}, id string) (Record, error) {
 	row, err := Row(ctx, pool, id)
 	if err != nil {
 		return Record{}, err
@@ -151,7 +161,7 @@ func Get(ctx context.Context, pool *pgxpool.Pool, id string) (Record, error) {
 }
 
 // Receive stores the bytes a client PUTs to the API and marks the file ready. Local storage only.
-func Receive(ctx context.Context, pool *pgxpool.Pool, id string, body io.Reader) (Record, error) {
+func Receive(ctx context.Context, pool ${dbType(ir)}, id string, body io.Reader) (Record, error) {
 	if storage.CurrentKind() != storage.KindLocal {
 		return Record{}, httpx.NewError(http.StatusBadRequest, "not_local", "Upload to the URL from POST /api/files instead")
 	}
@@ -176,7 +186,7 @@ type Content struct {
 }
 
 // Open answers a ready file's bytes. The caller closes File when it is set.
-func Open(ctx context.Context, pool *pgxpool.Pool, id string) (*Content, error) {
+func Open(ctx context.Context, pool ${dbType(ir)}, id string) (*Content, error) {
 	row, err := Row(ctx, pool, id)
 	if err != nil {
 		return nil, err
@@ -207,7 +217,7 @@ func typeMatches(pattern string, contentType string) bool {
 
 // ResolveRefs replaces the file ids in a validated write body with the files' snapshots, checking each is ready
 // and allowed by its field. Fields absent from the body, or set to null, are left as they are.
-func ResolveRefs(ctx context.Context, pool *pgxpool.Pool, values models.Values, specs []FieldSpec) error {
+func ResolveRefs(ctx context.Context, pool ${dbType(ir)}, values models.Values, specs []FieldSpec) error {
 	for _, spec := range specs {
 		raw, present := values[spec.Column]
 		if !present || raw == nil {
@@ -266,7 +276,7 @@ export function filesApiFile(ir: IR, modulePath: string): string {
     [
       "net/http",
       "github.com/gin-gonic/gin",
-      "github.com/jackc/pgx/v5/pgxpool",
+      dbTypeImport(ir, modulePath),
       `${modulePath}/generated/access`,
       `${modulePath}/generated/auth`,
       `${modulePath}/generated/files`,
@@ -275,12 +285,12 @@ export function filesApiFile(ir: IR, modulePath: string): string {
     ],
     `// Files serves the file endpoints.
 type Files struct {
-	db   *pgxpool.Pool
+	db   ${dbType(ir)}
 	auth *auth.Auth
 }
 
 // New builds the handlers.
-func New(db *pgxpool.Pool, a *auth.Auth) *Files {
+func New(db ${dbType(ir)}, a *auth.Auth) *Files {
 	return &Files{db: db, auth: a}
 }
 

@@ -3,6 +3,7 @@
  * `.osl/model.yaml` is written by `osl apply`, never by hand.
  */
 import { z } from "zod";
+import { toSnakeCase } from "./naming.js";
 
 const Identifier = z.string().regex(/^[a-z][a-z0-9_]*$/, "lower_snake_case identifier");
 const EntityName = z.string().regex(/^[A-Z][A-Za-z0-9]*$/, "PascalCase entity name");
@@ -282,6 +283,131 @@ export function membershipRelation(
   return null;
 }
 
+/** How a tenant table reaches its tenant under `isolation: database` */
+export interface TenantLink {
+  /** The column holding the row's tenant: the tenant's own key, the declared relation, or the column the compiler derives */
+  field: string;
+  /** The required relation a derived column copies the tenant through; absent when the model declares the column */
+  through?: string;
+  /** The member path a rule follows from a row to its tenant: `id`, `team_id`, `project_id.team_id` */
+  path: string[];
+}
+
+/** Why an entity cannot be placed under `isolation: database`, as validation reports it */
+export interface TenantLinkProblem {
+  entity: string;
+  code: "M115" | "M116" | "M118";
+  level: "error" | "warning";
+  message: string;
+}
+
+/** Whether the model asks for the database backstop */
+export function isolated(model: Model): boolean {
+  return model.auth?.tenancy?.isolation === "database";
+}
+
+/** The column the compiler derives on a tenant table that does not declare its tenant: `team_id` for a tenant Team */
+export function derivedTenantField(tenantEntity: string): string {
+  return `${toSnakeCase(tenantEntity)}_id`;
+}
+
+/**
+ * The tenant tables of a model under `isolation: database`: the tenant entity, and every entity that reaches it
+ * through a chain of required relations. An entity with one required relation to the tenant carries the tenant in
+ * that field; one that reaches it through exactly one required relation to another tenant table gets a derived
+ * column. Anything else is a problem (two ways to the tenant) or stays shared (only an optional relation).
+ * Empty without `isolation: database`.
+ */
+export function tenantLinks(model: Model): { links: Record<string, TenantLink>; problems: TenantLinkProblem[] } {
+  const links: Record<string, TenantLink> = {};
+  const problems: TenantLinkProblem[] = [];
+  const tenancy = model.auth?.tenancy;
+  if (!tenancy || !isolated(model) || !model.entities[tenancy.entity]) return { links, problems };
+  const tenant = tenancy.entity;
+  const relationsOf = (name: string, required: boolean) =>
+    Object.entries(model.entities[name].fields).filter(
+      ([, f]) => f.relation && model.entities[f.relation.entity] && Boolean(f.required || f.primary) === required
+    );
+  // Which entities reach the tenant through required relations, whatever the order they are declared in
+  const reaching = new Set<string>([tenant]);
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const name of Object.keys(model.entities)) {
+      if (reaching.has(name)) continue;
+      if (relationsOf(name, true).some(([, f]) => reaching.has(f.relation!.entity))) {
+        reaching.add(name);
+        grew = true;
+      }
+    }
+  }
+  const tenantKey = primaryKeyFields(model.entities[tenant])[0] ?? "id";
+  links[tenant] = { field: tenantKey, path: [tenantKey] };
+  const derived = derivedTenantField(tenant);
+  const pending = new Map<string, string>();
+  for (const name of Object.keys(model.entities)) {
+    if (name === tenant) continue;
+    if (!reaching.has(name)) {
+      const optional = relationsOf(name, false).filter(([, f]) => reaching.has(f.relation!.entity));
+      if (optional.length && name !== model.auth?.identity)
+        problems.push({
+          entity: name,
+          code: "M116",
+          level: "warning",
+          message: `${name} reaches ${tenant} only through an optional relation (${optional.map(([n]) => n).join(", ")}), so it stays shared and no policy guards it; say required: true to make it a tenant table`
+        });
+      continue;
+    }
+    if (name === model.auth?.identity) {
+      problems.push({
+        entity: name,
+        code: "M118",
+        level: "error",
+        message: `${name} is the identity and reaches ${tenant} through a required relation; under isolation: database the identity stays shared, since signing in reads it before any tenant is known`
+      });
+      continue;
+    }
+    const required = relationsOf(name, true).filter(([, f]) => reaching.has(f.relation!.entity));
+    const direct = required.filter(([, f]) => f.relation!.entity === tenant);
+    const indirect = required.filter(([, f]) => f.relation!.entity !== tenant && f.relation!.entity !== name);
+    if (direct.length === 1) links[name] = { field: direct[0][0], path: [direct[0][0]] };
+    else if (direct.length > 1)
+      problems.push({
+        entity: name,
+        code: "M115",
+        level: "error",
+        message: `${name} has ${direct.length} required relations to ${tenant} (${direct.map(([n]) => n).join(", ")}); under isolation: database a row belongs to one tenant, so keep one of them required`
+      });
+    else if (indirect.length === 1) {
+      if (model.entities[name].fields[derived])
+        problems.push({
+          entity: name,
+          code: "M115",
+          level: "error",
+          message: `${name} reaches ${tenant} through ${indirect[0][0]}, and its own field ${derived} is not a required relation to ${tenant}; make it one or rename it, since the compiler derives a column of that name`
+        });
+      else pending.set(name, indirect[0][0]);
+    } else
+      problems.push({
+        entity: name,
+        code: "M115",
+        level: "error",
+        message: `${name} reaches ${tenant} through ${indirect.length} required relations (${indirect.map(([n]) => n).join(", ")}); declare a required relation to ${tenant} on ${name} itself so its tenant is one column`
+      });
+  }
+  // A derived column copies its parent's tenant, so parents resolve first; a parent with a problem leaves its children out
+  for (let resolved = true; resolved && pending.size; ) {
+    resolved = false;
+    for (const [name, through] of pending) {
+      const parent = links[model.entities[name].fields[through].relation!.entity];
+      if (!parent) continue;
+      links[name] = { field: derived, through, path: [through, ...parent.path] };
+      pending.delete(name);
+      resolved = true;
+    }
+  }
+  return { links, problems };
+}
+
 /** Whether a rule can hide one row and allow another: an owner or member predicate, or a condition, somewhere in it */
 export function ruleHidesRows(rule: string | undefined): boolean {
   if (!rule) return false;
@@ -424,7 +550,13 @@ export const Tenancy = z
     /** The membership's role field; default role */
     role_field: Identifier.default("role"),
     /** The role given to whoever creates a tenant through its resource */
-    creator_role: z.string().min(1)
+    creator_role: z.string().min(1),
+    /**
+     * `database` adds a backstop behind the rules: row-level security on every tenant table, composite keys so no
+     * row points at another tenant's parent, and a database role for the web process that the policies bind.
+     * Absent or `none`: the rules alone, as before.
+     */
+    isolation: z.enum(["none", "database"]).optional()
   })
   .strict();
 export type Tenancy = z.infer<typeof Tenancy>;
@@ -1006,6 +1138,81 @@ export function validateModel(model: Model): Diagnostic[] {
     for (const predicate of new Set(rulePredicates(rule))) checkPredicate(predicate, entityName, rpath, row);
   };
 
+  /**
+   * `isolation: database`: which entities are tenant tables (M115, M116, M118), and what their rules may say. A
+   * caller without a session reaches a tenant table only through its read rule (M117), and every alternative that
+   * needs a session also needs a membership of the row's tenant: the compiler adds it, and M119 says where.
+   */
+  const checkIsolation = (tenantName: string, tenant: Entity) => {
+    const { links, problems } = tenantLinks(model);
+    for (const p of problems) (p.level === "error" ? error : warn)(p.code, p.message, `entities.${p.entity}`);
+    const keyName = primaryKeyFields(tenant)[0];
+    const key = keyName ? tenant.fields[keyName] : undefined;
+    if (key && (key.type !== "uuid" || (key.default !== undefined && key.default !== "uuid")))
+      error(
+        "M118",
+        `${tenantName}.${keyName} must be a uuid the app can generate (type: uuid, no literal default): under isolation: database a new ${tenantName} is bound to its creator before the insert`,
+        `entities.${tenantName}.fields.${keyName}`
+      );
+    const check = (
+      rule: string,
+      entityName: string,
+      rpath: string,
+      op: "read" | "create" | "update" | "delete" | "action"
+    ) => {
+      const link = links[entityName];
+      if (!link) return;
+      const member = `member:${link.path.join(".")}`;
+      const narrowed: string[] = [];
+      for (const alternative of ruleAlternativeTexts(rule)) {
+        const bases = conjunctionParts(alternative).map(part => splitWhen(part).base);
+        const open = bases.filter(b => b === "public").length;
+        if (open === bases.length) {
+          if (op !== "read")
+            error(
+              "M117",
+              `"${alternative}" lets a caller without a session ${op === "action" ? "run this action on" : op} a ${entityName}, a tenant table under isolation: database; only its read rule may have a public alternative`,
+              rpath
+            );
+          continue;
+        }
+        if (open > 0) {
+          error(
+            "M117",
+            `"${alternative}": under isolation: database put the condition on the predicate that needs a session instead of joining public to it`,
+            rpath
+          );
+          continue;
+        }
+        if (bases.includes("none")) continue;
+        if (bases.some(b => b === member || b.startsWith(`${member}:`))) continue;
+        if (entityName === tenantName && op === "create") continue;
+        narrowed.push(alternative);
+      }
+      if (narrowed.length)
+        warn(
+          "M119",
+          `under isolation: database a signed-in caller reaches a ${entityName} only as a member of its ${tenantName}: ${narrowed.map(a => `"${a}" is compiled as "${a} and ${member}"`).join(", ")}`,
+          rpath
+        );
+    };
+    for (const [entityName, entity] of Object.entries(model.entities)) {
+      for (const op of RULE_OPERATIONS)
+        check(
+          entity.rules?.[op] ?? (op === "read" ? "public" : "authenticated"),
+          entityName,
+          `entities.${entityName}.rules.${op}`,
+          op
+        );
+    }
+    for (const [resourceName, resource] of Object.entries(model.resources)) {
+      for (const [actionName, action] of Object.entries(resource.actions ?? {})) {
+        if (action.rule && (action.scope ?? "row") === "row")
+          check(action.rule, resource.entity, `resources.${resourceName}.actions.${actionName}.rule`, "action");
+      }
+    }
+  };
+
   for (const [entityName, entity] of Object.entries(model.entities)) {
     const base = `entities.${entityName}`;
     const fieldNames = new Set(Object.keys(entity.fields));
@@ -1180,6 +1387,7 @@ export function validateModel(model: Model): Diagnostic[] {
               `resources.${resourceName}`
             );
         }
+        if (tenancy.isolation === "database") checkIsolation(tenancy.entity, tenant);
       }
     }
   }

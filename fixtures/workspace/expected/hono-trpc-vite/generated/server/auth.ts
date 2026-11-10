@@ -3,10 +3,10 @@
 
 import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { TRPCError } from "@trpc/server";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db/client";
-import { users as usersTable, teamMembers as teamMembersTable } from "../db/schema";
+import { users as usersTable } from "../db/schema";
 import { toTRPCError } from "./errors";
 import { presentUser, type PublicUser } from "../present";
 import { issueMagicLink, verifyMagicLink, PROVIDERS } from "../auth-providers";
@@ -74,7 +74,7 @@ function readCookie(request: Request): { uid: string | number } | null {
 
 /** The session of a user row: the public user and their memberships */
 export async function sessionOf(user: typeof usersTable.$inferSelect): Promise<Session> {
-  return { user: presentUser(user), memberships: (await db.query.teamMembers.findMany({ where: eq(teamMembersTable.user_id, user.id) })).map(m => ({ tenant: m.team_id, role: m.role })) };
+  return { user: presentUser(user), memberships: ((await db.execute(sql`select tenant, role from "osl_memberships"(${user.id})`)).rows as { tenant: string | number; role: string }[]).map(m => ({ tenant: m.tenant, role: m.role })) };
 }
 
 /** The signed-in user, or null. Loads the user so a deleted account signs out immediately. */

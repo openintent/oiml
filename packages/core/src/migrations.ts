@@ -4,7 +4,8 @@
  */
 import type { Renames } from "./diff.js";
 import { slugify } from "./naming.js";
-import type { ColumnIR, EntityIR, IR, TypeIR } from "./ir.js";
+import type { ColumnIR, EntityIR, IR, TenantKeyIR, TypeIR } from "./ir.js";
+import { isolationObjects } from "./isolation.js";
 
 export type MigrationStep =
   | { kind: "create_enum"; name: string; values: string[] }
@@ -23,7 +24,21 @@ export type MigrationStep =
   | { kind: "add_foreign_key"; table: string; fk: EntityIR["foreignKeys"][number] }
   | { kind: "create_index"; table: string; name: string; columns: string[]; unique: boolean }
   | { kind: "drop_index"; name: string }
-  | { kind: "drop_table"; table: string };
+  | { kind: "drop_table"; table: string }
+  /** Fill a derived tenant column of a table that has rows from the parent each row points at */
+  | {
+      kind: "backfill_tenant";
+      table: string;
+      column: string;
+      through: string;
+      parent: string;
+      parentKey: string;
+      parentColumn: string;
+    }
+  /** A composite key: (tenant, relation) to the parent's (tenant, key) */
+  | { kind: "add_tenant_key"; table: string; key: TenantKeyIR }
+  /** Statements of the isolation layer (roles and grants, functions, triggers, row security, policies), made or dropped whole */
+  | { kind: "sql"; about: string; statements: string[] };
 
 export interface MigrationPlan {
   steps: MigrationStep[];
@@ -34,9 +49,11 @@ export interface MigrationPlan {
 
 /** Whether a step rewrites its table rather than adding to it */
 export function isRewrite(step: MigrationStep, next: IR): boolean {
-  if (step.kind === "alter_column_type") return true;
+  if (step.kind === "alter_column_type" || step.kind === "backfill_tenant") return true;
   if (step.kind === "set_not_null" && step.notNull) {
     const entity = next.entities.find(e => e.table === step.table);
+    // A derived tenant column is filled by the backfill step before it; that step is the rewrite
+    if (entity?.tenant?.derived?.column.name === step.column) return false;
     const column = entity?.columns.find(c => c.name === step.column);
     return column?.default === undefined;
   }
@@ -44,6 +61,19 @@ export function isRewrite(step: MigrationStep, next: IR): boolean {
 }
 
 const EMPTY_RENAMES: Renames = { entities: {}, fields: {} };
+
+/** The columns a table has: the entity's, and under isolation: database the tenant column the compiler derives */
+export function physicalColumns(entity: EntityIR): ColumnIR[] {
+  return entity.tenant?.derived ? [...entity.columns, entity.tenant.derived.column] : entity.columns;
+}
+
+function physicalUniques(entity: EntityIR): EntityIR["uniques"] {
+  return entity.tenant?.unique ? [...entity.uniques, entity.tenant.unique] : entity.uniques;
+}
+
+function physicalIndexes(entity: EntityIR): EntityIR["indexes"] {
+  return entity.tenant?.derived ? [...entity.indexes, entity.tenant.derived.index] : entity.indexes;
+}
 
 /** Plan the steps that take a database at `prev` to `next`. `prev` null means an empty database. */
 export function planMigration(prev: IR | null, next: IR, renames: Renames = EMPTY_RENAMES): MigrationPlan {
@@ -55,6 +85,9 @@ export function planMigration(prev: IR | null, next: IR, renames: Renames = EMPT
   const dropsColumns: MigrationStep[] = [];
   const adds: MigrationStep[] = []; // uniques, fks, indexes
   const late: MigrationStep[] = []; // drop tables, drop enums
+  const backfills: MigrationStep[] = []; // derived tenant columns of tables that have rows
+  const dropsKeys: MigrationStep[] = []; // composite tenant keys, before the uniques they point at
+  const addsKeys: MigrationStep[] = []; // composite tenant keys, after the uniques they point at
 
   const prevEntities = prev?.entities ?? [];
   const prevEnums = prev?.enums ?? [];
@@ -85,7 +118,8 @@ export function planMigration(prev: IR | null, next: IR, renames: Renames = EMPT
     if (!prevEntity) {
       tables.push({ kind: "create_table", entity });
       for (const fk of entity.foreignKeys) adds.push({ kind: "add_foreign_key", table: entity.table, fk });
-      for (const idx of entity.indexes) adds.push({ kind: "create_index", table: entity.table, ...idx });
+      for (const idx of physicalIndexes(entity)) adds.push({ kind: "create_index", table: entity.table, ...idx });
+      for (const key of entity.tenant?.keys ?? []) addsKeys.push({ kind: "add_tenant_key", table: entity.table, key });
       continue;
     }
     matchedPrev.add(prevEntity.name);
@@ -94,8 +128,24 @@ export function planMigration(prev: IR | null, next: IR, renames: Renames = EMPT
     const table = entity.table;
 
     const matchedPrevColumns = new Set<string>();
-    for (const column of entity.columns) {
-      const prevColumn = prevEntity.columns.find(c => c.name === oldFieldOf(entity.name, column.name));
+    const derived = entity.tenant?.derived;
+    for (const column of physicalColumns(entity)) {
+      const prevColumn = physicalColumns(prevEntity).find(c => c.name === oldFieldOf(entity.name, column.name));
+      if (!prevColumn && derived && column === derived.column) {
+        // The table has rows: the column arrives nullable, is filled from each row's parent, then becomes NOT NULL
+        alters.push({ kind: "add_column", table, column: { ...column, nullable: true } });
+        backfills.push({
+          kind: "backfill_tenant",
+          table,
+          column: column.name,
+          through: derived.through,
+          parent: derived.parentTable,
+          parentKey: derived.parentKey,
+          parentColumn: derived.parentColumn
+        });
+        backfills.push({ kind: "set_not_null", table, column: column.name, notNull: true });
+        continue;
+      }
       if (!prevColumn) {
         alters.push({ kind: "add_column", table, column });
         if (!column.nullable && column.default === undefined && !column.generated && !column.primary)
@@ -118,7 +168,7 @@ export function planMigration(prev: IR | null, next: IR, renames: Renames = EMPT
         else dropsConstraints.push({ kind: "drop_constraint", table, name });
       }
     }
-    for (const prevColumn of prevEntity.columns) {
+    for (const prevColumn of physicalColumns(prevEntity)) {
       if (!matchedPrevColumns.has(prevColumn.name))
         dropsColumns.push({ kind: "drop_column", table, column: prevColumn.name });
     }
@@ -143,28 +193,40 @@ export function planMigration(prev: IR | null, next: IR, renames: Renames = EMPT
       if (!stillThere && !columnDropped) dropsConstraints.push({ kind: "drop_constraint", table, name: prevFk.name });
     }
 
+    // Composite tenant keys by name: a key whose definition changed is dropped and added again
+    const prevKeys = prevEntity.tenant?.keys ?? [];
+    for (const key of entity.tenant?.keys ?? []) {
+      const prevKey = prevKeys.find(p => p.name === key.name);
+      if (prevKey && JSON.stringify(prevKey) === JSON.stringify(key)) continue;
+      if (prevKey) dropsKeys.push({ kind: "drop_constraint", table, name: prevKey.name });
+      addsKeys.push({ kind: "add_tenant_key", table, key });
+    }
+    for (const prevKey of prevKeys)
+      if (!(entity.tenant?.keys ?? []).some(k => k.name === prevKey.name))
+        dropsKeys.push({ kind: "drop_constraint", table, name: prevKey.name });
+
     // Multi-column uniques and indexes by name
-    for (const u of entity.uniques) {
-      const prevU = prevEntity.uniques.find(p => p.name === u.name);
+    for (const u of physicalUniques(entity)) {
+      const prevU = physicalUniques(prevEntity).find(p => p.name === u.name);
       if (!prevU) adds.push({ kind: "add_unique", table, name: u.name, columns: u.columns });
     }
-    for (const prevU of prevEntity.uniques) {
-      if (!entity.uniques.some(u => u.name === prevU.name))
+    for (const prevU of physicalUniques(prevEntity)) {
+      if (!physicalUniques(entity).some(u => u.name === prevU.name))
         dropsConstraints.push({ kind: "drop_constraint", table, name: prevU.name });
     }
-    for (const idx of entity.indexes) {
-      const prevIdx = prevEntity.indexes.find(p => p.name === idx.name);
+    for (const idx of physicalIndexes(entity)) {
+      const prevIdx = physicalIndexes(prevEntity).find(p => p.name === idx.name);
       if (!prevIdx) adds.push({ kind: "create_index", table, ...idx });
       else if (prevIdx.unique !== idx.unique || prevIdx.columns.join(",") !== idx.columns.join(",")) {
         dropsConstraints.push({ kind: "drop_index", name: idx.name });
         adds.push({ kind: "create_index", table, ...idx });
       }
     }
-    for (const prevIdx of prevEntity.indexes) {
+    for (const prevIdx of physicalIndexes(prevEntity)) {
       const columnsDropped = prevIdx.columns.some(
-        c => !entity.columns.some(n => oldFieldOf(entity.name, n.name) === c)
+        c => !physicalColumns(entity).some(n => oldFieldOf(entity.name, n.name) === c)
       );
-      if (!entity.indexes.some(i => i.name === prevIdx.name) && !columnsDropped)
+      if (!physicalIndexes(entity).some(i => i.name === prevIdx.name) && !columnsDropped)
         dropsConstraints.push({ kind: "drop_index", name: prevIdx.name });
     }
   }
@@ -173,6 +235,8 @@ export function planMigration(prev: IR | null, next: IR, renames: Renames = EMPT
     if (!matchedPrev.has(prevEntity.name)) {
       for (const fk of prevEntity.foreignKeys)
         dropsConstraints.push({ kind: "drop_constraint", table: prevEntity.table, name: fk.name });
+      for (const key of prevEntity.tenant?.keys ?? [])
+        dropsKeys.push({ kind: "drop_constraint", table: prevEntity.table, name: key.name });
       late.push({ kind: "drop_table", table: prevEntity.table });
     }
   }
@@ -180,7 +244,64 @@ export function planMigration(prev: IR | null, next: IR, renames: Renames = EMPT
     if (!next.enums.some(e => e.name === old.name)) late.push({ kind: "drop_enum", name: old.name });
   }
 
-  const steps = [...early, ...tables, ...alters, ...dropsConstraints, ...dropsColumns, ...adds, ...late];
+  // A derived column copies its parent's, so a parent filled in this same plan is filled first
+  const ordered: MigrationStep[] = [];
+  const pendingFills = backfills.filter(
+    (s): s is Extract<MigrationStep, { kind: "backfill_tenant" }> => s.kind === "backfill_tenant"
+  );
+  while (pendingFills.length) {
+    const index = pendingFills.findIndex(s => !pendingFills.some(o => o !== s && o.table === s.parent));
+    const [step] = pendingFills.splice(index < 0 ? 0 : index, 1);
+    ordered.push(step, backfills.find(s => s.kind === "set_not_null" && s.table === step.table)!);
+  }
+
+  // The isolation layer: what is gone or defined differently is dropped before anything is renamed or removed,
+  // and what is new or defined differently is made once the tables are in their final shape
+  const before = prev ? isolationObjects(prev) : [];
+  const after = isolationObjects(next);
+  const beforeByKey = new Map(before.map(o => [o.key, o]));
+  const afterByKey = new Map(after.map(o => [o.key, o]));
+  const remade = new Set<string>();
+  for (const object of after) {
+    const old = beforeByKey.get(object.key);
+    if (old && JSON.stringify(old.create) !== JSON.stringify(object.create)) remade.add(object.key);
+  }
+  // PostgreSQL refuses to change the type of a column a policy reads: the table's policies are made again around it
+  for (const step of alters)
+    if (step.kind === "alter_column_type")
+      for (const object of after)
+        if (object.kind === "policy" && object.table === step.table && beforeByKey.has(object.key))
+          remade.add(object.key);
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const object of after)
+      if (!remade.has(object.key) && beforeByKey.has(object.key) && object.uses?.some(k => remade.has(k))) {
+        remade.add(object.key);
+        grew = true;
+      }
+  }
+  const isolationDrops: MigrationStep[] = before
+    .filter(o => o.drop.length && (!afterByKey.has(o.key) || remade.has(o.key)))
+    .reverse()
+    .map(o => ({ kind: "sql", about: `drop ${o.kind} ${o.name}`, statements: o.drop }));
+  const isolationAdds: MigrationStep[] = after
+    .filter(o => !beforeByKey.has(o.key) || remade.has(o.key))
+    .map(o => ({ kind: "sql", about: `${o.kind} ${o.name}`, statements: o.create }));
+
+  const steps = [
+    ...isolationDrops,
+    ...early,
+    ...tables,
+    ...alters,
+    ...ordered,
+    ...dropsKeys,
+    ...dropsConstraints,
+    ...dropsColumns,
+    ...adds,
+    ...addsKeys,
+    ...late,
+    ...isolationAdds
+  ];
   return { steps, warnings, rewrites: steps.filter(step => isRewrite(step, next)) };
 }
 
@@ -287,9 +408,9 @@ export function renderPostgres(plan: MigrationPlan): string {
         break;
       case "create_table": {
         const e = step.entity;
-        const lines = e.columns.map(c => `  ${columnDefinition(c, true)}`);
+        const lines = physicalColumns(e).map(c => `  ${columnDefinition(c, true)}`);
         lines.push(`  PRIMARY KEY (${e.primaryKey.map(quoteIdent).join(", ")})`);
-        for (const u of e.uniques)
+        for (const u of physicalUniques(e))
           lines.push(`  CONSTRAINT ${quoteIdent(u.name)} UNIQUE (${u.columns.map(quoteIdent).join(", ")})`);
         out.push(`CREATE TABLE ${quoteIdent(e.table)} (\n${lines.join(",\n")}\n);`);
         break;
@@ -347,6 +468,24 @@ export function renderPostgres(plan: MigrationPlan): string {
         break;
       case "drop_table":
         out.push(`DROP TABLE ${quoteIdent(step.table)};`);
+        break;
+      case "backfill_tenant":
+        out.push(
+          `UPDATE ${quoteIdent(step.table)} AS child SET ${quoteIdent(step.column)} = parent.${quoteIdent(step.parentColumn)} FROM ${quoteIdent(step.parent)} AS parent WHERE parent.${quoteIdent(step.parentKey)} = child.${quoteIdent(step.through)};`
+        );
+        break;
+      case "add_tenant_key": {
+        const key = step.key;
+        // A parent that changes tenant takes the rows derived from it along; set null clears the relation, never the tenant
+        const onDelete =
+          key.onDelete === "set_null" ? `SET NULL (${quoteIdent(key.columns[1])})` : key.onDelete.toUpperCase();
+        out.push(
+          `ALTER TABLE ${quoteIdent(step.table)} ADD CONSTRAINT ${quoteIdent(key.name)} FOREIGN KEY (${key.columns.map(quoteIdent).join(", ")}) REFERENCES ${quoteIdent(key.targetTable)} (${key.targetColumns.map(quoteIdent).join(", ")})${key.cascade ? " ON UPDATE CASCADE" : ""} ON DELETE ${onDelete};`
+        );
+        break;
+      }
+      case "sql":
+        out.push(...step.statements);
         break;
     }
   }

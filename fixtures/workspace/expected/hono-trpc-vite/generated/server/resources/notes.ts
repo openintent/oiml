@@ -3,12 +3,12 @@
 
 import { and, asc, count, eq, inArray, type SQL } from "drizzle-orm";
 import { z } from "zod";
-import { db } from "../../db/client";
+import { db, rowExists } from "../../db/client";
 import * as schema from "../../db/schema";
 import { notes as notesTable, projects as projectsTable } from "../../db/schema";
 import { presentNote, presentUser } from "../../present";
 import { notesCreateInput, notesId, notesListQuery, notesUpdateInput } from "../../validation";
-import { checkRule, memberTenantIds, type Rule } from "../access";
+import { checkRule, memberTenantIds, refused, rulesDisabled, unreachable, type Rule } from "../access";
 import type { Session } from "../auth";
 import { notFound, parseId, toTRPCError } from "../errors";
 import { publicProcedure, router } from "../trpc";
@@ -19,8 +19,8 @@ export type HookContext = { session: Session | null; req: Request };
 const RULES = {
   read: {"kind":"member","field":"project_id.team_id"} as Rule,
   create: {"kind":"all","rules":[{"kind":"member","field":"project_id.team_id"},{"kind":"owner","field":"author_id"}]} as Rule,
-  update: {"kind":"owner","field":"author_id"} as Rule,
-  delete: {"kind":"any","rules":[{"kind":"owner","field":"author_id"},{"kind":"member","field":"project_id.team_id","role":"admin"}]} as Rule
+  update: {"kind":"all","rules":[{"kind":"owner","field":"author_id"},{"kind":"member","field":"project_id.team_id"}]} as Rule,
+  delete: {"kind":"any","rules":[{"kind":"all","rules":[{"kind":"owner","field":"author_id"},{"kind":"member","field":"project_id.team_id"}]},{"kind":"member","field":"project_id.team_id","role":"admin"}]} as Rule
 };
 
 /** Ids as clients send them; parseId applies notesId and answers NOT_FOUND to a malformed one. */
@@ -35,6 +35,11 @@ async function withRuleValues(row: Record<string, unknown>): Promise<Record<stri
     out["project_id.team_id"] = value;
   }
   return out;
+}
+
+/** No row came back: another tenant's row answers as the rule answers a caller it refuses, a missing one 404 */
+async function missing(id: unknown, rule: Rule, session: Session | null) {
+  return (await rowExists("osl_exists_notes", id)) ? refused(unreachable(rule, session)) : notFound();
 }
 
 type ListRow = schema.Note & { author: schema.User | null };
@@ -54,15 +59,16 @@ export const notesRouter = router({
     const { page, page_size, ...filters } = input;
     const conditions: SQL[] = [];
     if (filters.project_id !== undefined) conditions.push(eq(notesTable.project_id, filters.project_id));
-    const tenants = memberTenantIds(ctx.session, undefined);
-    if (tenants.length === 0) return { data: [], page: { page, page_size, total: 0 } };
-    conditions.push(inArray(notesTable.project_id, db.select({ id: projectsTable.id }).from(projectsTable).where(inArray(projectsTable.team_id, tenants as string[]))));
+    if (!rulesDisabled()) {
+      const tenants = memberTenantIds(ctx.session, undefined);
+      if (tenants.length === 0) return { data: [], page: { page, page_size, total: 0 } };
+      conditions.push(inArray(notesTable.project_id, db.select({ id: projectsTable.id }).from(projectsTable).where(inArray(projectsTable.team_id, tenants as string[]))));
+    }
     const where = conditions.length ? and(...conditions) : undefined;
     try {
-      const [rows, [{ total }]] = await Promise.all([
-        db.query.notes.findMany({ where, with: { author: true }, orderBy: [asc(notesTable.created_at)], limit: page_size, offset: (page - 1) * page_size }),
-        db.select({ total: count() }).from(notesTable).where(where)
-      ]);
+      // One statement at a time: both run on the procedure's transaction
+      const rows = await db.query.notes.findMany({ where, with: { author: true }, orderBy: [asc(notesTable.created_at)], limit: page_size, offset: (page - 1) * page_size });
+      const [{ total }] = await db.select({ total: count() }).from(notesTable).where(where);
       return { data: rows.map(presentListRow), page: { page, page_size, total } };
     } catch (err) {
       throw toTRPCError(err, "read");
@@ -75,7 +81,7 @@ export const notesRouter = router({
     const row = await db.query.notes.findFirst({ where: eq(notesTable.id, id) }).catch(err => {
       throw toTRPCError(err, "read");
     });
-    if (!row) throw notFound();
+    if (!row) throw await missing(id, RULES.read, ctx.session);
     checkRule(RULES.read, ctx.session, await withRuleValues(row));
     return presentGetRow(row);
   }),
@@ -103,8 +109,8 @@ export const notesRouter = router({
       const existing = await db.query.notes.findFirst({ where: eq(notesTable.id, id) }).catch(err => {
         throw toTRPCError(err, "read");
       });
-      if (!existing) throw notFound();
-      checkRule(RULES.update, ctx.session, existing);
+      if (!existing) throw await missing(id, RULES.update, ctx.session);
+      checkRule(RULES.update, ctx.session, await withRuleValues(existing));
       const hookContext: HookContext = { session: ctx.session, req: ctx.req };
       try {
         const patch = await hooks.beforeUpdate(existing, input.data, hookContext);
@@ -124,7 +130,7 @@ export const notesRouter = router({
     const existing = await db.query.notes.findFirst({ where: eq(notesTable.id, id) }).catch(err => {
       throw toTRPCError(err, "read");
     });
-    if (!existing) throw notFound();
+    if (!existing) throw await missing(id, RULES.delete, ctx.session);
     checkRule(RULES.delete, ctx.session, await withRuleValues(existing));
     const hookContext: HookContext = { session: ctx.session, req: ctx.req };
     try {

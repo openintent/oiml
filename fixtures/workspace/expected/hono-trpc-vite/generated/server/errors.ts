@@ -47,6 +47,7 @@ export function toTRPCError(err: unknown, operation: "read" | "write" | "delete"
       : new TRPCError({ code: "BAD_REQUEST", message: "A referenced row does not exist" });
   }
   if (code === "23502") return new TRPCError({ code: "BAD_REQUEST", message: "A required value is missing" });
+  if (code === "42501") return new TRPCError({ code: "FORBIDDEN", message: "You cannot do that" });
   if (code === "22P02") {
     return operation === "read" ? notFound() : new TRPCError({ code: "BAD_REQUEST", message: "A value has the wrong format" });
   }

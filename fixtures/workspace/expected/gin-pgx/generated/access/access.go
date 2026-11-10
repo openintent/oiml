@@ -6,7 +6,9 @@ package access
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"reflect"
+	"sync/atomic"
 
 	"github.com/gin-gonic/gin"
 
@@ -84,6 +86,9 @@ type Verdict struct {
 
 // Check evaluates a rule before any row is loaded: 401 without a session, 403 for none and a wrong role.
 func Check(rule Rule, session *auth.Session) *Verdict {
+	if RulesDisabled() {
+		return nil
+	}
 	switch rule.Kind {
 	case "public":
 		return nil
@@ -118,6 +123,9 @@ func Check(rule Rule, session *auth.Session) *Verdict {
 // CheckRow evaluates a rule against a loaded row (or the body of a create): row holds the values the
 // rule's fields name, the owner for owner rules, the tenant for member rules and the values conditions test.
 func CheckRow(rule Rule, session *auth.Session, row Row) *Verdict {
+	if RulesDisabled() {
+		return nil
+	}
 	if rule.Kind == "all" {
 		return allOf(rule.All, func(part Rule) *Verdict { return CheckRow(part, session, row) })
 	}
@@ -151,6 +159,9 @@ func CheckRow(rule Rule, session *auth.Session, row Row) *Verdict {
 
 // Satisfied reports whether the rule allows the session whatever the row, so a list under it needs no row filter.
 func Satisfied(rule Rule, session *auth.Session) bool {
+	if RulesDisabled() {
+		return true
+	}
 	switch rule.Kind {
 	case "public":
 		return rule.When == nil
@@ -267,4 +278,49 @@ func memberOf(session *auth.Session, tenant any, role string) bool {
 		}
 	}
 	return false
+}
+
+var rulesOff atomic.Bool
+
+// SetRulesDisabled is the test hook's switch (OSL_TEST_HOOKS=1 only): with the rule checks off, the database's
+// policies alone stand between a caller and a row.
+func SetRulesDisabled(off bool) {
+	rulesOff.Store(off)
+}
+
+// RulesDisabled reports whether the test hook switched the rule checks off.
+func RulesDisabled() bool {
+	return rulesOff.Load() && os.Getenv("OSL_TEST_HOOKS") == "1"
+}
+
+func needsSession(rule Rule) bool {
+	switch rule.Kind {
+	case "public", "none":
+		return false
+	case "all":
+		for _, part := range rule.All {
+			if needsSession(part) {
+				return true
+			}
+		}
+		return false
+	case "any":
+		for _, alternative := range rule.Any {
+			if needsSession(alternative) {
+				return true
+			}
+		}
+		return false
+	}
+	return true
+}
+
+// Unreachable is what a rule answers for a row the caller's tenants do not reach, which the policy hides from
+// the handler: the rule's own refusal of someone who is not a member, 401 when the caller has no session and
+// the rule wanted one, else 403.
+func Unreachable(rule Rule, session *auth.Session) *Verdict {
+	if session == nil && needsSession(rule) {
+		return &Verdict{Status: http.StatusUnauthorized}
+	}
+	return &Verdict{Status: http.StatusForbidden}
 }

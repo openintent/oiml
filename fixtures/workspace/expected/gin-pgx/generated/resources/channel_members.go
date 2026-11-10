@@ -9,7 +9,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"workspace/generated/access"
 	"workspace/generated/auth"
@@ -23,12 +22,12 @@ import (
 
 // ChannelMembers serves the channel_members resource (ChannelMember).
 type ChannelMembers struct {
-	db   *pgxpool.Pool
+	db   *db.Scope
 	auth *auth.Auth
 }
 
 // NewChannelMembers builds the handlers.
-func NewChannelMembers(db *pgxpool.Pool, a *auth.Auth) *ChannelMembers {
+func NewChannelMembers(db *db.Scope, a *auth.Auth) *ChannelMembers {
 	return &ChannelMembers{db: db, auth: a}
 }
 
@@ -40,13 +39,13 @@ func (h *ChannelMembers) Routes(r gin.IRouter) {
 	r.DELETE("/api/channel_members/:id", h.Delete)
 }
 
-var channelMembersReadRule = access.Rule{Kind: "any", Any: []access.Rule{{Kind: "member", Field: "channel_id.members", Through: true, Roles: []string{"admin", "member"}}, {Kind: "member", Field: "channel_id.team_id", When: &access.Condition{Field: "channel_id.private", Op: "eq", Value: false}}}}
+var channelMembersReadRule = access.Rule{Kind: "any", Any: []access.Rule{{Kind: "all", All: []access.Rule{{Kind: "member", Field: "channel_id.members", Through: true, Roles: []string{"admin", "member"}}, {Kind: "member", Field: "channel_id.team_id"}}}, {Kind: "member", Field: "channel_id.team_id", When: &access.Condition{Field: "channel_id.private", Op: "eq", Value: false}}}}
 
-var channelMembersCreateRule = access.Rule{Kind: "any", Any: []access.Rule{{Kind: "owner", Field: "channel_id.created_by"}, {Kind: "member", Field: "channel_id.members", Role: "admin", Through: true, Roles: []string{"admin", "member"}}}}
+var channelMembersCreateRule = access.Rule{Kind: "any", Any: []access.Rule{{Kind: "all", All: []access.Rule{{Kind: "owner", Field: "channel_id.created_by"}, {Kind: "member", Field: "channel_id.team_id"}}}, {Kind: "all", All: []access.Rule{{Kind: "member", Field: "channel_id.members", Role: "admin", Through: true, Roles: []string{"admin", "member"}}, {Kind: "member", Field: "channel_id.team_id"}}}}}
 
-var channelMembersUpdateRule = access.Rule{Kind: "member", Field: "channel_id.members", Role: "admin", Through: true, Roles: []string{"admin", "member"}}
+var channelMembersUpdateRule = access.Rule{Kind: "all", All: []access.Rule{{Kind: "member", Field: "channel_id.members", Role: "admin", Through: true, Roles: []string{"admin", "member"}}, {Kind: "member", Field: "channel_id.team_id"}}}
 
-var channelMembersDeleteRule = access.Rule{Kind: "any", Any: []access.Rule{{Kind: "owner", Field: "user_id"}, {Kind: "member", Field: "channel_id.members", Role: "admin", Through: true, Roles: []string{"admin", "member"}}}}
+var channelMembersDeleteRule = access.Rule{Kind: "any", Any: []access.Rule{{Kind: "all", All: []access.Rule{{Kind: "owner", Field: "user_id"}, {Kind: "member", Field: "channel_id.team_id"}}}, {Kind: "all", All: []access.Rule{{Kind: "member", Field: "channel_id.members", Role: "admin", Through: true, Roles: []string{"admin", "member"}}, {Kind: "member", Field: "channel_id.team_id"}}}}}
 
 // channelMembersListRow is a list item with its includes.
 type channelMembersListRow struct {
@@ -80,9 +79,11 @@ func (h *ChannelMembers) List(c *gin.Context) {
 	}
 	if !access.Satisfied(channelMembersReadRule, session) {
 		alternatives := []string{}
-		alternatives = append(alternatives, `"channel_id" IN (SELECT "id" FROM `+models.ChannelTable+` WHERE "id" IN (SELECT "channel_id" FROM `+models.ChannelMemberTable+` WHERE "user_id" = `+where.Param(session.User.ID)+`))`)
 		if tenants := access.MemberTenantIDs(session, ""); len(tenants) > 0 {
-			alternatives = append(alternatives, `("channel_id" IN (SELECT "id" FROM `+models.ChannelTable+` WHERE "team_id" = ANY(`+where.Param(tenants)+`)) AND "channel_id" IN (SELECT "id" FROM `+models.ChannelTable+` WHERE "private" = `+where.Param(false)+`))`)
+			alternatives = append(alternatives, `("channel_id" IN (SELECT "id" FROM `+models.ChannelTable+` WHERE "id" IN (SELECT "channel_id" FROM `+models.ChannelMemberTable+` WHERE "user_id" = `+where.Param(session.User.ID)+`)) AND "channel_id" IN (SELECT "id" FROM `+models.ChannelTable+` WHERE "team_id" = ANY(`+where.Param(tenants)+`)))`)
+		}
+		if tenants2 := access.MemberTenantIDs(session, ""); len(tenants2) > 0 {
+			alternatives = append(alternatives, `("channel_id" IN (SELECT "id" FROM `+models.ChannelTable+` WHERE "team_id" = ANY(`+where.Param(tenants2)+`)) AND "channel_id" IN (SELECT "id" FROM `+models.ChannelTable+` WHERE "private" = `+where.Param(false)+`))`)
 		}
 		if len(alternatives) == 0 {
 			httpx.List(c, []channelMembersListRow{}, httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: 0})
@@ -138,7 +139,7 @@ func (h *ChannelMembers) Get(c *gin.Context) {
 	}
 	row, err := models.ScanChannelMember(h.db.QueryRow(ctx, `SELECT `+models.ChannelMemberColumns+` FROM `+models.ChannelMemberTable+` WHERE "id" = $1`, id))
 	if err != nil {
-		httpx.HandleError(c, err, "read")
+		h.missing(c, err, id, channelMembersReadRule, session, "read")
 		return
 	}
 	ruleRow, err := h.ruleRow(ctx, session, access.Row{"channel_id": row.ChannelID})
@@ -222,7 +223,7 @@ func (h *ChannelMembers) Delete(c *gin.Context) {
 	}
 	existing, err := models.ScanChannelMember(h.db.QueryRow(ctx, `SELECT `+models.ChannelMemberColumns+` FROM `+models.ChannelMemberTable+` WHERE "id" = $1`, id))
 	if err != nil {
-		httpx.HandleError(c, err, "delete")
+		h.missing(c, err, id, channelMembersDeleteRule, session, "delete")
 		return
 	}
 	ruleRow, err := h.ruleRow(ctx, session, access.Row{"user_id": existing.UserID, "channel_id": existing.ChannelID})
@@ -248,6 +249,18 @@ func (h *ChannelMembers) Delete(c *gin.Context) {
 		return
 	}
 	httpx.NoContent(c)
+}
+
+// missing answers a row that did not come back: another tenant's as the rule answers a caller it refuses, a
+// missing one 404, and any other failure as it is.
+func (h *ChannelMembers) missing(c *gin.Context, err error, id any, rule access.Rule, session *auth.Session, operation string) {
+	if errors.Is(err, pgx.ErrNoRows) {
+		if found, perr := h.db.Exists(c.Request.Context(), "osl_exists_channel_members", id); perr == nil && found {
+			access.Deny(c, access.Unreachable(rule, session))
+			return
+		}
+	}
+	httpx.HandleError(c, err, operation)
 }
 
 // ruleRow adds to row the values the rules reach through relations, under their dotted keys, and the caller's memberships.

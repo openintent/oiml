@@ -18,10 +18,10 @@ import { hooks } from "@/extensions/channels";
 export type HookContext = { session: Session | null; req: Request };
 
 const RULES = {
-  read: {"kind":"any","rules":[{"kind":"member","field":"members","through":true,"roles":["admin","member"]},{"kind":"member","field":"team_id","when":{"field":"private","op":"eq","value":false}}]} as Rule,
+  read: {"kind":"any","rules":[{"kind":"all","rules":[{"kind":"member","field":"members","through":true,"roles":["admin","member"]},{"kind":"member","field":"team_id"}]},{"kind":"member","field":"team_id","when":{"field":"private","op":"eq","value":false}}]} as Rule,
   create: {"kind":"all","rules":[{"kind":"member","field":"team_id"},{"kind":"owner","field":"created_by"}]} as Rule,
-  update: {"kind":"any","rules":[{"kind":"member","field":"members","role":"admin","through":true,"roles":["admin","member"]},{"kind":"member","field":"team_id","role":"admin"}]} as Rule,
-  delete: {"kind":"any","rules":[{"kind":"member","field":"members","role":"admin","through":true,"roles":["admin","member"]},{"kind":"member","field":"team_id","role":"admin"}]} as Rule
+  update: {"kind":"any","rules":[{"kind":"all","rules":[{"kind":"member","field":"members","role":"admin","through":true,"roles":["admin","member"]},{"kind":"member","field":"team_id"}]},{"kind":"member","field":"team_id","role":"admin"}]} as Rule,
+  delete: {"kind":"any","rules":[{"kind":"all","rules":[{"kind":"member","field":"members","role":"admin","through":true,"roles":["admin","member"]},{"kind":"member","field":"team_id"}]},{"kind":"member","field":"team_id","role":"admin"}]} as Rule
 };
 
 const ACTION_RULES = {
@@ -72,18 +72,18 @@ export const channelsRouter = router({
     if (filters.private !== undefined) conditions.push(eq(channelsTable.private, filters.private));
     if (!satisfied(RULES.read, ctx.session)) {
       const alternatives: SQL[] = [];
-      alternatives.push(inArray(channelsTable.id, db.select({ id: channelMembersTable.channel_id }).from(channelMembersTable).where(eq(channelMembersTable.user_id, ctx.session!.user.id))));
       const tenants = memberTenantIds(ctx.session, undefined);
-      if (tenants.length > 0) alternatives.push(and(inArray(channelsTable.team_id, tenants as string[]), eq(channelsTable.private, false))!);
+      if (tenants.length > 0) alternatives.push(and(inArray(channelsTable.id, db.select({ id: channelMembersTable.channel_id }).from(channelMembersTable).where(eq(channelMembersTable.user_id, ctx.session!.user.id))), inArray(channelsTable.team_id, tenants as string[]))!);
+      const tenants2 = memberTenantIds(ctx.session, undefined);
+      if (tenants2.length > 0) alternatives.push(and(inArray(channelsTable.team_id, tenants2 as string[]), eq(channelsTable.private, false))!);
       if (alternatives.length === 0) return { data: [], page: { page, page_size, total: 0 } };
       conditions.push(alternatives.length === 1 ? alternatives[0] : or(...alternatives)!);
     }
     const where = conditions.length ? and(...conditions) : undefined;
     try {
-      const [rows, [{ total }]] = await Promise.all([
-        db.query.channels.findMany({ where, orderBy: [asc(channelsTable.name)], limit: page_size, offset: (page - 1) * page_size }),
-        db.select({ total: count() }).from(channelsTable).where(where)
-      ]);
+      // One statement at a time: both run on the procedure's transaction
+      const rows = await db.query.channels.findMany({ where, orderBy: [asc(channelsTable.name)], limit: page_size, offset: (page - 1) * page_size });
+      const [{ total }] = await db.select({ total: count() }).from(channelsTable).where(where);
       return { data: rows.map(presentListRow), page: { page, page_size, total } };
     } catch (err) {
       throw toTRPCError(err, "read");

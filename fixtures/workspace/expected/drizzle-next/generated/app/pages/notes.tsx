@@ -31,11 +31,11 @@ function canCreate(user: SessionUser | null): boolean {
 }
 
 function canUpdate(user: SessionUser | null, row: Detail): boolean {
-  return user !== null && row.author_id === user.id;
+  return (user !== null && row.author_id === user.id && user !== null);
 }
 
 function canDelete(user: SessionUser | null, row: Detail): boolean {
-  return (user !== null && row.author_id === user.id || user !== null);
+  return ((user !== null && row.author_id === user.id && user !== null) || user !== null);
 }
 
 /** Who may open this page */

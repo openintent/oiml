@@ -2,10 +2,10 @@
 // Do not edit: this file is rewritten on every osl generate.
 
 import { and, count, desc, eq, inArray, type SQL } from "drizzle-orm";
-import { db } from "../db/client";
+import { db, rowExists } from "../db/client";
 import * as schema from "../db/schema";
 import { teamMembers as teamMembersTable } from "../db/schema";
-import { checkRule, denied, memberTenantIds, type Rule } from "../access";
+import { checkRule, denied, memberTenantIds, rulesDisabled, unreachable, type Rule } from "../access";
 import { getSession, type Session } from "../auth";
 import { created, handleError, noContent, notFound, ok, parseBody, parseId, parseQuery } from "../http";
 import { presentTeamMember, presentUser } from "../present";
@@ -21,6 +21,11 @@ const RULES = {
   update: {"kind":"member","field":"team_id","role":"admin"} as Rule,
   delete: {"kind":"member","field":"team_id","role":"owner"} as Rule
 };
+
+/** No row came back: another tenant's row answers as the rule answers a caller it refuses, a missing one 404 */
+async function missing(id: unknown, rule: Rule, session: Session | null): Promise<Response> {
+  return (await rowExists("osl_exists_team_members", id)) ? denied(unreachable(rule, session)) : notFound();
+}
 
 type ListRow = schema.TeamMember & { user: schema.User | null };
 function presentListRow(row: ListRow) {
@@ -44,14 +49,15 @@ export const members = {
       const conditions: SQL[] = [];
     if (filters.team_id !== undefined) conditions.push(eq(teamMembersTable.team_id, filters.team_id));
     if (filters.user_id !== undefined) conditions.push(eq(teamMembersTable.user_id, filters.user_id));
-    const tenants = memberTenantIds(session, undefined);
-    if (tenants.length === 0) return ok([], { page: { page, page_size, total: 0 } });
-    conditions.push(inArray(teamMembersTable.team_id, tenants as string[]));
+    if (!rulesDisabled()) {
+      const tenants = memberTenantIds(session, undefined);
+      if (tenants.length === 0) return ok([], { page: { page, page_size, total: 0 } });
+      conditions.push(inArray(teamMembersTable.team_id, tenants as string[]));
+    }
       const where = conditions.length ? and(...conditions) : undefined;
-      const [rows, [{ total }]] = await Promise.all([
-        db.query.teamMembers.findMany({ where, with: { user: true }, orderBy: [desc(teamMembersTable.created_at)], limit: page_size, offset: (page - 1) * page_size }),
-        db.select({ total: count() }).from(teamMembersTable).where(where)
-      ]);
+      // One statement at a time: both run on the request's transaction
+      const rows = await db.query.teamMembers.findMany({ where, with: { user: true }, orderBy: [desc(teamMembersTable.created_at)], limit: page_size, offset: (page - 1) * page_size });
+      const [{ total }] = await db.select({ total: count() }).from(teamMembersTable).where(where);
       return ok(rows.map(presentListRow), { page: { page, page_size, total } });
     } catch (err) {
       return handleError(err, "read");
@@ -66,7 +72,7 @@ export const members = {
       const id = parseId(membersId, (await ctx.params).id);
       if (!id.ok) return id.response;
       const row = await db.query.teamMembers.findFirst({ where: eq(teamMembersTable.id, id.data) });
-      if (!row) return notFound();
+      if (!row) return missing(id.data, RULES.read, session);
       const rowVerdict = checkRule(RULES.read, session, row);
       if (!rowVerdict.ok) return denied(rowVerdict);
       return ok(presentGetRow(row));
@@ -103,7 +109,7 @@ export const members = {
       const id = parseId(membersId, (await ctx.params).id);
       if (!id.ok) return id.response;
       const existing = await db.query.teamMembers.findFirst({ where: eq(teamMembersTable.id, id.data) });
-      if (!existing) return notFound();
+      if (!existing) return missing(id.data, RULES.update, session);
       const rowVerdict = checkRule(RULES.update, session, existing);
       if (!rowVerdict.ok) return denied(rowVerdict);
       const body = await parseBody(membersUpdateInput, request);
@@ -128,7 +134,7 @@ export const members = {
       const id = parseId(membersId, (await ctx.params).id);
       if (!id.ok) return id.response;
       const existing = await db.query.teamMembers.findFirst({ where: eq(teamMembersTable.id, id.data) });
-      if (!existing) return notFound();
+      if (!existing) return missing(id.data, RULES.delete, session);
       const rowVerdict = checkRule(RULES.delete, session, existing);
       if (!rowVerdict.ok) return denied(rowVerdict);
       const hookContext: HookContext = { request, session };

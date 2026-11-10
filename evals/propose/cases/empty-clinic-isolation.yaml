@@ -1,0 +1,28 @@
+id: empty-clinic-isolation
+tags: [entity, rules, relation, auth, tenancy, isolation, scenario]
+base: { empty: clinics }
+intent:
+  title: Clinics that never see each other's patients
+  ask: >-
+    Several clinics use the same app. People sign up, create a clinic and add their colleagues to it as staff or as
+    administrators. A clinic has patients (a name and a date of birth) and each patient has appointments (a time and
+    a reason). Staff of a clinic read and edit its patients and appointments; only an administrator deletes a
+    patient. A clinic must never be able to read another clinic's patients or appointments, and that has to hold in
+    the database itself, not only in the application's checks.
+  acceptance:
+    - A member of one clinic is refused another clinic's patient and appointment, and lists neither
+    - Staff add a patient and an appointment; only an administrator deletes the patient
+expect:
+  entities:
+    [User, "Clinic|Practice", "ClinicMember|ClinicStaff|Membership|ClinicMembership|StaffMember", Patient, Appointment]
+  relations: ["Patient.* -> Clinic|Practice", "Appointment.* -> Patient"]
+  auth:
+    tenancy: { entity: "Clinic|Practice", isolation: database }
+  absent_fields: { Appointment: [clinic_id, practice_id] }
+  scenarios: { min: 1, rejections: 2, statuses: [403] }
+  touches: [patients, appointments]
+notes: >-
+  Isolation from the first intent, over an empty model. Appointment reaches the clinic through its patient, a
+  required relation: the compiler derives the tenant column and the composite key, so a diff that copies clinic_id
+  onto Appointment by hand fails on purpose (absent_fields). The patient relation on Appointment and the clinic
+  relation on Patient must be required, or the entities stay shared (M116).

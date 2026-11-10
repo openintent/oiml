@@ -1,0 +1,188 @@
+import type { IR, IsolationIR } from "@osl/core";
+import { tenantTables } from "@osl/core";
+import type { TsConventions } from "./conventions.js";
+import { q } from "./conventions.js";
+
+/** The database backstop of a model, when it asks for one (`auth.tenancy.isolation: database`) */
+export function isolationOf(ir: IR): IsolationIR | undefined {
+  return ir.auth?.tenancy?.isolation;
+}
+
+/**
+ * generated/db/client.ts under isolation: two pools and the scope a request runs in.
+ *
+ * `db` is what every generated module and the user's own code import, as before. Under isolation it is whatever the
+ * code running now may see: inside a request, the request's transaction on the app role's pool, bound to the
+ * caller's tenants; inside a job, the owner's pool, which the policies do not bind; anywhere else the app role
+ * unbound, which reads no row of a tenant table. So a path that forgets to bind fails closed.
+ */
+export function isolatedClientFile(ir: IR, conv: TsConventions): string {
+  const isolation = isolationOf(ir)!;
+  const tables = tenantTables(ir);
+  return `${conv.header("Database client: the app role's pool that requests use under the tenant policies, the owner's pool the worker uses, and the scope that binds a request to its caller's tenants.")}
+import { AsyncLocalStorage } from "node:async_hooks";
+import { sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
+import * as schema from "./schema";
+
+type Scope = { db: Db; tenants?: (string | number)[]; afterCommit?: (() => Promise<void>)[] };
+
+const globalForDb = globalThis as unknown as {
+  oslPool?: Pool;
+  oslAppPool?: Pool;
+  oslScopes?: AsyncLocalStorage<Scope>;
+  oslBound?: Promise<void>;
+};
+
+/** The owner (DATABASE_URL): the role that migrates. The policies do not bind it, so jobs act through it as the system. */
+const pool = globalForDb.oslPool ?? new Pool({ connectionString: process.env.DATABASE_URL });
+if (process.env.NODE_ENV !== "production") globalForDb.oslPool = pool;
+
+export const systemDb = drizzle({ client: pool, schema });
+export type Db = typeof systemDb;
+
+/** The role the web process answers requests as; the migrations create it without a login and \`osl migrate\` gives it one */
+export const APP_ROLE = ${q(isolation.appRole)};
+/** The setting a request binds its caller's tenants to, as an array literal; unset, no tenant row is visible */
+const SETTING = ${q(isolation.setting)};
+/** Every table under a tenant policy */
+export const TENANT_TABLES: { table: string; key: string; publicRead: boolean }[] = [
+${tables.map(t => `  { table: ${q(t.entity.table)}, key: ${q(t.entity.primaryKey[0])}, publicRead: ${t.publicRead} }`).join(",\n")}
+];
+
+/** The app role's pool (DATABASE_APP_URL), made on first use so that building the app needs no database */
+function appPool(): Pool {
+  if (!globalForDb.oslAppPool) {
+    if (!process.env.DATABASE_APP_URL)
+      throw new Error("DATABASE_APP_URL must be set: the web process connects as " + APP_ROLE + ", the role the tenant policies bind");
+    globalForDb.oslAppPool = new Pool({ connectionString: process.env.DATABASE_APP_URL });
+  }
+  return globalForDb.oslAppPool;
+}
+
+let appHandle: Db | undefined;
+function appDb(): Db {
+  return (appHandle ??= drizzle({ client: appPool(), schema }));
+}
+
+/** Refuse to serve as a role the policies do not bind: a superuser, the tables' owner, or one with BYPASSRLS */
+function bound(): Promise<void> {
+  globalForDb.oslBound ??= appPool()
+    .query(
+      "select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relname = any($1) and not row_security_active(c.oid)",
+      [TENANT_TABLES.map(t => t.table)]
+    )
+    .then(result => {
+      if (result.rows.length)
+        throw new Error(
+          "DATABASE_APP_URL connects as a role the tenant policies do not bind (a superuser, the tables' owner, or one with BYPASSRLS); connect the web process as " + APP_ROLE
+        );
+    })
+    .catch(error => {
+      globalForDb.oslBound = undefined;
+      throw error;
+    });
+  return globalForDb.oslBound;
+}
+
+/** One store for the whole process, however many times a bundler evaluates this module */
+const scopes = (globalForDb.oslScopes ??= new AsyncLocalStorage<Scope>());
+
+/** What the code running now reads and writes through: the request's transaction, the owner inside a job, else the app role unbound */
+export const db: Db = new Proxy({} as Db, {
+  get(_target, property) {
+    const current = scopes.getStore()?.db ?? appDb();
+    const value = Reflect.get(current, property, current);
+    return typeof value === "function" ? value.bind(current) : value;
+  }
+});
+
+function arrayLiteral(tenants: (string | number)[]): string {
+  return "{" + tenants.map(String).join(",") + "}";
+}
+
+/**
+ * Run a request's work in one transaction that reaches the rows of these tenants, what a public-read policy shows
+ * to everyone, and nothing else. Jobs queued inside are sent once it commits, so a worker never looks for a row
+ * that is not there yet.
+ */
+export async function withTenants<T>(tenants: (string | number)[], work: () => Promise<T>): Promise<T> {
+  await bound();
+  const queued: (() => Promise<void>)[] = [];
+  const result = await appDb().transaction(async tx => {
+    await tx.execute(sql\`select set_config(\${SETTING}, \${arrayLiteral(tenants)}, true)\`);
+    return scopes.run({ db: tx as unknown as Db, tenants: [...tenants], afterCommit: queued }, work);
+  });
+  for (const job of queued) await job();
+  return result;
+}
+
+/** Bind a tenant the request is about to create: its creator becomes its first member in the same transaction */
+export async function bindTenant(tenant: string | number): Promise<void> {
+  const scope = scopes.getStore();
+  if (!scope?.tenants) throw new Error("bindTenant needs a request scope (withTenants)");
+  scope.tenants.push(tenant);
+  await scope.db.execute(sql\`select set_config(\${SETTING}, \${arrayLiteral(scope.tenants)}, true)\`);
+}
+
+/** Run work as the system, through the owner's pool: a job, a schedule, a timer, the test hooks */
+export function asSystem<T>(work: () => Promise<T>): Promise<T> {
+  return scopes.run({ db: systemDb }, work);
+}
+
+/** Run a job now, or once the request's transaction has committed when there is one */
+export async function afterCommit(job: () => Promise<void>): Promise<void> {
+  const queue = scopes.getStore()?.afterCommit;
+  if (queue) queue.push(job);
+  else await job();
+}
+
+/**
+ * Whether a row exists whatever the caller's tenants, asked of a function that sees past the policy. It tells
+ * another tenant's row (answered as the rule answers a caller it refuses) from a missing one (404), and reveals
+ * nothing a 403 does not.
+ */
+export async function rowExists(probe: string, id: unknown): Promise<boolean> {
+  const result = await db.execute(sql\`select \${sql.identifier(probe)}(\${id}) as found\`);
+  return (result.rows[0] as { found?: unknown } | undefined)?.found === true;
+}
+
+/** Test hook: what the app role reads of every tenant table with no tenant bound: nothing, except what a public-read policy shows */
+export async function unboundRows(): Promise<{ table: string; count: number; ids: string[] }[]> {
+  await bound();
+  const out: { table: string; count: number; ids: string[] }[] = [];
+  for (const t of TENANT_TABLES) {
+    const total = await appPool().query('select count(*)::int as n from "' + t.table + '"');
+    const rows = await appPool().query('select "' + t.key + '"::text as id from "' + t.table + '" order by 1 limit 1000');
+    out.push({ table: t.table, count: (total.rows[0] as { n: number }).n, ids: rows.rows.map(r => (r as { id: string }).id) });
+  }
+  return out;
+}
+`;
+}
+
+/** The .env.example line of the app role's connection: a placeholder, never a password */
+export function appUrlEnvLine(ir: IR): string {
+  const isolation = isolationOf(ir);
+  if (!isolation) return "";
+  return `# The web process connects as the role the tenant policies bind; osl migrate gives it the password you put here\nDATABASE_APP_URL=postgres://${isolation.appRole}:CHOOSE-A-PASSWORD@localhost:5432/${ir.name}\n`;
+}
+
+/** The generated README's paragraph on isolation: the two roles and how the app role gets its password */
+export function isolationReadme(ir: IR, queue: string): string {
+  const isolation = isolationOf(ir);
+  if (!isolation) return "";
+  return `
+## Tenant isolation in the database
+
+The model says \`auth.tenancy.isolation: database\`, so every tenant table has row-level security behind the rules. Two roles connect:
+
+- \`DATABASE_URL\` is the owner: it runs the migrations and the worker's jobs (${queue}), and the policies do not bind it.
+- \`DATABASE_APP_URL\` is \`${isolation.appRole}\`, the role every request reads and writes as. A request sees the rows of the teams its caller belongs to, what a public read rule opens to everyone, and nothing else; outside a request it sees no tenant row at all. The app refuses to serve if this URL connects as the owner, a superuser or a role with BYPASSRLS.
+
+The migrations create \`${isolation.appRole}\` without a login and without a password. Put \`DATABASE_APP_URL=postgres://${isolation.appRole}:<a password you choose>@host:5432/${ir.name}\` in the environment and run \`osl migrate\`: it gives the role that password. No password is in any generated file.
+
+Your own code needs no change: \`db\` is the request's transaction inside a request and the owner's connection inside a job. Do outbound calls (mail, HTTP) after the write, not in the middle of the transaction a handler was given.
+`;
+}

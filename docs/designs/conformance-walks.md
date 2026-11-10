@@ -17,7 +17,10 @@ todo 15 and 79), the blog's eleven revisions show one breaking change (the Post 
 its op, and the oracle eval corpus runs through the walks. The first run's only findings were the harness's own:
 an update probe that left a required field out, which a partial body may, and the conflicting membership above.
 Not a construct: five checks the harness runs over every fixture and every backend without a scenario naming
-them; nothing here changes the grammar.
+them; nothing here changes the grammar. Since 2026-11-10 (round B1, `tenant-isolation-backstop.md`) the tenant
+walk has its second pass and the two hooks: on a fixture with `isolation: database` it runs again with the
+generated rule checks switched off, after a control that shows the switch worked, and then asks what the app's
+database role reads with no tenant bound; a row the read rule opens to everyone is accounted for in both passes.
 
 Scenarios prove what a fixture's author thought to write. The hand-written applications surveyed for these notes
 learned that the properties worth proving are the ones nobody writes a test for per entity: every procedure records

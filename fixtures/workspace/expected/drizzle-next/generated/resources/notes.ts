@@ -2,10 +2,10 @@
 // Do not edit: this file is rewritten on every osl generate.
 
 import { and, asc, count, eq, inArray, type SQL } from "drizzle-orm";
-import { db } from "../db/client";
+import { db, rowExists } from "../db/client";
 import * as schema from "../db/schema";
 import { notes as notesTable, projects as projectsTable } from "../db/schema";
-import { checkRule, denied, memberTenantIds, type Rule } from "../access";
+import { checkRule, denied, memberTenantIds, rulesDisabled, unreachable, type Rule } from "../access";
 import { getSession, type Session } from "../auth";
 import { created, handleError, noContent, notFound, ok, parseBody, parseId, parseQuery } from "../http";
 import { presentNote, presentUser } from "../present";
@@ -18,8 +18,8 @@ export type HookContext = { request: Request; session: Session | null };
 const RULES = {
   read: {"kind":"member","field":"project_id.team_id"} as Rule,
   create: {"kind":"all","rules":[{"kind":"member","field":"project_id.team_id"},{"kind":"owner","field":"author_id"}]} as Rule,
-  update: {"kind":"owner","field":"author_id"} as Rule,
-  delete: {"kind":"any","rules":[{"kind":"owner","field":"author_id"},{"kind":"member","field":"project_id.team_id","role":"admin"}]} as Rule
+  update: {"kind":"all","rules":[{"kind":"owner","field":"author_id"},{"kind":"member","field":"project_id.team_id"}]} as Rule,
+  delete: {"kind":"any","rules":[{"kind":"all","rules":[{"kind":"owner","field":"author_id"},{"kind":"member","field":"project_id.team_id"}]},{"kind":"member","field":"project_id.team_id","role":"admin"}]} as Rule
 };
 
 /** The row (or create body) with the values its rules reach through relations, under their dotted keys */
@@ -31,6 +31,11 @@ async function withRuleValues(row: Record<string, unknown>): Promise<Record<stri
     out["project_id.team_id"] = value;
   }
   return out;
+}
+
+/** No row came back: another tenant's row answers as the rule answers a caller it refuses, a missing one 404 */
+async function missing(id: unknown, rule: Rule, session: Session | null): Promise<Response> {
+  return (await rowExists("osl_exists_notes", id)) ? denied(unreachable(rule, session)) : notFound();
 }
 
 type ListRow = schema.Note & { author: schema.User | null };
@@ -54,14 +59,15 @@ export const notes = {
       const { page, page_size, ...filters } = query.data;
       const conditions: SQL[] = [];
     if (filters.project_id !== undefined) conditions.push(eq(notesTable.project_id, filters.project_id));
-    const tenants = memberTenantIds(session, undefined);
-    if (tenants.length === 0) return ok([], { page: { page, page_size, total: 0 } });
-    conditions.push(inArray(notesTable.project_id, db.select({ id: projectsTable.id }).from(projectsTable).where(inArray(projectsTable.team_id, tenants as string[]))));
+    if (!rulesDisabled()) {
+      const tenants = memberTenantIds(session, undefined);
+      if (tenants.length === 0) return ok([], { page: { page, page_size, total: 0 } });
+      conditions.push(inArray(notesTable.project_id, db.select({ id: projectsTable.id }).from(projectsTable).where(inArray(projectsTable.team_id, tenants as string[]))));
+    }
       const where = conditions.length ? and(...conditions) : undefined;
-      const [rows, [{ total }]] = await Promise.all([
-        db.query.notes.findMany({ where, with: { author: true }, orderBy: [asc(notesTable.created_at)], limit: page_size, offset: (page - 1) * page_size }),
-        db.select({ total: count() }).from(notesTable).where(where)
-      ]);
+      // One statement at a time: both run on the request's transaction
+      const rows = await db.query.notes.findMany({ where, with: { author: true }, orderBy: [asc(notesTable.created_at)], limit: page_size, offset: (page - 1) * page_size });
+      const [{ total }] = await db.select({ total: count() }).from(notesTable).where(where);
       return ok(rows.map(presentListRow), { page: { page, page_size, total } });
     } catch (err) {
       return handleError(err, "read");
@@ -76,7 +82,7 @@ export const notes = {
       const id = parseId(notesId, (await ctx.params).id);
       if (!id.ok) return id.response;
       const row = await db.query.notes.findFirst({ where: eq(notesTable.id, id.data) });
-      if (!row) return notFound();
+      if (!row) return missing(id.data, RULES.read, session);
       const rowVerdict = checkRule(RULES.read, session, await withRuleValues(row));
       if (!rowVerdict.ok) return denied(rowVerdict);
       return ok(presentGetRow(row));
@@ -113,8 +119,8 @@ export const notes = {
       const id = parseId(notesId, (await ctx.params).id);
       if (!id.ok) return id.response;
       const existing = await db.query.notes.findFirst({ where: eq(notesTable.id, id.data) });
-      if (!existing) return notFound();
-      const rowVerdict = checkRule(RULES.update, session, existing);
+      if (!existing) return missing(id.data, RULES.update, session);
+      const rowVerdict = checkRule(RULES.update, session, await withRuleValues(existing));
       if (!rowVerdict.ok) return denied(rowVerdict);
       const body = await parseBody(notesUpdateInput, request);
       if (!body.ok) return body.response;
@@ -138,7 +144,7 @@ export const notes = {
       const id = parseId(notesId, (await ctx.params).id);
       if (!id.ok) return id.response;
       const existing = await db.query.notes.findFirst({ where: eq(notesTable.id, id.data) });
-      if (!existing) return notFound();
+      if (!existing) return missing(id.data, RULES.delete, session);
       const rowVerdict = checkRule(RULES.delete, session, await withRuleValues(existing));
       if (!rowVerdict.ok) return denied(rowVerdict);
       const hookContext: HookContext = { request, session };

@@ -1,0 +1,26 @@
+id: ws2-database-isolation
+tags: [auth, tenancy, isolation, scenario]
+base: { fixture: workspace, through: WS-4 }
+intent:
+  title: Tenant isolation enforced by the database
+  ask: >-
+    We are about to sign a customer whose security review asks one question: if a developer forgets a filter in a
+    handler, can one team read another team's projects or tasks? The answer must be no, and it must not depend on
+    the application code. No team may ever see another team's data, enforced in the database. Members keep seeing
+    and doing what they do today.
+  acceptance:
+    - A member of another team is refused a project and a task of the first team, and lists neither
+    - A member of the team still reads and edits what the rules allowed before
+expect:
+  auth: { tenancy: { entity: Team, membership: TeamMember, isolation: database } }
+  absent_fields: { Task: [team_id] }
+  rules:
+    Project:
+      read: "member:team_id when status = active or member:team_id:admin"
+  scenarios: { min: 1, rejections: 1, statuses: [403] }
+  ops: { max: 4 }
+notes: >-
+  The ask the design note names (docs/designs/tenant-isolation-backstop.md). The answer is the isolation key on
+  auth.tenancy, set with set_auth, and a scenario; nothing else changes. A diff that adds team_id to Task by hand
+  (the compiler derives it), rewrites the member rules, or answers with a note that isolation is the handlers' job
+  has missed the construct.

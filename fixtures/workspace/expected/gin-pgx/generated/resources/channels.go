@@ -10,7 +10,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"workspace/generated/access"
 	"workspace/generated/actions"
@@ -26,12 +25,12 @@ import (
 
 // Channels serves the channels resource (Channel).
 type Channels struct {
-	db   *pgxpool.Pool
+	db   *db.Scope
 	auth *auth.Auth
 }
 
 // NewChannels builds the handlers.
-func NewChannels(db *pgxpool.Pool, a *auth.Auth) *Channels {
+func NewChannels(db *db.Scope, a *auth.Auth) *Channels {
 	return &Channels{db: db, auth: a}
 }
 
@@ -45,13 +44,13 @@ func (h *Channels) Routes(r gin.IRouter) {
 	r.POST("/api/channels/:id/join", h.ActionJoin)
 }
 
-var channelsReadRule = access.Rule{Kind: "any", Any: []access.Rule{{Kind: "member", Field: "members", Through: true, Roles: []string{"admin", "member"}}, {Kind: "member", Field: "team_id", When: &access.Condition{Field: "private", Op: "eq", Value: false}}}}
+var channelsReadRule = access.Rule{Kind: "any", Any: []access.Rule{{Kind: "all", All: []access.Rule{{Kind: "member", Field: "members", Through: true, Roles: []string{"admin", "member"}}, {Kind: "member", Field: "team_id"}}}, {Kind: "member", Field: "team_id", When: &access.Condition{Field: "private", Op: "eq", Value: false}}}}
 
 var channelsCreateRule = access.Rule{Kind: "all", All: []access.Rule{{Kind: "member", Field: "team_id"}, {Kind: "owner", Field: "created_by"}}}
 
-var channelsUpdateRule = access.Rule{Kind: "any", Any: []access.Rule{{Kind: "member", Field: "members", Role: "admin", Through: true, Roles: []string{"admin", "member"}}, {Kind: "member", Field: "team_id", Role: "admin"}}}
+var channelsUpdateRule = access.Rule{Kind: "any", Any: []access.Rule{{Kind: "all", All: []access.Rule{{Kind: "member", Field: "members", Role: "admin", Through: true, Roles: []string{"admin", "member"}}, {Kind: "member", Field: "team_id"}}}, {Kind: "member", Field: "team_id", Role: "admin"}}}
 
-var channelsDeleteRule = access.Rule{Kind: "any", Any: []access.Rule{{Kind: "member", Field: "members", Role: "admin", Through: true, Roles: []string{"admin", "member"}}, {Kind: "member", Field: "team_id", Role: "admin"}}}
+var channelsDeleteRule = access.Rule{Kind: "any", Any: []access.Rule{{Kind: "all", All: []access.Rule{{Kind: "member", Field: "members", Role: "admin", Through: true, Roles: []string{"admin", "member"}}, {Kind: "member", Field: "team_id"}}}, {Kind: "member", Field: "team_id", Role: "admin"}}}
 
 var channelsJoinActionRule = access.Rule{Kind: "member", Field: "team_id", When: &access.Condition{Field: "private", Op: "eq", Value: false}}
 
@@ -87,9 +86,11 @@ func (h *Channels) List(c *gin.Context) {
 	}
 	if !access.Satisfied(channelsReadRule, session) {
 		alternatives := []string{}
-		alternatives = append(alternatives, `"id" IN (SELECT "channel_id" FROM `+models.ChannelMemberTable+` WHERE "user_id" = `+where.Param(session.User.ID)+`)`)
 		if tenants := access.MemberTenantIDs(session, ""); len(tenants) > 0 {
-			alternatives = append(alternatives, `("team_id" = ANY(`+where.Param(tenants)+`) AND "private" = `+where.Param(false)+`)`)
+			alternatives = append(alternatives, `("id" IN (SELECT "channel_id" FROM `+models.ChannelMemberTable+` WHERE "user_id" = `+where.Param(session.User.ID)+`) AND "team_id" = ANY(`+where.Param(tenants)+`))`)
+		}
+		if tenants2 := access.MemberTenantIDs(session, ""); len(tenants2) > 0 {
+			alternatives = append(alternatives, `("team_id" = ANY(`+where.Param(tenants2)+`) AND "private" = `+where.Param(false)+`)`)
 		}
 		if len(alternatives) == 0 {
 			httpx.List(c, models.PresentChannels(nil), httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: 0})

@@ -38,6 +38,8 @@ import {
   HEADER,
   SCAFFOLD_HEADER,
   column,
+  dbType,
+  dbTypeImport,
   entityByName,
   exported,
   fileColumns,
@@ -197,8 +199,20 @@ function listFilterLines(
     return [`${quoteIdent(hops[0].column)} IN (`, ...inner(0), `)`];
   };
   /** The parts of a predicate's condition, following its path, or null without one */
-  const whenSql = (r: PredicateIR): Part[] | null =>
-    r.kind === "none" || !r.when ? null : through(r.when.via ?? [], whenLeaf(r.when));
+  const whenSql = (r: PredicateIR): Part[] | null => {
+    if (r.kind === "none" || !r.when) return null;
+    const when = r.when;
+    if (when.reader && when.via?.length) {
+      // A public alternative's path: the function reads the value whatever the caller's tenants, as the policy does
+      const call = `${quoteIdent(when.reader)}(${quoteIdent(when.via[0].column)})`;
+      if (when.value === null) return [`${call} IS ${when.op === "eq" ? "" : "NOT "}NULL`];
+      return [
+        `${call} ${when.op === "eq" ? "=" : "IS DISTINCT FROM"} `,
+        { code: `where.Param(${conditionValue(when.value)})` }
+      ];
+    }
+    return through(when.via ?? [], whenLeaf(when));
+  };
   /** The runtime guard before an open predicate's condition applies */
   const guard = (r: PredicateIR): string | null =>
     r.kind === "authenticated"
@@ -261,6 +275,18 @@ function listFilterLines(
     if (p.simple?.kind === "owner") lines.push(`\twhere.Eq(${goRaw(quoteIdent(p.simple.field))}, ${me.code})`);
     else if (p.simple?.kind === "member") lines.push(`\twhere.In(${goRaw(quoteIdent(p.simple.field))}, tenants)`);
     else lines.push(`\twhere.Raw(${sqlOf(p, " + ")})`);
+    // Under isolation: database the filter is skipped while a test hook has the rule checks off
+    if (ir.auth?.tenancy?.isolation)
+      return [
+        `\tif !access.RulesDisabled() {`,
+        ...lines.map(line =>
+          line
+            .split("\n")
+            .map(l => `\t${l}`)
+            .join("\n")
+        ),
+        `\t}`
+      ];
     return lines;
   }
   const lines: string[] = [`\tif !access.Satisfied(${ruleVar}, session) {`, `\t\talternatives := []string{}`];
@@ -287,8 +313,10 @@ function listFilterLines(
 
 /** The ruleRow method: adds to a Row the values the entity's rules reach through relations, under their dotted keys */
 function ruleRowMethod(ir: IR, handler: string, rules: RuleIR[]): string | null {
-  const paths = new Map<string, { via: RuleHopIR[]; field: string }>();
-  for (const rule of rules) for (const [key, path] of rulePaths(rule)) paths.set(key, path);
+  const paths = new Map<string, { via: RuleHopIR[]; field: string; reader?: string }>();
+  for (const rule of rules)
+    for (const [key, path] of rulePaths(rule))
+      paths.set(key, path.reader ? path : { ...path, reader: paths.get(key)?.reader });
   const memberships = new Map<string, { via: RuleHopIR[]; field: string; through: MembershipIR }>();
   for (const rule of rules) for (const [key, m] of ruleMemberships(rule)) memberships.set(key, m);
   if (paths.size === 0 && memberships.size === 0) return null;
@@ -328,6 +356,19 @@ function ruleRowMethod(ir: IR, handler: string, rules: RuleIR[]): string | null 
     const hops = r.via;
     const lines: string[] = [];
     let source = `row[${q(hops[0].column)}]`;
+    if (r.reader) {
+      // The value a public alternative tests: read by the function the policy calls, so a caller outside the tenant gets it too
+      const last = entityByName(ir, hops[hops.length - 1].entity);
+      const type = rowGoType({ ...column(last, r.field), nullable: false });
+      const v = `v${n++}`;
+      lines.push(`\t\tvar ${v} *${type}`);
+      lines.push(
+        `\t\tif err := h.db.QueryRow(ctx, \`SELECT ${quoteIdent(r.reader)}($1)\`, ${source}).Scan(&${v}); err != nil && !errors.Is(err, pgx.ErrNoRows) {\n\t\t\treturn nil, err\n\t\t}`
+      );
+      lines.push(`\t\trow[${q(key)}] = ${v}`);
+      blocks.push(`\t{\n${lines.join("\n")}\n\t}`);
+      continue;
+    }
     hops.forEach((hop, i) => {
       const hopEntity = entityByName(ir, hop.entity);
       const next = i + 1 < hops.length ? hops[i + 1].column : r.field;
@@ -356,6 +397,31 @@ function routePath(pathTemplate: string): string {
 
 function fail(op: "read" | "write" | "delete"): string {
   return `\tif err != nil {\n\t\thttpx.HandleError(c, err, ${q(op)})\n\t\treturn\n\t}`;
+}
+
+/**
+ * What a row load that failed answers. Under isolation: database, on an entity with an existence probe, a row that
+ * did not come back may be another tenant's, which the handler's missing method answers as the rule would.
+ */
+function failLoad(entity: EntityIR, op: "read" | "write" | "delete", ruleVar: string): string {
+  if (!entity.tenant?.exists) return fail(op);
+  return `\tif err != nil {\n\t\th.missing(c, err, id, ${ruleVar}, session, ${q(op)})\n\t\treturn\n\t}`;
+}
+
+/** The missing method of a handler over an entity with an existence probe */
+function missingMethod(entity: EntityIR, handler: string): string | null {
+  if (!entity.tenant?.exists) return null;
+  return `// missing answers a row that did not come back: another tenant's as the rule answers a caller it refuses, a
+// missing one 404, and any other failure as it is.
+func (h *${handler}) missing(c *gin.Context, err error, id any, rule access.Rule, session *auth.Session, operation string) {
+	if errors.Is(err, pgx.ErrNoRows) {
+		if found, perr := h.db.Exists(c.Request.Context(), ${q(entity.tenant.exists)}, id); perr == nil && found {
+			access.Deny(c, access.Unreachable(rule, session))
+			return
+		}
+	}
+	httpx.HandleError(c, err, operation)
+}`;
 }
 
 const DENY = (ruleVar: string) =>
@@ -579,7 +645,7 @@ function actionHandlerMethod(
     lines.push(
       `\trow, err := models.${scanFunc(row.entity)}(h.db.QueryRow(ctx, \`SELECT \`+models.${columnsConst(row.entity)}+\` FROM \`+models.${tableConst(row.entity)}+\` WHERE ${quoteIdent(pk.name)} = $1\`, id))`
     );
-    lines.push(fail("write"));
+    lines.push(failLoad(row.entity, "write", ruleVar));
     const allRules = [...Object.values(row.entity.rules), ...actionsOf(ir, row.resource.name).map(a => a.rule)];
     lines.push(
       rowChecks(
@@ -649,7 +715,7 @@ export function resourceFile(ir: IR, resource: ResourceIR, modulePath: string): 
 
   const imports = new Set<string>([
     "github.com/gin-gonic/gin",
-    "github.com/jackc/pgx/v5/pgxpool",
+    dbTypeImport(ir, modulePath),
     `${modulePath}/generated/access`,
     `${modulePath}/generated/auth`,
     `${modulePath}/generated/httpx`,
@@ -657,6 +723,12 @@ export function resourceFile(ir: IR, resource: ResourceIR, modulePath: string): 
     `${modulePath}/generated/validation`
   ]);
   if (list || create || update) imports.add(`${modulePath}/generated/db`);
+  const missing =
+    get || update || remove || actions.some(a => a.scope === "row") ? missingMethod(entity, handler) : null;
+  if (missing) {
+    imports.add("errors");
+    imports.add("github.com/jackc/pgx/v5");
+  }
   if (create || update || remove) {
     imports.add(`${modulePath}/generated/hooks`);
     imports.add(`${hooksPkg} ${modulePath}/src/extensions/${resource.name}`);
@@ -689,12 +761,12 @@ export function resourceFile(ir: IR, resource: ResourceIR, modulePath: string): 
   ];
   sections.push(`// ${handler} serves the ${resource.name} resource (${entity.name}).
 type ${handler} struct {
-	db   *pgxpool.Pool
+	db   ${dbType(ir)}
 	auth *auth.Auth
 }
 
 // New${handler} builds the handlers.
-func New${handler}(db *pgxpool.Pool, a *auth.Auth) *${handler} {
+func New${handler}(db ${dbType(ir)}, a *auth.Auth) *${handler} {
 	return &${handler}{db: db, auth: a}
 }
 
@@ -808,7 +880,7 @@ ${fail("read")}
 ${DENY(ruleVar("read"))}
 ${PARSE_ID(idFunc(resource))}
 	row, err := ${scan}(h.db.QueryRow(ctx, \`SELECT \`+${columnsC}+\` FROM \`+${tableC}+\` WHERE ${pkIdent} = $1\`, id))
-${fail("read")}
+${failLoad(entity, "read", ruleVar("read"))}
 ${(entity.hidden === "not_found" ? HIDE_ROW : DENY_ROW)(ruleVar("read"), entity.rules.read, rowFromStruct(rowColumns(entity.rules.read, allRules), "row"), "read", ruleRowSessionArg(allRules))}
 ${body}
 }`);
@@ -827,9 +899,18 @@ ${body}
       rowRules(create.rule).some(r => r.kind === "member" || r.via?.length) || conditionedRules(create.rule).length > 0
         ? `${DENY_ROW(ruleVar("create"), create.rule, rowFromValues(rowColumns(create.rule, allRules), create.ownerField, identityPk, entity), "write", ruleRowSessionArg(allRules))}\n`
         : "";
+    // Under isolation: database a new tenant is bound to the request before the insert, or its own policy would refuse the row
+    const bind =
+      isTenant && tenancy?.isolation
+        ? `	tenantID, err := db.NewID()
+${fail("write")}
+	values[${q(pk.name)}] = tenantID
+	db.BindTenant(ctx, tenantID)
+`
+        : "";
     const insert =
       isTenant && tenancy && membership
-        ? `	tx, err := h.db.Begin(ctx)
+        ? `${bind}	tx, err := h.db.Begin(ctx)
 ${fail("write")}
 	defer tx.Rollback(ctx)
 	sql, args := db.Insert(${tableC}, values, ${columnsC})
@@ -876,7 +957,7 @@ ${fail("write")}
 ${DENY(ruleVar("update"))}
 ${PARSE_ID(idFunc(resource))}
 	existing, err := ${scan}(h.db.QueryRow(ctx, \`SELECT \`+${columnsC}+\` FROM \`+${tableC}+\` WHERE ${pkIdent} = $1\`, id))
-${fail("write")}
+${failLoad(entity, "write", ruleVar("update"))}
 ${rowChecks(entity, ruleVar("read"), ruleVar("update"), entity.rules.update, "existing", "write", allRules, ruleRowSessionArg(allRules))}
 ${PARSE_BODY(`validation.${inputVar(resource, "update")}`, "patch")}
 ${resolveFiles("patch")}	hookCtx := &hooks.Context{Gin: c, Session: session}
@@ -908,7 +989,7 @@ ${fail("delete")}
 ${DENY(ruleVar("delete"))}
 ${PARSE_ID(idFunc(resource))}
 	existing, err := ${scan}(h.db.QueryRow(ctx, \`SELECT \`+${columnsC}+\` FROM \`+${tableC}+\` WHERE ${pkIdent} = $1\`, id))
-${fail("delete")}
+${failLoad(entity, "delete", ruleVar("delete"))}
 ${rowChecks(entity, ruleVar("read"), ruleVar("delete"), entity.rules.delete, "existing", "delete", allRules, ruleRowSessionArg(allRules))}
 	hookCtx := &hooks.Context{Gin: c, Session: session}
 	if err := ${hooksPkg}.BeforeDelete(hookCtx, existing); err != nil {
@@ -932,6 +1013,7 @@ ${emits.length ? emits.join("\n") + "\n" : ""}	if err := ${hooksPkg}.AfterDelete
       actionHandlerMethod(ir, action, handler, actionRuleVar(action), imports, modulePath, { entity, resource })
     );
 
+  if (missing) sections.push(missing);
   if (ruleRow) sections.push(ruleRow);
   for (const inc of [...includes.values()].sort((a, b) => a.rel.name.localeCompare(b.rel.name)))
     sections.push(loaderMethod(inc, entity, handler));
@@ -950,7 +1032,7 @@ export function globalActionsFile(ir: IR, modulePath: string): string {
   const actions = globalActions(ir).filter(a => a.rule.kind !== "none");
   const imports = new Set<string>([
     "github.com/gin-gonic/gin",
-    "github.com/jackc/pgx/v5/pgxpool",
+    dbTypeImport(ir, modulePath),
     `${modulePath}/generated/access`,
     `${modulePath}/generated/actions`,
     `${modulePath}/generated/actions/handlers`,
@@ -964,12 +1046,12 @@ export function globalActionsFile(ir: IR, modulePath: string): string {
   const sections: string[] = [];
   sections.push(`// GlobalActions serves the actions not tied to a resource.
 type GlobalActions struct {
-	db   *pgxpool.Pool
+	db   ${dbType(ir)}
 	auth *auth.Auth
 }
 
 // NewGlobalActions builds the handlers.
-func NewGlobalActions(db *pgxpool.Pool, a *auth.Auth) *GlobalActions {
+func NewGlobalActions(db ${dbType(ir)}, a *auth.Auth) *GlobalActions {
 	return &GlobalActions{db: db, auth: a}
 }
 

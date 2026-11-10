@@ -30,9 +30,11 @@ export async function getSession(_request: Request): Promise<Session | null> {
     `  password: z.string().min(8).max(200)`,
     ...registerFields.map(c => `  ${c.name}: ${fillEnums(zodForColumn(c, "create"), ir, identity)}`)
   ].join(",\n");
+  // Under isolation: database the memberships come from a function (no tenant is bound yet) and requests run in a tenant scope
+  const isolated = Boolean(tenancy?.isolation);
   const schemaImports = [
     `${table} as ${tableAlias}`,
-    ...(membershipTable ? [`${membershipTable} as ${membershipTable}Table`] : [])
+    ...(membershipTable && !isolated ? [`${membershipTable} as ${membershipTable}Table`] : [])
   ];
   const fileSpecs = identity.columns.some(c => c.type.kind === "file");
   const providerImports = [
@@ -43,9 +45,9 @@ export async function getSession(_request: Request): Promise<Session | null> {
 
   return `${HEADER("Auth: cookie sessions and the auth handlers (passwords, magic links, OAuth, sign-out, me).")}
 import { createHmac, randomBytes${credentials ? ", scryptSync" : ""}, timingSafeEqual } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq${isolated ? ", sql" : ""} } from "drizzle-orm";
 import { z } from "zod";
-import { db } from "./db/client";
+import { db${isolated ? ", withTenants" : ""} } from "./db/client";
 import { ${schemaImports.join(", ")} } from "./db/schema";
 import { created, error, handleError, noContent, ok, parseBody } from "./http";
 import { present${T}, type Public${T} } from "./present";
@@ -120,16 +122,48 @@ export async function sessionOf(user: typeof ${tableAlias}.$inferSelect): Promis
   return { user: present${T}(user), memberships: ${membershipsLoader(ir, `user.${pk}`)} };
 }
 
-/** The signed-in user, or null. Loads the user so a deleted account signs out immediately. */
+${
+  isolated
+    ? `const SESSIONS = new WeakMap<Request, Promise<Session | null>>();
+
+/** The signed-in user, or null, read once per request. Loads the user so a deleted account signs out immediately. */
+export function getSession(request: Request): Promise<Session | null> {
+  let session = SESSIONS.get(request);
+  if (!session) {
+    session = loadSession(request);
+    SESSIONS.set(request, session);
+  }
+  return session;
+}
+
+async function loadSession(request: Request): Promise<Session | null> {
+  const cookie = readCookie(request);
+  if (!cookie) return null;
+  const user = await db.query.${table}.findFirst({ where: eq(${tableAlias}.${pk}, cookie.uid as never) }).catch(() => undefined);
+  return user ? sessionOf(user) : null;
+}
+
+/**
+ * Answer a request within its caller's tenants: the session is read first (the identity is shared and the
+ * memberships come from a function), then the handler runs in one transaction that reaches only the rows of those
+ * tenants. Every generated route goes through here; a path that does not reads no tenant row at all.
+ */
+export async function withRequest(request: Request, handler: () => Promise<Response>): Promise<Response> {
+  const session = await getSession(request);
+  return withTenants(session?.memberships.map(m => m.tenant) ?? [], handler);
+}
+`
+    : `/** The signed-in user, or null. Loads the user so a deleted account signs out immediately. */
 export async function getSession(request: Request): Promise<Session | null> {
   const cookie = readCookie(request);
   if (!cookie) return null;
   const user = await db.query.${table}.findFirst({ where: eq(${tableAlias}.${pk}, cookie.uid as never) }).catch(() => undefined);
   return user ? sessionOf(user) : null;
 }
-${
-  credentials
-    ? `
+`
+}${
+    credentials
+      ? `
 const registerInput = z
   .object({
 ${registerShape}
@@ -138,8 +172,8 @@ ${registerShape}
 
 const loginInput = z.object({ ${auth.emailColumn}: z.string(), password: z.string() }).strict();
 `
-    : ""
-}${magic ? `\nconst magicLinkInput = z.object({ email: z.string().email() }).strict();\nconst magicLinkVerifyInput = z.object({ token: z.string().min(1) }).strict();\n` : ""}
+      : ""
+  }${magic ? `\nconst magicLinkInput = z.object({ email: z.string().email() }).strict();\nconst magicLinkVerifyInput = z.object({ token: z.string().min(1) }).strict();\n` : ""}
 function withCookie(response: Response, cookie: string): Response {
   const headers = new Headers(response.headers);
   headers.append("set-cookie", cookie);
@@ -256,16 +290,29 @@ export const auth = {${
 
 export function authRouteFiles(ir: IR): GeneratedFile[] {
   if (!ir.auth) return [];
-  const make = (folder: string, action: string, method: "GET" | "POST", withName = false) => ({
-    path: `app/api/auth/${folder}/route.ts`,
-    content: `${HEADER(`Route for auth.${action}.`)}
+  const isolated = Boolean(ir.auth.tenancy?.isolation);
+  const make = (folder: string, action: string, method: "GET" | "POST", withName = false) => {
+    const call = `auth.${action}(request${withName ? ", name" : ""})`;
+    const name = withName ? "  const name = (await ctx.params).name;\n" : "";
+    return {
+      path: `app/api/auth/${folder}/route.ts`,
+      content: isolated
+        ? `${HEADER(`Route for auth.${action}.`)}
+import { auth, withRequest } from "@/generated/auth";
+
+export async function ${method}(request: Request${withName ? ", ctx: { params: Promise<{ name: string }> }" : ""}): Promise<Response> {
+${name}  return withRequest(request, () => ${call});
+}
+`
+        : `${HEADER(`Route for auth.${action}.`)}
 import { auth } from "@/generated/auth";
 
 export async function ${method}(request: Request${withName ? ", ctx: { params: Promise<{ name: string }> }" : ""}): Promise<Response> {
   return auth.${action}(request${withName ? ", (await ctx.params).name" : ""});
 }
 `
-  });
+    };
+  };
   const files: GeneratedFile[] = [];
   if (ir.auth.providers.some(p => p.kind === "credentials"))
     files.push(make("register", "register", "POST"), make("login", "login", "POST"));

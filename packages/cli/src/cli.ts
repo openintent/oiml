@@ -19,8 +19,10 @@ import {
   loadProject,
   pendingMigrations,
   readIntent,
+  provisionAppLogin,
   runMigrations,
   toYaml,
+  validateModel,
   writeDiff,
   type GeneratedFile
 } from "@osl/core";
@@ -180,6 +182,11 @@ program
         ok(
           `applied ${id} as revision ${outcome.revision.rev}${outcome.revision.summary ? `: ${outcome.revision.summary}` : ""}`
         );
+      // isolation: database changes what some rules allow (an owner must also be a member) and leaves some
+      // entities shared: say so when the intent is applied, not only in the generated code
+      if (outcome.status !== "noop" && outcome.model.auth?.tenancy?.isolation === "database")
+        for (const d of validateModel(outcome.model))
+          if (d.code === "M116" || d.code === "M119") warn(`${d.code} ${d.path}: ${d.message}`);
     }
     info("next: osl generate");
   });
@@ -264,6 +271,16 @@ program
     const result = await runMigrations(url, path.join(root, project.config.generated_dir, "db/migrations"));
     if (result.applied.length === 0) info(`no pending migrations (${result.skipped.length} already applied)`);
     for (const name of result.applied) ok(`applied ${name}`);
+    // isolation: database: the app role gets its password from the environment, never from a generated file
+    const isolation = project.ir.auth?.tenancy?.isolation;
+    if (isolation) {
+      if (process.env.DATABASE_APP_URL)
+        ok(await provisionAppLogin(url, isolation.appRole, process.env.DATABASE_APP_URL));
+      else
+        info(
+          `set DATABASE_APP_URL (the web process's connection, as role ${isolation.appRole}) and run osl migrate again to give the role its password`
+        );
+    }
   });
 
 program

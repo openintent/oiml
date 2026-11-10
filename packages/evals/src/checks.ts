@@ -3,7 +3,7 @@
  * is applied (and its IR, for rules and actions after defaults). Every failure is one line a reader can act on.
  */
 import type { Diff, IR, Model, RuleIR } from "@osl/core";
-import { ruleText as coreRuleText } from "@osl/core";
+import { compile, ruleText as coreRuleText } from "@osl/core";
 import { Expect as ExpectSchema, type Expect } from "./cases.js";
 
 export interface Checked {
@@ -163,8 +163,21 @@ export function scenarioMetrics(checked: Checked): ScenarioMetrics {
   };
 }
 
+/**
+ * The IR whose rules are the ones the model writes. Under isolation: database the compiler adds the membership of
+ * the row's tenant to the rules of tenant tables; expectations name the rules as a diff declares them, so they are
+ * read from the same model compiled without the key.
+ */
+function declaredIr(checked: Checked): IR {
+  const tenancy = checked.model.auth?.tenancy;
+  if (!checked.model.auth || !tenancy || tenancy.isolation !== "database") return checked.ir;
+  const { isolation: _isolation, ...plain } = tenancy;
+  return compile({ ...checked.model, auth: { ...checked.model.auth, tenancy: plain } });
+}
+
 export function checkExpectations(expect: Expect, checked: Checked): string[] {
-  const { model, ir, diff } = checked;
+  const { model, diff } = checked;
+  const ir = declaredIr(checked);
   const failures: string[] = [];
   const fail = (line: string) => failures.push(line);
   const entities = Object.keys(model.entities);
@@ -394,6 +407,9 @@ export function checkExpectations(expect: Expect, checked: Checked): string[] {
             fail(`tenancy entity is ${model.auth.tenancy.entity}, expected ${want.tenancy.entity}`);
           if (want.tenancy.membership && !alts(want.tenancy.membership).includes(model.auth.tenancy.membership))
             fail(`tenancy membership is ${model.auth.tenancy.membership}, expected ${want.tenancy.membership}`);
+          const isolation = model.auth.tenancy.isolation ?? "none";
+          if (want.tenancy.isolation && want.tenancy.isolation !== isolation)
+            fail(`tenancy isolation is ${isolation}, expected ${want.tenancy.isolation}`);
         }
       }
     }

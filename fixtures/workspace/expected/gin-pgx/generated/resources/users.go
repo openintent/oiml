@@ -5,7 +5,6 @@ package resources
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"workspace/generated/access"
 	"workspace/generated/auth"
@@ -17,12 +16,12 @@ import (
 
 // Users serves the users resource (User).
 type Users struct {
-	db   *pgxpool.Pool
+	db   *db.Scope
 	auth *auth.Auth
 }
 
 // NewUsers builds the handlers.
-func NewUsers(db *pgxpool.Pool, a *auth.Auth) *Users {
+func NewUsers(db *db.Scope, a *auth.Auth) *Users {
 	return &Users{db: db, auth: a}
 }
 

@@ -5,6 +5,22 @@ fixture intent on all three backends before it is listed here.
 
 ## Unreleased
 
+- The tenant isolation backstop (round B1 of the road to 1.0.0): `auth.tenancy.isolation: database` puts row-level
+  security behind the rules on every tenant table (the tenant entity, the membership, and every entity that reaches
+  the tenant through required relations). The compiler derives the tenant column of a table that does not declare
+  it, kept by a trigger and a composite key so no row points at another tenant's parent; the migrations create an
+  app role the policies bind, without a login or a password (`osl migrate` gives it the one in `DATABASE_APP_URL`),
+  and the web process refuses to serve as any role they do not bind. A request reaches the rows of its caller's
+  tenants and what a public read rule opens to everyone, which is compiled into a second, SELECT-only policy; a
+  public alternative on create, update, delete or a row action of a tenant table is an error. Every alternative
+  that needs a session also needs a membership of the row's tenant (`owner:assignee_id` on a task compiles as
+  `owner:assignee_id and member:project_id.team_id`), so an owner who left the tenant no longer reaches the row;
+  statuses are unchanged, another tenant's row still answers 403 or 401 through an existence probe. Row security is
+  enabled, not forced, so the owner role (migrations, the worker) need not be a superuser. `osl drift` compares row
+  security, policies, the functions that see past them and the triggers. The tenant walk runs a second pass with
+  the generated rule checks switched off by a test hook, and an unbound probe of the app role. Diagnostics M115 to
+  M119; workspace WS-11; eval cases `fx-ws-11-isolation`, `ws2-database-isolation`, `empty-clinic-isolation`.
+  Models without the key generate byte-identical output.
 - Membership through any relation (round A2 of the road to 1.0.0): a `member:` path may end in a membership
   relation, a reverse relation to a junction whose entity has a relation to the identity (`member:members` on a
   channel, `member:channel_id.members` on a message, `member:author_id.followers` on a bulletin); `:role` ranks an

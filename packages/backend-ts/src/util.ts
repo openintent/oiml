@@ -1,3 +1,4 @@
+import type { IR } from "@osl/core";
 import { conventions, type ServerConventions } from "@osl/ts-common";
 
 export {
@@ -29,4 +30,14 @@ export function routeFolder(pathTemplate: string): string {
     .filter(Boolean)
     .map(seg => (seg.startsWith("{") ? `[${seg.slice(1, -1)}]` : seg))
     .join("/");
+}
+
+/** Under isolation: database every route answers inside its caller's tenants (withRequest in the generated auth module) */
+export function scoped(ir: IR, call: string): string {
+  return ir.auth?.tenancy?.isolation ? `withRequest(request, () => ${call})` : call;
+}
+
+/** The import a scoped route needs, or nothing */
+export function scopedImport(ir: IR): string {
+  return ir.auth?.tenancy?.isolation ? `import { withRequest } from "@/generated/auth";\n` : "";
 }

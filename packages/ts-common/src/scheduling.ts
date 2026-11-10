@@ -1,5 +1,6 @@
 import type { IR, TimerIR } from "@osl/core";
 import { entityByName, q, tableExport, typeName, type TsConventions } from "./conventions.js";
+import { isolationOf } from "./isolation.js";
 
 /** Whether the model has anything the queue runs on its own */
 export function hasScheduling(ir: IR): boolean {
@@ -174,10 +175,38 @@ export async function runDueTimers(now: Date): Promise<number> {
 }
 
 /** The test hooks' shared logic: generated/test-hooks.ts, mounted by routes only when OSL_TEST_HOOKS=1 */
-export function testHooksFile(ir: IR, conv: TsConventions, options: { email: boolean }): string {
+export function testHooksFile(
+  ir: IR,
+  conv: TsConventions,
+  options: {
+    email: boolean;
+    /** The module that exports setRulesDisabled, relative to the generated root */ access?: string;
+  }
+): string {
   const scheduling = hasScheduling(ir);
-  return `${conv.header("Test hooks: a clock for timers and schedules, and the captured mailbox. Routes mount these only when OSL_TEST_HOOKS=1.")}
-${scheduling ? `import { runDueTimers, runSchedulesFor } from "./scheduling";\n` : ""}${options.email ? `import { captured } from "./email";\n` : ""}
+  const isolated = Boolean(isolationOf(ir));
+  // Under isolation: database timers and schedules run as the system, as the worker runs them
+  const system = (call: string) => (isolated && scheduling ? `asSystem(() => ${call})` : call);
+  const clientImports = [...(scheduling ? ["asSystem"] : []), "unboundRows"];
+  const isolationImports = isolated
+    ? `import { ${clientImports.join(", ")} } from "./db/client";\nimport { setRulesDisabled } from "${options.access ?? "./access"}";\n`
+    : "";
+  const isolationHooks = isolated
+    ? `
+/** POST /api/osl-hooks/rules/off and /on: switch the generated rule checks, so a walk can prove the policies alone hold */
+export function rulesSwitch(off: boolean): { rules: "off" | "on" } {
+  setRulesDisabled(off);
+  return { rules: off ? "off" : "on" };
+}
+
+/** GET /api/osl-hooks/tenancy/unbound: what the app role reads of every tenant table with no tenant bound */
+export function tenancyUnbound(): Promise<{ table: string; count: number; ids: string[] }[]> {
+  return unboundRows();
+}
+`
+    : "";
+  return `${conv.header(`Test hooks: a clock for timers and schedules, and the captured mailbox${isolated ? ", the switch for the rule checks and the unbound probe" : ""}. Routes mount these only when OSL_TEST_HOOKS=1.`)}
+${isolationImports}${scheduling ? `import { runDueTimers, runSchedulesFor } from "./scheduling";\n` : ""}${options.email ? `import { captured } from "./email";\n` : ""}
 /** Whether the hooks are on: never in production */
 export function testHooksEnabled(): boolean {
   return process.env.OSL_TEST_HOOKS === "1";
@@ -192,14 +221,14 @@ export function hookNow(body: unknown): Date {
 
 /** POST /api/osl-hooks/timers/run { now } */
 export async function timersRun(body: unknown): Promise<{ ran: number }> {
-  ${scheduling ? "return { ran: await runDueTimers(hookNow(body)) };" : "void body;\n  return { ran: 0 };"}
+  ${scheduling ? `return { ran: await ${system("runDueTimers(hookNow(body))")} };` : "void body;\n  return { ran: 0 };"}
 }
 
 /** POST /api/osl-hooks/schedules/run { run, now }; null when nothing is scheduled under that action */
 export async function schedulesRun(body: unknown): Promise<{ ran: number } | null> {
   const run = (body as { run?: unknown } | null)?.run;
   if (typeof run !== "string") return null;
-  ${scheduling ? "const ran = await runSchedulesFor(run, hookNow(body));\n  return ran ? { ran } : null;" : "return null;"}
+  ${scheduling ? `const ran = await ${system("runSchedulesFor(run, hookNow(body))")};\n  return ran ? { ran } : null;` : "return null;"}
 }
 
 /** GET /api/osl-hooks/emails?to=&subject= : captured mail, newest last */
@@ -212,5 +241,5 @@ export function emailsSent(query: { to?: string; subject?: string }): { to: stri
       : "void query;\n  return [];"
   }
 }
-`;
+${isolationHooks}`;
 }

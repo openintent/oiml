@@ -13,6 +13,7 @@ import (
 
 	"workspace/generated"
 	"workspace/generated/auth"
+	"workspace/generated/db"
 	"workspace/generated/events"
 	"workspace/generated/jobs"
 	"workspace/generated/resources"
@@ -21,26 +22,36 @@ import (
 )
 
 // New builds the engine. Add your own middleware and routes to the result in cmd/server.
+// pool is the owner's (DATABASE_URL): the worker's jobs act through it. Requests use the app role's (DATABASE_APP_URL).
 func New(pool *pgxpool.Pool) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
+	// Requests read and write as the app role, which the tenant policies bind; New refuses any other
+	requests, err := db.ConnectApp(context.Background())
+	if err != nil {
+		panic(err)
+	}
+	r.Use(func(c *gin.Context) {
+		c.Request = c.Request.WithContext(db.WithBinding(c.Request.Context()))
+		c.Next()
+	})
 	r.GET("/healthz", healthz)
 	r.GET("/api/openapi.json", openapi)
-	a := auth.New(pool)
+	a := auth.New(requests)
 	a.Routes(r)
 	scheduling.Use(pool)
-	resources.NewUsers(pool, a).Routes(r)
-	resources.NewTeams(pool, a).Routes(r)
-	resources.NewMembers(pool, a).Routes(r)
-	resources.NewProjects(pool, a).Routes(r)
-	resources.NewTasks(pool, a).Routes(r)
-	resources.NewNotes(pool, a).Routes(r)
-	resources.NewMilestones(pool, a).Routes(r)
-	resources.NewChannels(pool, a).Routes(r)
-	resources.NewChannelMembers(pool, a).Routes(r)
-	resources.NewMessages(pool, a).Routes(r)
+	resources.NewUsers(requests, a).Routes(r)
+	resources.NewTeams(requests, a).Routes(r)
+	resources.NewMembers(requests, a).Routes(r)
+	resources.NewProjects(requests, a).Routes(r)
+	resources.NewTasks(requests, a).Routes(r)
+	resources.NewNotes(requests, a).Routes(r)
+	resources.NewMilestones(requests, a).Routes(r)
+	resources.NewChannels(requests, a).Routes(r)
+	resources.NewChannelMembers(requests, a).Routes(r)
+	resources.NewMessages(requests, a).Routes(r)
 	if os.Getenv("OSL_TEST_HOOKS") == "1" {
-		testhooks.Routes(r)
+		testhooks.Routes(r, requests)
 	}
 	return r
 }

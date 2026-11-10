@@ -235,12 +235,17 @@ gaps:
   # hand-written applications of this shape build for themselves. cases is 0 until a round reports them.
   - key: tenant isolation backstop
     kind: not_delivered
-    status: open
+    status: built
     first_seen: designs-2026-11-09
     last_seen: designs-2026-11-09
     cases: 0
+    construct: "auth.tenancy.isolation: database (row-level security on every tenant table, a derived tenant column
+      with composite keys, an app role the policies bind, a public-read policy from the read rule's public
+      alternatives)"
+    version: unreleased
     note: "Row-level security derived from relations, composite tenant keys, two database roles, and the cross-tenant
-      walk. Design: docs/designs/tenant-isolation-backstop.md."
+      walk. Design: docs/designs/tenant-isolation-backstop.md. Built 2026-11-10 with workspace WS-11; the walk's
+      second pass runs with the rule checks off."
   - key: field-level visibility
     kind: not_delivered
     status: open

@@ -19,6 +19,8 @@ import {
   entityByName,
   q,
   routeFolder,
+  scoped,
+  scopedImport,
   singlePrimaryKey,
   tableExport,
   typeName
@@ -78,6 +80,10 @@ export function resourceFile(ir: IR, resource: ResourceIR): string {
   const membershipTable = tenancy ? `${tableExport(entityByName(ir, tenancy.membership))}Table` : null;
   const tableVar = (e: EntityIR) => `${tableExport(e)}Table`;
   const me = `session!.user.${identityPk(ir)}`;
+  // Under isolation: database the policy hides another tenant's row from the load: the probe tells it from a missing one
+  const isolated = Boolean(tenancy?.isolation);
+  const probe = entity.tenant?.exists;
+  const miss = (ruleRef: string) => (probe ? `missing(id.data, ${ruleRef}, session)` : "notFound()");
   /**
    * The checks after a row is loaded: with hidden rows answered as not found, the read rule first (a hidden row
    * answers 404), then the operation's own rule, both reading one resolution of the paths they follow.
@@ -157,6 +163,13 @@ export function resourceFile(ir: IR, resource: ResourceIR): string {
   if (hasFiles)
     sections.push(`/** File fields and what they accept */\nconst FILE_FIELDS = ${fileSpecsLiteral(entity)} as const;`);
   if (ruleValues) sections.push(ruleValues.source);
+  if (probe && (get || update || remove || actions.some(a => a.scope === "row"))) {
+    accessImports.add("unreachable");
+    sections.push(`/** No row came back: another tenant's row answers as the rule answers a caller it refuses, a missing one 404 */
+async function missing(id: unknown, rule: Rule, session: Session | null): Promise<Response> {
+  return (await rowExists(${q(probe)}, id)) ? denied(unreachable(rule, session)) : notFound();
+}`);
+  }
   if (list?.sortable.length) {
     sections.push(`const SORTABLE = {\n${list.sortable.map(f => `  ${f}: ${table}.${f}`).join(",\n")}\n};
 
@@ -216,10 +229,16 @@ function sortOrder(sort: string): SQL[] {
       const conditions: SQL[] = [];
 ${filterLines.join("\n")}
       const where = conditions.length ? and(...conditions) : undefined;
-      const [rows, [{ total }]] = await Promise.all([
+${
+  isolated
+    ? `      // One statement at a time: both run on the request's transaction
+      const rows = await ${query}.findMany({ where${withClause(list.include)}, orderBy: ${orderBy}, limit: page_size, offset: (page - 1) * page_size });
+      const [{ total }] = await db.select({ total: count() }).from(${table}).where(where);`
+    : `      const [rows, [{ total }]] = await Promise.all([
         ${query}.findMany({ where${withClause(list.include)}, orderBy: ${orderBy}, limit: page_size, offset: (page - 1) * page_size }),
         db.select({ total: count() }).from(${table}).where(where)
-      ]);
+      ]);`
+}
       return ok(rows.map(presentListRow), { page: { page, page_size, total } });
     } catch (err) {
       return handleError(err, "read");
@@ -237,7 +256,7 @@ ${filterLines.join("\n")}
       const id = parseId(${resource.name}Id, (await ctx.params).id);
       if (!id.ok) return id.response;
       const row = await ${query}.findFirst({ where: eq(${table}.${pk}, id.data)${withClause(get.include)} });
-      if (!row) return notFound();
+      if (!row) return ${miss("RULES.read")};
       const rowVerdict = checkRule(RULES.read, session, ${rowArg(get.rule, "row", sessionArg)});
       if (!rowVerdict.ok) return ${entity.hidden === "not_found" ? "notFound()" : "denied(rowVerdict)"};
       return ok(presentGetRow(row));
@@ -258,10 +277,12 @@ ${filterLines.join("\n")}
       ? `      const bodyVerdict = checkRule(RULES.create, session, ${rowArg(create.rule, owner || defaults ? `{ ${defaults}...body.data${owner} }` : "body.data", sessionArg)});
       if (!bodyVerdict.ok) return denied(bodyVerdict);\n`
       : "";
+    // Under isolation: database a new tenant is bound to the request before the insert, or its own policy would refuse the row
+    const bind = isTenant && isolated;
     const insert =
       isTenant && tenancy && membershipTable
-        ? `      const row = await db.transaction(async tx => {
-        const [created] = await tx.insert(${table}).values(values).returning();
+        ? `${bind ? `      const tenantId = randomUUID();\n      await bindTenant(tenantId);\n` : ""}      const row = await db.transaction(async tx => {
+        const [created] = await tx.insert(${table}).values(${bind ? `{ ...values, ${pk}: tenantId }` : "values"}).returning();
         await tx.insert(${membershipTable}).values({ ${tenancy.userColumn}: session!.user.${identityPk(ir)}, ${tenancy.tenantColumn}: created.${pk}, ${tenancy.roleColumn}: ${q(tenancy.creatorRole)} });
         return created;
       });`
@@ -299,7 +320,7 @@ ${emitLines.join("\n")}${timerLine}
       const id = parseId(${resource.name}Id, (await ctx.params).id);
       if (!id.ok) return id.response;
       const existing = await ${query}.findFirst({ where: eq(${table}.${pk}, id.data) });
-      if (!existing) return notFound();${updateChecks.lines}
+      if (!existing) return ${miss("RULES.update")};${updateChecks.lines}
       const rowVerdict = checkRule(RULES.update, session, ${updateChecks.arg});
       if (!rowVerdict.ok) return denied(rowVerdict);
       const body = await parseBody(${resource.name}UpdateInput, request);
@@ -330,7 +351,7 @@ ${emitLines.join("\n")}${timerLine}
       const id = parseId(${resource.name}Id, (await ctx.params).id);
       if (!id.ok) return id.response;
       const existing = await ${query}.findFirst({ where: eq(${table}.${pk}, id.data) });
-      if (!existing) return notFound();${deleteChecks.lines}
+      if (!existing) return ${miss("RULES.delete")};${deleteChecks.lines}
       const rowVerdict = checkRule(RULES.delete, session, ${deleteChecks.arg});
       if (!rowVerdict.ok) return denied(rowVerdict);
       const hookContext: HookContext = { request, session };
@@ -358,7 +379,8 @@ ${emitLines.join("\n")}
         idName: `${resource.name}Id`,
         T,
         actionEvents: actionEvents(action.name),
-        checks: rowChecks(action.rule, "current")
+        checks: rowChecks(action.rule, "current"),
+        miss: miss(`ACTION_RULES.${action.name}`)
       })
     );
   }
@@ -368,7 +390,8 @@ ${emitLines.join("\n")}
     ...(drizzleImports.size
       ? [`import { ${[...drizzleImports].sort().join(", ")}${usesSql ? ", type SQL" : ""} } from "drizzle-orm";`]
       : []),
-    `import { db } from "../db/client";`,
+    ...(isTenant && isolated && create ? [`import { randomUUID } from "node:crypto";`] : []),
+    `import { ${["db", ...(isTenant && isolated && create ? ["bindTenant"] : []), ...(accessImports.has("unreachable") ? ["rowExists"] : [])].join(", ")} } from "../db/client";`,
     `import * as schema from "../db/schema";`,
     `import { ${[
       `${tableExport(entity)} as ${table}`,
@@ -417,6 +440,8 @@ function actionHandler(
     actionEvents: IR["events"];
     /** The checks after the row is loaded (a hidden row's 404 when the entity asks for it) and the row the action's own check reads */
     checks: { lines: string; arg: string };
+    /** What a row that did not come back answers: notFound(), or under isolation the probe's answer */
+    miss: string;
   } | null
 ): string {
   const input = actionInputName(action);
@@ -446,7 +471,7 @@ function actionHandler(
       const id = parseId(${row.idName}, (await ctx.params).id);
       if (!id.ok) return id.response;
       const current = await ${row.query}.findFirst({ where: eq(${row.table}.${row.pk}, id.data) });
-      if (!current) return notFound();${row.checks.lines}
+      if (!current) return ${row.miss};${row.checks.lines}
       const rowVerdict = checkRule(${rulesRef}, session, ${row.checks.arg});
       if (!rowVerdict.ok) return denied(rowVerdict);
       const body = await parseBody(${input}, request);
@@ -523,13 +548,13 @@ export function routeFiles(ir: IR, resource: ResourceIR): GeneratedFile[] {
     const exports = pathOps.map(op => {
       const fn = op.kind === "delete" ? "delete" : op.kind;
       return withCtx
-        ? `export async function ${op.method}(request: Request, ctx: RouteContext): Promise<Response> {\n  return ${resource.name}.${fn}(request, ctx);\n}`
-        : `export async function ${op.method}(request: Request): Promise<Response> {\n  return ${resource.name}.${fn}(request);\n}`;
+        ? `export async function ${op.method}(request: Request, ctx: RouteContext): Promise<Response> {\n  return ${scoped(ir, `${resource.name}.${fn}(request, ctx)`)};\n}`
+        : `export async function ${op.method}(request: Request): Promise<Response> {\n  return ${scoped(ir, `${resource.name}.${fn}(request)`)};\n}`;
     });
     files.push({
       path: `app/${routeFolder(pathTemplate)}/route.ts`,
       content: `${HEADER(`Routes for ${pathTemplate}.`)}
-import { ${resource.name}${withCtx ? ", type RouteContext" : ""} } from "@/generated/resources/${resource.name}";
+${scopedImport(ir)}import { ${resource.name}${withCtx ? ", type RouteContext" : ""} } from "@/generated/resources/${resource.name}";
 
 ${exports.join("\n\n")}
 `
@@ -540,12 +565,12 @@ ${exports.join("\n\n")}
     files.push({
       path: `app/${routeFolder(action.path)}/route.ts`,
       content: `${HEADER(`Route for the ${action.name} action: POST ${action.path}.`)}
-import { ${resource.name}${withCtx ? ", type RouteContext" : ""} } from "@/generated/resources/${resource.name}";
+${scopedImport(ir)}import { ${resource.name}${withCtx ? ", type RouteContext" : ""} } from "@/generated/resources/${resource.name}";
 
 ${
   withCtx
-    ? `export async function POST(request: Request, ctx: RouteContext): Promise<Response> {\n  return ${resource.name}.${actionMethod(action)}(request, ctx);\n}`
-    : `export async function POST(request: Request): Promise<Response> {\n  return ${resource.name}.${actionMethod(action)}(request);\n}`
+    ? `export async function POST(request: Request, ctx: RouteContext): Promise<Response> {\n  return ${scoped(ir, `${resource.name}.${actionMethod(action)}(request, ctx)`)};\n}`
+    : `export async function POST(request: Request): Promise<Response> {\n  return ${scoped(ir, `${resource.name}.${actionMethod(action)}(request)`)};\n}`
 }
 `
     });
@@ -560,10 +585,10 @@ export function globalActionRouteFiles(ir: IR): GeneratedFile[] {
     .map(action => ({
       path: `app/${routeFolder(action.path)}/route.ts`,
       content: `${HEADER(`Route for the ${action.name} action: POST ${action.path}.`)}
-import { actions } from "@/generated/actions-api";
+${scopedImport(ir)}import { actions } from "@/generated/actions-api";
 
 export async function POST(request: Request): Promise<Response> {
-  return actions.${actionMethod(action)}(request);
+  return ${scoped(ir, `actions.${actionMethod(action)}(request)`)};
 }
 `
     }));

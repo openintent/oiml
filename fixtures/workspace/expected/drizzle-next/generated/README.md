@@ -5,3 +5,14 @@ Everything in this directory is rewritten by `osl generate` from `.osl/model.yam
 Put your own code in `src/`: `src/extensions/<resource>.ts` holds hooks around each resource's handlers and `src/events/<handler>.ts` holds event handlers. OSL creates those files once and never touches them again.
 
 Migrations in `db/migrations` are a pure function of the model history. Apply them with `osl migrate`.
+
+## Tenant isolation in the database
+
+The model says `auth.tenancy.isolation: database`, so every tenant table has row-level security behind the rules. Two roles connect:
+
+- `DATABASE_URL` is the owner: it runs the migrations and the worker's jobs (pg-boss), and the policies do not bind it.
+- `DATABASE_APP_URL` is `workspace_app`, the role every request reads and writes as. A request sees the rows of the teams its caller belongs to, what a public read rule opens to everyone, and nothing else; outside a request it sees no tenant row at all. The app refuses to serve if this URL connects as the owner, a superuser or a role with BYPASSRLS.
+
+The migrations create `workspace_app` without a login and without a password. Put `DATABASE_APP_URL=postgres://workspace_app:<a password you choose>@host:5432/workspace` in the environment and run `osl migrate`: it gives the role that password. No password is in any generated file.
+
+Your own code needs no change: `db` is the request's transaction inside a request and the owner's connection inside a job. Do outbound calls (mail, HTTP) after the write, not in the middle of the transaction a handler was given.

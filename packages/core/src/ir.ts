@@ -2,7 +2,7 @@
  * IR v2: the fully resolved, framework-neutral form of a model.
  * Every default is explicit here so backends never infer anything.
  */
-import { hashValue } from "./canonical.js";
+import { hashValue, sha256 } from "./canonical.js";
 import {
   AUTH_STEP_OPS,
   conjunctionParts,
@@ -16,6 +16,7 @@ import {
   resolveStepOp,
   ruleAlternativeTexts,
   membershipRelation,
+  tenantLinks,
   splitCondition,
   splitWhen,
   type Action,
@@ -26,6 +27,7 @@ import {
   type Validate
 } from "./model.js";
 import { defaultTableName, relationNameFromColumn, toSnakeCase, toTitleCase } from "./naming.js";
+import { sqlType } from "./migrations.js";
 
 export type Scalar =
   | "string"
@@ -114,6 +116,12 @@ export interface RuleConditionIR {
   /** The literal, typed by the column: boolean, number, string (enum values included) or null */
   value: string | number | boolean | null;
   via?: RuleHopIR[];
+  /**
+   * Under `isolation: database`, on a path of a public alternative of a tenant table's read rule: the database
+   * function that reads the value for the first hop's key whatever the caller's tenants, since the policies of the
+   * tables the path crosses would hide it from a caller who is not a member.
+   */
+  reader?: string;
 }
 
 /** The junction a member path ends in: the caller is a member when a row of it points at the row reached and at them */
@@ -227,13 +235,30 @@ export function ruleMemberships(rule: RuleIR): Map<string, { via: RuleHopIR[]; f
 }
 
 /** Every value a row check reads through relations: owner and member paths, and conditions with a path, by their dotted key */
-export function rulePaths(rule: RuleIR): Map<string, { via: RuleHopIR[]; field: string }> {
-  const out = new Map<string, { via: RuleHopIR[]; field: string }>();
+export function rulePaths(rule: RuleIR): Map<string, { via: RuleHopIR[]; field: string; reader?: string }> {
+  const out = new Map<string, { via: RuleHopIR[]; field: string; reader?: string }>();
   for (const r of rowRules(rule))
     if (r.via?.length && !(r.kind === "member" && r.through)) out.set(ruleKey(r), { via: r.via, field: r.field });
-  for (const r of conditionedRules(rule))
-    if (r.when!.via?.length) out.set(conditionKey(r.when!), { via: r.when!.via!, field: r.when!.column });
+  for (const r of conditionedRules(rule)) {
+    if (!r.when!.via?.length) continue;
+    const key = conditionKey(r.when!);
+    const reader = r.when!.reader ?? out.get(key)?.reader;
+    out.set(
+      key,
+      reader ? { via: r.when!.via!, field: r.when!.column, reader } : { via: r.when!.via!, field: r.when!.column }
+    );
+  }
   return out;
+}
+
+/** Whether an alternative needs no session: every part is `public`, with or without a condition */
+export function isSessionFree(alternative: AlternativeIR): boolean {
+  return alternativeParts(alternative).every(p => p.kind === "public");
+}
+
+/** The alternatives of a rule a caller without a session can satisfy: what a tenant table's public-read policy compiles */
+export function sessionFreeAlternatives(rule: RuleIR): AlternativeIR[] {
+  return ruleAlternatives(rule).filter(isSessionFree);
 }
 
 /** The field an owner predicate without a path names (an alternative or a conjunction part): set from the session on create, never written by a client */
@@ -265,6 +290,54 @@ export function ruleText(rule: RuleIR): string {
   }
 }
 
+/** A composite key that keeps a row and the row it points at in one tenant: (tenant, relation) to the target's (tenant, key) */
+export interface TenantKeyIR {
+  name: string;
+  /** The tenant column and the relation column on this table */
+  columns: [string, string];
+  targetTable: string;
+  /** The target's tenant column and its primary key */
+  targetColumns: [string, string];
+  onDelete: "restrict" | "cascade" | "set_null";
+  /** The key a derived tenant column is kept by: when the parent changes tenant, the row follows */
+  cascade?: true;
+}
+
+/** What makes an entity a tenant table under `isolation: database` */
+export interface TenantIR {
+  /** The column holding the row's tenant: the tenant entity's own key, the declared relation, or the derived column */
+  column: string;
+  /** SQL type of a tenant id, as the policy casts the bound setting */
+  type: string;
+  /**
+   * Set when the model does not declare the column: the compiler adds it to the table (never to `columns`, so no
+   * backend reads or writes it), a trigger copies it from the parent on insert and when `through` changes, and a
+   * composite key keeps it equal.
+   */
+  derived?: {
+    column: ColumnIR;
+    /** The required relation column the tenant comes through */
+    through: string;
+    parentTable: string;
+    parentKey: string;
+    /** The parent's own tenant column */
+    parentColumn: string;
+    /** The trigger function that keeps the column */
+    trigger: string;
+    index: { name: string; columns: string[]; unique: false };
+  };
+  /** Composite keys to every tenant table this one points at, the tenant entity excepted */
+  keys: TenantKeyIR[];
+  /** UNIQUE (tenant, key), present when another table's composite key points here */
+  unique?: { name: string; columns: string[] };
+  /**
+   * The function that says whether a row with this key exists whatever the caller's tenants: how a handler tells
+   * another tenant's row (the rule's refusal) from a missing one (404). Absent under `hidden: not_found`, where
+   * both answer 404.
+   */
+  exists?: string;
+}
+
 export interface EntityIR {
   name: string;
   table: string;
@@ -282,6 +355,8 @@ export interface EntityIR {
   display: string;
   /** Owned by OSL (files, auth tokens): migrated and checked for drift, never exposed as a resource or page */
   system?: boolean;
+  /** Under `isolation: database`: present on a tenant table, absent on a shared one */
+  tenant?: TenantIR;
 }
 
 export interface EnumIR {
@@ -358,6 +433,20 @@ export interface TenancyIR {
   /** Roles from most to least privileged, as declared on the membership's enum */
   roles: string[];
   creatorRole: string;
+  /** Present under `isolation: database` */
+  isolation?: IsolationIR;
+}
+
+/** The database backstop: what a request binds, the role it connects as, and how a session's memberships are read */
+export interface IsolationIR {
+  /** The role the web process connects as: no BYPASSRLS, granted the tables, bound by every policy */
+  appRole: string;
+  /** The setting a request binds its caller's tenants to, as an array literal; unset or empty shows no row */
+  setting: string;
+  /** SQL type of a tenant id */
+  tenantType: string;
+  /** The function that answers a user's memberships (tenant, role) before any tenant is bound */
+  memberships: string;
 }
 
 export interface AuthIR {
@@ -661,6 +750,11 @@ function parseBase(
   return { kind: predicate as "public" | "authenticated" | "none" };
 }
 
+/** A database identifier OSL makes up, within PostgreSQL's 63 bytes: a long one keeps its start and gains a hash of the whole */
+export function sqlName(name: string): string {
+  return name.length <= 63 ? name : `${name.slice(0, 54)}_${sha256(name).slice(0, 8)}`;
+}
+
 function enumTypeName(entityName: string, fieldName: string): string {
   return `${toSnakeCase(entityName)}_${fieldName}`;
 }
@@ -839,6 +933,43 @@ export function compile(input: Model): IR {
       if (via.length) out.via = via;
       return out;
     };
+  // Under isolation: database, the tenant tables and the path a rule follows from each to its tenant
+  const tenantOf = tenantLinks(model).links;
+  const tenantEntityName = model.auth?.tenancy?.entity;
+  /** The member predicate that says "a member of this row's tenant", any role */
+  const tenantMember = (entityName: string): RowRuleIR => {
+    const path = tenantOf[entityName].path;
+    const via = hopsFrom(entityName, path.slice(0, -1));
+    const out: RowRuleIR = { kind: "member", field: path[path.length - 1] };
+    if (via.length) out.via = via;
+    return out;
+  };
+  /**
+   * A rule on a tenant table as isolation: database compiles it: every alternative that needs a session also needs
+   * a membership of the row's tenant, so what the rule allows is what the policy lets the caller reach. An
+   * alternative that already asks for that membership (any role), a public one and `none` are left as written.
+   */
+  const withinTenant = (entityName: string, rule: RuleIR): RuleIR => {
+    if (!tenantOf[entityName]) return rule;
+    const member = tenantMember(entityName);
+    const key = ruleKey(member);
+    const alternatives = ruleAlternatives(rule).map((alternative): AlternativeIR => {
+      const parts = alternativeParts(alternative);
+      if (isSessionFree(alternative) || parts.some(p => p.kind === "none")) return alternative;
+      if (parts.some(p => p.kind === "member" && !p.through && ruleKey(p) === key)) return alternative;
+      return { kind: "all", rules: [...parts, member] };
+    });
+    return alternatives.length > 1 ? { kind: "any", rules: alternatives } : alternatives[0];
+  };
+  /** Name the reader function of every path a public alternative of a tenant table's read rule tests */
+  const withReaders = (entityName: string, rule: RuleIR): RuleIR => {
+    if (!tenantOf[entityName]) return rule;
+    for (const alternative of sessionFreeAlternatives(rule))
+      for (const part of alternativeParts(alternative))
+        if (part.kind === "public" && part.when?.via?.length)
+          part.when.reader = sqlName(`osl_read_${tableOf(entityName)}_${conditionKey(part.when).replace(/\./g, "_")}`);
+    return rule;
+  };
   const providers = model.auth?.providers ?? (model.auth ? ["credentials"] : []);
   const hasCredentials = providers.includes("credentials");
 
@@ -982,7 +1113,73 @@ export function compile(input: Model): IR {
       display: displayColumn(columns, primaryKey, foreignKeys)
     };
     if (isSystem) compiled.system = true;
+    if (tenantOf[entityName]) {
+      compiled.rules = {
+        read: withReaders(entityName, withinTenant(entityName, compiled.rules.read)),
+        // Whoever creates a tenant becomes its first member: no membership can be asked of them before
+        create:
+          entityName === tenantEntityName ? compiled.rules.create : withinTenant(entityName, compiled.rules.create),
+        update: withinTenant(entityName, compiled.rules.update),
+        delete: withinTenant(entityName, compiled.rules.delete)
+      };
+    }
     entities.push(compiled);
+  }
+
+  // Tenant tables: the tenant column (declared or derived), the composite keys, and the existence probe
+  if (tenantEntityName && Object.keys(tenantOf).length) {
+    const byName = (name: string) => entities.find(e => e.name === name)!;
+    const tenantEntity = byName(tenantEntityName);
+    const tenantKey = tenantEntity.columns.find(c => c.name === tenantEntity.primaryKey[0])!;
+    const tenantType = sqlType(tenantKey);
+    for (const entity of entities) {
+      const link = tenantOf[entity.name];
+      if (!link) continue;
+      const tenant: TenantIR = { column: link.field, type: tenantType, keys: [] };
+      if (link.through) {
+        const parent = byName(allEntities[entity.name].fields[link.through].relation!.entity);
+        tenant.derived = {
+          column: {
+            name: link.field,
+            type: tenantKey.type,
+            nullable: false,
+            unique: false,
+            primary: false,
+            hidden: true,
+            description: `The row's ${tenantEntityName}, kept by the database from ${link.through}`
+          },
+          through: link.through,
+          parentTable: parent.table,
+          parentKey: parent.primaryKey[0],
+          parentColumn: tenantOf[parent.name].field,
+          trigger: sqlName(`osl_tenant_${entity.table}`),
+          index: { name: sqlName(`${entity.table}_${link.field}_idx`), columns: [link.field], unique: false }
+        };
+      }
+      for (const fk of entity.foreignKeys) {
+        const target = tenantOf[fk.targetEntity];
+        if (!target || fk.targetEntity === tenantEntityName) continue;
+        const key: TenantKeyIR = {
+          name: sqlName(`${entity.table}_${link.field}_${fk.column}_fkey`),
+          columns: [link.field, fk.column],
+          targetTable: fk.targetTable,
+          targetColumns: [target.field, fk.targetColumn],
+          onDelete: fk.onDelete
+        };
+        if (link.through === fk.column) key.cascade = true;
+        tenant.keys.push(key);
+      }
+      if (entity.hidden === "forbidden") tenant.exists = sqlName(`osl_exists_${entity.table}`);
+      entity.tenant = tenant;
+    }
+    for (const entity of entities)
+      for (const key of entity.tenant?.keys ?? []) {
+        const target = entities.find(e => e.table === key.targetTable)!;
+        target.tenant!.unique ??= {
+          name: sqlName(`${target.table}_${key.targetColumns.join("_")}_key`),
+          columns: [...key.targetColumns]
+        };
+      }
   }
 
   // Reverse relations
@@ -1074,6 +1271,15 @@ export function compile(input: Model): IR {
         roles: membership.fields[t.role_field].enum_values!,
         creatorRole: t.creator_role
       };
+      if (t.isolation === "database") {
+        const tenantEntity = entityByName(t.entity);
+        auth.tenancy.isolation = {
+          appRole: sqlName(`${toSnakeCase(model.name).replace(/[^a-z0-9_]/g, "_")}_app`),
+          setting: `app.${toSnakeCase(t.entity)}_ids`,
+          tenantType: sqlType(tenantEntity.columns.find(c => c.name === tenantEntity.primaryKey[0])!),
+          memberships: "osl_memberships"
+        };
+      }
     }
   }
 
@@ -1137,6 +1343,8 @@ export function compile(input: Model): IR {
       returns,
       handler: owner
     };
+    // A row action on a tenant table reaches its row as a member of the row's tenant, like update and delete
+    if (resource && scope === "row") out.rule = withinTenant(resource.entity.name, out.rule);
     if (resource) {
       out.resource = resource.name;
       out.entity = resource.entity.name;

@@ -7,6 +7,7 @@
  *    start the app and run the contract tests derived from the examples.
  */
 import { spawn, type ChildProcess } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
@@ -22,6 +23,7 @@ import {
   initProject,
   listIntents,
   loadProject,
+  provisionAppLogin,
   runMigrations,
   type Backend,
   type Cmd,
@@ -234,10 +236,30 @@ export async function runFixture(
     return finish(result, options);
   }
   const dbName = `osl_${fixture.name}_${Date.now().toString(36)}`.replace(/[^a-z0-9_]/g, "_");
-  const databaseUrl = withDatabase(adminUrl, dbName);
+  // isolation: database is proven the way it is deployed: the database belongs to a role that is no superuser
+  // (migrations, the worker and the walks' own reads go through it), and the app serves as a third role, a login
+  // that is a member of the model's app role. Both are made for this run and dropped with the database; their
+  // passwords are random and live in this process's memory only.
+  const isolation = (await loadProject(dir)).ir.auth?.tenancy?.isolation;
+  const ownerRole = `${dbName}_owner`;
+  const webRole = `${dbName}_web`;
+  const ownerPassword = randomBytes(18).toString("hex");
+  const webPassword = randomBytes(18).toString("hex");
+  const databaseUrl = isolation
+    ? withUser(withDatabase(adminUrl, dbName), ownerRole, ownerPassword)
+    : withDatabase(adminUrl, dbName);
+  const appDatabaseUrl = isolation ? withUser(withDatabase(adminUrl, dbName), webRole, webPassword) : undefined;
   let server: ChildProcess | null = null;
   try {
     const created = await step("database", async () => {
+      if (isolation) {
+        await adminQuery(
+          adminUrl,
+          `CREATE ROLE "${ownerRole}" LOGIN PASSWORD '${ownerPassword}' NOSUPERUSER NOBYPASSRLS CREATEROLE`
+        );
+        await adminQuery(adminUrl, `CREATE DATABASE "${dbName}" OWNER "${ownerRole}"`);
+        return `${dbName}, owned by ${ownerRole} (no superuser)`;
+      }
       await adminQuery(adminUrl, `CREATE DATABASE "${dbName}"`);
       return dbName;
     });
@@ -245,7 +267,10 @@ export async function runFixture(
 
     await step("migrate", async () => {
       const migrated = await runMigrations(databaseUrl, path.join(dir, runtime.migrationsDir("generated")));
-      return `${migrated.applied.length} applied`;
+      if (!isolation) return `${migrated.applied.length} applied`;
+      // The app role exists now, without a login; an administrator gives this run its own login as a member of it
+      const login = await provisionAppLogin(adminUrl, isolation.appRole, appDatabaseUrl!);
+      return `${migrated.applied.length} applied; ${login}`;
     });
 
     await step("drift", async () => {
@@ -263,6 +288,7 @@ export async function runFixture(
           ...process.env,
           ...cmd.env,
           DATABASE_URL: databaseUrl,
+          ...(appDatabaseUrl ? { DATABASE_APP_URL: appDatabaseUrl } : {}),
           OSL_SESSION_SECRET: "conformance-secret",
           OSL_TEST_HOOKS: "1",
           PORT: String(port)
@@ -332,6 +358,10 @@ export async function runFixture(
     }
     try {
       await adminQuery(adminUrl, `DROP DATABASE IF EXISTS "${dbName}" WITH (FORCE)`);
+      if (isolation) {
+        await adminQuery(adminUrl, `DROP ROLE IF EXISTS "${webRole}"`);
+        await adminQuery(adminUrl, `DROP ROLE IF EXISTS "${ownerRole}"`);
+      }
     } catch (error) {
       log(`  warn could not drop ${dbName}: ${error instanceof Error ? error.message : error}`);
     }
@@ -385,6 +415,13 @@ async function adminQuery(url: string, sql: string): Promise<void> {
 function withDatabase(url: string, name: string): string {
   const u = new URL(url);
   u.pathname = `/${name}`;
+  return u.toString();
+}
+
+function withUser(url: string, user: string, password: string): string {
+  const u = new URL(url);
+  u.username = user;
+  u.password = password;
   return u.toString();
 }
 

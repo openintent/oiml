@@ -42,6 +42,11 @@ USER node
 EXPOSE ${options.port}
 CMD ${JSON.stringify(options.start)}
 `;
+  // isolation: database: requests connect as the app role; its password comes from the environment (osl migrate set it), never from this file
+  const isolation = ir.auth?.tenancy?.isolation;
+  const appUrl = isolation
+    ? `\n      DATABASE_APP_URL: postgres://${isolation.appRole}:\${OSL_APP_DB_PASSWORD:?set OSL_APP_DB_PASSWORD to the password osl migrate gave ${isolation.appRole}}@postgres:5432/${ir.name}`
+    : "";
   const worker = options.worker
     ? `
   worker:
@@ -78,7 +83,7 @@ services:
     ports:
       - "${options.port}:${options.port}"
     environment:
-      DATABASE_URL: postgres://postgres:postgres@postgres:5432/${ir.name}
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/${ir.name}${appUrl}
       OSL_SESSION_SECRET: change-me-to-a-long-random-string
       OSL_APP_URL: http://localhost:${options.port}${options.worker ? "\n      OSL_ROLE: all" : ""}
     depends_on:

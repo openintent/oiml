@@ -2,10 +2,11 @@
 // Do not edit: this file is rewritten on every osl generate.
 
 import { and, count, desc, eq, inArray, type SQL } from "drizzle-orm";
-import { db } from "../db/client";
+import { randomUUID } from "node:crypto";
+import { db, bindTenant, rowExists } from "../db/client";
 import * as schema from "../db/schema";
 import { teams as teamsTable, teamMembers as teamMembersTable } from "../db/schema";
-import { checkRule, denied, memberTenantIds, type Rule } from "../access";
+import { checkRule, denied, memberTenantIds, rulesDisabled, unreachable, type Rule } from "../access";
 import { getSession, type Session } from "../auth";
 import { created, handleError, noContent, notFound, ok, parseBody, parseId, parseQuery } from "../http";
 import { presentTeam, presentTeamMember } from "../present";
@@ -21,6 +22,11 @@ const RULES = {
   update: {"kind":"member","field":"id","role":"admin"} as Rule,
   delete: {"kind":"member","field":"id","role":"owner"} as Rule
 };
+
+/** No row came back: another tenant's row answers as the rule answers a caller it refuses, a missing one 404 */
+async function missing(id: unknown, rule: Rule, session: Session | null): Promise<Response> {
+  return (await rowExists("osl_exists_teams", id)) ? denied(unreachable(rule, session)) : notFound();
+}
 
 type ListRow = schema.Team;
 function presentListRow(row: ListRow) {
@@ -42,14 +48,15 @@ export const teams = {
       if (!query.ok) return query.response;
       const { page, page_size } = query.data;
       const conditions: SQL[] = [];
-    const tenants = memberTenantIds(session, undefined);
-    if (tenants.length === 0) return ok([], { page: { page, page_size, total: 0 } });
-    conditions.push(inArray(teamsTable.id, tenants as string[]));
+    if (!rulesDisabled()) {
+      const tenants = memberTenantIds(session, undefined);
+      if (tenants.length === 0) return ok([], { page: { page, page_size, total: 0 } });
+      conditions.push(inArray(teamsTable.id, tenants as string[]));
+    }
       const where = conditions.length ? and(...conditions) : undefined;
-      const [rows, [{ total }]] = await Promise.all([
-        db.query.teams.findMany({ where, orderBy: [desc(teamsTable.created_at)], limit: page_size, offset: (page - 1) * page_size }),
-        db.select({ total: count() }).from(teamsTable).where(where)
-      ]);
+      // One statement at a time: both run on the request's transaction
+      const rows = await db.query.teams.findMany({ where, orderBy: [desc(teamsTable.created_at)], limit: page_size, offset: (page - 1) * page_size });
+      const [{ total }] = await db.select({ total: count() }).from(teamsTable).where(where);
       return ok(rows.map(presentListRow), { page: { page, page_size, total } });
     } catch (err) {
       return handleError(err, "read");
@@ -64,7 +71,7 @@ export const teams = {
       const id = parseId(teamsId, (await ctx.params).id);
       if (!id.ok) return id.response;
       const row = await db.query.teams.findFirst({ where: eq(teamsTable.id, id.data), with: { members: true } });
-      if (!row) return notFound();
+      if (!row) return missing(id.data, RULES.read, session);
       const rowVerdict = checkRule(RULES.read, session, row);
       if (!rowVerdict.ok) return denied(rowVerdict);
       return ok(presentGetRow(row));
@@ -82,8 +89,10 @@ export const teams = {
       if (!body.ok) return body.response;
       const hookContext: HookContext = { request, session };
       const values = await hooks.beforeCreate({ ...body.data }, hookContext);
+      const tenantId = randomUUID();
+      await bindTenant(tenantId);
       const row = await db.transaction(async tx => {
-        const [created] = await tx.insert(teamsTable).values(values).returning();
+        const [created] = await tx.insert(teamsTable).values({ ...values, id: tenantId }).returning();
         await tx.insert(teamMembersTable).values({ user_id: session!.user.id, team_id: created.id, role: "owner" });
         return created;
       });
@@ -103,7 +112,7 @@ export const teams = {
       const id = parseId(teamsId, (await ctx.params).id);
       if (!id.ok) return id.response;
       const existing = await db.query.teams.findFirst({ where: eq(teamsTable.id, id.data) });
-      if (!existing) return notFound();
+      if (!existing) return missing(id.data, RULES.update, session);
       const rowVerdict = checkRule(RULES.update, session, existing);
       if (!rowVerdict.ok) return denied(rowVerdict);
       const body = await parseBody(teamsUpdateInput, request);
@@ -128,7 +137,7 @@ export const teams = {
       const id = parseId(teamsId, (await ctx.params).id);
       if (!id.ok) return id.response;
       const existing = await db.query.teams.findFirst({ where: eq(teamsTable.id, id.data) });
-      if (!existing) return notFound();
+      if (!existing) return missing(id.data, RULES.delete, session);
       const rowVerdict = checkRule(RULES.delete, session, existing);
       if (!rowVerdict.ok) return denied(rowVerdict);
       const hookContext: HookContext = { request, session };

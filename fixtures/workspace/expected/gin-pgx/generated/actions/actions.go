@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"workspace/generated/auth"
+	"workspace/generated/db"
 	"workspace/generated/models"
 )
 
@@ -20,7 +20,7 @@ type Context struct {
 	Gin     *gin.Context
 	Ctx     context.Context
 	Session *auth.Session
-	DB      *pgxpool.Pool
+	DB      *db.Scope
 	// Now is when the action runs; a timer or schedule passes the time it was due. Compare against it, not the clock.
 	Now time.Time
 }

@@ -1,6 +1,6 @@
 id: ws2-delivery-overdue
 tags: [timers, actions, tenancy, generated-origin]
-base: { fixture: workspace }
+base: { fixture: workspace, through: WS-9 }
 intent:
   title: Deliveries flagged when late
   ask: >-

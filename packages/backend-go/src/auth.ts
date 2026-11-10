@@ -3,6 +3,8 @@ import { columnsConst, presentFunc, publicType, scanFunc, tableConst } from "./m
 import {
   HEADER,
   column,
+  dbType,
+  dbTypeImport,
   entityByName,
   exported,
   goFile,
@@ -115,11 +117,14 @@ func (a *Auth) Routes(r gin.IRouter) {
     "time",
     "github.com/gin-gonic/gin",
     "github.com/jackc/pgx/v5",
-    "github.com/jackc/pgx/v5/pgxpool",
+    dbTypeImport(ir, modulePath),
     `${modulePath}/generated/httpx`,
     `${modulePath}/generated/models`
   ]);
   if (roleBody.includes("fmt.")) imports.add("fmt");
+  // Under isolation: database the memberships come from a function (no tenant is bound yet), and binding them is what scopes the request
+  const isolation = tenancy?.isolation;
+  if (isolation) imports.add("fmt");
   if (credentials) {
     imports.add("crypto/rand");
     imports.add("golang.org/x/crypto/scrypt");
@@ -146,8 +151,20 @@ ${goStruct(
   `Membership is one of the user's tenants (${tenancy.entity}) and the role they hold there.`
 )}
 `;
+    const membershipsQuery = isolation
+      ? `a.db.Query(ctx, \`SELECT tenant, role FROM ${quoteIdent(isolation.memberships)}($1) ORDER BY tenant\`, user.${pkField})`
+      : `a.db.Query(ctx, \`SELECT ${quoteIdent(tenancy.tenantColumn)}, ${quoteIdent(tenancy.roleColumn)} FROM \`+models.${tableConst(membership)}+\` WHERE ${quoteIdent(tenancy.userColumn)} = $1 ORDER BY ${quoteIdent(tenancy.tenantColumn)}\`, user.${pkField})`;
+    const bind = isolation
+      ? `
+	// The statements of this request reach the rows of these tenants, and no other tenant's
+	tenants := make([]string, 0, len(session.Memberships))
+	for _, m := range session.Memberships {
+		tenants = append(tenants, fmt.Sprint(m.Tenant))
+	}
+	db.Bind(ctx, tenants)`
+      : "";
     loadMemberships = `
-	rows, err := a.db.Query(ctx, \`SELECT ${quoteIdent(tenancy.tenantColumn)}, ${quoteIdent(tenancy.roleColumn)} FROM \`+models.${tableConst(membership)}+\` WHERE ${quoteIdent(tenancy.userColumn)} = $1 ORDER BY ${quoteIdent(tenancy.tenantColumn)}\`, user.${pkField})
+	rows, err := ${membershipsQuery}
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +181,7 @@ ${goStruct(
 	session.Memberships = make([]Membership, 0, len(memberships))
 	for _, m := range memberships {
 		session.Memberships = append(session.Memberships, *m)
-	}`;
+	}${bind}`;
   }
 
   const routes: string[] = [];
@@ -226,11 +243,11 @@ var Providers = []Provider{${providerList.join(", ")}}
 
 // Auth serves the auth endpoints and resolves sessions.
 type Auth struct {
-	db *pgxpool.Pool
+	db ${dbType(ir)}
 }
 
 // New builds the auth service.
-func New(db *pgxpool.Pool) *Auth {
+func New(db ${dbType(ir)}) *Auth {
 	return &Auth{db: db}
 }
 

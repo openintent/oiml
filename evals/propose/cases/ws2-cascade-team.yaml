@@ -1,6 +1,6 @@
 id: ws2-cascade-team
 tags: [relation, fields]
-base: { fixture: workspace }
+base: { fixture: workspace, through: WS-9 }
 intent:
   title: Deleting a team deletes its projects
   ask: Deleting a team must delete its memberships and its projects, not be refused.

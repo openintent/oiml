@@ -2,10 +2,10 @@
 // Do not edit: this file is rewritten on every osl generate.
 
 import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
-import { db } from "./db/client";
-import { users as usersTable, teamMembers as teamMembersTable } from "./db/schema";
+import { db, withTenants } from "./db/client";
+import { users as usersTable } from "./db/schema";
 import { created, error, handleError, noContent, ok, parseBody } from "./http";
 import { presentUser, type PublicUser } from "./present";
 import { PROVIDERS, issueMagicLink, verifyMagicLink } from "./auth-providers";
@@ -71,15 +71,36 @@ function readCookie(request: Request): { uid: string | number } | null {
 
 /** The session of a user row: the public user and their memberships */
 export async function sessionOf(user: typeof usersTable.$inferSelect): Promise<Session> {
-  return { user: presentUser(user), memberships: (await db.query.teamMembers.findMany({ where: eq(teamMembersTable.user_id, user.id) })).map(m => ({ tenant: m.team_id, role: m.role })) };
+  return { user: presentUser(user), memberships: ((await db.execute(sql`select tenant, role from "osl_memberships"(${user.id})`)).rows as { tenant: string | number; role: string }[]).map(m => ({ tenant: m.tenant, role: m.role })) };
 }
 
-/** The signed-in user, or null. Loads the user so a deleted account signs out immediately. */
-export async function getSession(request: Request): Promise<Session | null> {
+const SESSIONS = new WeakMap<Request, Promise<Session | null>>();
+
+/** The signed-in user, or null, read once per request. Loads the user so a deleted account signs out immediately. */
+export function getSession(request: Request): Promise<Session | null> {
+  let session = SESSIONS.get(request);
+  if (!session) {
+    session = loadSession(request);
+    SESSIONS.set(request, session);
+  }
+  return session;
+}
+
+async function loadSession(request: Request): Promise<Session | null> {
   const cookie = readCookie(request);
   if (!cookie) return null;
   const user = await db.query.users.findFirst({ where: eq(usersTable.id, cookie.uid as never) }).catch(() => undefined);
   return user ? sessionOf(user) : null;
+}
+
+/**
+ * Answer a request within its caller's tenants: the session is read first (the identity is shared and the
+ * memberships come from a function), then the handler runs in one transaction that reaches only the rows of those
+ * tenants. Every generated route goes through here; a path that does not reads no tenant row at all.
+ */
+export async function withRequest(request: Request, handler: () => Promise<Response>): Promise<Response> {
+  const session = await getSession(request);
+  return withTenants(session?.memberships.map(m => m.tenant) ?? [], handler);
 }
 
 const registerInput = z

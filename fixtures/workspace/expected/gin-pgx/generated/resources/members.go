@@ -5,9 +5,10 @@ package resources
 
 import (
 	"context"
+	"errors"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5"
 
 	"workspace/generated/access"
 	"workspace/generated/auth"
@@ -21,12 +22,12 @@ import (
 
 // Members serves the members resource (TeamMember).
 type Members struct {
-	db   *pgxpool.Pool
+	db   *db.Scope
 	auth *auth.Auth
 }
 
 // NewMembers builds the handlers.
-func NewMembers(db *pgxpool.Pool, a *auth.Auth) *Members {
+func NewMembers(db *db.Scope, a *auth.Auth) *Members {
 	return &Members{db: db, auth: a}
 }
 
@@ -77,12 +78,14 @@ func (h *Members) List(c *gin.Context) {
 	if v, ok := query.Filters["user_id"]; ok {
 		where.Eq(`"user_id"`, v)
 	}
-	tenants := access.MemberTenantIDs(session, "")
-	if len(tenants) == 0 {
-		httpx.List(c, []membersListRow{}, httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: 0})
-		return
+	if !access.RulesDisabled() {
+		tenants := access.MemberTenantIDs(session, "")
+		if len(tenants) == 0 {
+			httpx.List(c, []membersListRow{}, httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: 0})
+			return
+		}
+		where.In(`"team_id"`, tenants)
 	}
-	where.In(`"team_id"`, tenants)
 	var total int
 	if err := h.db.QueryRow(ctx, `SELECT count(*) FROM `+models.TeamMemberTable+where.SQL(), where.Args()...).Scan(&total); err != nil {
 		httpx.HandleError(c, err, "read")
@@ -131,7 +134,7 @@ func (h *Members) Get(c *gin.Context) {
 	}
 	row, err := models.ScanTeamMember(h.db.QueryRow(ctx, `SELECT `+models.TeamMemberColumns+` FROM `+models.TeamMemberTable+` WHERE "id" = $1`, id))
 	if err != nil {
-		httpx.HandleError(c, err, "read")
+		h.missing(c, err, id, membersReadRule, session, "read")
 		return
 	}
 	if verdict := access.CheckRow(membersReadRule, session, access.Row{"team_id": row.TeamID}); verdict != nil {
@@ -205,7 +208,7 @@ func (h *Members) Update(c *gin.Context) {
 	}
 	existing, err := models.ScanTeamMember(h.db.QueryRow(ctx, `SELECT `+models.TeamMemberColumns+` FROM `+models.TeamMemberTable+` WHERE "id" = $1`, id))
 	if err != nil {
-		httpx.HandleError(c, err, "write")
+		h.missing(c, err, id, membersUpdateRule, session, "write")
 		return
 	}
 	if verdict := access.CheckRow(membersUpdateRule, session, access.Row{"team_id": existing.TeamID}); verdict != nil {
@@ -264,7 +267,7 @@ func (h *Members) Delete(c *gin.Context) {
 	}
 	existing, err := models.ScanTeamMember(h.db.QueryRow(ctx, `SELECT `+models.TeamMemberColumns+` FROM `+models.TeamMemberTable+` WHERE "id" = $1`, id))
 	if err != nil {
-		httpx.HandleError(c, err, "delete")
+		h.missing(c, err, id, membersDeleteRule, session, "delete")
 		return
 	}
 	if verdict := access.CheckRow(membersDeleteRule, session, access.Row{"team_id": existing.TeamID}); verdict != nil {
@@ -285,6 +288,18 @@ func (h *Members) Delete(c *gin.Context) {
 		return
 	}
 	httpx.NoContent(c)
+}
+
+// missing answers a row that did not come back: another tenant's as the rule answers a caller it refuses, a
+// missing one 404, and any other failure as it is.
+func (h *Members) missing(c *gin.Context, err error, id any, rule access.Rule, session *auth.Session, operation string) {
+	if errors.Is(err, pgx.ErrNoRows) {
+		if found, perr := h.db.Exists(c.Request.Context(), "osl_exists_team_members", id); perr == nil && found {
+			access.Deny(c, access.Unreachable(rule, session))
+			return
+		}
+	}
+	httpx.HandleError(c, err, operation)
 }
 
 // loadUser fetches the user of each TeamMember, keyed by id.

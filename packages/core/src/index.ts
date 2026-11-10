@@ -4,6 +4,7 @@ export * from "./model.js";
 export * from "./diff.js";
 export * from "./ir.js";
 export * from "./migrations.js";
+export * from "./isolation.js";
 export * from "./migrator.js";
 export * from "./drift.js";
 export * from "./backend.js";

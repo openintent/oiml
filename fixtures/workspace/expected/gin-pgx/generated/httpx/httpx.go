@@ -152,6 +152,9 @@ func HandleError(c *gin.Context, err error, operation string) {
 		case "23502":
 			Fail(c, NewError(http.StatusBadRequest, "validation", "A required value is missing"))
 			return
+		case "42501":
+			Fail(c, NewError(http.StatusForbidden, "forbidden", "You cannot do that"))
+			return
 		case "22P02":
 			if operation == "read" {
 				Fail(c, NotFound())

@@ -206,6 +206,7 @@ tenancy:                      # optional: teams, workspaces, organisations
   membership: TeamMember      # relation to the identity, relation to Team, a required role enum, unique on both relations
   role_field: role            # roles rank in the enum's order, first is most privileged
   creator_role: owner         # whoever creates a Team through its resource gets this membership
+  isolation: database         # optional: none (default) | database: row-level security on every tenant table, behind the rules
 \`\`\`
 
 \`provider: credentials\` is the 1.0 spelling of \`providers: [credentials]\`. Credentials add \`POST /api/auth/register\`
@@ -214,6 +215,23 @@ has \`POST /api/auth/logout\`, \`GET /api/auth/me\` and \`GET /api/auth/provider
 \`POST /api/auth/magic-link\` { email } (always ok) and \`POST /api/auth/magic-link/verify\` { token }; the email goes
 through the app's email adapter. \`oauth\` adds \`GET /api/auth/oauth/<name>\` and its callback. Magic links and OAuth
 create a user when the identity needs nothing but email (and name); otherwise the user registers first.
+
+\`isolation: database\` puts a backstop in the database behind the rules: every tenant table gets row-level security,
+the web process connects as a role the policies bind, and a request reaches only the rows of the tenants its caller
+belongs to, whatever a handler forgets. A tenant table is the tenant entity, the membership, and every entity that
+reaches the tenant through required relations (Task -> project_id -> Project -> team_id). The compiler derives the
+tenant column and the composite keys of a table that does not declare its tenant: never add \`team_id\` by hand to an
+entity that already has a required relation to a tenant table. An entity with two required relations that reach the
+tenant declares a required relation to the tenant itself (M115); one that reaches it only through an optional relation
+stays shared, with no policy (M116); the identity stays shared and the tenant's key is a uuid (M118). Under isolation a
+signed-in caller reaches a tenant table's rows only as a member of the row's tenant: \`owner:assignee_id\` on Task
+compiles as \`owner:assignee_id and member:project_id.team_id\` (M119 says where), so an assignee who left the team no
+longer reads the task; write the rules as before. A public alternative (\`public\`, \`public when project_id.public =
+true\`) is allowed on the read rule of a tenant table and compiled into its policy; on create, update, delete or a row
+action it is an error (M117): a public write on a tenant table needs \`isolation: none\`. Statuses do not change:
+another tenant's row still answers 403, or 404 under \`hidden: not_found\`. Turn it on with \`set_auth\`, repeating the
+auth block with the key. In an action handler the database is bound to the caller's tenants: do outbound calls after
+the write, not in the middle of the transaction the handler was given.
 
 ## Events
 

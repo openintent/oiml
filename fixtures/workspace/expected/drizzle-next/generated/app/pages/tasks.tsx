@@ -33,7 +33,7 @@ function canCreate(user: SessionUser | null): boolean {
 }
 
 function canUpdate(user: SessionUser | null, row: Detail): boolean {
-  return (user !== null && row.assignee_id === user.id || user !== null);
+  return ((user !== null && row.assignee_id === user.id && user !== null) || user !== null);
 }
 
 function canDelete(user: SessionUser | null, row: Detail): boolean {

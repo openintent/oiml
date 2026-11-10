@@ -1,6 +1,6 @@
 id: ws2-archive-project
 tags: [fields, actions, rules, tenancy]
-base: { fixture: workspace }
+base: { fixture: workspace, through: WS-9 }
 intent:
   title: Archiving projects
   ask: >-

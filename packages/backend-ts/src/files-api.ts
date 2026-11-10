@@ -1,5 +1,5 @@
 import type { GeneratedFile, IR } from "@osl/core";
-import { HEADER } from "./util.js";
+import { HEADER, scoped, scopedImport } from "./util.js";
 
 /** generated/files-api.ts: the REST handlers over the shared files core. */
 export function filesApiFile(ir: IR): string {
@@ -93,13 +93,13 @@ export function filesRouteFiles(ir: IR): GeneratedFile[] {
   const route = (folder: string, exports: { method: string; fn: string; ctx: boolean }[]) => ({
     path: `app/api/files/${folder ? folder + "/" : ""}route.ts`,
     content: `${HEADER(`Routes for /api/files${folder ? "/" + folder.replace(/\[id\]/g, "{id}") : ""}.`)}
-import { files${exports.some(e => e.ctx) ? ", type RouteContext" : ""} } from "@/generated/files-api";
+${scopedImport(ir)}import { files${exports.some(e => e.ctx) ? ", type RouteContext" : ""} } from "@/generated/files-api";
 
 ${exports
   .map(e =>
     e.ctx
-      ? `export async function ${e.method}(request: Request, ctx: RouteContext): Promise<Response> {\n  return files.${e.fn}(request, ctx);\n}`
-      : `export async function ${e.method}(request: Request): Promise<Response> {\n  return files.${e.fn}(request);\n}`
+      ? `export async function ${e.method}(request: Request, ctx: RouteContext): Promise<Response> {\n  return ${scoped(ir, `files.${e.fn}(request, ctx)`)};\n}`
+      : `export async function ${e.method}(request: Request): Promise<Response> {\n  return ${scoped(ir, `files.${e.fn}(request)`)};\n}`
   )
   .join("\n\n")}
 `

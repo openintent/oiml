@@ -8,7 +8,7 @@ import * as schema from "../../db/schema";
 import { milestones as milestonesTable, projects as projectsTable } from "../../db/schema";
 import { presentMilestone } from "../../present";
 import { milestonesCreateInput, milestonesId, milestonesListQuery, milestonesUpdateInput } from "../../validation";
-import { checkRule, memberTenantIds, verdict, type Rule } from "../access";
+import { checkRule, memberTenantIds, rulesDisabled, verdict, type Rule } from "../access";
 import type { Session } from "../auth";
 import { notFound, parseId, toTRPCError } from "../errors";
 import { publicProcedure, router } from "../trpc";
@@ -55,15 +55,16 @@ export const milestonesRouter = router({
     const conditions: SQL[] = [];
     if (filters.project_id !== undefined) conditions.push(eq(milestonesTable.project_id, filters.project_id));
     if (filters.done !== undefined) conditions.push(eq(milestonesTable.done, filters.done));
-    const tenants = memberTenantIds(ctx.session, undefined);
-    if (tenants.length === 0) return { data: [], page: { page, page_size, total: 0 } };
-    conditions.push(inArray(milestonesTable.project_id, db.select({ id: projectsTable.id }).from(projectsTable).where(inArray(projectsTable.team_id, tenants as string[]))));
+    if (!rulesDisabled()) {
+      const tenants = memberTenantIds(ctx.session, undefined);
+      if (tenants.length === 0) return { data: [], page: { page, page_size, total: 0 } };
+      conditions.push(inArray(milestonesTable.project_id, db.select({ id: projectsTable.id }).from(projectsTable).where(inArray(projectsTable.team_id, tenants as string[]))));
+    }
     const where = conditions.length ? and(...conditions) : undefined;
     try {
-      const [rows, [{ total }]] = await Promise.all([
-        db.query.milestones.findMany({ where, orderBy: [asc(milestonesTable.due_on)], limit: page_size, offset: (page - 1) * page_size }),
-        db.select({ total: count() }).from(milestonesTable).where(where)
-      ]);
+      // One statement at a time: both run on the procedure's transaction
+      const rows = await db.query.milestones.findMany({ where, orderBy: [asc(milestonesTable.due_on)], limit: page_size, offset: (page - 1) * page_size });
+      const [{ total }] = await db.select({ total: count() }).from(milestonesTable).where(where);
       return { data: rows.map(presentListRow), page: { page, page_size, total } };
     } catch (err) {
       throw toTRPCError(err, "read");

@@ -3,12 +3,12 @@
 
 import { and, count, desc, eq, inArray, or, type SQL } from "drizzle-orm";
 import { z } from "zod";
-import { db } from "../../db/client";
+import { db, rowExists } from "../../db/client";
 import * as schema from "../../db/schema";
 import { channelMembers as channelMembersTable, channels as channelsTable } from "../../db/schema";
 import { presentChannelMember, presentUser } from "../../present";
 import { channel_membersCreateInput, channel_membersId, channel_membersListQuery } from "../../validation";
-import { checkRule, memberTenantIds, satisfied, type Rule } from "../access";
+import { checkRule, memberTenantIds, refused, satisfied, unreachable, type Rule } from "../access";
 import type { Session } from "../auth";
 import { notFound, parseId, toTRPCError } from "../errors";
 import { publicProcedure, router } from "../trpc";
@@ -17,10 +17,10 @@ import { hooks } from "@/extensions/channel_members";
 export type HookContext = { session: Session | null; req: Request };
 
 const RULES = {
-  read: {"kind":"any","rules":[{"kind":"member","field":"channel_id.members","through":true,"roles":["admin","member"]},{"kind":"member","field":"channel_id.team_id","when":{"field":"channel_id.private","op":"eq","value":false}}]} as Rule,
-  create: {"kind":"any","rules":[{"kind":"owner","field":"channel_id.created_by"},{"kind":"member","field":"channel_id.members","role":"admin","through":true,"roles":["admin","member"]}]} as Rule,
-  update: {"kind":"member","field":"channel_id.members","role":"admin","through":true,"roles":["admin","member"]} as Rule,
-  delete: {"kind":"any","rules":[{"kind":"owner","field":"user_id"},{"kind":"member","field":"channel_id.members","role":"admin","through":true,"roles":["admin","member"]}]} as Rule
+  read: {"kind":"any","rules":[{"kind":"all","rules":[{"kind":"member","field":"channel_id.members","through":true,"roles":["admin","member"]},{"kind":"member","field":"channel_id.team_id"}]},{"kind":"member","field":"channel_id.team_id","when":{"field":"channel_id.private","op":"eq","value":false}}]} as Rule,
+  create: {"kind":"any","rules":[{"kind":"all","rules":[{"kind":"owner","field":"channel_id.created_by"},{"kind":"member","field":"channel_id.team_id"}]},{"kind":"all","rules":[{"kind":"member","field":"channel_id.members","role":"admin","through":true,"roles":["admin","member"]},{"kind":"member","field":"channel_id.team_id"}]}]} as Rule,
+  update: {"kind":"all","rules":[{"kind":"member","field":"channel_id.members","role":"admin","through":true,"roles":["admin","member"]},{"kind":"member","field":"channel_id.team_id"}]} as Rule,
+  delete: {"kind":"any","rules":[{"kind":"all","rules":[{"kind":"owner","field":"user_id"},{"kind":"member","field":"channel_id.team_id"}]},{"kind":"all","rules":[{"kind":"member","field":"channel_id.members","role":"admin","through":true,"roles":["admin","member"]},{"kind":"member","field":"channel_id.team_id"}]}]} as Rule
 };
 
 /** Ids as clients send them; parseId applies channel_membersId and answers NOT_FOUND to a malformed one. */
@@ -62,6 +62,11 @@ async function withRuleValues(row: Record<string, unknown>, session: { user: Rec
   return out;
 }
 
+/** No row came back: another tenant's row answers as the rule answers a caller it refuses, a missing one 404 */
+async function missing(id: unknown, rule: Rule, session: Session | null) {
+  return (await rowExists("osl_exists_channel_members", id)) ? refused(unreachable(rule, session)) : notFound();
+}
+
 type ListRow = schema.ChannelMember & { user: schema.User | null };
 function presentListRow(row: ListRow) {
   return { ...presentChannelMember(row), user: row.user ? presentUser(row.user) : null };
@@ -82,18 +87,18 @@ export const channel_membersRouter = router({
     if (filters.user_id !== undefined) conditions.push(eq(channelMembersTable.user_id, filters.user_id));
     if (!satisfied(RULES.read, ctx.session)) {
       const alternatives: SQL[] = [];
-      alternatives.push(inArray(channelMembersTable.channel_id, db.select({ id: channelsTable.id }).from(channelsTable).where(inArray(channelsTable.id, db.select({ id: channelMembersTable.channel_id }).from(channelMembersTable).where(eq(channelMembersTable.user_id, ctx.session!.user.id))))));
       const tenants = memberTenantIds(ctx.session, undefined);
-      if (tenants.length > 0) alternatives.push(and(inArray(channelMembersTable.channel_id, db.select({ id: channelsTable.id }).from(channelsTable).where(inArray(channelsTable.team_id, tenants as string[]))), inArray(channelMembersTable.channel_id, db.select({ id: channelsTable.id }).from(channelsTable).where(eq(channelsTable.private, false))))!);
+      if (tenants.length > 0) alternatives.push(and(inArray(channelMembersTable.channel_id, db.select({ id: channelsTable.id }).from(channelsTable).where(inArray(channelsTable.id, db.select({ id: channelMembersTable.channel_id }).from(channelMembersTable).where(eq(channelMembersTable.user_id, ctx.session!.user.id))))), inArray(channelMembersTable.channel_id, db.select({ id: channelsTable.id }).from(channelsTable).where(inArray(channelsTable.team_id, tenants as string[]))))!);
+      const tenants2 = memberTenantIds(ctx.session, undefined);
+      if (tenants2.length > 0) alternatives.push(and(inArray(channelMembersTable.channel_id, db.select({ id: channelsTable.id }).from(channelsTable).where(inArray(channelsTable.team_id, tenants2 as string[]))), inArray(channelMembersTable.channel_id, db.select({ id: channelsTable.id }).from(channelsTable).where(eq(channelsTable.private, false))))!);
       if (alternatives.length === 0) return { data: [], page: { page, page_size, total: 0 } };
       conditions.push(alternatives.length === 1 ? alternatives[0] : or(...alternatives)!);
     }
     const where = conditions.length ? and(...conditions) : undefined;
     try {
-      const [rows, [{ total }]] = await Promise.all([
-        db.query.channelMembers.findMany({ where, with: { user: true }, orderBy: [desc(channelMembersTable.created_at)], limit: page_size, offset: (page - 1) * page_size }),
-        db.select({ total: count() }).from(channelMembersTable).where(where)
-      ]);
+      // One statement at a time: both run on the procedure's transaction
+      const rows = await db.query.channelMembers.findMany({ where, with: { user: true }, orderBy: [desc(channelMembersTable.created_at)], limit: page_size, offset: (page - 1) * page_size });
+      const [{ total }] = await db.select({ total: count() }).from(channelMembersTable).where(where);
       return { data: rows.map(presentListRow), page: { page, page_size, total } };
     } catch (err) {
       throw toTRPCError(err, "read");
@@ -106,7 +111,7 @@ export const channel_membersRouter = router({
     const row = await db.query.channelMembers.findFirst({ where: eq(channelMembersTable.id, id) }).catch(err => {
       throw toTRPCError(err, "read");
     });
-    if (!row) throw notFound();
+    if (!row) throw await missing(id, RULES.read, ctx.session);
     checkRule(RULES.read, ctx.session, await withRuleValues(row, ctx.session));
     return presentGetRow(row);
   }),
@@ -132,7 +137,7 @@ export const channel_membersRouter = router({
     const existing = await db.query.channelMembers.findFirst({ where: eq(channelMembersTable.id, id) }).catch(err => {
       throw toTRPCError(err, "read");
     });
-    if (!existing) throw notFound();
+    if (!existing) throw await missing(id, RULES.delete, ctx.session);
     checkRule(RULES.delete, ctx.session, await withRuleValues(existing, ctx.session));
     const hookContext: HookContext = { session: ctx.session, req: ctx.req };
     try {

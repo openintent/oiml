@@ -1,0 +1,128 @@
+osl: "1.0"
+summary: "Tenant isolation in the database: row-level security on every team table behind the rules, so an assignee who left the team no longer reaches its tasks"
+ops:
+  - op: set_auth
+    auth:
+      identity: User
+      providers: [credentials, magic_link]
+      tenancy: { entity: Team, membership: TeamMember, role_field: role, creator_role: owner, isolation: database }
+  - op: add_scenario
+    scenario:
+      name: isolation in the database
+      steps:
+        - as: alice
+          op: teams.create
+          body: { name: Hooli }
+          expect: { status: 201 }
+          capture: { team: data.id }
+        - as: bob
+          op: auth.me
+          expect: { status: 200 }
+          capture: { bob_id: data.id }
+        - as: carol
+          op: auth.me
+          expect: { status: 200 }
+          capture: { carol_id: data.id }
+        - as: alice
+          op: members.create
+          body: { team_id: "{team}", user_id: "{bob_id}" }
+          expect: { status: 201 }
+          capture: { bob_membership: data.id }
+        - as: alice
+          op: projects.create
+          body: { name: Roadmap, team_id: "{team}", public: true }
+          expect: { status: 201 }
+          capture: { open: data.id }
+        - as: alice
+          op: projects.create
+          body: { name: Payroll, team_id: "{team}" }
+          expect: { status: 201 }
+          capture: { internal: data.id }
+        - as: alice
+          op: tasks.create
+          body: { title: Announce, project_id: "{open}", assignee_id: "{bob_id}" }
+          expect: { status: 201 }
+          capture: { announced: data.id }
+        - as: alice
+          op: tasks.create
+          body: { title: Run payroll, project_id: "{internal}", assignee_id: "{bob_id}" }
+          expect: { status: 201 }
+          capture: { payroll: data.id }
+        - as: bob
+          op: tasks.get
+          path: { id: "{payroll}" }
+          expect: { status: 200, body: { data: { title: Run payroll } } }
+        - as: bob
+          op: tasks.list
+          query: { project_id: "{internal}" }
+          expect: { status: 200, body: { data: [{ title: Run payroll }] } }
+        - as: alice
+          op: members.delete
+          path: { id: "{bob_membership}" }
+          expect: { status: 204 }
+        - as: bob
+          op: tasks.get
+          path: { id: "{payroll}" }
+          expect: { status: 403 }
+        - as: bob
+          op: tasks.update
+          path: { id: "{payroll}" }
+          body: { done: true }
+          expect: { status: 403 }
+        - as: bob
+          op: tasks.list
+          query: { project_id: "{internal}" }
+          expect: { status: 200, body: { data: [] } }
+        - as: bob
+          op: projects.get
+          path: { id: "{internal}" }
+          expect: { status: 403 }
+        - as: bob
+          op: tasks.get
+          path: { id: "{announced}" }
+          expect: { status: 200, body: { data: { title: Announce } } }
+        - as: bob
+          op: tasks.update
+          path: { id: "{announced}" }
+          body: { done: true }
+          expect: { status: 403 }
+        - op: tasks.get
+          path: { id: "{announced}" }
+          expect: { status: 200 }
+        - op: tasks.get
+          path: { id: "{payroll}" }
+          expect: { status: 401 }
+        - as: carol
+          op: teams.create
+          body: { name: Pied Piper }
+          expect: { status: 201 }
+          capture: { other: data.id }
+        - as: carol
+          op: projects.create
+          body: { name: Compression, team_id: "{other}" }
+          expect: { status: 201 }
+          capture: { theirs: data.id }
+        - as: carol
+          op: tasks.create
+          body: { title: Middle out, project_id: "{theirs}", assignee_id: "{carol_id}" }
+          expect: { status: 201 }
+        - as: carol
+          op: projects.get
+          path: { id: "{internal}" }
+          expect: { status: 403 }
+        - as: alice
+          op: members.create
+          body: { team_id: "{team}", user_id: "{carol_id}" }
+          expect: { status: 201 }
+        - as: alice
+          op: tasks.create
+          body: { title: Audit payroll, project_id: "{internal}", assignee_id: "{carol_id}" }
+          expect: { status: 201 }
+        - as: carol
+          op: tasks.list
+          query: { assignee_id: "{carol_id}" }
+          expect: { status: 200, body: { page: { total: 2 } } }
+        - as: carol
+          op: projects.get
+          path: { id: "{internal}" }
+          expect: { status: 200, body: { data: { name: Payroll } } }

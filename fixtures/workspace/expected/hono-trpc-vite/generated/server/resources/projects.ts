@@ -3,12 +3,12 @@
 
 import { and, asc, count, desc, eq, ilike, inArray, or, type SQL } from "drizzle-orm";
 import { z } from "zod";
-import { db } from "../../db/client";
+import { db, rowExists } from "../../db/client";
 import * as schema from "../../db/schema";
 import { projects as projectsTable } from "../../db/schema";
 import { presentProject } from "../../present";
 import { projectsCreateInput, projectsId, projectsListQuery, projectsUpdateInput } from "../../validation";
-import { checkRule, memberTenantIds, satisfied, type Rule } from "../access";
+import { checkRule, memberTenantIds, refused, satisfied, unreachable, type Rule } from "../access";
 import type { Session } from "../auth";
 import { notFound, parseId, toTRPCError } from "../errors";
 import { publicProcedure, router } from "../trpc";
@@ -25,6 +25,11 @@ const RULES = {
 
 /** Ids as clients send them; parseId applies projectsId and answers NOT_FOUND to a malformed one. */
 const ID = z.string();
+
+/** No row came back: another tenant's row answers as the rule answers a caller it refuses, a missing one 404 */
+async function missing(id: unknown, rule: Rule, session: Session | null) {
+  return (await rowExists("osl_exists_projects", id)) ? refused(unreachable(rule, session)) : notFound();
+}
 
 const SORTABLE = {
   name: projectsTable.name,
@@ -70,10 +75,9 @@ export const projectsRouter = router({
     }
     const where = conditions.length ? and(...conditions) : undefined;
     try {
-      const [rows, [{ total }]] = await Promise.all([
-        db.query.projects.findMany({ where, orderBy: sort ? sortOrder(sort) : [desc(projectsTable.created_at)], limit: page_size, offset: (page - 1) * page_size }),
-        db.select({ total: count() }).from(projectsTable).where(where)
-      ]);
+      // One statement at a time: both run on the procedure's transaction
+      const rows = await db.query.projects.findMany({ where, orderBy: sort ? sortOrder(sort) : [desc(projectsTable.created_at)], limit: page_size, offset: (page - 1) * page_size });
+      const [{ total }] = await db.select({ total: count() }).from(projectsTable).where(where);
       return { data: rows.map(presentListRow), page: { page, page_size, total } };
     } catch (err) {
       throw toTRPCError(err, "read");
@@ -86,7 +90,7 @@ export const projectsRouter = router({
     const row = await db.query.projects.findFirst({ where: eq(projectsTable.id, id) }).catch(err => {
       throw toTRPCError(err, "read");
     });
-    if (!row) throw notFound();
+    if (!row) throw await missing(id, RULES.read, ctx.session);
     checkRule(RULES.read, ctx.session, row);
     return presentGetRow(row);
   }),
@@ -114,7 +118,7 @@ export const projectsRouter = router({
       const existing = await db.query.projects.findFirst({ where: eq(projectsTable.id, id) }).catch(err => {
         throw toTRPCError(err, "read");
       });
-      if (!existing) throw notFound();
+      if (!existing) throw await missing(id, RULES.update, ctx.session);
       checkRule(RULES.update, ctx.session, existing);
       const hookContext: HookContext = { session: ctx.session, req: ctx.req };
       try {
@@ -135,7 +139,7 @@ export const projectsRouter = router({
     const existing = await db.query.projects.findFirst({ where: eq(projectsTable.id, id) }).catch(err => {
       throw toTRPCError(err, "read");
     });
-    if (!existing) throw notFound();
+    if (!existing) throw await missing(id, RULES.delete, ctx.session);
     checkRule(RULES.delete, ctx.session, existing);
     const hookContext: HookContext = { session: ctx.session, req: ctx.req };
     try {

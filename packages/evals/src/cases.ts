@@ -101,7 +101,15 @@ export const Expect = z
         /** Provider kinds or "oauth:<provider>" that must be configured */
         providers: Names.optional(),
         absent_providers: Names.optional(),
-        tenancy: z.object({ entity: z.string().optional(), membership: z.string().optional() }).strict().optional()
+        tenancy: z
+          .object({
+            entity: z.string().optional(),
+            membership: z.string().optional(),
+            /** "database" when the ask wants the tenant backstop in the database, "none" when it must stay off */
+            isolation: z.enum(["none", "database"]).optional()
+          })
+          .strict()
+          .optional()
       })
       .strict()
       .optional(),

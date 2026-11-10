@@ -8,7 +8,9 @@ import { TRPCError } from "@trpc/server";
 import { getHTTPStatusCodeFromError } from "@trpc/server/http";
 import { Hono, type Context as HonoContext } from "hono";
 import { startWorker } from "../jobs";
-import { emailsSent, schedulesRun, testHooksEnabled, timersRun } from "../test-hooks";
+import { withTenants } from "../db/client";
+import { emailsSent, rulesSwitch, schedulesRun, tenancyUnbound, testHooksEnabled, timersRun } from "../test-hooks";
+import { getSession } from "./auth";
 import { createContext } from "./context";
 import { appRouter } from "./router";
 
@@ -27,6 +29,11 @@ export function createApp(): Hono {
   app.get("/healthz", c => c.json({ ok: true }));
   app.get("/health", c => c.json({ ok: true }));
   app.use("/trpc/*", trpcServer({ router: appRouter, createContext }));
+  // REST routes answer within their caller's tenants, as the procedures do
+  app.use("/api/*", async (c, next) => {
+    const session = await getSession(c.req.raw);
+    await withTenants(session?.memberships.map(m => m.tenant) ?? [], () => next());
+  });
   // Test hooks: a clock for timers and schedules, and the captured mailbox. Only with OSL_TEST_HOOKS=1.
   if (testHooksEnabled()) {
     app.post("/api/osl-hooks/timers/run", async c => c.json({ data: await timersRun(await c.req.json().catch(() => ({}))) }));
@@ -35,6 +42,10 @@ export function createApp(): Hono {
       return result ? c.json({ data: result }) : c.json({ error: { code: "unknown_schedule", message: "no schedule runs that action" } }, 400);
     });
     app.get("/api/osl-hooks/emails", c => c.json({ data: emailsSent({ to: c.req.query("to"), subject: c.req.query("subject") }) }));
+    // The two hooks of the cross-tenant walk's second pass: the rule checks switched off, and the unbound probe
+    app.post("/api/osl-hooks/rules/off", c => c.json({ data: rulesSwitch(true) }));
+    app.post("/api/osl-hooks/rules/on", c => c.json({ data: rulesSwitch(false) }));
+    app.get("/api/osl-hooks/tenancy/unbound", async c => c.json({ data: await tenancyUnbound() }));
   }
   // After `vite build`, the API also serves the web app, with the SPA fallback for its routes.
   // In development Vite serves it instead and proxies /trpc and /api here.

@@ -12,6 +12,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"strconv"
@@ -20,7 +21,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/scrypt"
 
 	"workspace/generated/db"
@@ -75,11 +75,11 @@ var Providers = []Provider{{Kind: "credentials", Name: "credentials"}, {Kind: "m
 
 // Auth serves the auth endpoints and resolves sessions.
 type Auth struct {
-	db *pgxpool.Pool
+	db *db.Scope
 }
 
 // New builds the auth service.
-func New(db *pgxpool.Pool) *Auth {
+func New(db *db.Scope) *Auth {
 	return &Auth{db: db}
 }
 
@@ -199,7 +199,7 @@ func signIn(c *gin.Context, user *models.User) {
 // SessionOf builds the session of a user row, loading their memberships.
 func (a *Auth) SessionOf(ctx context.Context, user *models.User) (*Session, error) {
 	session := &Session{User: models.PresentUser(user)}
-	rows, err := a.db.Query(ctx, `SELECT "team_id", "role" FROM `+models.TeamMemberTable+` WHERE "user_id" = $1 ORDER BY "team_id"`, user.ID)
+	rows, err := a.db.Query(ctx, `SELECT tenant, role FROM "osl_memberships"($1) ORDER BY tenant`, user.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -217,6 +217,12 @@ func (a *Auth) SessionOf(ctx context.Context, user *models.User) (*Session, erro
 	for _, m := range memberships {
 		session.Memberships = append(session.Memberships, *m)
 	}
+	// The statements of this request reach the rows of these tenants, and no other tenant's
+	tenants := make([]string, 0, len(session.Memberships))
+	for _, m := range session.Memberships {
+		tenants = append(tenants, fmt.Sprint(m.Tenant))
+	}
+	db.Bind(ctx, tenants)
 	return session, nil
 }
 

@@ -78,7 +78,7 @@ export function generate(input: GenerateInput): GeneratedFile[] {
 
   // Database
   files.push({ path: `${gen}/db/schema.ts`, content: schemaFile(ir, VITE) });
-  files.push({ path: `${gen}/db/client.ts`, content: clientFile(VITE) });
+  files.push({ path: `${gen}/db/client.ts`, content: clientFile(VITE, ir) });
   files.push(...migrationFiles(revisions, `${gen}/db/migrations`).files);
 
   // Shared by the API and the web app
@@ -86,7 +86,10 @@ export function generate(input: GenerateInput): GeneratedFile[] {
   files.push({ path: `${gen}/validation.ts`, content: validationFile(ir, VITE, { listInput: "typed" }) });
   files.push(...eventFiles(ir, VITE));
   if (hasScheduling(ir)) files.push({ path: `${gen}/scheduling.ts`, content: schedulingFile(ir, VITE) });
-  files.push({ path: `${gen}/test-hooks.ts`, content: testHooksFile(ir, VITE, { email: hasProviders(ir) }) });
+  files.push({
+    path: `${gen}/test-hooks.ts`,
+    content: testHooksFile(ir, VITE, { email: hasProviders(ir), access: "./server/access" })
+  });
   if (ir.jobs) {
     files.push({ path: `${gen}/jobs.ts`, content: jobsFile(ir, VITE_SERVER) });
     files.push(workerScaffold());
@@ -105,9 +108,9 @@ export function generate(input: GenerateInput): GeneratedFile[] {
   }
 
   // API
-  files.push({ path: `${gen}/server/trpc.ts`, content: trpcFile() });
+  files.push({ path: `${gen}/server/trpc.ts`, content: trpcFile(ir) });
   files.push({ path: `${gen}/server/context.ts`, content: contextFile() });
-  files.push({ path: `${gen}/server/errors.ts`, content: errorsFile() });
+  files.push({ path: `${gen}/server/errors.ts`, content: errorsFile(ir) });
   files.push({ path: `${gen}/server/access.ts`, content: accessFile(ir) });
   files.push({ path: `${gen}/server/auth.ts`, content: authFile(ir) });
   if (ir.files) files.push({ path: `${gen}/server/files-router.ts`, content: filesRouterFile(ir) });

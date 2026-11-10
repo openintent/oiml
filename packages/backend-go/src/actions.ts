@@ -3,6 +3,8 @@ import { toPascalCase } from "@osl/core";
 import {
   HEADER,
   SCAFFOLD_HEADER,
+  dbType,
+  dbTypeImport,
   entityByName,
   exported,
   goFile,
@@ -83,7 +85,7 @@ export function actionsFile(ir: IR, modulePath: string): string {
     "context",
     "time",
     "github.com/gin-gonic/gin",
-    "github.com/jackc/pgx/v5/pgxpool",
+    dbTypeImport(ir, modulePath),
     `${modulePath}/generated/auth`,
     `${modulePath}/generated/models`
   ]);
@@ -94,7 +96,7 @@ type Context struct {
 	Gin     *gin.Context
 	Ctx     context.Context
 	Session *auth.Session
-	DB      *pgxpool.Pool
+	DB      ${dbType(ir)}
 	// Now is when the action runs; a timer or schedule passes the time it was due. Compare against it, not the clock.
 	Now time.Time
 }

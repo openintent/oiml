@@ -62,6 +62,14 @@ ${Object.entries(dependencies)
   });
 
   const env: string[] = [`DATABASE_URL=postgres://postgres@localhost:5432/${ir.name}`, `PORT=${PORT}`];
+  const isolation = ir.auth?.tenancy?.isolation;
+  if (isolation)
+    env.splice(
+      1,
+      0,
+      "# The web process connects as the role the tenant policies bind; osl migrate gives it the password you put here",
+      `DATABASE_APP_URL=postgres://${isolation.appRole}:CHOOSE-A-PASSWORD@localhost:5432/${ir.name}`
+    );
   if (ir.auth) env.push("OSL_SESSION_SECRET=change-me-to-a-long-random-string");
   if (hasProviders(ir)) env.push(`OSL_APP_URL=http://localhost:${PORT}`);
   if (ir.auth?.providers.some(p => p.kind === "magic_link"))
@@ -106,7 +114,22 @@ Put your own code in \`src/\`: \`src/extensions/<resource>/hooks.go\` holds hook
 Run \`go mod tidy\` after generating, then \`go run ./cmd/server\` with \`DATABASE_URL\` set. The contract tests under \`tests\` run with \`OSL_BASE_URL=http://localhost:${PORT} go test ./...\` against a running server; \`go run ./cmd/seed\` replays the model's seed steps against it. The REST contract is \`openapi.json\`, served at \`/api/openapi.json\`.
 
 Migrations in \`db/migrations\` are a pure function of the model history. Apply them with \`osl migrate\`.
+${
+  isolation
+    ? `
+## Tenant isolation in the database
+
+The model says \`auth.tenancy.isolation: database\`, so every tenant table has row-level security behind the rules. Two roles connect:
+
+- \`DATABASE_URL\` is the owner: it runs the migrations and the worker's jobs (River), and the policies do not bind it.
+- \`DATABASE_APP_URL\` is \`${isolation.appRole}\`, the role every request reads and writes as. A request sees the rows of the teams its caller belongs to, what a public read rule opens to everyone, and nothing else; outside a request it sees no tenant row at all. \`app.New\` refuses to build the engine if this URL connects as the owner, a superuser or a role with BYPASSRLS.
+
+The migrations create \`${isolation.appRole}\` without a login and without a password. Put \`DATABASE_APP_URL=postgres://${isolation.appRole}:<a password you choose>@host:5432/${ir.name}\` in the environment and run \`osl migrate\`: it gives the role that password. No password is in any generated file.
+
+Handlers and your own code hold the database as a \`*db.Scope\`: its \`Query\`, \`QueryRow\`, \`Exec\` and \`Begin\` are the pool's, and each statement runs with the tenants of its context bound for its own transaction (pass the request's context, \`ctx.Context()\` in an action). A schedule or timer gets the owner's pool behind the same type.
 `
+    : ""
+}`
   });
 
   files.push(...dockerFiles(ir));
@@ -130,6 +153,11 @@ COPY --from=build /out/ /app/
 EXPOSE ${PORT}
 CMD ["/app/server"]
 `;
+  // isolation: database: requests connect as the app role; its password comes from the environment (osl migrate set it), never from this file
+  const isolation = ir.auth?.tenancy?.isolation;
+  const appUrl = isolation
+    ? `\n      DATABASE_APP_URL: postgres://${isolation.appRole}:\${OSL_APP_DB_PASSWORD:?set OSL_APP_DB_PASSWORD to the password osl migrate gave ${isolation.appRole}}@postgres:5432/${ir.name}`
+    : "";
   const worker = ir.jobs
     ? `
   worker:
@@ -166,7 +194,7 @@ services:
     ports:
       - "${PORT}:${PORT}"
     environment:
-      DATABASE_URL: postgres://postgres:postgres@postgres:5432/${ir.name}
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/${ir.name}${appUrl}
       OSL_SESSION_SECRET: change-me-to-a-long-random-string
       OSL_APP_URL: http://localhost:${PORT}${ir.jobs ? "\n      OSL_ROLE: all" : ""}
     depends_on:

@@ -15,7 +15,7 @@ interface Backend {
   runtime(config: ProjectConfig): {
     install: Cmd[]; // run in order, cwd = project root
     check: Cmd[]; // compile or typecheck
-    serve(port: number): Cmd; // DATABASE_URL, OSL_SESSION_SECRET and PORT are set
+    serve(port: number): Cmd; // DATABASE_URL, OSL_SESSION_SECRET and PORT are set; DATABASE_APP_URL too under isolation: database
     test(baseUrl: string): Cmd; // contract tests against a running app
     readyPath: string; // answers once the server is up
     migrationsDir(generatedDir: string): string;
@@ -61,7 +61,7 @@ pnpm conformance --snapshot-only                                                
 pnpm conformance --update                                                            # rewrite snapshots after an intended change
 ```
 
-For each fixture and backend the harness runs: generate, snapshot compare, install, check, create a throwaway database, migrate, drift check, start the server, run the contract tests, drop the database. The contract tests receive the same `DATABASE_URL` as the server: an actor that carries a `role` is registered through the API and then given it straight in the database, since register refuses it. A backend is accepted when every fixture passes. Snapshots live in `fixtures/<name>/expected/<backend>/` and are the committed proof of determinism.
+For each fixture and backend the harness runs: generate, snapshot compare, install, check, create a throwaway database, migrate, drift check, start the server, run the contract tests, drop the database. A fixture with `isolation: database` is run the way it is deployed: the database belongs to a role made for the run that is no superuser (migrations, the worker and the walks' own reads go through it), and the server gets a second connection string, `DATABASE_APP_URL`, for a login that is a member of the model's app role; both roles have random passwords that live in the harness's memory and are dropped with the database. The contract tests receive the same `DATABASE_URL` as the server: an actor that carries a `role` is registered through the API and then given it straight in the database, since register refuses it. A backend is accepted when every fixture passes. Snapshots live in `fixtures/<name>/expected/<backend>/` and are the committed proof of determinism.
 
 The TypeScript projects are installed and run with pnpm unless `.osl/config.yaml` says `backend_options.package_manager: bun` or `npm` (`osl init --package-manager bun`). The option changes the install command, the generated `package.json` (the lifecycle-script allowance for esbuild, `pnpm.onlyBuiltDependencies` or bun's `trustedDependencies`) and the README's commands; the scripts themselves are the same, and `dev` is a small launcher (`scripts/dev.mjs`) that works under any of them. `pnpm conformance --package-manager bun` runs the harness with another manager as a spot check; it skips the snapshot compare, since the snapshots are written for pnpm.
 
@@ -84,6 +84,7 @@ The `hono-trpc-vite` contract tests speak tRPC's HTTP transport but assert the s
 | Actions                                                                    | `POST <resource>/{id}/<name>`, `<resource>/<name>`, `/api/actions/<name>`; handler stubs in `src/actions/<handler>.ts`, filled in by you or `osl implement`                                     | procedures `posts.publish({ id, ...input })`, `actions.send_digest(input)`; same stubs         | the same routes; stubs in Go                                                                                                            |
 | Files                                                                      | `POST /api/files`, `PUT`/`GET /api/files/{id}/content`, `POST /api/files/{id}/complete`, `GET /api/files/{id}`; local disk or S3-compatible storage                                             | `files.begin/complete/get` plus the REST content routes on the Hono app                        | the same routes                                                                                                                         |
 | Member rules, tenancy                                                      | sessions carry memberships; lists filter by tenant; creators get a membership                                                                                                                   | the same                                                                                       | the same                                                                                                                                |
+| Tenant isolation (`auth.tenancy.isolation: database`)                      | every route in `withRequest`: one transaction on the app role's pool with the caller's teams bound; `db` is that transaction, the owner's pool in a job; see below                              | the same, per procedure (a tRPC middleware) and per REST route (Hono)                          | handlers hold a `*db.Scope`: each statement and its `set_config` travel as one batch; `db.System` for jobs                              |
 | Membership relations (`member:members`, `member:channel_id.members:admin`) | `withRuleValues(row, session)` looks the caller's junction row up under the path's key and the access module ranks it by the junction's enum; lists filter with a subquery through the junction | the same                                                                                       | `ruleRow(ctx, session, row)` and `access.CheckRow` with `Through` and `Roles`; the list filter as `IN (SELECT ...)` through `where.Raw` |
 | Schedules, timers                                                          | pg-boss cron schedules and jobs with `startAfter`; a timer job reloads the row and runs the action only if the row still says so; test hooks at `/api/osl-hooks/*` when `OSL_TEST_HOOKS=1`      | the same, with the hooks as REST routes beside tRPC                                            | River periodic jobs (robfig/cron) and `ScheduledAt` jobs; the same hooks                                                                |
 | Magic links, OAuth                                                         | `POST /api/auth/magic-link`, `/verify`, `GET /api/auth/oauth/<name>[/callback]`, `GET /api/auth/providers`; email through log, Resend or capture                                                | procedures `auth.magic_link`, `auth.magic_link_verify`, `auth.providers`; OAuth as REST routes | the same routes                                                                                                                         |
@@ -111,6 +112,31 @@ Environment the features read: `OSL_STORAGE` (`local` default, `s3` with `S3_BUC
 6. Register the backend in `packages/conformance/src/index.ts` and `packages/cli/src/backends.ts`, add it to each `fixtures/*/fixture.yaml`, and run the harness with `--update` to create its snapshots.
 7. Keep iterating until every fixture passes every step. The harness output names the failing step and keeps the temp project with `--keep`.
 
+## Tenant isolation in the database
+
+With `auth.tenancy.isolation: database` the migrations, which every backend shares, carry the backstop
+(`packages/core/src/isolation.ts`), and each backend binds a request to its caller's tenants.
+
+| Piece                 | What is generated                                                                                                                                                                                                                                                                                                                                                                                    |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tenant column         | the tenant entity's key, the declared relation, or a derived column (`team_id`) that is the table's and never the entity's: no backend reads or writes it. A `SECURITY DEFINER` trigger copies it from the parent on insert and when the relation changes; `UNIQUE (tenant, key)` on the parent and a composite key `(tenant, relation)` keep every relation between tenant tables inside one tenant |
+| Policies              | `ENABLE ROW LEVEL SECURITY` (not `FORCE`: the owner is not bound, so it need not be a superuser), `<table>_tenant` for all commands: the row's tenant is among those in `app.<tenant>_ids`, an array literal the request binds; unset or empty shows no row. `<table>_public_read` for SELECT only, from the read rule's public alternatives                                                         |
+| Roles                 | `<app>_app`, created `NOLOGIN` and idempotently (roles belong to the cluster), granted the tables. `DATABASE_URL` is the owner (migrations, the queue, the worker); `DATABASE_APP_URL` is what requests connect as. `osl migrate` reads `DATABASE_APP_URL` and gives that login its password, so no secret is in a generated file                                                                    |
+| Functions past policy | `osl_memberships(user)` (a session is read before any tenant is bound), `osl_exists_<table>(id)` (another tenant's row answers the rule's 403 or 401, a missing one 404; absent under `hidden: not_found`), `osl_read_<table>_<path>(key)` (the value a public alternative tests on another table). Each is owned by the migrating role and granted to the app role alone                            |
+| Boot check            | the app refuses to serve when `DATABASE_APP_URL` connects as a role the policies do not bind (`row_security_active` is false for a tenant table): the owner, a superuser, `BYPASSRLS`                                                                                                                                                                                                                |
+| Drift                 | `osl drift` compares row security per table (and reports `FORCE`), every policy's command and expression, the functions' bodies and `SECURITY DEFINER`, and the triggers                                                                                                                                                                                                                             |
+
+The TypeScript backends open one transaction per request (drizzle-next: `withRequest` in every route file;
+hono-trpc-vite: a middleware on `publicProcedure`, so a batch runs each call in its own, and one on `/api/*`) and
+bind the session's memberships with `set_config(..., true)`. `db` in `generated/db/client.ts` is a proxy over an
+`AsyncLocalStorage` scope: the request's transaction inside a request, the owner's pool inside `asSystem` (the
+worker's jobs and the timer and schedule hooks), the unbound app role anywhere else, which reads no tenant row. Jobs
+a request queues are sent after its transaction commits. gin-pgx keeps one statement per transaction: `*db.Scope`
+has the pool's `Query`, `QueryRow`, `Exec` and `Begin`, and sends each statement in one batch with its
+`set_config(..., true)`, which PostgreSQL runs as one transaction, so nothing stays on a pooled connection and a
+pooler in transaction mode is safe. A request's context carries the binding (`db.WithBinding` in a middleware,
+`db.Bind` when `auth.Session` has read the memberships); a context nothing was bound in reaches no tenant row.
+
 ## The conformance walks
 
 After the scenarios, the harness runs five checks over every fixture that no scenario names, each a function of
@@ -124,7 +150,13 @@ the IR, the running app and the actors' sessions, reported as steps `walk:rule`,
   straight from the database. The step's detail counts what the predictions said, so the coverage is visible.
 - **tenant**: with tenancy, a member of another team (an actor outside the home team, or a user the walk registers)
   gets, updates, deletes and runs actions on the home team's rows and must be refused with the rows unchanged, lists
-  nothing of theirs, and cannot create a row under one of their parents.
+  nothing of theirs, and cannot create a row under one of their parents. A row the read rule opens to everyone is
+  theirs to read and nothing more. With `isolation: database` the walk runs a second time with the generated rule
+  checks switched off (`POST /api/osl-hooks/rules/off`, only under `OSL_TEST_HOOKS=1`): what still refuses is the
+  database. A control comes first (a list the rules refuse a caller without a session must now answer, empty), or
+  the pass would prove nothing. Then the unbound probe (`GET /api/osl-hooks/tenancy/unbound`): the app's database
+  role with no tenant bound must read no row of any tenant table except exactly the rows a public read rule opens,
+  which the harness computes from the rules.
 - **leak**: every response body of the walks is scanned for hidden columns, the password, key and token hash
   columns, and the shape of a raw key.
 - **fuzz**: from the IR, wrong types, boundary lengths, extra keys, missing and null required fields, server-owned

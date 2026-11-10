@@ -3,12 +3,12 @@
 
 import { and, count, desc, eq, inArray, type SQL } from "drizzle-orm";
 import { z } from "zod";
-import { db } from "../../db/client";
+import { db, rowExists } from "../../db/client";
 import * as schema from "../../db/schema";
 import { teamMembers as teamMembersTable } from "../../db/schema";
 import { presentTeamMember, presentUser } from "../../present";
 import { membersCreateInput, membersId, membersListQuery, membersUpdateInput } from "../../validation";
-import { checkRule, memberTenantIds, type Rule } from "../access";
+import { checkRule, memberTenantIds, refused, rulesDisabled, unreachable, type Rule } from "../access";
 import type { Session } from "../auth";
 import { notFound, parseId, toTRPCError } from "../errors";
 import { publicProcedure, router } from "../trpc";
@@ -25,6 +25,11 @@ const RULES = {
 
 /** Ids as clients send them; parseId applies membersId and answers NOT_FOUND to a malformed one. */
 const ID = z.string();
+
+/** No row came back: another tenant's row answers as the rule answers a caller it refuses, a missing one 404 */
+async function missing(id: unknown, rule: Rule, session: Session | null) {
+  return (await rowExists("osl_exists_team_members", id)) ? refused(unreachable(rule, session)) : notFound();
+}
 
 type ListRow = schema.TeamMember & { user: schema.User | null };
 function presentListRow(row: ListRow) {
@@ -44,15 +49,16 @@ export const membersRouter = router({
     const conditions: SQL[] = [];
     if (filters.team_id !== undefined) conditions.push(eq(teamMembersTable.team_id, filters.team_id));
     if (filters.user_id !== undefined) conditions.push(eq(teamMembersTable.user_id, filters.user_id));
-    const tenants = memberTenantIds(ctx.session, undefined);
-    if (tenants.length === 0) return { data: [], page: { page, page_size, total: 0 } };
-    conditions.push(inArray(teamMembersTable.team_id, tenants as string[]));
+    if (!rulesDisabled()) {
+      const tenants = memberTenantIds(ctx.session, undefined);
+      if (tenants.length === 0) return { data: [], page: { page, page_size, total: 0 } };
+      conditions.push(inArray(teamMembersTable.team_id, tenants as string[]));
+    }
     const where = conditions.length ? and(...conditions) : undefined;
     try {
-      const [rows, [{ total }]] = await Promise.all([
-        db.query.teamMembers.findMany({ where, with: { user: true }, orderBy: [desc(teamMembersTable.created_at)], limit: page_size, offset: (page - 1) * page_size }),
-        db.select({ total: count() }).from(teamMembersTable).where(where)
-      ]);
+      // One statement at a time: both run on the procedure's transaction
+      const rows = await db.query.teamMembers.findMany({ where, with: { user: true }, orderBy: [desc(teamMembersTable.created_at)], limit: page_size, offset: (page - 1) * page_size });
+      const [{ total }] = await db.select({ total: count() }).from(teamMembersTable).where(where);
       return { data: rows.map(presentListRow), page: { page, page_size, total } };
     } catch (err) {
       throw toTRPCError(err, "read");
@@ -65,7 +71,7 @@ export const membersRouter = router({
     const row = await db.query.teamMembers.findFirst({ where: eq(teamMembersTable.id, id) }).catch(err => {
       throw toTRPCError(err, "read");
     });
-    if (!row) throw notFound();
+    if (!row) throw await missing(id, RULES.read, ctx.session);
     checkRule(RULES.read, ctx.session, row);
     return presentGetRow(row);
   }),
@@ -93,7 +99,7 @@ export const membersRouter = router({
       const existing = await db.query.teamMembers.findFirst({ where: eq(teamMembersTable.id, id) }).catch(err => {
         throw toTRPCError(err, "read");
       });
-      if (!existing) throw notFound();
+      if (!existing) throw await missing(id, RULES.update, ctx.session);
       checkRule(RULES.update, ctx.session, existing);
       const hookContext: HookContext = { session: ctx.session, req: ctx.req };
       try {
@@ -114,7 +120,7 @@ export const membersRouter = router({
     const existing = await db.query.teamMembers.findFirst({ where: eq(teamMembersTable.id, id) }).catch(err => {
       throw toTRPCError(err, "read");
     });
-    if (!existing) throw notFound();
+    if (!existing) throw await missing(id, RULES.delete, ctx.session);
     checkRule(RULES.delete, ctx.session, existing);
     const hookContext: HookContext = { session: ctx.session, req: ctx.req };
     try {

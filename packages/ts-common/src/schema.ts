@@ -8,6 +8,7 @@ import {
   typeName,
   type TsConventions
 } from "./conventions.js";
+import { isolatedClientFile, isolationOf } from "./isolation.js";
 
 /** generated/db/schema.ts: Drizzle pg-core tables, enums, relations and row types. */
 export function schemaFile(ir: IR, conv: TsConventions): string {
@@ -190,8 +191,9 @@ function scalarBuilder(scalar: string, maxLength: number | undefined, builders: 
   }
 }
 
-/** generated/db/client.ts */
-export function clientFile(conv: TsConventions): string {
+/** generated/db/client.ts; under isolation: database, the two pools and the request scope (isolation.ts) */
+export function clientFile(conv: TsConventions, ir?: IR): string {
+  if (ir && isolationOf(ir)) return isolatedClientFile(ir, conv);
   return `${conv.header("Database client.")}
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";

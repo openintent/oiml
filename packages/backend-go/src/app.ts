@@ -35,13 +35,31 @@ export function appFile(ir: IR, modulePath: string): string {
   const scheduling = hasScheduling(ir);
   if (scheduling) imports.push(`${modulePath}/generated/scheduling`);
   imports.push("os", `${modulePath}/generated/testhooks`);
+  // Under isolation: database requests go through the app role's pool, each with its own binding; the owner's pool is the worker's
+  const isolated = Boolean(ir.auth?.tenancy?.isolation);
+  if (isolated) imports.push(`${modulePath}/generated/db`);
+  const requests = isolated ? "requests" : "pool";
   const registrations: string[] = [];
   if (scheduling) registrations.push(`\tscheduling.Use(pool)`);
-  if (ir.files) registrations.push(`\tfilesapi.New(pool, a).Routes(r)`);
+  if (ir.files) registrations.push(`\tfilesapi.New(${requests}, a).Routes(r)`);
   for (const resource of ir.resources)
-    registrations.push(`\tresources.New${exported(resource.name)}(pool, a).Routes(r)`);
-  if (globals.length) registrations.push(`\tresources.NewGlobalActions(pool, a).Routes(r)`);
-  registrations.push(`\tif os.Getenv("OSL_TEST_HOOKS") == "1" {\n\t\ttesthooks.Routes(r)\n\t}`);
+    registrations.push(`\tresources.New${exported(resource.name)}(${requests}, a).Routes(r)`);
+  if (globals.length) registrations.push(`\tresources.NewGlobalActions(${requests}, a).Routes(r)`);
+  registrations.push(
+    `\tif os.Getenv("OSL_TEST_HOOKS") == "1" {\n\t\ttesthooks.Routes(r${isolated ? ", requests" : ""})\n\t}`
+  );
+  const scope = isolated
+    ? `	// Requests read and write as the app role, which the tenant policies bind; New refuses any other
+	requests, err := db.ConnectApp(context.Background())
+	if err != nil {
+		panic(err)
+	}
+	r.Use(func(c *gin.Context) {
+		c.Request = c.Request.WithContext(db.WithBinding(c.Request.Context()))
+		c.Next()
+	})
+`
+    : "";
   const start = ir.jobs
     ? `// Start runs the background work: River's migrations and, unless OSL_ROLE is web, the worker for queued events, schedules and timers.
 func Start(ctx context.Context, pool *pgxpool.Pool) error {
@@ -66,13 +84,13 @@ func Stop(ctx context.Context) error {
     HEADER("The HTTP application: every generated route on one Gin engine."),
     "app",
     imports,
-    `// New builds the engine. Add your own middleware and routes to the result in cmd/server.
+    `// New builds the engine. Add your own middleware and routes to the result in cmd/server.${isolated ? "\n// pool is the owner's (DATABASE_URL): the worker's jobs act through it. Requests use the app role's (DATABASE_APP_URL)." : ""}
 func New(pool *pgxpool.Pool) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
-	r.GET("/healthz", healthz)
+${scope}	r.GET("/healthz", healthz)
 	r.GET("/api/openapi.json", openapi)
-	a := auth.New(pool)
+	a := auth.New(${requests})
 	a.Routes(r)
 ${registrations.join("\n")}${registrations.length ? "\n" : ""}	return r
 }

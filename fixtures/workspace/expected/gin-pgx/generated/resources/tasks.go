@@ -10,7 +10,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"workspace/generated/access"
 	"workspace/generated/actions"
@@ -27,12 +26,12 @@ import (
 
 // Tasks serves the tasks resource (Task).
 type Tasks struct {
-	db   *pgxpool.Pool
+	db   *db.Scope
 	auth *auth.Auth
 }
 
 // NewTasks builds the handlers.
-func NewTasks(db *pgxpool.Pool, a *auth.Auth) *Tasks {
+func NewTasks(db *db.Scope, a *auth.Auth) *Tasks {
 	return &Tasks{db: db, auth: a}
 }
 
@@ -46,11 +45,11 @@ func (h *Tasks) Routes(r gin.IRouter) {
 	r.POST("/api/tasks/:id/remind", h.ActionRemind)
 }
 
-var tasksReadRule = access.Rule{Kind: "any", Any: []access.Rule{{Kind: "public", When: &access.Condition{Field: "project_id.public", Op: "eq", Value: true}}, {Kind: "owner", Field: "assignee_id"}, {Kind: "member", Field: "project_id.team_id", Role: "admin"}}}
+var tasksReadRule = access.Rule{Kind: "any", Any: []access.Rule{{Kind: "public", When: &access.Condition{Field: "project_id.public", Op: "eq", Value: true}}, {Kind: "all", All: []access.Rule{{Kind: "owner", Field: "assignee_id"}, {Kind: "member", Field: "project_id.team_id"}}}, {Kind: "member", Field: "project_id.team_id", Role: "admin"}}}
 
 var tasksCreateRule = access.Rule{Kind: "member", Field: "project_id.team_id"}
 
-var tasksUpdateRule = access.Rule{Kind: "any", Any: []access.Rule{{Kind: "owner", Field: "assignee_id"}, {Kind: "member", Field: "project_id.team_id", Role: "admin"}}}
+var tasksUpdateRule = access.Rule{Kind: "any", Any: []access.Rule{{Kind: "all", All: []access.Rule{{Kind: "owner", Field: "assignee_id"}, {Kind: "member", Field: "project_id.team_id"}}}, {Kind: "member", Field: "project_id.team_id", Role: "admin"}}}
 
 var tasksDeleteRule = access.Rule{Kind: "member", Field: "project_id.team_id", Role: "admin"}
 
@@ -85,12 +84,13 @@ func (h *Tasks) List(c *gin.Context) {
 	}
 	if !access.Satisfied(tasksReadRule, session) {
 		alternatives := []string{}
-		alternatives = append(alternatives, `"project_id" IN (SELECT "id" FROM `+models.ProjectTable+` WHERE "public" = `+where.Param(true)+`)`)
-		if session != nil {
-			alternatives = append(alternatives, `"assignee_id" = `+where.Param(session.User.ID))
+		alternatives = append(alternatives, `"osl_read_tasks_project_id_public"("project_id") = `+where.Param(true))
+		tenants := access.MemberTenantIDs(session, "")
+		if session != nil && len(tenants) > 0 {
+			alternatives = append(alternatives, `("assignee_id" = `+where.Param(session.User.ID)+` AND "project_id" IN (SELECT "id" FROM `+models.ProjectTable+` WHERE "team_id" = ANY(`+where.Param(tenants)+`)))`)
 		}
-		if tenants := access.MemberTenantIDs(session, "admin"); len(tenants) > 0 {
-			alternatives = append(alternatives, `"project_id" IN (SELECT "id" FROM `+models.ProjectTable+` WHERE "team_id" = ANY(`+where.Param(tenants)+`))`)
+		if tenants2 := access.MemberTenantIDs(session, "admin"); len(tenants2) > 0 {
+			alternatives = append(alternatives, `"project_id" IN (SELECT "id" FROM `+models.ProjectTable+` WHERE "team_id" = ANY(`+where.Param(tenants2)+`))`)
 		}
 		if len(alternatives) == 0 {
 			httpx.List(c, models.PresentTasks(nil), httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: 0})
@@ -137,7 +137,7 @@ func (h *Tasks) Get(c *gin.Context) {
 	}
 	row, err := models.ScanTask(h.db.QueryRow(ctx, `SELECT `+models.TaskColumns+` FROM `+models.TaskTable+` WHERE "id" = $1`, id))
 	if err != nil {
-		httpx.HandleError(c, err, "read")
+		h.missing(c, err, id, tasksReadRule, session, "read")
 		return
 	}
 	ruleRow, err := h.ruleRow(ctx, access.Row{"assignee_id": row.AssigneeID, "project_id": row.ProjectID})
@@ -225,7 +225,7 @@ func (h *Tasks) Update(c *gin.Context) {
 	}
 	existing, err := models.ScanTask(h.db.QueryRow(ctx, `SELECT `+models.TaskColumns+` FROM `+models.TaskTable+` WHERE "id" = $1`, id))
 	if err != nil {
-		httpx.HandleError(c, err, "write")
+		h.missing(c, err, id, tasksUpdateRule, session, "write")
 		return
 	}
 	ruleRow, err := h.ruleRow(ctx, access.Row{"assignee_id": existing.AssigneeID, "project_id": existing.ProjectID})
@@ -293,7 +293,7 @@ func (h *Tasks) Delete(c *gin.Context) {
 	}
 	existing, err := models.ScanTask(h.db.QueryRow(ctx, `SELECT `+models.TaskColumns+` FROM `+models.TaskTable+` WHERE "id" = $1`, id))
 	if err != nil {
-		httpx.HandleError(c, err, "delete")
+		h.missing(c, err, id, tasksDeleteRule, session, "delete")
 		return
 	}
 	ruleRow, err := h.ruleRow(ctx, access.Row{"project_id": existing.ProjectID})
@@ -340,7 +340,7 @@ func (h *Tasks) ActionRemind(c *gin.Context) {
 	}
 	row, err := models.ScanTask(h.db.QueryRow(ctx, `SELECT `+models.TaskColumns+` FROM `+models.TaskTable+` WHERE "id" = $1`, id))
 	if err != nil {
-		httpx.HandleError(c, err, "write")
+		h.missing(c, err, id, tasksRemindActionRule, session, "write")
 		return
 	}
 	ruleRow, err := h.ruleRow(ctx, access.Row{"project_id": row.ProjectID})
@@ -371,6 +371,18 @@ func (h *Tasks) ActionRemind(c *gin.Context) {
 	httpx.OK(c, models.PresentTask(result))
 }
 
+// missing answers a row that did not come back: another tenant's as the rule answers a caller it refuses, a
+// missing one 404, and any other failure as it is.
+func (h *Tasks) missing(c *gin.Context, err error, id any, rule access.Rule, session *auth.Session, operation string) {
+	if errors.Is(err, pgx.ErrNoRows) {
+		if found, perr := h.db.Exists(c.Request.Context(), "osl_exists_tasks", id); perr == nil && found {
+			access.Deny(c, access.Unreachable(rule, session))
+			return
+		}
+	}
+	httpx.HandleError(c, err, operation)
+}
+
 // ruleRow adds to row the values the rules reach through relations, under their dotted keys.
 func (h *Tasks) ruleRow(ctx context.Context, row access.Row) (access.Row, error) {
 	{
@@ -382,7 +394,7 @@ func (h *Tasks) ruleRow(ctx context.Context, row access.Row) (access.Row, error)
 	}
 	{
 		var v1 *bool
-		if err := h.db.QueryRow(ctx, `SELECT "public" FROM `+models.ProjectTable+` WHERE "id" = $1`, row["project_id"]).Scan(&v1); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		if err := h.db.QueryRow(ctx, `SELECT "osl_read_tasks_project_id_public"($1)`, row["project_id"]).Scan(&v1); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return nil, err
 		}
 		row["project_id.public"] = v1

@@ -9,7 +9,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"workspace/generated/access"
 	"workspace/generated/auth"
@@ -23,12 +22,12 @@ import (
 
 // Messages serves the messages resource (Message).
 type Messages struct {
-	db   *pgxpool.Pool
+	db   *db.Scope
 	auth *auth.Auth
 }
 
 // NewMessages builds the handlers.
-func NewMessages(db *pgxpool.Pool, a *auth.Auth) *Messages {
+func NewMessages(db *db.Scope, a *auth.Auth) *Messages {
 	return &Messages{db: db, auth: a}
 }
 
@@ -41,13 +40,13 @@ func (h *Messages) Routes(r gin.IRouter) {
 	r.DELETE("/api/messages/:id", h.Delete)
 }
 
-var messagesReadRule = access.Rule{Kind: "any", Any: []access.Rule{{Kind: "member", Field: "channel_id.members", Through: true, Roles: []string{"admin", "member"}}, {Kind: "member", Field: "channel_id.team_id", When: &access.Condition{Field: "channel_id.private", Op: "eq", Value: false}}}}
+var messagesReadRule = access.Rule{Kind: "any", Any: []access.Rule{{Kind: "all", All: []access.Rule{{Kind: "member", Field: "channel_id.members", Through: true, Roles: []string{"admin", "member"}}, {Kind: "member", Field: "channel_id.team_id"}}}, {Kind: "member", Field: "channel_id.team_id", When: &access.Condition{Field: "channel_id.private", Op: "eq", Value: false}}}}
 
-var messagesCreateRule = access.Rule{Kind: "all", All: []access.Rule{{Kind: "member", Field: "channel_id.members", Through: true, Roles: []string{"admin", "member"}}, {Kind: "owner", Field: "author_id"}}}
+var messagesCreateRule = access.Rule{Kind: "all", All: []access.Rule{{Kind: "member", Field: "channel_id.members", Through: true, Roles: []string{"admin", "member"}}, {Kind: "owner", Field: "author_id"}, {Kind: "member", Field: "channel_id.team_id"}}}
 
-var messagesUpdateRule = access.Rule{Kind: "owner", Field: "author_id"}
+var messagesUpdateRule = access.Rule{Kind: "all", All: []access.Rule{{Kind: "owner", Field: "author_id"}, {Kind: "member", Field: "channel_id.team_id"}}}
 
-var messagesDeleteRule = access.Rule{Kind: "any", Any: []access.Rule{{Kind: "owner", Field: "author_id"}, {Kind: "member", Field: "channel_id.members", Role: "admin", Through: true, Roles: []string{"admin", "member"}}}}
+var messagesDeleteRule = access.Rule{Kind: "any", Any: []access.Rule{{Kind: "all", All: []access.Rule{{Kind: "owner", Field: "author_id"}, {Kind: "member", Field: "channel_id.team_id"}}}, {Kind: "all", All: []access.Rule{{Kind: "member", Field: "channel_id.members", Role: "admin", Through: true, Roles: []string{"admin", "member"}}, {Kind: "member", Field: "channel_id.team_id"}}}}}
 
 // List handles GET /api/messages.
 func (h *Messages) List(c *gin.Context) {
@@ -72,9 +71,11 @@ func (h *Messages) List(c *gin.Context) {
 	}
 	if !access.Satisfied(messagesReadRule, session) {
 		alternatives := []string{}
-		alternatives = append(alternatives, `"channel_id" IN (SELECT "id" FROM `+models.ChannelTable+` WHERE "id" IN (SELECT "channel_id" FROM `+models.ChannelMemberTable+` WHERE "user_id" = `+where.Param(session.User.ID)+`))`)
 		if tenants := access.MemberTenantIDs(session, ""); len(tenants) > 0 {
-			alternatives = append(alternatives, `("channel_id" IN (SELECT "id" FROM `+models.ChannelTable+` WHERE "team_id" = ANY(`+where.Param(tenants)+`)) AND "channel_id" IN (SELECT "id" FROM `+models.ChannelTable+` WHERE "private" = `+where.Param(false)+`))`)
+			alternatives = append(alternatives, `("channel_id" IN (SELECT "id" FROM `+models.ChannelTable+` WHERE "id" IN (SELECT "channel_id" FROM `+models.ChannelMemberTable+` WHERE "user_id" = `+where.Param(session.User.ID)+`)) AND "channel_id" IN (SELECT "id" FROM `+models.ChannelTable+` WHERE "team_id" = ANY(`+where.Param(tenants)+`)))`)
+		}
+		if tenants2 := access.MemberTenantIDs(session, ""); len(tenants2) > 0 {
+			alternatives = append(alternatives, `("channel_id" IN (SELECT "id" FROM `+models.ChannelTable+` WHERE "team_id" = ANY(`+where.Param(tenants2)+`)) AND "channel_id" IN (SELECT "id" FROM `+models.ChannelTable+` WHERE "private" = `+where.Param(false)+`))`)
 		}
 		if len(alternatives) == 0 {
 			httpx.List(c, models.PresentMessages(nil), httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: 0})
@@ -209,7 +210,7 @@ func (h *Messages) Update(c *gin.Context) {
 		httpx.HandleError(c, err, "write")
 		return
 	}
-	ruleRow, err := h.ruleRow(ctx, session, access.Row{"channel_id": existing.ChannelID})
+	ruleRow, err := h.ruleRow(ctx, session, access.Row{"channel_id": existing.ChannelID, "author_id": existing.AuthorID})
 	if err != nil {
 		httpx.HandleError(c, err, "write")
 		return
@@ -218,7 +219,7 @@ func (h *Messages) Update(c *gin.Context) {
 		httpx.Fail(c, httpx.NotFound())
 		return
 	}
-	if verdict := access.CheckRow(messagesUpdateRule, session, access.Row{"author_id": existing.AuthorID}); verdict != nil {
+	if verdict := access.CheckRow(messagesUpdateRule, session, ruleRow); verdict != nil {
 		access.Deny(c, verdict)
 		return
 	}

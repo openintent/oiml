@@ -2,6 +2,7 @@
 // Do not edit: this file is rewritten on every osl generate.
 
 import { PgBoss } from "pg-boss";
+import { afterCommit, asSystem } from "./db/client";
 import { QUEUED_EVENTS, runQueued } from "./events";
 import { SCHEDULES, TIMERS, runSchedule, runTimerJob } from "./scheduling";
 
@@ -36,13 +37,17 @@ export function getBoss(): Promise<PgBoss> {
 
 export async function enqueue(name: string, payload: unknown): Promise<void> {
   const boss = await getBoss();
-  await boss.send(name, (payload ?? {}) as object);
+  await afterCommit(async () => {
+    await boss.send(name, (payload ?? {}) as object);
+  });
 }
 
 /** Store a job to run at a time; the same payload scheduled twice runs once */
 export async function enqueueAt(name: string, payload: object, at: Date): Promise<void> {
   const boss = await getBoss();
-  await boss.send(name, payload, { startAfter: at, singletonKey: JSON.stringify(payload) });
+  await afterCommit(async () => {
+    await boss.send(name, payload, { startAfter: at, singletonKey: JSON.stringify(payload) });
+  });
 }
 
 /** Run queued events in this process; a no-op in the web role. */
@@ -51,19 +56,19 @@ export async function startWorker(): Promise<void> {
   const boss = await getBoss();
   for (const name of QUEUED_EVENTS) {
     await boss.work(name, async jobs => {
-      for (const job of jobs) await runQueued(name, job.data);
+      for (const job of jobs) await asSystem(() => runQueued(name, job.data));
     });
   }
   for (const schedule of SCHEDULES) {
     const queue = "schedule." + schedule.name;
     await boss.schedule(queue, schedule.cron, {}, { tz: "UTC" });
     await boss.work(queue, async () => {
-      await runSchedule(schedule.name, new Date());
+      await asSystem(() => runSchedule(schedule.name, new Date()));
     });
   }
   for (const timer of TIMERS) {
     await boss.work("timer." + timer.name, async jobs => {
-      for (const job of jobs) await runTimerJob(timer.name, job.data as { id: unknown; due: string });
+      for (const job of jobs) await asSystem(() => runTimerJob(timer.name, job.data as { id: unknown; due: string }));
     });
   }
 }

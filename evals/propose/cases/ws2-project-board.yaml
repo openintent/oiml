@@ -1,6 +1,6 @@
 id: ws2-project-board
 tags: [app, tenancy]
-base: { fixture: workspace }
+base: { fixture: workspace, through: WS-9 }
 full: false
 intent:
   title: Projects board

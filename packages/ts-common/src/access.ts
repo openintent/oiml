@@ -21,6 +21,7 @@ import {
   type MembershipIR
 } from "@osl/core";
 import { entityByName, q, tableExport, typeName } from "./conventions.js";
+import { isolationOf } from "./isolation.js";
 
 /** `memberships` on the session, when the model has tenancy */
 export function membershipType(ir: IR): string {
@@ -35,6 +36,38 @@ export function membershipType(ir: IR): string {
 export function verdictSource(ir: IR): string {
   const pk = ir.auth ? entityByName(ir, ir.auth.identity).primaryKey[0] : "id";
   const roles = ir.auth?.tenancy?.roles ?? [];
+  const isolated = Boolean(isolationOf(ir));
+  // Under isolation: database the rule checks can be switched off by a test hook, so a walk can prove the policies alone hold
+  const off = isolated ? "\n  if (rulesDisabled()) return ALLOW;" : "";
+  const offSatisfied = isolated ? "\n  if (rulesDisabled()) return true;" : "";
+  const isolation = isolated
+    ? `
+
+const globalForRules = globalThis as unknown as { oslRulesOff?: boolean };
+
+/** Test hook (OSL_TEST_HOOKS=1 only): with the rule checks off, the database's policies alone stand between a caller and a row */
+export function setRulesDisabled(off: boolean): void {
+  globalForRules.oslRulesOff = off;
+}
+
+export function rulesDisabled(): boolean {
+  return process.env.OSL_TEST_HOOKS === "1" && globalForRules.oslRulesOff === true;
+}
+
+function needsSession(rule: Rule): boolean {
+  if (rule.kind === "any" || rule.kind === "all") return rule.rules.some(needsSession);
+  return rule.kind !== "public" && rule.kind !== "none";
+}
+
+/**
+ * What a rule answers for a row the caller's tenants do not reach, which the policy hides from the handler: the
+ * rule's own refusal of someone who is not a member, 401 when the caller has no session and the rule wanted one,
+ * else 403.
+ */
+export function unreachable(rule: Rule, session: Session | null): { ok: false; status: 401 | 403 } {
+  return { ok: false, status: session === null && needsSession(rule) ? 401 : 403 };
+}`
+    : "";
   return `/** A row condition on a rule: it allows only rows whose \`field\` compares to \`value\` as \`op\` says */
 export type Condition = { field: string; op: "eq" | "ne"; value: unknown };
 
@@ -86,7 +119,7 @@ export function holds(when: Condition, row: Record<string, unknown>): boolean {
 }
 
 /** Whether the rule allows this session whatever the row, so a list under it needs no row filter. */
-export function satisfied(rule: Rule, session: Session | null): boolean {
+export function satisfied(rule: Rule, session: Session | null): boolean {${offSatisfied}
   switch (rule.kind) {
     case "public":
       return !rule.when;
@@ -110,7 +143,7 @@ export function satisfied(rule: Rule, session: Session | null): boolean {
  * refusing part answered.
  * A condition is checked once the row is there; before that, the rule allows what its predicate allows.
  */
-export function verdict(rule: Rule, session: Session | null, row?: Record<string, unknown> | null): Verdict {
+export function verdict(rule: Rule, session: Session | null, row?: Record<string, unknown> | null): Verdict {${off}
   const base = predicateVerdict(rule, session, row);
   if (!base.ok || rule.kind === "any" || rule.kind === "all" || rule.kind === "none" || !rule.when || !row) return base;
   return holds(rule.when, row) ? ALLOW : { ok: false, status: 403 };
@@ -162,7 +195,7 @@ function predicateVerdict(rule: Rule, session: Session | null, row?: Record<stri
       return memberTenantIds(session, rule.role).some(id => id === tenant) ? ALLOW : { ok: false, status: 403 };
     }
   }
-}`;
+}${isolation}`;
 }
 
 /** Drizzle code loading a user's memberships for the session, as `{ tenant, role }[]` */
@@ -170,6 +203,9 @@ export function membershipsLoader(ir: IR, userExpr: string): string {
   const t = ir.auth?.tenancy;
   if (!t) return "[]";
   const table = `${tableExport(entityByName(ir, t.membership))}`;
+  // Under isolation: database no tenant is bound yet, so the memberships come from the function that sees past the policy
+  if (t.isolation)
+    return `((await db.execute(sql\`select tenant, role from "${t.isolation.memberships}"(\${${userExpr}})\`)).rows as { tenant: string | number; role: string }[]).map(m => ({ tenant: m.tenant, role: m.role }))`;
   return `(await db.query.${table}.findMany({ where: eq(${table}Table.${t.userColumn}, ${userExpr}) })).map(m => ({ tenant: m.${t.tenantColumn}, role: m.${t.roleColumn} }))`;
 }
 
@@ -295,8 +331,18 @@ export function listRuleFilter(ir: IR, entity: EntityIR, rule: RuleIR, o: ListFi
     return `${fn}(${col}, ${JSON.stringify(when.value)})`;
   };
   /** The SQL of a predicate's condition, following its path when it has one, or null without a condition */
-  const whenSql = (r: PredicateIR): string | null =>
-    r.kind === "none" || !r.when ? null : through(r.when.via ?? [], t => whenLeaf(t, r.when!));
+  const whenSql = (r: PredicateIR): string | null => {
+    if (r.kind === "none" || !r.when) return null;
+    const when = r.when;
+    if (when.reader && when.via?.length) {
+      // A public alternative's path: the function reads the value whatever the caller's tenants, as the policy does
+      out.drizzle.add("sql");
+      const call = `"${when.reader}"(\${${table}.${when.via[0].column}})`;
+      if (when.value === null) return `sql\`${call} is ${when.op === "eq" ? "" : "not "}null\``;
+      return `sql\`${call} ${when.op === "eq" ? "=" : "is distinct from"} \${${JSON.stringify(when.value)}}\``;
+    }
+    return through(when.via ?? [], t => whenLeaf(t, when));
+  };
   /** The runtime guard before an open predicate's condition applies: the session or the role it needs */
   const guard = (r: PredicateIR): string | null => {
     if (r.kind === "authenticated") return `${o.session} !== null`;
@@ -366,10 +412,18 @@ export function listRuleFilter(ir: IR, entity: EntityIR, rule: RuleIR, o: ListFi
   if (ruleAlternatives(rule).length === 1) {
     // The check before the list already refused a session the open parts refuse; only the tenants can still be empty
     const p = plan(rows[0]);
-    for (const [name, expr] of p.tenants) out.lines.push(`${ind}const ${name} = ${expr};`);
+    // Under isolation: database the filter is skipped while a test hook has the rule checks off
+    const guarded = Boolean(isolationOf(ir));
+    const inner = guarded ? `${ind}  ` : ind;
+    if (guarded) {
+      out.access.add("rulesDisabled");
+      out.lines.push(`${ind}if (!rulesDisabled()) {`);
+    }
+    for (const [name, expr] of p.tenants) out.lines.push(`${inner}const ${name} = ${expr};`);
     if (p.tenants.length)
-      out.lines.push(`${ind}if (${p.tenants.map(([name]) => `${name}.length === 0`).join(" || ")}) ${o.empty}`);
-    out.lines.push(`${ind}conditions.push(${sqlOf(p)});`);
+      out.lines.push(`${inner}if (${p.tenants.map(([name]) => `${name}.length === 0`).join(" || ")}) ${o.empty}`);
+    out.lines.push(`${inner}conditions.push(${sqlOf(p)});`);
+    if (guarded) out.lines.push(`${ind}}`);
     return out;
   }
   out.access.add("satisfied");
@@ -400,8 +454,10 @@ export function ruleValuesSource(
   rules: RuleIR[],
   tableVar: (entity: EntityIR) => string
 ): { source: string; tables: Set<string>; drizzle: Set<string>; needsSession: boolean } | null {
-  const paths = new Map<string, { via: RuleHopIR[]; field: string }>();
-  for (const rule of rules) for (const [key, path] of rulePaths(rule)) paths.set(key, path);
+  const paths = new Map<string, { via: RuleHopIR[]; field: string; reader?: string }>();
+  for (const rule of rules)
+    for (const [key, path] of rulePaths(rule))
+      paths.set(key, path.reader ? path : { ...path, reader: paths.get(key)?.reader });
   const memberships = new Map<string, { via: RuleHopIR[]; field: string; through: MembershipIR }>();
   for (const rule of rules) for (const [key, m] of ruleMemberships(rule)) memberships.set(key, m);
   if (paths.size === 0 && memberships.size === 0) return null;
@@ -448,6 +504,16 @@ ${steps.join("\n")}
   }
   for (const [key, r] of paths) {
     const hops = r.via;
+    if (r.reader) {
+      // The value a public alternative tests: read by the function the policy calls, so a caller outside the tenant gets it too
+      drizzle.add("sql");
+      blocks.push(`  {
+    let value: unknown = row.${hops[0].column};
+    if (value != null) value = ((await db.execute(sql\`select "${r.reader}"(\${value}) as v\`)).rows[0] as { v?: unknown } | undefined)?.v ?? null;
+    out[${q(key)}] = value;
+  }`);
+      continue;
+    }
     const steps = hops.map((hop, i) => {
       const hopEntity = entityByName(ir, hop.entity);
       const t = tableVar(hopEntity);

@@ -9,7 +9,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"workspace/generated/access"
 	"workspace/generated/auth"
@@ -23,12 +22,12 @@ import (
 
 // Milestones serves the milestones resource (Milestone).
 type Milestones struct {
-	db   *pgxpool.Pool
+	db   *db.Scope
 	auth *auth.Auth
 }
 
 // NewMilestones builds the handlers.
-func NewMilestones(db *pgxpool.Pool, a *auth.Auth) *Milestones {
+func NewMilestones(db *db.Scope, a *auth.Auth) *Milestones {
 	return &Milestones{db: db, auth: a}
 }
 
@@ -73,12 +72,14 @@ func (h *Milestones) List(c *gin.Context) {
 	if v, ok := query.Filters["done"]; ok {
 		where.Eq(`"done"`, v)
 	}
-	tenants := access.MemberTenantIDs(session, "")
-	if len(tenants) == 0 {
-		httpx.List(c, models.PresentMilestones(nil), httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: 0})
-		return
+	if !access.RulesDisabled() {
+		tenants := access.MemberTenantIDs(session, "")
+		if len(tenants) == 0 {
+			httpx.List(c, models.PresentMilestones(nil), httpx.Page{Page: query.Page, PageSize: query.PageSize, Total: 0})
+			return
+		}
+		where.Raw(`"project_id" IN (SELECT "id" FROM ` + models.ProjectTable + ` WHERE "team_id" = ANY(` + where.Param(tenants) + `))`)
 	}
-	where.Raw(`"project_id" IN (SELECT "id" FROM ` + models.ProjectTable + ` WHERE "team_id" = ANY(` + where.Param(tenants) + `))`)
 	var total int
 	if err := h.db.QueryRow(ctx, `SELECT count(*) FROM `+models.MilestoneTable+where.SQL(), where.Args()...).Scan(&total); err != nil {
 		httpx.HandleError(c, err, "read")
