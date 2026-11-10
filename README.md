@@ -85,7 +85,7 @@ pnpm conformance --snapshot-only                                                
 pnpm evals --no-full                                                                 # agent evals: osl propose over the corpus (needs ANTHROPIC_API_KEY)
 ```
 
-Node 22+ and pnpm 10. The conformance run needs PostgreSQL for a throwaway database per fixture, and Go 1.26 for the `gin-pgx` backend. Pick a backend at `osl init --backend drizzle-next | hono-trpc-vite | gin-pgx`, and for the TypeScript ones the package manager of the generated project at `--package-manager pnpm | bun | npm`.
+Node 22+ and pnpm 10. The conformance run needs PostgreSQL 18 (what CI runs and the generated `docker-compose.yml` starts) for a throwaway database per fixture, and Go 1.26 for the `gin-pgx` backend. Pick a backend at `osl init --backend drizzle-next | hono-trpc-vite | gin-pgx`, and for the TypeScript ones the package manager of the generated project at `--package-manager pnpm | bun | npm`.
 
 ## Status
 

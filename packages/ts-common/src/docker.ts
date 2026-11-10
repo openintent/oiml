@@ -63,7 +63,7 @@ CMD ${JSON.stringify(options.start)}
   const compose = `# Built by OSL once; yours to change. Run with: docker compose up --build
 services:
   postgres:
-    image: postgres:17
+    image: postgres:18
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -71,7 +71,8 @@ services:
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      # The 18 image keeps its data under /var/lib/postgresql/18/docker, so the volume is its parent
+      - pgdata:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d ${ir.name}"]
       interval: 2s

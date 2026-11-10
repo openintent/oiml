@@ -5,6 +5,10 @@ fixture intent on all three backends before it is listed here.
 
 ## Unreleased
 
+- PostgreSQL 18: the `docker-compose.yml` a new project gets starts `postgres:18`, with its volume at
+  `/var/lib/postgresql`, where the 18 image keeps its data (it refuses to start with one at
+  `/var/lib/postgresql/data`). CI and the nightly round run on 18 as well. The compose file is written once, so an
+  existing project keeps the one it has.
 - Many-to-many relations and ordered collections (round B2 of the road to 1.0.0), proven together by a fourth
   fixture, `music`. A junction stays a declared entity with its own rules and resource, and
   `relations: { genres: { through: TrackGenre } }` on an entity names the rows on its far side once: `include` on
