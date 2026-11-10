@@ -1,6 +1,8 @@
 # Design: the tenant isolation backstop
 
-**Status: proposed 2026-11-09.** Not yet built. The grammar below is the design to review before the build.
+**Status: proposed 2026-11-09.** Not yet built. The grammar below is the design to review before the build. Since
+2026-11-10 it is round B1 of the road to 1.0.0 (`docs/roadmap.md`), the first round of milestone B and no longer
+the last construct round, with two questions to settle first, listed under Proof.
 
 The rounds name gaps by what agents could not express. This note comes from the other direction: what two
 production applications of the shape OSL generates (a SaaS over Postgres with teams, roles, an API, a worker and a
@@ -111,6 +113,19 @@ id)`. One policy shape for every table, and no row can point at another tenant's
   table as the app role without the setting and must answer zero for each.
 - Eval cases: the tenancy asks the rounds already have, graded again with `--resume` losing nothing; one new case
   whose ask says "no team may ever see another team's data, enforced in the database".
+
+To settle before the build, from the review of 2026-11-10 that moved this round to the start of milestone B:
+
+- The workspace fixture cannot turn isolation on as it stands. WS-7 gives Task
+  `read: "public when project_id.public = true or owner:assignee_id or member:project_id.team_id:admin"`, a
+  session-free alternative on a tenant table, which this note refuses. Either the compiled alternative declined
+  above joins the round, or the proof moves to a model without one.
+- The same rule's `owner:assignee_id` admits a caller by a field of the row and not by their teams. Whether an
+  owner who is not a member of the row's team still reads the row under a policy keyed on the caller's teams, and
+  with which status when not, is not said above.
+
+The intent the first bullet of this section names, WS-9, was taken by round A2 (channels); the round takes the
+next free one.
 
 ## Size
 

@@ -230,6 +230,10 @@ conformance walks that prove them). Each enters the backlog as `open` with `firs
 `cases: 0`, so it ranks below what agents have asked for until a round reports it; its `note` names the brief. A
 brief's status line says `proposed` until it is built, and then what changed while building, like the others.
 
+The backlog holds only what an agent could not express, so a quality of what is already generated (a project that
+still upgrades after a compiler change, sign-in throttling, performance) never enters it. Those are the quality
+rounds of `docs/roadmap.md`, kept there because `kind` here is a closed list.
+
 ### The next construct
 
 `pnpm evals:next [--gap key] [--from <round or run>]` prints the brief for the top open gap: the lines agents
@@ -237,7 +241,8 @@ wrote, the cases that hit it, the design questions to settle (where in the gramm
 backend emits, and whether every backend has a deterministic mapping at all), and what done looks like (a fixture
 with scenarios on all three backends, an eval case with the fixture's diff as oracle, the previous round graded
 again with `--resume` losing nothing, a fresh round no longer reporting the cluster, then `built` in the
-backlog). It makes no model call; the design decision is a person's, because the grammar is permanent.
+backlog). It makes no model call; the design decision is a person's, because the grammar is permanent once
+`1.0.0` ships (`docs/roadmap.md`, decision 9).
 
 ### Nightly
 

@@ -117,7 +117,10 @@ gaps:
     last_seen: r4
     cases: 2
     note: "Slack (docs/exercises/slack.md): nobody below owner grants owner; what a client may write into a field would
-      depend on who they are, which the field-visibility design declines as a write rule."
+      depend on who they are, which the field-visibility design declines as a write rule. The narrow case is scheduled
+      for 1.0.0 as the role ceiling (docs/roadmap.md, round A5): a write of a ranked role may not grant above the
+      writer's own, the check the invites design makes on its own path. The workspace fixture's members resource lets
+      an admin write owner today (WS-1, update member:team_id:admin). The general write rule stays for 1.1."
   - key: conditional validation
     kind: not_delivered
     status: open

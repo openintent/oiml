@@ -4,7 +4,7 @@
 the contract diff compares consecutive revisions of the fixture's lock rather than the committed snapshot, since
 the snapshot step already proves the committed document byte for byte and the lock holds every revision's IR; the
 leak walk scans the walks' own responses (the scenarios' bodies are asserted by the generated clients, which
-already refuse hidden columns); the two hooks for the second tenant pass wait for the isolation round (C5); the
+already refuse hidden columns); the two hooks for the second tenant pass wait for the isolation round (B1); the
 rule walk makes one row per actor the create rule allows and retries an allowed create that conflicts (a
 membership the creator already holds) with another actor as the related user, and its detail counts what the
 predictions said (on workspace: 317 calls, 152 allowed, 78 as 403, 76 as 401, 9 as 404) so the coverage is
@@ -69,9 +69,10 @@ unbound`) exist only under `OSL_TEST_HOOKS=1`.
 ## Declined
 
 - Property-based generation of whole scenarios: the fuzz walk covers shapes; semantics stay with scenarios.
-- A performance walk (latency budgets per operation): numbers depend on the machine; a later note.
+- A performance walk (latency budgets per operation): numbers depend on the machine; a later note. Since
+  2026-11-10 an open quality entry in `docs/roadmap.md`.
 - Running the walks against a user's project through `osl verify`: desirable, and the same code; after the harness
-  proves them on the fixtures.
+  proves them on the fixtures. Round A1 did, and since 2026-11-10 this is quality round Q3 in `docs/roadmap.md`.
 
 ## Proof
 
